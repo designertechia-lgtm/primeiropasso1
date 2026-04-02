@@ -26,11 +26,21 @@ export default function Cadastro() {
     }
     setLoading(true);
 
-    const { data, error } = await supabase.auth.signUp({
+    const normalizedSlug = role === "professional"
+      ? slug
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^a-z0-9-]/g, "-")
+          .replace(/-+/g, "-")
+          .replace(/^-|-$/g, "")
+      : undefined;
+
+    const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { full_name: fullName },
+        data: { full_name: fullName, role, slug: normalizedSlug },
         emailRedirectTo: window.location.origin,
       },
     });
@@ -39,43 +49,6 @@ export default function Cadastro() {
       setLoading(false);
       toast.error("Erro ao cadastrar", { description: error.message });
       return;
-    }
-
-    const userId = data.user?.id;
-    if (!userId) {
-      setLoading(false);
-      toast.error("Erro inesperado ao criar conta");
-      return;
-    }
-
-    // Insert role
-    const { error: roleError } = await supabase
-      .from("user_roles")
-      .insert({ user_id: userId, role });
-
-    if (roleError) {
-      console.error("Role insert error:", roleError);
-    }
-
-    // If professional, create professional profile
-    if (role === "professional") {
-      const normalizedSlug = slug
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/[^a-z0-9-]/g, "-")
-        .replace(/-+/g, "-")
-        .replace(/^-|-$/g, "");
-
-      const { error: profError } = await supabase
-        .from("professionals")
-        .insert({ user_id: userId, slug: normalizedSlug });
-
-      if (profError) {
-        toast.error("Erro ao criar perfil profissional", { description: profError.message });
-        setLoading(false);
-        return;
-      }
     }
 
     setLoading(false);

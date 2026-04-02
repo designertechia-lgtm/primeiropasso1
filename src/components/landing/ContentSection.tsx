@@ -22,6 +22,20 @@ interface ContentSectionProps {
   slug?: string;
 }
 
+function toEmbedUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    if (u.hostname === "youtu.be") {
+      return `https://www.youtube.com/embed${u.pathname}`;
+    }
+    const videoId = u.searchParams.get("v");
+    if (videoId) {
+      return `https://www.youtube.com/embed/${videoId}`;
+    }
+  } catch {}
+  return url;
+}
+
 export default function ContentSection({ articles, videos, slug }: ContentSectionProps) {
   if (articles.length === 0 && videos.length === 0) return null;
 
@@ -72,7 +86,7 @@ export default function ContentSection({ articles, videos, slug }: ContentSectio
                 <Card key={v.id} className="overflow-hidden hover:shadow-md transition-shadow">
                   <div className="aspect-video">
                     <iframe
-                      src={v.embed_url}
+                      src={toEmbedUrl(v.embed_url)}
                       title={v.title}
                       className="w-full h-full"
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"

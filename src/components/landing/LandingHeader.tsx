@@ -12,7 +12,7 @@ interface LandingHeaderProps {
 }
 
 export default function LandingHeader({ professionalName, whatsapp, logoUrl, slug }: LandingHeaderProps) {
-  const { user } = useAuth();
+  const { user, isProfessional } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const whatsappLink = whatsapp

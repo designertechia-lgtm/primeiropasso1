@@ -28,7 +28,7 @@ export default function LandingFooter({ professionalName, whatsapp }: LandingFoo
             </Button>
           </a>
         </div>
-        <div className="border-t border-background/10 mt-12 pt-8 text-center text-sm text-background/50">
+        <div className="border-t border-border mt-12 pt-8 text-center text-sm text-muted-foreground">
           <p className="flex items-center justify-center gap-1">
             Feito com <Heart className="h-3 w-3 text-destructive" /> por {professionalName || "Primeiro Passo"}
           </p>

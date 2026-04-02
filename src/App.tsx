@@ -8,6 +8,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import Index from "./pages/Index.tsx";
 import Login from "./pages/Login.tsx";
 import Cadastro from "./pages/Cadastro.tsx";
+import ProfessionalLanding from "./pages/ProfessionalLanding.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -24,10 +25,11 @@ const App = () => (
             <Route path="/login" element={<Login />} />
             <Route path="/cadastro" element={<Cadastro />} />
             {/* Protected patient routes */}
-            <Route path="/minha-conta" element={<ProtectedRoute requiredRole="patient"><div>Dashboard Paciente (em breve)</div></ProtectedRoute>} />
+            <Route path="/minha-conta" element={<ProtectedRoute requiredRole="patient"><div className="min-h-screen flex items-center justify-center bg-background"><p className="text-muted-foreground font-serif text-lg">Dashboard Paciente (em breve)</p></div></ProtectedRoute>} />
             {/* Protected professional routes */}
-            <Route path="/admin" element={<ProtectedRoute requiredRole="professional"><div>Dashboard Profissional (em breve)</div></ProtectedRoute>} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="/admin" element={<ProtectedRoute requiredRole="professional"><div className="min-h-screen flex items-center justify-center bg-background"><p className="text-muted-foreground font-serif text-lg">Dashboard Profissional (em breve)</p></div></ProtectedRoute>} />
+            {/* Dynamic professional landing page - MUST be last before catch-all */}
+            <Route path="/:slug" element={<ProfessionalLanding />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

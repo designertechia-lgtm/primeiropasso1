@@ -17,6 +17,7 @@ import AdminArtigos from "./pages/admin/AdminArtigos.tsx";
 import AdminVideos from "./pages/admin/AdminVideos.tsx";
 import AdminLeads from "./pages/admin/AdminLeads.tsx";
 import AdminConfiguracoes from "./pages/admin/AdminConfiguracoes.tsx";
+import AdminDisponibilidade from "./pages/admin/AdminDisponibilidade.tsx";
 
 const queryClient = new QueryClient();
 

@@ -1,87 +1,33 @@
 
 
-# Fix: RLS Blocking Signup for Roles & Professionals
+# Landing Page Focada no Profissional Individual
 
-## Problem
+## Contexto
+O site é individual (um profissional por instalação), então a página Index atual (marketplace genérico "conecte-se com profissionais") não faz sentido. A landing page principal (`/`) deve ser a do profissional, com destaque para a foto de perfil no hero.
 
-After `signUp()`, the user hasn't confirmed their email yet, so the Supabase client still uses the **anon key** (`auth.uid()` is null). The code tries to insert into `user_roles` and `professionals` from the client, but:
-- `user_roles` INSERT policy requires admin role
-- `professionals` INSERT policy requires `auth.uid() = user_id`
+## Alterações
 
-Both fail with RLS violations.
+### 1. Redirecionar `/` para a landing do profissional
+- Em `Index.tsx`, buscar o primeiro (e único) profissional no banco e renderizar `ProfessionalLanding` diretamente, ou redirecionar para `/:slug`.
+- Alternativa mais simples: na rota `/`, carregar o único profissional e passar os dados para os componentes de landing existentes.
 
-## Solution
+### 2. Redesenhar o HeroSection com destaque na foto de perfil
+- Aumentar a foto de perfil: torná-la o elemento central/protagonista do hero.
+- Adicionar moldura circular ou oval com borda decorativa e sombra.
+- Exibir o nome do profissional e CRP abaixo/ao lado da foto.
+- Manter os botões de CTA (Agendar Consulta, Ver Horarios).
+- Layout: foto grande centralizada no topo com texto abaixo, ou foto à direita com tamanho maior e estilo mais impactante.
 
-Move role assignment and professional record creation to a **database trigger** (`SECURITY DEFINER`) that fires on `auth.users` INSERT. The signup metadata will carry the role and slug.
+### 3. Passar dados do profissional (nome, CRP) ao HeroSection
+- Adicionar props `professionalName` e `crp` ao `HeroSectionProps`.
+- Em `ProfessionalLanding.tsx`, passar `name` e `crp` para o `HeroSection`.
 
-### 1. Migration: Extend `handle_new_user()` trigger
+### 4. Adaptar Index.tsx
+- Remover o conteúdo genérico de marketplace.
+- Fazer query do único profissional e renderizar os mesmos componentes de `ProfessionalLanding`.
 
-Replace the existing `handle_new_user` function to also:
-- Read `role` and `slug` from `NEW.raw_user_meta_data`
-- Insert into `user_roles` with the chosen role
-- If role is `professional`, insert into `professionals` with the slug
-
-```sql
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  _role text;
-  _slug text;
-BEGIN
-  -- Create profile
-  INSERT INTO public.profiles (user_id, full_name)
-  VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'full_name', ''));
-
-  -- Assign role
-  _role := COALESCE(NEW.raw_user_meta_data->>'role', 'patient');
-  INSERT INTO public.user_roles (user_id, role)
-  VALUES (NEW.id, _role::app_role);
-
-  -- Create professional record if applicable
-  IF _role = 'professional' THEN
-    _slug := NEW.raw_user_meta_data->>'slug';
-    IF _slug IS NOT NULL AND _slug <> '' THEN
-      INSERT INTO public.professionals (user_id, slug)
-      VALUES (NEW.id, _slug);
-    END IF;
-  END IF;
-
-  RETURN NEW;
-END;
-$$;
-```
-
-Also ensure the trigger exists on `auth.users`:
-```sql
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
-```
-(Only if not already present.)
-
-### 2. Update `Cadastro.tsx`
-
-- Pass `role` and `slug` in the signup metadata (`options.data`)
-- Remove the client-side inserts to `user_roles` and `professionals`
-
-The signup call becomes:
-```ts
-await supabase.auth.signUp({
-  email, password,
-  options: {
-    data: { full_name: fullName, role, slug: normalizedSlug },
-    emailRedirectTo: window.location.origin,
-  },
-});
-```
-
-Delete lines 52-78 (the client-side role and professional inserts).
-
-### 3. No RLS changes needed
-
-The trigger runs as `SECURITY DEFINER` (superuser context), bypassing RLS entirely.
+## Arquivos afetados
+- `src/components/landing/HeroSection.tsx` -- redesenho com foto em destaque, nome e CRP
+- `src/pages/Index.tsx` -- substituir conteúdo genérico pela landing do profissional
+- `src/pages/ProfessionalLanding.tsx` -- passar nome e CRP ao HeroSection
 

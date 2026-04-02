@@ -59,6 +59,7 @@ export default function AdminVideos() {
       title: form.title,
       description: form.description || null,
       embed_url: form.embed_url,
+      thumbnail_url: form.thumbnail_url || null,
       published: form.published,
       published_at: form.published ? new Date().toISOString() : null,
     };

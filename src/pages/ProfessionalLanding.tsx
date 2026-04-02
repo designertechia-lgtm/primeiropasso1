@@ -110,6 +110,27 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     if (secondaryHSL) {
       styles["--secondary"] = secondaryHSL;
     }
+    const bgHex = (professional as any).background_color;
+    const bgHSL = bgHex ? hexToHSL(bgHex) : null;
+    if (bgHSL) {
+      styles["--background"] = bgHSL;
+      const parts = bgHSL.split(" ");
+      const h = parts[0];
+      const s = parseInt(parts[1]);
+      const l = parseInt(parts[2]);
+      styles["--card"] = `${h} ${Math.max(s - 5, 0)}% ${Math.min(l + 2, 100)}%`;
+      styles["--muted"] = `${h} ${Math.max(s - 10, 0)}% ${Math.max(l - 5, 0)}%`;
+      styles["--border"] = `${h} ${Math.max(s - 10, 0)}% ${Math.max(l - 10, 0)}%`;
+      styles["--input"] = `${h} ${Math.max(s - 10, 0)}% ${Math.max(l - 10, 0)}%`;
+      // Derive foreground: light bg → dark text, dark bg → light text
+      if (l < 50) {
+        styles["--foreground"] = `${h} ${Math.max(s - 15, 0)}% 90%`;
+        styles["--muted-foreground"] = `${h} ${Math.max(s - 15, 0)}% 60%`;
+      } else {
+        styles["--foreground"] = `${h} ${Math.min(s + 10, 100)}% 15%`;
+        styles["--muted-foreground"] = `${h} ${Math.max(s - 5, 0)}% 45%`;
+      }
+    }
     return Object.keys(styles).length > 0 ? styles : undefined;
   }, [professional]);
 
@@ -135,7 +156,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
   const name = profile?.full_name || "Profissional";
 
   return (
-    <div className="min-h-screen bg-background" style={customStyles as React.CSSProperties}>
+    <div className={`min-h-screen bg-background ${(professional as any).dark_mode ? 'dark' : ''}`} style={customStyles as React.CSSProperties}>
       <LandingHeader
         professionalName={name}
         whatsapp={professional.whatsapp ?? undefined}

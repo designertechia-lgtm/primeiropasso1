@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 
 export default function AdminConfiguracoes() {
@@ -19,6 +20,8 @@ export default function AdminConfiguracoes() {
   const [photoUrl, setPhotoUrl] = useState("");
   const [primaryColor, setPrimaryColor] = useState("");
   const [secondaryColor, setSecondaryColor] = useState("");
+  const [backgroundColor, setBackgroundColor] = useState("");
+  const [darkMode, setDarkMode] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -29,6 +32,8 @@ export default function AdminConfiguracoes() {
       setPhotoUrl(professional.photo_url || "");
       setPrimaryColor(professional.primary_color || "#87A96B");
       setSecondaryColor(professional.secondary_color || "#C4A882");
+      setBackgroundColor((professional as any).background_color || "#F5F0EB");
+      setDarkMode((professional as any).dark_mode || false);
     }
   }, [professional]);
 
@@ -42,7 +47,9 @@ export default function AdminConfiguracoes() {
       photo_url: photoUrl || null,
       primary_color: primaryColor,
       secondary_color: secondaryColor,
-    }).eq("id", professional.id);
+      background_color: backgroundColor,
+      dark_mode: darkMode,
+    } as any).eq("id", professional.id);
 
     setSaving(false);
     if (error) {
@@ -132,6 +139,20 @@ export default function AdminConfiguracoes() {
                 <Input value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} className="flex-1" />
               </div>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="backgroundColor">Cor de Fundo</Label>
+              <div className="flex gap-2 items-center">
+                <input type="color" id="backgroundColor" value={backgroundColor} onChange={(e) => setBackgroundColor(e.target.value)} className="h-10 w-10 rounded cursor-pointer border-0" />
+                <Input value={backgroundColor} onChange={(e) => setBackgroundColor(e.target.value)} className="flex-1" />
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-between pt-4 border-t">
+            <div className="space-y-1">
+              <Label htmlFor="darkMode">Modo Escuro</Label>
+              <p className="text-sm text-muted-foreground">Ativar tema escuro na landing page</p>
+            </div>
+            <Switch id="darkMode" checked={darkMode} onCheckedChange={setDarkMode} />
           </div>
         </CardContent>
       </Card>

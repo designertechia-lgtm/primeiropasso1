@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { X } from "lucide-react";
+import ImageUpload from "@/components/dashboard/ImageUpload";
 
 export default function AdminPerfil() {
   const { user, profile } = useAuth();
@@ -24,6 +25,7 @@ export default function AdminPerfil() {
   const [heroSubtitle, setHeroSubtitle] = useState("");
   const [approaches, setApproaches] = useState<string[]>([]);
   const [newApproach, setNewApproach] = useState("");
+  const [photoUrl, setPhotoUrl] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -34,6 +36,7 @@ export default function AdminPerfil() {
       setHeroTitle(professional.hero_title || "");
       setHeroSubtitle(professional.hero_subtitle || "");
       setApproaches(professional.approaches || []);
+      setPhotoUrl(professional.photo_url || "");
     }
   }, [profile, professional]);
 
@@ -61,6 +64,7 @@ export default function AdminPerfil() {
         hero_title: heroTitle,
         hero_subtitle: heroSubtitle,
         approaches,
+        photo_url: photoUrl,
       }).eq("id", professional.id),
     ]);
 
@@ -85,6 +89,15 @@ export default function AdminPerfil() {
           <CardTitle>Dados Pessoais</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Foto de perfil</Label>
+            <ImageUpload
+              currentUrl={photoUrl || null}
+              onUploaded={(url) => setPhotoUrl(url)}
+              folder="photos"
+              variant="avatar"
+            />
+          </div>
           <div className="space-y-2">
             <Label htmlFor="fullName">Nome completo</Label>
             <Input id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)} />

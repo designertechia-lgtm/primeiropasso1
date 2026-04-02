@@ -43,7 +43,7 @@ export default function Cadastro() {
       email,
       password,
       options: {
-        data: { full_name: fullName, phone, role, slug: normalizedSlug },
+        data: { full_name: fullName, phone, role, slug: normalizedSlug, ref_slug: refSlug || undefined },
         emailRedirectTo: window.location.origin,
       },
     });

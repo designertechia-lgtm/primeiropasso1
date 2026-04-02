@@ -6,12 +6,14 @@ interface HeroSectionProps {
   subtitle?: string;
   whatsapp?: string;
   photoUrl?: string;
+  heroImageUrl?: string;
   slug?: string;
   professionalName?: string;
   crp?: string;
 }
 
-export default function HeroSection({ title, subtitle, whatsapp, photoUrl, slug, professionalName, crp }: HeroSectionProps) {
+export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroImageUrl, slug, professionalName, crp }: HeroSectionProps) {
+  const displayImage = heroImageUrl || photoUrl;
   const whatsappLink = whatsapp
     ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=Olá! Gostaria de agendar uma consulta.`
     : "#";

@@ -32,6 +32,8 @@ export default function AdminConfiguracoes() {
       setPhotoUrl(professional.photo_url || "");
       setPrimaryColor(professional.primary_color || "#87A96B");
       setSecondaryColor(professional.secondary_color || "#C4A882");
+      setBackgroundColor((professional as any).background_color || "#F5F0EB");
+      setDarkMode((professional as any).dark_mode || false);
     }
   }, [professional]);
 

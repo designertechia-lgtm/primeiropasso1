@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2 } from "lucide-react";
+import ImageUpload from "@/components/dashboard/ImageUpload";
 
 interface ArticleForm {
   id?: string;
@@ -118,8 +119,18 @@ export default function AdminArtigos() {
                 <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} />
               </div>
               <div className="space-y-2">
-                <Label>Imagem (URL)</Label>
-                <Input value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} placeholder="https://..." />
+                <Label>Imagem</Label>
+                <ImageUpload
+                  currentUrl={form.image_url || null}
+                  onUploaded={(url) => setForm({ ...form, image_url: url })}
+                  folder="articles"
+                  variant="logo"
+                />
+                <Input
+                  value={form.image_url}
+                  onChange={(e) => setForm({ ...form, image_url: e.target.value })}
+                  placeholder="Ou cole uma URL da imagem..."
+                />
               </div>
               <div className="space-y-2">
                 <Label>Conteúdo</Label>

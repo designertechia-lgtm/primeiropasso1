@@ -49,7 +49,7 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
               <Button variant="outline" size="sm">{isProfessional ? "Admin" : "Minha Conta"}</Button>
             </Link>
           ) : (
-            <Link to="/login">
+            <Link to={slug ? `/login?ref=${slug}` : "/login"}>
               <Button variant="outline" size="sm">Entrar</Button>
             </Link>
           )}

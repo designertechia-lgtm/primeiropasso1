@@ -47,7 +47,7 @@ export default function AdminVideos() {
   const openNew = () => { setForm(emptyForm); setOpen(true); };
 
   const openEdit = (v: typeof videos[0]) => {
-    setForm({ id: v.id, title: v.title, description: v.description || "", embed_url: v.embed_url, published: v.published });
+    setForm({ id: v.id, title: v.title, description: v.description || "", embed_url: v.embed_url, thumbnail_url: (v as any).thumbnail_url || "", published: v.published });
     setOpen(true);
   };
 

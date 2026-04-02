@@ -100,6 +100,20 @@ export default function PatientAgendar() {
     enabled: !!professional?.id && !!dateStr,
   });
 
+  // Fetch schedule blocks for the selected date
+  const { data: scheduleBlocks = [] } = useQuery({
+    queryKey: ["book-blocks", professional?.id, dateStr],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("schedule_blocks")
+        .select("start_time, end_time")
+        .eq("professional_id", professional!.id)
+        .eq("block_date", dateStr);
+      return data ?? [];
+    },
+    enabled: !!professional?.id && !!dateStr,
+  });
+
   const selectedService = services.find((s) => s.id === selectedServiceId);
   const durationMinutes = selectedService?.duration_minutes ?? 50;
 
@@ -121,14 +135,21 @@ export default function PatientAgendar() {
         const timeStr = `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
         const endTimeStr = `${String(Math.floor((t + durationMinutes) / 60)).padStart(2, "0")}:${String((t + durationMinutes) % 60).padStart(2, "0")}`;
 
-        // Check conflicts
+        // Check conflicts with appointments
         const hasConflict = existingAppointments.some((appt) => {
           const apptStart = appt.start_time.slice(0, 5);
           const apptEnd = appt.end_time.slice(0, 5);
           return timeStr < apptEnd && endTimeStr > apptStart;
         });
 
-        if (!hasConflict) {
+        // Check conflicts with schedule blocks
+        const hasBlockConflict = scheduleBlocks.some((block) => {
+          const bStart = block.start_time.slice(0, 5);
+          const bEnd = block.end_time.slice(0, 5);
+          return timeStr < bEnd && endTimeStr > bStart;
+        });
+
+        if (!hasConflict && !hasBlockConflict) {
           slots.push(timeStr);
         }
       }

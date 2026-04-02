@@ -7,6 +7,7 @@ import {
   Settings,
   Clock,
   Calendar,
+  CalendarDays,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -25,6 +26,7 @@ import {
 const items = [
   { title: "Painel", url: "/admin", icon: LayoutDashboard },
   { title: "Meu Perfil", url: "/admin/perfil", icon: User },
+  { title: "Agenda", url: "/admin/agenda", icon: CalendarDays },
   { title: "Artigos", url: "/admin/artigos", icon: FileText },
   { title: "Vídeos", url: "/admin/videos", icon: Video },
   { title: "Novos Pacientes", url: "/admin/leads", icon: Users },

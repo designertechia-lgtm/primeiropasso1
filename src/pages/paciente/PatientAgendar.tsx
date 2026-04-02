@@ -135,11 +135,18 @@ export default function PatientAgendar() {
         const timeStr = `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
         const endTimeStr = `${String(Math.floor((t + durationMinutes) / 60)).padStart(2, "0")}:${String((t + durationMinutes) % 60).padStart(2, "0")}`;
 
-        // Check conflicts
+        // Check conflicts with appointments
         const hasConflict = existingAppointments.some((appt) => {
           const apptStart = appt.start_time.slice(0, 5);
           const apptEnd = appt.end_time.slice(0, 5);
           return timeStr < apptEnd && endTimeStr > apptStart;
+        });
+
+        // Check conflicts with schedule blocks
+        const hasBlockConflict = scheduleBlocks.some((block) => {
+          const bStart = block.start_time.slice(0, 5);
+          const bEnd = block.end_time.slice(0, 5);
+          return timeStr < bEnd && endTimeStr > bStart;
         });
 
         if (!hasConflict) {

@@ -200,6 +200,35 @@ export type Database = {
           },
         ]
       }
+      patient_professionals: {
+        Row: {
+          created_at: string | null
+          id: string
+          patient_id: string
+          professional_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          patient_id: string
+          professional_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          patient_id?: string
+          professional_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_professionals_professional_id_fkey"
+            columns: ["professional_id"]
+            isOneToOne: false
+            referencedRelation: "professionals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       professional_services: {
         Row: {
           active: boolean

@@ -117,20 +117,23 @@ export default function PatientAgendar() {
   const selectedService = services.find((s) => s.id === selectedServiceId);
   const durationMinutes = selectedService?.duration_minutes ?? 50;
 
-  // Generate available time slots for selected date
+  // Generate available time slots for selected date (default 07:00–20:00)
   const getTimeSlots = () => {
     if (!selectedDate) return [];
     const dayOfWeek = selectedDate.getDay();
     const dayAvailability = availability.filter((a) => a.day_of_week === dayOfWeek);
-    if (dayAvailability.length === 0) return [];
+
+    // Use configured availability or default 07:00–20:00
+    const ranges = dayAvailability.length > 0
+      ? dayAvailability.map((a) => {
+          const [startH, startM] = a.start_time.split(":").map(Number);
+          const [endH, endM] = a.end_time.split(":").map(Number);
+          return { startMinutes: startH * 60 + startM, endMinutes: endH * 60 + endM };
+        })
+      : [{ startMinutes: 7 * 60, endMinutes: 20 * 60 }];
 
     const slots: string[] = [];
-    for (const slot of dayAvailability) {
-      const [startH, startM] = slot.start_time.split(":").map(Number);
-      const [endH, endM] = slot.end_time.split(":").map(Number);
-      const startMinutes = startH * 60 + startM;
-      const endMinutes = endH * 60 + endM;
-
+    for (const { startMinutes, endMinutes } of ranges) {
       for (let t = startMinutes; t + durationMinutes <= endMinutes; t += 30) {
         const timeStr = `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
         const endTimeStr = `${String(Math.floor((t + durationMinutes) / 60)).padStart(2, "0")}:${String((t + durationMinutes) % 60).padStart(2, "0")}`;
@@ -159,11 +162,9 @@ export default function PatientAgendar() {
 
   const timeSlots = getTimeSlots();
 
-  // Available days of week
-  const availableDays = new Set(availability.map((a) => a.day_of_week));
+  // Disable only past dates
   const disableDate = (date: Date) => {
-    if (date < new Date(new Date().setHours(0, 0, 0, 0))) return true;
-    return !availableDays.has(date.getDay());
+    return date < new Date(new Date().setHours(0, 0, 0, 0));
   };
 
   const handleBook = async () => {
@@ -260,18 +261,14 @@ export default function PatientAgendar() {
       <Card>
         <CardHeader><CardTitle className="text-base">Data</CardTitle></CardHeader>
         <CardContent>
-          {availability.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Este profissional ainda não configurou seus horários.</p>
-          ) : (
-            <Calendar
-              mode="single"
-              selected={selectedDate}
-              onSelect={(d) => { setSelectedDate(d); setSelectedTime(""); }}
-              disabled={disableDate}
-              locale={ptBR}
-              className={cn("rounded-md border pointer-events-auto")}
-            />
-          )}
+          <Calendar
+            mode="single"
+            selected={selectedDate}
+            onSelect={(d) => { setSelectedDate(d); setSelectedTime(""); }}
+            disabled={disableDate}
+            locale={ptBR}
+            className={cn("rounded-md border pointer-events-auto")}
+          />
         </CardContent>
       </Card>
 

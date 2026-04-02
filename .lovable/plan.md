@@ -1,22 +1,34 @@
 
 
-## Plan: Aplicar cores personalizadas na landing page do profissional
+## Plan: Adicionar cor de background e modo escuro na landing page
 
 ### Problema
-As cores `primary_color` e `secondary_color` são salvas no banco de dados via AdminConfiguracoes, mas nunca são aplicadas como variáveis CSS na landing page. Os componentes continuam usando as cores padrão do tema.
+Atualmente o profissional pode escolher cor primária e secundária, mas não a cor de fundo (background). Além disso, não há opção de ativar modo escuro na landing page.
 
-### Solução
-Converter as cores hex do profissional em valores HSL e aplicá-las como CSS custom properties no container da landing page, sobrescrevendo as variáveis do tema.
+### Alterações
 
-### Alteração
+**1. Migração SQL** -- Adicionar 2 colunas na tabela `professionals`:
+```sql
+ALTER TABLE public.professionals
+  ADD COLUMN background_color text DEFAULT '#F5F0EB',
+  ADD COLUMN dark_mode boolean DEFAULT false;
+```
 
-**Arquivo: `src/pages/ProfessionalLanding.tsx`**
+**2. `src/pages/admin/AdminConfiguracoes.tsx`**
+- Adicionar estado `backgroundColor` e `darkMode`
+- No card "Cores", adicionar seletor de cor para "Cor de Fundo" (color picker + input hex, mesmo padrão existente)
+- Adicionar um switch (toggle) com label "Modo Escuro" para ativar/desativar o tema dark na landing page
+- No `handleSave`, incluir `background_color` e `dark_mode` no update
 
-1. Criar função auxiliar `hexToHSL` que converte hex (`#87A96B`) para o formato HSL sem `hsl()` (ex: `100 24% 53%`) usado pelas variáveis CSS do Tailwind.
-2. No `div` raiz da landing page, aplicar `style` com as CSS custom properties `--primary` e `--secondary` usando os valores convertidos de `professional.primary_color` e `professional.secondary_color`.
-3. Também derivar `--accent` a partir da primary color (com saturação/lightness ajustados) e `--ring` para manter consistência visual.
+**3. `src/pages/ProfessionalLanding.tsx`**
+- No `customStyles`, converter `background_color` hex para HSL e aplicar como `--background`
+- Derivar também `--card`, `--muted`, `--border` e `--foreground` a partir da cor de fundo para manter consistência
+- Se `dark_mode` estiver ativo, adicionar a classe `dark` ao container raiz da landing page, ativando automaticamente as variáveis do tema escuro já definidas no CSS
+- Quando `dark_mode` está ativo e `background_color` é customizada, aplicar as variáveis sobre o tema dark
 
-Resultado: todos os componentes que usam `bg-primary`, `text-primary`, `bg-secondary`, etc. automaticamente refletirão as cores escolhidas pelo profissional.
+**4. `src/integrations/supabase/types.ts`**
+- Será atualizado automaticamente pela migração
 
-Nenhum outro arquivo precisa ser alterado.
+### Resultado
+O profissional poderá escolher a cor de fundo da landing page e ativar o modo escuro com um simples toggle nas configurações.
 

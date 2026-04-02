@@ -252,7 +252,10 @@ export type Database = {
           bio: string | null
           created_at: string
           crp: string | null
+          dark_background_color: string | null
           dark_mode: boolean | null
+          dark_primary_color: string | null
+          dark_secondary_color: string | null
           hero_image_url: string | null
           hero_subtitle: string | null
           hero_title: string | null
@@ -273,7 +276,10 @@ export type Database = {
           bio?: string | null
           created_at?: string
           crp?: string | null
+          dark_background_color?: string | null
           dark_mode?: boolean | null
+          dark_primary_color?: string | null
+          dark_secondary_color?: string | null
           hero_image_url?: string | null
           hero_subtitle?: string | null
           hero_title?: string | null
@@ -294,7 +300,10 @@ export type Database = {
           bio?: string | null
           created_at?: string
           crp?: string | null
+          dark_background_color?: string | null
           dark_mode?: boolean | null
+          dark_primary_color?: string | null
+          dark_secondary_color?: string | null
           hero_image_url?: string | null
           hero_subtitle?: string | null
           hero_title?: string | null

@@ -22,6 +22,9 @@ export default function AdminConfiguracoes() {
   const [secondaryColor, setSecondaryColor] = useState("");
   const [backgroundColor, setBackgroundColor] = useState("");
   const [darkMode, setDarkMode] = useState(false);
+  const [darkPrimaryColor, setDarkPrimaryColor] = useState("");
+  const [darkSecondaryColor, setDarkSecondaryColor] = useState("");
+  const [darkBackgroundColor, setDarkBackgroundColor] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -34,6 +37,9 @@ export default function AdminConfiguracoes() {
       setSecondaryColor(professional.secondary_color || "#C4A882");
       setBackgroundColor((professional as any).background_color || "#F5F0EB");
       setDarkMode((professional as any).dark_mode || false);
+      setDarkPrimaryColor((professional as any).dark_primary_color || "");
+      setDarkSecondaryColor((professional as any).dark_secondary_color || "");
+      setDarkBackgroundColor((professional as any).dark_background_color || "");
     }
   }, [professional]);
 
@@ -49,6 +55,9 @@ export default function AdminConfiguracoes() {
       secondary_color: secondaryColor,
       background_color: backgroundColor,
       dark_mode: darkMode,
+      dark_primary_color: darkPrimaryColor || null,
+      dark_secondary_color: darkSecondaryColor || null,
+      dark_background_color: darkBackgroundColor || null,
     } as any).eq("id", professional.id);
 
     setSaving(false);
@@ -156,6 +165,43 @@ export default function AdminConfiguracoes() {
           </div>
         </CardContent>
       </Card>
+
+      {darkMode && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Cores do Modo Escuro</CardTitle>
+            <p className="text-sm text-muted-foreground">Opcional — se vazio, usa as cores do modo claro.</p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="darkPrimaryColor">Cor Primária (Escura)</Label>
+                <div className="flex gap-2 items-center">
+                  <input type="color" id="darkPrimaryColor" value={darkPrimaryColor || primaryColor} onChange={(e) => setDarkPrimaryColor(e.target.value)} className="h-10 w-10 rounded cursor-pointer border-0" />
+                  <Input value={darkPrimaryColor} onChange={(e) => setDarkPrimaryColor(e.target.value)} placeholder="Usar padrão" className="flex-1" />
+                  {darkPrimaryColor && <Button variant="ghost" size="sm" onClick={() => setDarkPrimaryColor("")}>Limpar</Button>}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="darkSecondaryColor">Cor Secundária (Escura)</Label>
+                <div className="flex gap-2 items-center">
+                  <input type="color" id="darkSecondaryColor" value={darkSecondaryColor || secondaryColor} onChange={(e) => setDarkSecondaryColor(e.target.value)} className="h-10 w-10 rounded cursor-pointer border-0" />
+                  <Input value={darkSecondaryColor} onChange={(e) => setDarkSecondaryColor(e.target.value)} placeholder="Usar padrão" className="flex-1" />
+                  {darkSecondaryColor && <Button variant="ghost" size="sm" onClick={() => setDarkSecondaryColor("")}>Limpar</Button>}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="darkBackgroundColor">Cor de Fundo (Escura)</Label>
+                <div className="flex gap-2 items-center">
+                  <input type="color" id="darkBackgroundColor" value={darkBackgroundColor || "#1a1a2e"} onChange={(e) => setDarkBackgroundColor(e.target.value)} className="h-10 w-10 rounded cursor-pointer border-0" />
+                  <Input value={darkBackgroundColor} onChange={(e) => setDarkBackgroundColor(e.target.value)} placeholder="Usar padrão" className="flex-1" />
+                  {darkBackgroundColor && <Button variant="ghost" size="sm" onClick={() => setDarkBackgroundColor("")}>Limpar</Button>}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Button onClick={handleSave} disabled={saving} size="lg">
         {saving ? "Salvando..." : "Salvar Configurações"}

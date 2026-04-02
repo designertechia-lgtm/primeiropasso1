@@ -94,12 +94,19 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
 
   const customStyles = useMemo(() => {
     if (!professional) return undefined;
+    const prof = professional as any;
+    const isDark = !!prof.dark_mode;
     const styles: Record<string, string> = {};
-    const primaryHSL = professional.primary_color ? hexToHSL(professional.primary_color) : null;
-    const secondaryHSL = professional.secondary_color ? hexToHSL(professional.secondary_color) : null;
+
+    // Pick active colors with dark mode fallback
+    const activePrimary = (isDark && prof.dark_primary_color) ? prof.dark_primary_color : professional.primary_color;
+    const activeSecondary = (isDark && prof.dark_secondary_color) ? prof.dark_secondary_color : professional.secondary_color;
+    const activeBg = (isDark && prof.dark_background_color) ? prof.dark_background_color : prof.background_color;
+
+    const primaryHSL = activePrimary ? hexToHSL(activePrimary) : null;
+    const secondaryHSL = activeSecondary ? hexToHSL(activeSecondary) : null;
     if (primaryHSL) {
       styles["--primary"] = primaryHSL;
-      // Derive accent (darker version) and ring from primary
       const parts = primaryHSL.split(" ");
       const h = parts[0];
       const s = parseInt(parts[1]);
@@ -110,8 +117,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     if (secondaryHSL) {
       styles["--secondary"] = secondaryHSL;
     }
-    const bgHex = (professional as any).background_color;
-    const bgHSL = bgHex ? hexToHSL(bgHex) : null;
+    const bgHSL = activeBg ? hexToHSL(activeBg) : null;
     if (bgHSL) {
       styles["--background"] = bgHSL;
       const parts = bgHSL.split(" ");
@@ -122,7 +128,6 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
       styles["--muted"] = `${h} ${Math.max(s - 10, 0)}% ${Math.max(l - 5, 0)}%`;
       styles["--border"] = `${h} ${Math.max(s - 10, 0)}% ${Math.max(l - 10, 0)}%`;
       styles["--input"] = `${h} ${Math.max(s - 10, 0)}% ${Math.max(l - 10, 0)}%`;
-      // Derive foreground: light bg → dark text, dark bg → light text
       if (l < 50) {
         styles["--foreground"] = `${h} ${Math.max(s - 15, 0)}% 90%`;
         styles["--muted-foreground"] = `${h} ${Math.max(s - 15, 0)}% 60%`;

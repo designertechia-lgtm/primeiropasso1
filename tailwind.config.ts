@@ -5,6 +5,10 @@ export default {
   content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
   prefix: "",
   theme: {
+    fontFamily: {
+      sans: ['Inter', 'system-ui', 'sans-serif'],
+      serif: ['Playfair Display', 'Georgia', 'serif'],
+    },
     container: {
       center: true,
       padding: "2rem",

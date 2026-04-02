@@ -1,20 +1,18 @@
 
 
-## Plan: Botão dinâmico baseado no papel do usuário
+## Plan: Adicionar upload de foto de perfil no AdminPerfil
 
 ### O que muda
-No `LandingHeader.tsx`, quando o usuário está logado:
-- **Admin/Profissional** → botão "Admin" apontando para `/admin`
-- **Paciente** → botão "Minha Conta" apontando para `/minha-conta`
+Adicionar o componente `ImageUpload` (já existente) na página `AdminPerfil` para permitir upload da foto de perfil do profissional.
 
-### Alteração
+### Alterações
 
-**Arquivo: `src/components/landing/LandingHeader.tsx`**
+**Arquivo: `src/pages/admin/AdminPerfil.tsx`**
 
-1. Trocar `const { user } = useAuth()` por `const { user, isProfessional } = useAuth()`
-2. Nos dois locais onde aparece o botão "Minha Conta" (desktop e mobile), adicionar lógica condicional:
-   - Se `isProfessional`: texto "Admin", link para `/admin`
-   - Senão: texto "Minha Conta", link para `/minha-conta`
+1. Importar `ImageUpload` de `@/components/dashboard/ImageUpload`
+2. Adicionar estado `photoUrl` inicializado com `professional.photo_url`
+3. No card "Dados Pessoais", adicionar o `ImageUpload` com `variant="avatar"` e `folder="photos"` acima dos campos de nome/CRP
+4. No `handleSave`, incluir `photo_url: photoUrl` no update da tabela `professionals`
 
-Nenhum outro arquivo precisa ser alterado.
+Nenhuma migração necessária — a coluna `photo_url` já existe na tabela `professionals`.
 

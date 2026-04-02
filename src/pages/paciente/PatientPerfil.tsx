@@ -37,7 +37,12 @@ export default function PatientPerfil() {
 
   return (
     <div className="space-y-6 max-w-lg">
-      <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">Meu Perfil</h1>
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="icon" onClick={() => navigate("/minha-conta")}>
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">Meu Perfil</h1>
+      </div>
 
       <Card>
         <CardHeader><CardTitle>Dados Pessoais</CardTitle></CardHeader>

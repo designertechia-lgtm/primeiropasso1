@@ -132,7 +132,7 @@ export default function Cadastro() {
             </Button>
             <p className="text-sm text-muted-foreground">
               Já tem conta?{" "}
-              <Link to="/login" className="text-primary hover:underline font-medium">
+              <Link to={refSlug ? `/login?ref=${refSlug}` : "/login"} className="text-primary hover:underline font-medium">
                 Entrar
               </Link>
             </p>

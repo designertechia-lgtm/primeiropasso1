@@ -75,7 +75,7 @@ export default function Login() {
             </Button>
             <p className="text-sm text-muted-foreground">
               Não tem conta?{" "}
-              <Link to="/cadastro" className="text-primary hover:underline font-medium">
+              <Link to={ref ? `/cadastro?ref=${ref}` : "/cadastro"} className="text-primary hover:underline font-medium">
                 Cadastre-se
               </Link>
             </p>

@@ -10,9 +10,9 @@ import ContentSection from "@/components/landing/ContentSection";
 import LeadCaptureSection from "@/components/landing/LeadCaptureSection";
 import LandingFooter from "@/components/landing/LandingFooter";
 
-export default function ProfessionalLanding() {
-  const { slug } = useParams<{ slug: string }>();
-
+export default function ProfessionalLanding({ slugOverride }: { slugOverride?: string }) {
+  const { slug: paramSlug } = useParams<{ slug: string }>();
+  const slug = slugOverride || paramSlug;
   const { data: professional, isLoading, error } = useQuery({
     queryKey: ["professional", slug],
     queryFn: async () => {

@@ -19,13 +19,30 @@ export default function Login() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
       toast.error("Erro ao entrar", { description: error.message });
-    } else {
-      toast.success("Bem-vindo(a) de volta!");
-      navigate(from, { replace: true });
+      return;
+    }
+
+    toast.success("Bem-vindo(a) de volta!");
+
+    // Redirect based on role
+    if (data.user) {
+      const { data: rolesData } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", data.user.id);
+      
+      const roles = rolesData?.map((r) => r.role) || [];
+      if (roles.includes("professional")) {
+        navigate("/admin", { replace: true });
+      } else if (roles.includes("patient")) {
+        navigate("/minha-conta", { replace: true });
+      } else {
+        navigate(from, { replace: true });
+      }
     }
   };
 

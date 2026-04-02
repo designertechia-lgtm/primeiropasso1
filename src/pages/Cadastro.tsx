@@ -55,7 +55,12 @@ export default function Cadastro() {
     toast.success("Conta criada com sucesso!", {
       description: "Verifique seu e-mail para confirmar o cadastro.",
     });
-    navigate("/login");
+    
+    if (role === "professional") {
+      navigate("/admin");
+    } else {
+      navigate("/minha-conta");
+    }
   };
 
   return (

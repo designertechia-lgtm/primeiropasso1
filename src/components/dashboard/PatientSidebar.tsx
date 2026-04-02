@@ -1,5 +1,5 @@
 import {
-  Search,
+  CalendarPlus,
   CalendarDays,
   User,
 } from "lucide-react";
@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/sidebar";
 
 const items = [
-  { title: "Buscar Profissionais", url: "/minha-conta", icon: Search },
+  { title: "Agendar Consulta", url: "/minha-conta", icon: CalendarPlus },
   { title: "Meus Agendamentos", url: "/minha-conta/agendamentos", icon: CalendarDays },
   { title: "Meu Perfil", url: "/minha-conta/perfil", icon: User },
 ];

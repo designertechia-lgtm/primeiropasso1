@@ -11,6 +11,7 @@ import { Leaf } from "lucide-react";
 
 export default function Cadastro() {
   const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"patient" | "professional">("patient");

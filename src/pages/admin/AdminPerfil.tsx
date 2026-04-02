@@ -170,6 +170,16 @@ export default function AdminPerfil() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
+            <Label>Imagem do Hero</Label>
+            <p className="text-xs text-muted-foreground">Imagem exibida no topo da sua página. Se não definida, usa a foto de perfil.</p>
+            <ImageUpload
+              currentUrl={heroImageUrl || null}
+              onUploaded={(url) => setHeroImageUrl(url)}
+              folder="hero"
+              variant="logo"
+            />
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="heroTitle">Título principal</Label>
             <Input id="heroTitle" value={heroTitle} onChange={(e) => setHeroTitle(e.target.value)} />
           </div>

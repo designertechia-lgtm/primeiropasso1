@@ -11,16 +11,18 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2 } from "lucide-react";
+import ImageUpload from "@/components/dashboard/ImageUpload";
 
 interface VideoForm {
   id?: string;
   title: string;
   description: string;
   embed_url: string;
+  thumbnail_url: string;
   published: boolean;
 }
 
-const emptyForm: VideoForm = { title: "", description: "", embed_url: "", published: false };
+const emptyForm: VideoForm = { title: "", description: "", embed_url: "", thumbnail_url: "", published: false };
 
 export default function AdminVideos() {
   const { data: professional } = useProfessional();

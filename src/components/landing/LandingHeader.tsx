@@ -45,8 +45,8 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
           <button onClick={() => scrollTo("content")} className="hover:text-foreground transition-colors">Conteúdos</button>
           <button onClick={() => scrollTo("contact")} className="hover:text-foreground transition-colors">Contato</button>
           {user ? (
-            <Link to="/minha-conta">
-              <Button variant="outline" size="sm">Minha Conta</Button>
+            <Link to={isProfessional ? "/admin" : "/minha-conta"}>
+              <Button variant="outline" size="sm">{isProfessional ? "Admin" : "Minha Conta"}</Button>
             </Link>
           ) : (
             <Link to="/login">

@@ -191,6 +191,7 @@ export default function PatientBuscar() {
 
     setBooking(false);
     if (error) {
+      console.error("Booking error:", error);
       toast.error("Erro ao agendar", { description: error.message });
     } else {
       toast.success("Consulta agendada!", { description: "O profissional confirmará em breve." });

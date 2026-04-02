@@ -47,7 +47,9 @@ export default function AdminConfiguracoes() {
       photo_url: photoUrl || null,
       primary_color: primaryColor,
       secondary_color: secondaryColor,
-    }).eq("id", professional.id);
+      background_color: backgroundColor,
+      dark_mode: darkMode,
+    } as any).eq("id", professional.id);
 
     setSaving(false);
     if (error) {

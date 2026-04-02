@@ -20,6 +20,10 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<string | null>(currentUrl);
 
+  useEffect(() => {
+    setPreview(currentUrl);
+  }, [currentUrl]);
+
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;

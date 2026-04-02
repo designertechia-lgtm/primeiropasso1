@@ -20,6 +20,7 @@ import AdminLeads from "./pages/admin/AdminLeads.tsx";
 import AdminConfiguracoes from "./pages/admin/AdminConfiguracoes.tsx";
 import AdminDisponibilidade from "./pages/admin/AdminDisponibilidade.tsx";
 import AdminAgendamentos from "./pages/admin/AdminAgendamentos.tsx";
+import AdminAgenda from "./pages/admin/AdminAgenda.tsx";
 import PatientBuscar from "./pages/paciente/PatientBuscar.tsx";
 import PatientAgendamentos from "./pages/paciente/PatientAgendamentos.tsx";
 import PatientAgendar from "./pages/paciente/PatientAgendar.tsx";

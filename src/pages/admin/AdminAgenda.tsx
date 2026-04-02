@@ -284,11 +284,7 @@ export default function AdminAgenda() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {!hasAvailability ? (
-              <p className="text-sm text-muted-foreground">
-                Sem horários configurados para este dia da semana. Configure em Disponibilidade.
-              </p>
-            ) : timeline.length === 0 ? (
+            {timeline.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nenhum horário nesta data.</p>
             ) : (
               <div className="space-y-1">

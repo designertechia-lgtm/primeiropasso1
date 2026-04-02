@@ -26,6 +26,8 @@ export default function AdminPerfil() {
   const [approaches, setApproaches] = useState<string[]>([]);
   const [newApproach, setNewApproach] = useState("");
   const [photoUrl, setPhotoUrl] = useState("");
+  const [heroImageUrl, setHeroImageUrl] = useState("");
+  const [aboutImageUrl, setAboutImageUrl] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -37,6 +39,8 @@ export default function AdminPerfil() {
       setHeroSubtitle(professional.hero_subtitle || "");
       setApproaches(professional.approaches || []);
       setPhotoUrl(professional.photo_url || "");
+      setHeroImageUrl((professional as any).hero_image_url || "");
+      setAboutImageUrl((professional as any).about_image_url || "");
     }
   }, [profile, professional]);
 

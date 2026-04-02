@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Gift } from "lucide-react";
+import { UserPlus } from "lucide-react";
 
 interface LeadCaptureSectionProps {
   professionalId: string;
@@ -24,13 +24,13 @@ export default function LeadCaptureSection({ professionalId }: LeadCaptureSectio
       name,
       email: email || null,
       whatsapp: whatsapp || null,
-      interest: "guia-gratuito",
+      interest: "novo-paciente",
     });
     setLoading(false);
     if (error) {
       toast.error("Erro ao enviar", { description: "Tente novamente." });
     } else {
-      toast.success("Recebemos seus dados!", { description: "Em breve você receberá o material gratuito." });
+      toast.success("Recebemos seus dados!", { description: "O profissional entrará em contato em breve para agendar sua primeira sessão." });
       setName("");
       setEmail("");
       setWhatsapp("");
@@ -42,13 +42,13 @@ export default function LeadCaptureSection({ professionalId }: LeadCaptureSectio
       <div className="container mx-auto px-4">
         <div className="max-w-xl mx-auto text-center">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-6">
-            <Gift className="h-8 w-8 text-primary" />
+            <UserPlus className="h-8 w-8 text-primary" />
           </div>
           <h2 className="font-serif text-3xl md:text-4xl font-bold text-foreground mb-4">
-            Material Gratuito
+            Agende Sua Primeira Consulta
           </h2>
           <p className="text-muted-foreground text-lg mb-8">
-            Receba um guia com técnicas práticas para lidar com a ansiedade no dia a dia. Preencha seus dados abaixo:
+            Deixe seus dados abaixo e o profissional entrará em contato para agendar sua primeira sessão.
           </p>
           <form onSubmit={handleSubmit} className="space-y-4 text-left">
             <div className="space-y-2">
@@ -66,10 +66,10 @@ export default function LeadCaptureSection({ professionalId }: LeadCaptureSectio
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Ao preencher, você concorda em receber comunicações. Seus dados são tratados com sigilo conforme a LGPD.
+              Ao preencher, você concorda em receber contato do profissional. Seus dados são tratados com sigilo conforme a LGPD.
             </p>
             <Button type="submit" className="w-full" size="lg" disabled={loading}>
-              {loading ? "Enviando..." : "Quero Receber o Guia Gratuito"}
+              {loading ? "Enviando..." : "Quero Agendar Minha Primeira Consulta"}
             </Button>
           </form>
         </div>

@@ -146,9 +146,9 @@ export default function AdminAgenda() {
 
     const slots: TimeSlot[] = [];
 
-    for (let t = DEFAULT_START; t + 30 <= DEFAULT_END; t += 30) {
+    for (let t = DEFAULT_START; t + 60 <= DEFAULT_END; t += 60) {
       const time = `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
-      const end = `${String(Math.floor((t + 30) / 60)).padStart(2, "0")}:${String((t + 30) % 60).padStart(2, "0")}`;
+      const end = `${String(Math.floor((t + 60) / 60)).padStart(2, "0")}:${String((t + 60) % 60).padStart(2, "0")}`;
 
       // Check if this slot overlaps with an appointment
       const appt = appointments.find((a) => {

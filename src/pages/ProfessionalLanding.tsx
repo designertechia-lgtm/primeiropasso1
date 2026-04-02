@@ -156,7 +156,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
   const name = profile?.full_name || "Profissional";
 
   return (
-    <div className="min-h-screen bg-background" style={customStyles as React.CSSProperties}>
+    <div className={`min-h-screen bg-background ${(professional as any).dark_mode ? 'dark' : ''}`} style={customStyles as React.CSSProperties}>
       <LandingHeader
         professionalName={name}
         whatsapp={professional.whatsapp ?? undefined}

@@ -139,6 +139,20 @@ export default function AdminConfiguracoes() {
                 <Input value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} className="flex-1" />
               </div>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="backgroundColor">Cor de Fundo</Label>
+              <div className="flex gap-2 items-center">
+                <input type="color" id="backgroundColor" value={backgroundColor} onChange={(e) => setBackgroundColor(e.target.value)} className="h-10 w-10 rounded cursor-pointer border-0" />
+                <Input value={backgroundColor} onChange={(e) => setBackgroundColor(e.target.value)} className="flex-1" />
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-between pt-4 border-t">
+            <div className="space-y-1">
+              <Label htmlFor="darkMode">Modo Escuro</Label>
+              <p className="text-sm text-muted-foreground">Ativar tema escuro na landing page</p>
+            </div>
+            <Switch id="darkMode" checked={darkMode} onCheckedChange={setDarkMode} />
           </div>
         </CardContent>
       </Card>

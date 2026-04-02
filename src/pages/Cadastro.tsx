@@ -41,7 +41,7 @@ export default function Cadastro() {
       email,
       password,
       options: {
-        data: { full_name: fullName, role, slug: normalizedSlug },
+        data: { full_name: fullName, phone, role, slug: normalizedSlug },
         emailRedirectTo: window.location.origin,
       },
     });

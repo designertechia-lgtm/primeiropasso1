@@ -12,7 +12,7 @@ interface LandingHeaderProps {
 }
 
 export default function LandingHeader({ professionalName, whatsapp, logoUrl, slug }: LandingHeaderProps) {
-  const { user } = useAuth();
+  const { user, isProfessional } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const whatsappLink = whatsapp
@@ -45,8 +45,8 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
           <button onClick={() => scrollTo("content")} className="hover:text-foreground transition-colors">Conteúdos</button>
           <button onClick={() => scrollTo("contact")} className="hover:text-foreground transition-colors">Contato</button>
           {user ? (
-            <Link to="/minha-conta">
-              <Button variant="outline" size="sm">Minha Conta</Button>
+            <Link to={isProfessional ? "/admin" : "/minha-conta"}>
+              <Button variant="outline" size="sm">{isProfessional ? "Admin" : "Minha Conta"}</Button>
             </Link>
           ) : (
             <Link to="/login">
@@ -72,7 +72,7 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
           <button onClick={() => scrollTo("content")} className="block w-full text-left py-2 text-sm text-muted-foreground hover:text-foreground">Conteúdos</button>
           <button onClick={() => scrollTo("contact")} className="block w-full text-left py-2 text-sm text-muted-foreground hover:text-foreground">Contato</button>
           {user ? (
-            <Link to="/minha-conta" className="block"><Button variant="outline" size="sm" className="w-full">Minha Conta</Button></Link>
+            <Link to={isProfessional ? "/admin" : "/minha-conta"} className="block"><Button variant="outline" size="sm" className="w-full">{isProfessional ? "Admin" : "Minha Conta"}</Button></Link>
           ) : (
             <Link to="/login" className="block"><Button variant="outline" size="sm" className="w-full">Entrar</Button></Link>
           )}

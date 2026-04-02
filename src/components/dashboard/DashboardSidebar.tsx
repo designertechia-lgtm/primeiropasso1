@@ -27,6 +27,7 @@ const items = [
   { title: "Artigos", url: "/admin/artigos", icon: FileText },
   { title: "Vídeos", url: "/admin/videos", icon: Video },
   { title: "Novos Pacientes", url: "/admin/leads", icon: Users },
+  { title: "Disponibilidade", url: "/admin/disponibilidade", icon: Clock },
   { title: "Configurações", url: "/admin/configuracoes", icon: Settings },
 ];
 

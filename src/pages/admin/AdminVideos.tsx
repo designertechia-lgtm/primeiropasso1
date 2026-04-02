@@ -11,16 +11,18 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2 } from "lucide-react";
+import ImageUpload from "@/components/dashboard/ImageUpload";
 
 interface VideoForm {
   id?: string;
   title: string;
   description: string;
   embed_url: string;
+  thumbnail_url: string;
   published: boolean;
 }
 
-const emptyForm: VideoForm = { title: "", description: "", embed_url: "", published: false };
+const emptyForm: VideoForm = { title: "", description: "", embed_url: "", thumbnail_url: "", published: false };
 
 export default function AdminVideos() {
   const { data: professional } = useProfessional();
@@ -45,7 +47,7 @@ export default function AdminVideos() {
   const openNew = () => { setForm(emptyForm); setOpen(true); };
 
   const openEdit = (v: typeof videos[0]) => {
-    setForm({ id: v.id, title: v.title, description: v.description || "", embed_url: v.embed_url, published: v.published });
+    setForm({ id: v.id, title: v.title, description: v.description || "", embed_url: v.embed_url, thumbnail_url: (v as any).thumbnail_url || "", published: v.published });
     setOpen(true);
   };
 
@@ -57,6 +59,7 @@ export default function AdminVideos() {
       title: form.title,
       description: form.description || null,
       embed_url: form.embed_url,
+      thumbnail_url: form.thumbnail_url || null,
       published: form.published,
       published_at: form.published ? new Date().toISOString() : null,
     };
@@ -106,6 +109,14 @@ export default function AdminVideos() {
               <div className="space-y-2">
                 <Label>URL de Embed (YouTube)</Label>
                 <Input value={form.embed_url} onChange={(e) => setForm({ ...form, embed_url: e.target.value })} placeholder="https://www.youtube.com/embed/..." />
+              </div>
+              <div className="space-y-2">
+                <Label>Thumbnail / Capa</Label>
+                <ImageUpload
+                  currentUrl={form.thumbnail_url || null}
+                  onUploaded={(url) => setForm({ ...form, thumbnail_url: url })}
+                  folder="video-thumbnails"
+                />
               </div>
               <div className="space-y-2">
                 <Label>Descrição</Label>

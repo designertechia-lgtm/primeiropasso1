@@ -449,6 +449,7 @@ export type Database = {
           professional_id: string
           published: boolean
           published_at: string | null
+          thumbnail_url: string | null
           title: string
           updated_at: string
         }
@@ -460,6 +461,7 @@ export type Database = {
           professional_id: string
           published?: boolean
           published_at?: string | null
+          thumbnail_url?: string | null
           title: string
           updated_at?: string
         }
@@ -471,6 +473,7 @@ export type Database = {
           professional_id?: string
           published?: boolean
           published_at?: string | null
+          thumbnail_url?: string | null
           title?: string
           updated_at?: string
         }

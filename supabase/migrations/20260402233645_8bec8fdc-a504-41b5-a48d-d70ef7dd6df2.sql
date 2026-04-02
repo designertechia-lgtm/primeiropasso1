@@ -1,0 +1,1 @@
+INSERT INTO public.patient_professionals (patient_id, professional_id) VALUES ('c83331ec-3af9-4a70-abe0-8279da27567e', '1a1480e2-d8e9-4951-88cb-8efc12714aa4');

@@ -11,6 +11,7 @@ import Cadastro from "./pages/Cadastro.tsx";
 import ProfessionalLanding from "./pages/ProfessionalLanding.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import DashboardLayout from "./components/dashboard/DashboardLayout.tsx";
+import PatientLayout from "./components/dashboard/PatientLayout.tsx";
 import AdminDashboard from "./pages/admin/AdminDashboard.tsx";
 import AdminPerfil from "./pages/admin/AdminPerfil.tsx";
 import AdminArtigos from "./pages/admin/AdminArtigos.tsx";
@@ -18,12 +19,22 @@ import AdminVideos from "./pages/admin/AdminVideos.tsx";
 import AdminLeads from "./pages/admin/AdminLeads.tsx";
 import AdminConfiguracoes from "./pages/admin/AdminConfiguracoes.tsx";
 import AdminDisponibilidade from "./pages/admin/AdminDisponibilidade.tsx";
+import PatientBuscar from "./pages/paciente/PatientBuscar.tsx";
+import PatientAgendamentos from "./pages/paciente/PatientAgendamentos.tsx";
+import PatientAgendar from "./pages/paciente/PatientAgendar.tsx";
+import PatientPerfil from "./pages/paciente/PatientPerfil.tsx";
 
 const queryClient = new QueryClient();
 
 const AdminRoute = ({ children }: { children: React.ReactNode }) => (
   <ProtectedRoute requiredRole="professional">
     <DashboardLayout>{children}</DashboardLayout>
+  </ProtectedRoute>
+);
+
+const PatientRoute = ({ children }: { children: React.ReactNode }) => (
+  <ProtectedRoute requiredRole="patient">
+    <PatientLayout>{children}</PatientLayout>
   </ProtectedRoute>
 );
 
@@ -39,7 +50,10 @@ const App = () => (
             <Route path="/login" element={<Login />} />
             <Route path="/cadastro" element={<Cadastro />} />
             {/* Protected patient routes */}
-            <Route path="/minha-conta" element={<ProtectedRoute requiredRole="patient"><div className="min-h-screen flex items-center justify-center bg-background"><p className="text-muted-foreground font-serif text-lg">Dashboard Paciente (em breve)</p></div></ProtectedRoute>} />
+            <Route path="/minha-conta" element={<PatientRoute><PatientBuscar /></PatientRoute>} />
+            <Route path="/minha-conta/agendamentos" element={<PatientRoute><PatientAgendamentos /></PatientRoute>} />
+            <Route path="/minha-conta/agendar/:slug" element={<PatientRoute><PatientAgendar /></PatientRoute>} />
+            <Route path="/minha-conta/perfil" element={<PatientRoute><PatientPerfil /></PatientRoute>} />
             {/* Protected professional routes */}
             <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
             <Route path="/admin/perfil" element={<AdminRoute><AdminPerfil /></AdminRoute>} />

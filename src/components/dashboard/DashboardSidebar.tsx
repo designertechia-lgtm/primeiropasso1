@@ -28,6 +28,7 @@ const items = [
   { title: "Vídeos", url: "/admin/videos", icon: Video },
   { title: "Novos Pacientes", url: "/admin/leads", icon: Users },
   { title: "Disponibilidade", url: "/admin/disponibilidade", icon: Clock },
+  { title: "Agendamentos", url: "/admin/agendamentos", icon: Calendar },
   { title: "Configurações", url: "/admin/configuracoes", icon: Settings },
 ];
 

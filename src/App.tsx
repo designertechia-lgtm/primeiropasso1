@@ -63,6 +63,7 @@ const App = () => (
             <Route path="/admin/leads" element={<AdminRoute><AdminLeads /></AdminRoute>} />
             <Route path="/admin/configuracoes" element={<AdminRoute><AdminConfiguracoes /></AdminRoute>} />
             <Route path="/admin/disponibilidade" element={<AdminRoute><AdminDisponibilidade /></AdminRoute>} />
+            <Route path="/admin/agendamentos" element={<AdminRoute><AdminAgendamentos /></AdminRoute>} />
             {/* Dynamic professional landing page - MUST be last before catch-all */}
             <Route path="/:slug" element={<ProfessionalLanding />} />
             <Route path="*" element={<NotFound />} />

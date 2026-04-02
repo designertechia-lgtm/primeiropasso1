@@ -11,6 +11,7 @@ import { Leaf } from "lucide-react";
 
 export default function Cadastro() {
   const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"patient" | "professional">("patient");
@@ -40,7 +41,7 @@ export default function Cadastro() {
       email,
       password,
       options: {
-        data: { full_name: fullName, role, slug: normalizedSlug },
+        data: { full_name: fullName, phone, role, slug: normalizedSlug },
         emailRedirectTo: window.location.origin,
       },
     });
@@ -78,6 +79,10 @@ export default function Cadastro() {
             <div className="space-y-2">
               <Label htmlFor="fullName">Nome completo</Label>
               <Input id="fullName" placeholder="Seu nome" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">Telefone</Label>
+              <Input id="phone" type="tel" placeholder="(11) 99999-9999" value={phone} onChange={(e) => setPhone(e.target.value)} required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">E-mail</Label>

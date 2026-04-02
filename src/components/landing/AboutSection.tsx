@@ -5,17 +5,19 @@ interface AboutSectionProps {
   bio?: string;
   crp?: string;
   photoUrl?: string;
+  aboutImageUrl?: string;
   approaches?: string[];
 }
 
-export default function AboutSection({ name, bio, crp, photoUrl, approaches }: AboutSectionProps) {
+export default function AboutSection({ name, bio, crp, photoUrl, aboutImageUrl, approaches }: AboutSectionProps) {
+  const displayImage = aboutImageUrl || photoUrl;
   return (
     <section id="about" className="py-16 md:py-24 bg-muted/50">
       <div className="container mx-auto px-4">
         <div className="grid md:grid-cols-2 gap-12 items-center max-w-5xl mx-auto">
           <div className="flex justify-center">
-            {photoUrl ? (
-              <img src={photoUrl} alt={name} className="rounded-2xl shadow-lg max-h-[400px] object-cover" />
+            {displayImage ? (
+              <img src={displayImage} alt={name} className="rounded-2xl shadow-lg max-h-[400px] object-cover" />
             ) : (
               <div className="w-full max-w-xs aspect-square rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
                 <span className="text-muted-foreground text-sm">Foto</span>

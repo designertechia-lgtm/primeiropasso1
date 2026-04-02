@@ -246,10 +246,12 @@ export type Database = {
       }
       professionals: {
         Row: {
+          about_image_url: string | null
           approaches: string[] | null
           bio: string | null
           created_at: string
           crp: string | null
+          hero_image_url: string | null
           hero_subtitle: string | null
           hero_title: string | null
           id: string
@@ -263,10 +265,12 @@ export type Database = {
           whatsapp: string | null
         }
         Insert: {
+          about_image_url?: string | null
           approaches?: string[] | null
           bio?: string | null
           created_at?: string
           crp?: string | null
+          hero_image_url?: string | null
           hero_subtitle?: string | null
           hero_title?: string | null
           id?: string
@@ -280,10 +284,12 @@ export type Database = {
           whatsapp?: string | null
         }
         Update: {
+          about_image_url?: string | null
           approaches?: string[] | null
           bio?: string | null
           created_at?: string
           crp?: string | null
+          hero_image_url?: string | null
           hero_subtitle?: string | null
           hero_title?: string | null
           id?: string

@@ -6,12 +6,14 @@ interface HeroSectionProps {
   subtitle?: string;
   whatsapp?: string;
   photoUrl?: string;
+  heroImageUrl?: string;
   slug?: string;
   professionalName?: string;
   crp?: string;
 }
 
-export default function HeroSection({ title, subtitle, whatsapp, photoUrl, slug, professionalName, crp }: HeroSectionProps) {
+export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroImageUrl, slug, professionalName, crp }: HeroSectionProps) {
+  const displayImage = heroImageUrl || photoUrl;
   const whatsappLink = whatsapp
     ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=Olá! Gostaria de agendar uma consulta.`
     : "#";
@@ -23,11 +25,11 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, slug,
         <div className="flex flex-col items-center text-center gap-8">
           {/* Profile Photo - Hero Protagonist */}
           <div className="relative">
-            {photoUrl ? (
+            {displayImage ? (
               <div className="relative">
                 <div className="absolute -inset-3 rounded-full bg-gradient-to-br from-primary/30 to-accent/30 blur-md" />
                 <img
-                  src={photoUrl}
+                  src={displayImage}
                   alt={professionalName || "Profissional"}
                   className="relative w-48 h-48 md:w-64 md:h-64 lg:w-72 lg:h-72 rounded-full object-cover border-4 border-background shadow-2xl"
                 />

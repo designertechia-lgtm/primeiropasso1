@@ -26,6 +26,8 @@ export default function AdminPerfil() {
   const [approaches, setApproaches] = useState<string[]>([]);
   const [newApproach, setNewApproach] = useState("");
   const [photoUrl, setPhotoUrl] = useState("");
+  const [heroImageUrl, setHeroImageUrl] = useState("");
+  const [aboutImageUrl, setAboutImageUrl] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -37,6 +39,8 @@ export default function AdminPerfil() {
       setHeroSubtitle(professional.hero_subtitle || "");
       setApproaches(professional.approaches || []);
       setPhotoUrl(professional.photo_url || "");
+      setHeroImageUrl((professional as any).hero_image_url || "");
+      setAboutImageUrl((professional as any).about_image_url || "");
     }
   }, [profile, professional]);
 
@@ -65,6 +69,8 @@ export default function AdminPerfil() {
         hero_subtitle: heroSubtitle,
         approaches,
         photo_url: photoUrl,
+        hero_image_url: heroImageUrl || null,
+        about_image_url: aboutImageUrl || null,
       }).eq("id", professional.id),
     ]);
 
@@ -118,6 +124,16 @@ export default function AdminPerfil() {
             <Label htmlFor="bio">Sobre mim</Label>
             <Textarea id="bio" rows={5} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Conte sobre sua formação e experiência..." />
           </div>
+          <div className="space-y-2">
+            <Label>Imagem da seção Sobre</Label>
+            <p className="text-xs text-muted-foreground">Imagem exibida na seção "Sobre" da sua página. Se não definida, usa a foto de perfil.</p>
+            <ImageUpload
+              currentUrl={aboutImageUrl || null}
+              onUploaded={(url) => setAboutImageUrl(url)}
+              folder="about"
+              variant="logo"
+            />
+          </div>
         </CardContent>
       </Card>
 
@@ -153,6 +169,16 @@ export default function AdminPerfil() {
           <CardTitle>Página Inicial (Hero)</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Imagem do Hero</Label>
+            <p className="text-xs text-muted-foreground">Imagem exibida no topo da sua página. Se não definida, usa a foto de perfil.</p>
+            <ImageUpload
+              currentUrl={heroImageUrl || null}
+              onUploaded={(url) => setHeroImageUrl(url)}
+              folder="hero"
+              variant="logo"
+            />
+          </div>
           <div className="space-y-2">
             <Label htmlFor="heroTitle">Título principal</Label>
             <Input id="heroTitle" value={heroTitle} onChange={(e) => setHeroTitle(e.target.value)} />

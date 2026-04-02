@@ -139,79 +139,68 @@ export default function AdminAgenda() {
     onError: () => toast.error("Erro ao remover bloqueio"),
   });
 
-  // Build timeline for the day
+  // Build timeline for the day using default 07:00–20:00 range
   const buildTimeline = (): TimeSlot[] => {
-    const dayOfWeek = selectedDate.getDay();
-    const dayAvail = availability.filter((a) => a.day_of_week === dayOfWeek);
-    if (dayAvail.length === 0) return [];
+    const DEFAULT_START = 7 * 60; // 07:00
+    const DEFAULT_END = 20 * 60;  // 20:00
 
     const slots: TimeSlot[] = [];
 
-    for (const avail of dayAvail) {
-      const [startH, startM] = avail.start_time.split(":").map(Number);
-      const [endH, endM] = avail.end_time.split(":").map(Number);
-      const startMin = startH * 60 + startM;
-      const endMin = endH * 60 + endM;
+    for (let t = DEFAULT_START; t + 30 <= DEFAULT_END; t += 30) {
+      const time = `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+      const end = `${String(Math.floor((t + 30) / 60)).padStart(2, "0")}:${String((t + 30) % 60).padStart(2, "0")}`;
 
-      for (let t = startMin; t + 30 <= endMin; t += 30) {
-        const time = `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
-        const end = `${String(Math.floor((t + 30) / 60)).padStart(2, "0")}:${String((t + 30) % 60).padStart(2, "0")}`;
+      // Check if this slot overlaps with an appointment
+      const appt = appointments.find((a) => {
+        const aStart = a.start_time.slice(0, 5);
+        const aEnd = a.end_time.slice(0, 5);
+        return time >= aStart && time < aEnd;
+      });
 
-        // Check if this slot overlaps with an appointment
-        const appt = appointments.find((a) => {
-          const aStart = a.start_time.slice(0, 5);
-          const aEnd = a.end_time.slice(0, 5);
-          return time >= aStart && time < aEnd;
-        });
-
-        if (appt) {
-          // Only add appointment entry once (at its start time)
-          const aStart = appt.start_time.slice(0, 5);
-          if (time === aStart) {
-            slots.push({
-              time: aStart,
-              endTime: appt.end_time.slice(0, 5),
-              type: "appointment",
-              label: (appt as any).professional_services?.name || "Consulta",
-              id: appt.id,
-              status: appt.status,
-              patientName: (appt as any).patientName,
-            });
-          }
-          continue;
+      if (appt) {
+        const aStart = appt.start_time.slice(0, 5);
+        if (time === aStart) {
+          slots.push({
+            time: aStart,
+            endTime: appt.end_time.slice(0, 5),
+            type: "appointment",
+            label: (appt as any).professional_services?.name || "Consulta",
+            id: appt.id,
+            status: appt.status,
+            patientName: (appt as any).patientName,
+          });
         }
-
-        // Check if this slot overlaps with a block
-        const block = blocks.find((b) => {
-          const bStart = b.start_time.slice(0, 5);
-          const bEnd = b.end_time.slice(0, 5);
-          return time >= bStart && time < bEnd;
-        });
-
-        if (block) {
-          const bStart = block.start_time.slice(0, 5);
-          if (time === bStart) {
-            slots.push({
-              time: bStart,
-              endTime: block.end_time.slice(0, 5),
-              type: "block",
-              label: block.title || "Bloqueado",
-              id: block.id,
-            });
-          }
-          continue;
-        }
-
-        slots.push({ time, endTime: end, type: "free" });
+        continue;
       }
+
+      // Check if this slot overlaps with a block
+      const block = blocks.find((b) => {
+        const bStart = b.start_time.slice(0, 5);
+        const bEnd = b.end_time.slice(0, 5);
+        return time >= bStart && time < bEnd;
+      });
+
+      if (block) {
+        const bStart = block.start_time.slice(0, 5);
+        if (time === bStart) {
+          slots.push({
+            time: bStart,
+            endTime: block.end_time.slice(0, 5),
+            type: "block",
+            label: block.title || "Bloqueado",
+            id: block.id,
+          });
+        }
+        continue;
+      }
+
+      slots.push({ time, endTime: end, type: "free" });
     }
 
     return slots;
   };
 
   const timeline = buildTimeline();
-  const dayOfWeek = selectedDate.getDay();
-  const hasAvailability = availability.some((a) => a.day_of_week === dayOfWeek);
 
   const statusLabel: Record<string, string> = {
     pending: "Pendente",

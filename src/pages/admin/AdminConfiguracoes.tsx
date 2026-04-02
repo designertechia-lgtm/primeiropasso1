@@ -37,6 +37,9 @@ export default function AdminConfiguracoes() {
       setSecondaryColor(professional.secondary_color || "#C4A882");
       setBackgroundColor((professional as any).background_color || "#F5F0EB");
       setDarkMode((professional as any).dark_mode || false);
+      setDarkPrimaryColor((professional as any).dark_primary_color || "");
+      setDarkSecondaryColor((professional as any).dark_secondary_color || "");
+      setDarkBackgroundColor((professional as any).dark_background_color || "");
     }
   }, [professional]);
 

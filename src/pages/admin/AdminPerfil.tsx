@@ -124,6 +124,16 @@ export default function AdminPerfil() {
             <Label htmlFor="bio">Sobre mim</Label>
             <Textarea id="bio" rows={5} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Conte sobre sua formação e experiência..." />
           </div>
+          <div className="space-y-2">
+            <Label>Imagem da seção Sobre</Label>
+            <p className="text-xs text-muted-foreground">Imagem exibida na seção "Sobre" da sua página. Se não definida, usa a foto de perfil.</p>
+            <ImageUpload
+              currentUrl={aboutImageUrl || null}
+              onUploaded={(url) => setAboutImageUrl(url)}
+              folder="about"
+              variant="logo"
+            />
+          </div>
         </CardContent>
       </Card>
 

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import ImageUpload from "@/components/dashboard/ImageUpload";
 
 export default function AdminConfiguracoes() {
   const { data: professional, isLoading } = useProfessional();
@@ -89,16 +90,24 @@ export default function AdminConfiguracoes() {
         <CardHeader>
           <CardTitle>Imagens</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="logoUrl">Logo (URL)</Label>
-            <Input id="logoUrl" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="https://..." />
-            {logoUrl && <img src={logoUrl} alt="Logo preview" className="h-12 mt-2 rounded" />}
+            <Label>Logo</Label>
+            <ImageUpload
+              currentUrl={logoUrl || null}
+              onUploaded={(url) => setLogoUrl(url)}
+              folder="logos"
+              variant="logo"
+            />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="photoUrl">Foto de Perfil (URL)</Label>
-            <Input id="photoUrl" value={photoUrl} onChange={(e) => setPhotoUrl(e.target.value)} placeholder="https://..." />
-            {photoUrl && <img src={photoUrl} alt="Foto preview" className="h-20 w-20 mt-2 rounded-full object-cover" />}
+            <Label>Foto de Perfil</Label>
+            <ImageUpload
+              currentUrl={photoUrl || null}
+              onUploaded={(url) => setPhotoUrl(url)}
+              folder="photos"
+              variant="avatar"
+            />
           </div>
         </CardContent>
       </Card>

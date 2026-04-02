@@ -20,6 +20,8 @@ export default function AdminConfiguracoes() {
   const [photoUrl, setPhotoUrl] = useState("");
   const [primaryColor, setPrimaryColor] = useState("");
   const [secondaryColor, setSecondaryColor] = useState("");
+  const [backgroundColor, setBackgroundColor] = useState("");
+  const [darkMode, setDarkMode] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {

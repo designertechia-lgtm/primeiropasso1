@@ -36,6 +36,7 @@ export default function AdminPerfil() {
       setHeroTitle(professional.hero_title || "");
       setHeroSubtitle(professional.hero_subtitle || "");
       setApproaches(professional.approaches || []);
+      setPhotoUrl(professional.photo_url || "");
     }
   }, [profile, professional]);
 

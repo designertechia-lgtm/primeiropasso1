@@ -166,6 +166,43 @@ export default function AdminConfiguracoes() {
         </CardContent>
       </Card>
 
+      {darkMode && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Cores do Modo Escuro</CardTitle>
+            <p className="text-sm text-muted-foreground">Opcional — se vazio, usa as cores do modo claro.</p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="darkPrimaryColor">Cor Primária (Escura)</Label>
+                <div className="flex gap-2 items-center">
+                  <input type="color" id="darkPrimaryColor" value={darkPrimaryColor || primaryColor} onChange={(e) => setDarkPrimaryColor(e.target.value)} className="h-10 w-10 rounded cursor-pointer border-0" />
+                  <Input value={darkPrimaryColor} onChange={(e) => setDarkPrimaryColor(e.target.value)} placeholder="Usar padrão" className="flex-1" />
+                  {darkPrimaryColor && <Button variant="ghost" size="sm" onClick={() => setDarkPrimaryColor("")}>Limpar</Button>}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="darkSecondaryColor">Cor Secundária (Escura)</Label>
+                <div className="flex gap-2 items-center">
+                  <input type="color" id="darkSecondaryColor" value={darkSecondaryColor || secondaryColor} onChange={(e) => setDarkSecondaryColor(e.target.value)} className="h-10 w-10 rounded cursor-pointer border-0" />
+                  <Input value={darkSecondaryColor} onChange={(e) => setDarkSecondaryColor(e.target.value)} placeholder="Usar padrão" className="flex-1" />
+                  {darkSecondaryColor && <Button variant="ghost" size="sm" onClick={() => setDarkSecondaryColor("")}>Limpar</Button>}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="darkBackgroundColor">Cor de Fundo (Escura)</Label>
+                <div className="flex gap-2 items-center">
+                  <input type="color" id="darkBackgroundColor" value={darkBackgroundColor || "#1a1a2e"} onChange={(e) => setDarkBackgroundColor(e.target.value)} className="h-10 w-10 rounded cursor-pointer border-0" />
+                  <Input value={darkBackgroundColor} onChange={(e) => setDarkBackgroundColor(e.target.value)} placeholder="Usar padrão" className="flex-1" />
+                  {darkBackgroundColor && <Button variant="ghost" size="sm" onClick={() => setDarkBackgroundColor("")}>Limpar</Button>}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Button onClick={handleSave} disabled={saving} size="lg">
         {saving ? "Salvando..." : "Salvar Configurações"}
       </Button>

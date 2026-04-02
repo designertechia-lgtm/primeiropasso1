@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { X } from "lucide-react";
+import ImageUpload from "@/components/dashboard/ImageUpload";
 
 export default function AdminPerfil() {
   const { user, profile } = useAuth();

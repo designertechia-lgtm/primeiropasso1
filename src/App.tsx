@@ -17,6 +17,7 @@ import AdminArtigos from "./pages/admin/AdminArtigos.tsx";
 import AdminVideos from "./pages/admin/AdminVideos.tsx";
 import AdminLeads from "./pages/admin/AdminLeads.tsx";
 import AdminConfiguracoes from "./pages/admin/AdminConfiguracoes.tsx";
+import AdminDisponibilidade from "./pages/admin/AdminDisponibilidade.tsx";
 
 const queryClient = new QueryClient();
 
@@ -46,6 +47,7 @@ const App = () => (
             <Route path="/admin/videos" element={<AdminRoute><AdminVideos /></AdminRoute>} />
             <Route path="/admin/leads" element={<AdminRoute><AdminLeads /></AdminRoute>} />
             <Route path="/admin/configuracoes" element={<AdminRoute><AdminConfiguracoes /></AdminRoute>} />
+            <Route path="/admin/disponibilidade" element={<AdminRoute><AdminDisponibilidade /></AdminRoute>} />
             {/* Dynamic professional landing page - MUST be last before catch-all */}
             <Route path="/:slug" element={<ProfessionalLanding />} />
             <Route path="*" element={<NotFound />} />

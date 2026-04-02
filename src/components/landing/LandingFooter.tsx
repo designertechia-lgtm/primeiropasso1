@@ -12,14 +12,14 @@ export default function LandingFooter({ professionalName, whatsapp }: LandingFoo
     : "#";
 
   return (
-    <footer id="contact" className="bg-foreground text-background py-16">
+    <footer id="contact" className="bg-card text-card-foreground border-t py-16">
       <div className="container mx-auto px-4">
         <div className="max-w-2xl mx-auto text-center space-y-6">
           <Leaf className="h-10 w-10 mx-auto opacity-80" />
           <h2 className="font-serif text-2xl md:text-3xl font-bold">
             O momento de cuidar de si é agora.
           </h2>
-          <p className="text-background/70 text-lg">
+          <p className="text-muted-foreground text-lg">
             Agende uma conversa e dê o primeiro passo em direção a um reencontro consigo.
           </p>
           <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
@@ -28,7 +28,7 @@ export default function LandingFooter({ professionalName, whatsapp }: LandingFoo
             </Button>
           </a>
         </div>
-        <div className="border-t border-background/10 mt-12 pt-8 text-center text-sm text-background/50">
+        <div className="border-t border-border mt-12 pt-8 text-center text-sm text-muted-foreground">
           <p className="flex items-center justify-center gap-1">
             Feito com <Heart className="h-3 w-3 text-destructive" /> por {professionalName || "Primeiro Passo"}
           </p>

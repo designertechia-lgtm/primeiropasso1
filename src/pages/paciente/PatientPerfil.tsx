@@ -11,6 +11,7 @@ import { toast } from "sonner";
 
 export default function PatientPerfil() {
   const { user, profile } = useAuth();
+  const navigate = useNavigate();
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [saving, setSaving] = useState(false);

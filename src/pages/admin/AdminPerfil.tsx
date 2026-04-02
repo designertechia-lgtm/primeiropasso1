@@ -90,6 +90,15 @@ export default function AdminPerfil() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
+            <Label>Foto de perfil</Label>
+            <ImageUpload
+              currentUrl={photoUrl || null}
+              onUploaded={(url) => setPhotoUrl(url)}
+              folder="photos"
+              variant="avatar"
+            />
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="fullName">Nome completo</Label>
             <Input id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)} />
           </div>

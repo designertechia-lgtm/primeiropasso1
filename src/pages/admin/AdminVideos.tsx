@@ -27,10 +27,13 @@ const emptyForm: VideoForm = { title: "", description: "", embed_url: "", thumbn
 
 export default function AdminVideos() {
   const { data: professional } = useProfessional();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<VideoForm>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   const { data: videos = [], isLoading } = useQuery({
     queryKey: ["admin-videos", professional?.id],

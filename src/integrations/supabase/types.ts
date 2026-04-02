@@ -248,9 +248,11 @@ export type Database = {
         Row: {
           about_image_url: string | null
           approaches: string[] | null
+          background_color: string | null
           bio: string | null
           created_at: string
           crp: string | null
+          dark_mode: boolean | null
           hero_image_url: string | null
           hero_subtitle: string | null
           hero_title: string | null
@@ -267,9 +269,11 @@ export type Database = {
         Insert: {
           about_image_url?: string | null
           approaches?: string[] | null
+          background_color?: string | null
           bio?: string | null
           created_at?: string
           crp?: string | null
+          dark_mode?: boolean | null
           hero_image_url?: string | null
           hero_subtitle?: string | null
           hero_title?: string | null
@@ -286,9 +290,11 @@ export type Database = {
         Update: {
           about_image_url?: string | null
           approaches?: string[] | null
+          background_color?: string | null
           bio?: string | null
           created_at?: string
           crp?: string | null
+          dark_mode?: boolean | null
           hero_image_url?: string | null
           hero_subtitle?: string | null
           hero_title?: string | null

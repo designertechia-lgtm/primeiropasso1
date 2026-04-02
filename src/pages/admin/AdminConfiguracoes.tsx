@@ -55,6 +55,9 @@ export default function AdminConfiguracoes() {
       secondary_color: secondaryColor,
       background_color: backgroundColor,
       dark_mode: darkMode,
+      dark_primary_color: darkPrimaryColor || null,
+      dark_secondary_color: darkSecondaryColor || null,
+      dark_background_color: darkBackgroundColor || null,
     } as any).eq("id", professional.id);
 
     setSaving(false);

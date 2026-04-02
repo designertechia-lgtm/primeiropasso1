@@ -10,8 +10,21 @@ import Login from "./pages/Login.tsx";
 import Cadastro from "./pages/Cadastro.tsx";
 import ProfessionalLanding from "./pages/ProfessionalLanding.tsx";
 import NotFound from "./pages/NotFound.tsx";
+import DashboardLayout from "./components/dashboard/DashboardLayout.tsx";
+import AdminDashboard from "./pages/admin/AdminDashboard.tsx";
+import AdminPerfil from "./pages/admin/AdminPerfil.tsx";
+import AdminArtigos from "./pages/admin/AdminArtigos.tsx";
+import AdminVideos from "./pages/admin/AdminVideos.tsx";
+import AdminLeads from "./pages/admin/AdminLeads.tsx";
+import AdminConfiguracoes from "./pages/admin/AdminConfiguracoes.tsx";
 
 const queryClient = new QueryClient();
+
+const AdminRoute = ({ children }: { children: React.ReactNode }) => (
+  <ProtectedRoute requiredRole="professional">
+    <DashboardLayout>{children}</DashboardLayout>
+  </ProtectedRoute>
+);
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -27,7 +40,12 @@ const App = () => (
             {/* Protected patient routes */}
             <Route path="/minha-conta" element={<ProtectedRoute requiredRole="patient"><div className="min-h-screen flex items-center justify-center bg-background"><p className="text-muted-foreground font-serif text-lg">Dashboard Paciente (em breve)</p></div></ProtectedRoute>} />
             {/* Protected professional routes */}
-            <Route path="/admin" element={<ProtectedRoute requiredRole="professional"><div className="min-h-screen flex items-center justify-center bg-background"><p className="text-muted-foreground font-serif text-lg">Dashboard Profissional (em breve)</p></div></ProtectedRoute>} />
+            <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+            <Route path="/admin/perfil" element={<AdminRoute><AdminPerfil /></AdminRoute>} />
+            <Route path="/admin/artigos" element={<AdminRoute><AdminArtigos /></AdminRoute>} />
+            <Route path="/admin/videos" element={<AdminRoute><AdminVideos /></AdminRoute>} />
+            <Route path="/admin/leads" element={<AdminRoute><AdminLeads /></AdminRoute>} />
+            <Route path="/admin/configuracoes" element={<AdminRoute><AdminConfiguracoes /></AdminRoute>} />
             {/* Dynamic professional landing page - MUST be last before catch-all */}
             <Route path="/:slug" element={<ProfessionalLanding />} />
             <Route path="*" element={<NotFound />} />

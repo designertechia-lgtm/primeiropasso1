@@ -111,6 +111,14 @@ export default function AdminVideos() {
                 <Input value={form.embed_url} onChange={(e) => setForm({ ...form, embed_url: e.target.value })} placeholder="https://www.youtube.com/embed/..." />
               </div>
               <div className="space-y-2">
+                <Label>Thumbnail / Capa</Label>
+                <ImageUpload
+                  currentUrl={form.thumbnail_url || null}
+                  onUploaded={(url) => setForm({ ...form, thumbnail_url: url })}
+                  folder="video-thumbnails"
+                />
+              </div>
+              <div className="space-y-2">
                 <Label>Descrição</Label>
                 <Textarea rows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
               </div>

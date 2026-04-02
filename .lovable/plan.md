@@ -1,34 +1,33 @@
 
-
-## Plan: Adicionar cor de background e modo escuro na landing page
+## Plan: Cores personalizadas opcionais para modo escuro
 
 ### Problema
-Atualmente o profissional pode escolher cor primária e secundária, mas não a cor de fundo (background). Além disso, não há opção de ativar modo escuro na landing page.
+Quando o modo escuro está ativo, as cores do tema claro são usadas diretamente. O profissional deveria poder, opcionalmente, escolher cores diferentes para o modo escuro (primária, secundária e fundo).
 
 ### Alterações
 
-**1. Migração SQL** -- Adicionar 2 colunas na tabela `professionals`:
+**1. Migração SQL** -- Adicionar 3 colunas na tabela `professionals`:
 ```sql
 ALTER TABLE public.professionals
-  ADD COLUMN background_color text DEFAULT '#F5F0EB',
-  ADD COLUMN dark_mode boolean DEFAULT false;
+  ADD COLUMN dark_primary_color text,
+  ADD COLUMN dark_secondary_color text,
+  ADD COLUMN dark_background_color text;
 ```
+Todas nullable, sem default. Quando `null`, a landing page usará as cores do modo claro.
 
 **2. `src/pages/admin/AdminConfiguracoes.tsx`**
-- Adicionar estado `backgroundColor` e `darkMode`
-- No card "Cores", adicionar seletor de cor para "Cor de Fundo" (color picker + input hex, mesmo padrão existente)
-- Adicionar um switch (toggle) com label "Modo Escuro" para ativar/desativar o tema dark na landing page
-- No `handleSave`, incluir `background_color` e `dark_mode` no update
+- Adicionar estados `darkPrimaryColor`, `darkSecondaryColor`, `darkBackgroundColor`
+- Quando `darkMode` estiver ativo, mostrar um card adicional "Cores do Modo Escuro" com 3 color pickers (mesma UX dos existentes): Cor Primária Escura, Cor Secundária Escura, Cor de Fundo Escura
+- Cada campo terá um placeholder/hint indicando que é opcional (usa a cor do modo claro se vazio)
+- Permitir limpar o campo (botão "Usar padrão" ou deixar vazio)
+- No `handleSave`, incluir os 3 novos campos
 
 **3. `src/pages/ProfessionalLanding.tsx`**
-- No `customStyles`, converter `background_color` hex para HSL e aplicar como `--background`
-- Derivar também `--card`, `--muted`, `--border` e `--foreground` a partir da cor de fundo para manter consistência
-- Se `dark_mode` estiver ativo, adicionar a classe `dark` ao container raiz da landing page, ativando automaticamente as variáveis do tema escuro já definidas no CSS
-- Quando `dark_mode` está ativo e `background_color` é customizada, aplicar as variáveis sobre o tema dark
+- Quando `dark_mode` está ativo e existem cores escuras definidas, usar `dark_primary_color` em vez de `primary_color` (e assim para secondary e background)
+- Fallback: se a cor escura for `null`, usar a cor clara correspondente
 
 **4. `src/integrations/supabase/types.ts`**
-- Será atualizado automaticamente pela migração
+- Atualizado automaticamente pela migração
 
 ### Resultado
-O profissional poderá escolher a cor de fundo da landing page e ativar o modo escuro com um simples toggle nas configurações.
-
+O toggle de modo escuro continua funcionando. Se o profissional quiser, pode customizar as cores específicas do dark mode. Se não configurar, usa as cores normais.

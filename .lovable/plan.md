@@ -1,52 +1,23 @@
 
 
-## Plan: Vincular paciente ao profissional do link acessado
+## Plan: Horários livres sem depender de disponibilidade configurada
 
 ### Problema
-Quando um paciente se cadastra, ele não fica vinculado ao profissional cuja landing page ele visitou. Não existe uma tabela de relacionamento paciente-profissional.
+Atualmente, a agenda do profissional e a tela de agendamento do paciente só mostram slots se houver registros na tabela `availability`. O usuário quer que todo horário entre 07:00–20:00 seja considerado livre, a menos que já exista uma reserva (appointment) ou bloqueio (schedule_block).
 
 ### Alterações
 
-**1. Migração SQL** -- Criar tabela `patient_professionals` para vincular pacientes a profissionais:
-```sql
-CREATE TABLE public.patient_professionals (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  patient_id uuid NOT NULL,
-  professional_id uuid NOT NULL,
-  created_at timestamptz DEFAULT now(),
-  UNIQUE(patient_id, professional_id)
-);
-ALTER TABLE public.patient_professionals ENABLE ROW LEVEL SECURITY;
+**1. `src/pages/admin/AdminAgenda.tsx`** — `buildTimeline()`:
+- Remover dependência da tabela `availability` para gerar a timeline
+- Usar faixa padrão 07:00–20:00 para todos os dias
+- Continuar verificando appointments e schedule_blocks para marcar slots como ocupados/bloqueados
+- Remover a mensagem "Sem horários configurados para este dia da semana"
 
--- Pacientes e profissionais podem ver seus vínculos
-CREATE POLICY "Patients can view own links" ON public.patient_professionals
-  FOR SELECT USING (auth.uid() = patient_id);
-CREATE POLICY "Professionals can view own patients" ON public.patient_professionals
-  FOR SELECT USING (EXISTS (SELECT 1 FROM professionals p WHERE p.id = patient_professionals.professional_id AND p.user_id = auth.uid()));
-CREATE POLICY "Anyone authenticated can insert" ON public.patient_professionals
-  FOR INSERT TO authenticated WITH CHECK (auth.uid() = patient_id);
-```
-
-**2. Propagar o slug do profissional no fluxo de cadastro:**
-
-- **Landing page → Login/Cadastro**: Os links "Entrar" no `LandingHeader.tsx` passarão o slug como query param: `/login?ref=slug` e `/cadastro?ref=slug`
-- **`Login.tsx`**: Propagar o `?ref=` para o link "Cadastre-se"
-- **`Cadastro.tsx`**: Ler o `?ref=` da URL. Se presente e o role for `patient`, após o signup buscar o `professional_id` pelo slug e inserir na tabela `patient_professionals`
-
-**3. Atualizar `handle_new_user` trigger (alternativa mais robusta):**
-- Salvar o slug de referência nos metadados do signup (`data: { ref_slug }`)
-- Na trigger `handle_new_user`, se `ref_slug` existir e o role for `patient`, inserir o vínculo automaticamente
-
-### Fluxo
-```text
-Paciente visita /daiane (landing do profissional)
-  → Clica "Entrar" → /login?ref=daiane
-  → Clica "Cadastre-se" → /cadastro?ref=daiane
-  → Se cadastra como paciente
-  → Trigger insere vínculo em patient_professionals
-  → Paciente fica vinculado à profissional "daiane"
-```
+**2. `src/pages/paciente/PatientAgendar.tsx`** — `getTimeSlots()`:
+- Se não houver registros em `availability` para o dia, usar faixa padrão 07:00–20:00
+- Manter a lógica existente de conflito com appointments e schedule_blocks
+- Habilitar todos os dias da semana no calendário (remover `disableDate` baseado em `availableDays`)
 
 ### Resultado
-Todo paciente que se cadastra a partir da página de um profissional fica automaticamente vinculado a ele no banco de dados.
+Profissional vê a agenda completa 07:00–20:00 todo dia, com slots livres, agendamentos e bloqueios. Paciente pode agendar em qualquer dia/horário livre, sem depender de configuração prévia de disponibilidade.
 

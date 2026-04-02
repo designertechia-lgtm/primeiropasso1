@@ -149,7 +149,7 @@ export default function PatientAgendar() {
           return timeStr < bEnd && endTimeStr > bStart;
         });
 
-        if (!hasConflict) {
+        if (!hasConflict && !hasBlockConflict) {
           slots.push(timeStr);
         }
       }

@@ -15,6 +15,8 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as any)?.from?.pathname || "/";
+  const searchParams = new URLSearchParams(location.search);
+  const ref = searchParams.get("ref") || "";
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

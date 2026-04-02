@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfessional } from "@/hooks/useProfessional";
+import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, Film } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 
 interface VideoForm {
@@ -26,10 +27,13 @@ const emptyForm: VideoForm = { title: "", description: "", embed_url: "", thumbn
 
 export default function AdminVideos() {
   const { data: professional } = useProfessional();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<VideoForm>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   const { data: videos = [], isLoading } = useQuery({
     queryKey: ["admin-videos", professional?.id],
@@ -107,8 +111,62 @@ export default function AdminVideos() {
                 <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
               </div>
               <div className="space-y-2">
-                <Label>URL de Embed (YouTube)</Label>
-                <Input value={form.embed_url} onChange={(e) => setForm({ ...form, embed_url: e.target.value })} placeholder="https://www.youtube.com/embed/..." />
+                <Label>Vídeo</Label>
+                <div className="space-y-3">
+                  {form.embed_url && (
+                    <div className="text-sm text-muted-foreground truncate border rounded-md px-3 py-2 bg-muted/30">
+                      <Film className="h-3 w-3 inline mr-1" />
+                      {form.embed_url}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={uploadingVideo}
+                      onClick={() => videoInputRef.current?.click()}
+                    >
+                      <Upload className="h-4 w-4 mr-1" />
+                      {uploadingVideo ? "Enviando..." : "Upload da galeria"}
+                    </Button>
+                  </div>
+                  <input
+                    ref={videoInputRef}
+                    type="file"
+                    accept="video/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file || !user) return;
+                      const maxSize = 100 * 1024 * 1024; // 100MB
+                      if (file.size > maxSize) {
+                        toast.error("Arquivo muito grande", { description: "Máximo de 100MB." });
+                        return;
+                      }
+                      setUploadingVideo(true);
+                      const ext = file.name.split(".").pop();
+                      const path = `${user.id}/videos/${Date.now()}.${ext}`;
+                      const { error } = await supabase.storage.from("images").upload(path, file, { upsert: true });
+                      if (error) {
+                        toast.error("Erro no upload", { description: error.message });
+                        setUploadingVideo(false);
+                        return;
+                      }
+                      const { data: urlData } = supabase.storage.from("images").getPublicUrl(path);
+                      setForm((prev) => ({ ...prev, embed_url: urlData.publicUrl }));
+                      setUploadingVideo(false);
+                      toast.success("Vídeo enviado!");
+                      e.target.value = "";
+                    }}
+                  />
+                  <div className="text-xs text-muted-foreground">Ou cole um link do YouTube:</div>
+                  <Input
+                    value={form.embed_url}
+                    onChange={(e) => setForm({ ...form, embed_url: e.target.value })}
+                    placeholder="https://www.youtube.com/watch?v=..."
+                  />
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Thumbnail / Capa</Label>

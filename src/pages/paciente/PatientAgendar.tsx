@@ -134,7 +134,7 @@ export default function PatientAgendar() {
 
     const slots: string[] = [];
     for (const { startMinutes, endMinutes } of ranges) {
-      for (let t = startMinutes; t + durationMinutes <= endMinutes; t += 30) {
+      for (let t = startMinutes; t + durationMinutes <= endMinutes; t += 60) {
         const timeStr = `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
         const endTimeStr = `${String(Math.floor((t + durationMinutes) / 60)).padStart(2, "0")}:${String((t + durationMinutes) % 60).padStart(2, "0")}`;
 

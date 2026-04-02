@@ -22,6 +22,9 @@ export default function AdminConfiguracoes() {
   const [secondaryColor, setSecondaryColor] = useState("");
   const [backgroundColor, setBackgroundColor] = useState("");
   const [darkMode, setDarkMode] = useState(false);
+  const [darkPrimaryColor, setDarkPrimaryColor] = useState("");
+  const [darkSecondaryColor, setDarkSecondaryColor] = useState("");
+  const [darkBackgroundColor, setDarkBackgroundColor] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {

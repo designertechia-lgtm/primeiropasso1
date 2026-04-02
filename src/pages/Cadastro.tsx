@@ -18,6 +18,8 @@ export default function Cadastro() {
   const [slug, setSlug] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const refSlug = new URLSearchParams(location.search).get("ref") || "";
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();

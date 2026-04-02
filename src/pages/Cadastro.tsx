@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,8 @@ export default function Cadastro() {
   const [slug, setSlug] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const refSlug = new URLSearchParams(location.search).get("ref") || "";
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,7 +43,7 @@ export default function Cadastro() {
       email,
       password,
       options: {
-        data: { full_name: fullName, phone, role, slug: normalizedSlug },
+        data: { full_name: fullName, phone, role, slug: normalizedSlug, ref_slug: refSlug || undefined },
         emailRedirectTo: window.location.origin,
       },
     });
@@ -130,7 +132,7 @@ export default function Cadastro() {
             </Button>
             <p className="text-sm text-muted-foreground">
               Já tem conta?{" "}
-              <Link to="/login" className="text-primary hover:underline font-medium">
+              <Link to={refSlug ? `/login?ref=${refSlug}` : "/login"} className="text-primary hover:underline font-medium">
                 Entrar
               </Link>
             </p>

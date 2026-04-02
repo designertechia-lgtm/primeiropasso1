@@ -15,6 +15,8 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as any)?.from?.pathname || "/";
+  const searchParams = new URLSearchParams(location.search);
+  const ref = searchParams.get("ref") || "";
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,7 +75,7 @@ export default function Login() {
             </Button>
             <p className="text-sm text-muted-foreground">
               Não tem conta?{" "}
-              <Link to="/cadastro" className="text-primary hover:underline font-medium">
+              <Link to={ref ? `/cadastro?ref=${ref}` : "/cadastro"} className="text-primary hover:underline font-medium">
                 Cadastre-se
               </Link>
             </p>

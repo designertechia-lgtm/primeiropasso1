@@ -49,7 +49,7 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
               <Button variant="outline" size="sm">{isProfessional ? "Admin" : "Minha Conta"}</Button>
             </Link>
           ) : (
-            <Link to="/login">
+            <Link to={slug ? `/login?ref=${slug}` : "/login"}>
               <Button variant="outline" size="sm">Entrar</Button>
             </Link>
           )}
@@ -74,7 +74,7 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
           {user ? (
             <Link to={isProfessional ? "/admin" : "/minha-conta"} className="block"><Button variant="outline" size="sm" className="w-full">{isProfessional ? "Admin" : "Minha Conta"}</Button></Link>
           ) : (
-            <Link to="/login" className="block"><Button variant="outline" size="sm" className="w-full">Entrar</Button></Link>
+            <Link to={slug ? `/login?ref=${slug}` : "/login"} className="block"><Button variant="outline" size="sm" className="w-full">Entrar</Button></Link>
           )}
           <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="block">
             <Button size="sm" className="w-full">Agendar Consulta</Button>

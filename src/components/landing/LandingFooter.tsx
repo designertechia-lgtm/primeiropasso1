@@ -19,7 +19,7 @@ export default function LandingFooter({ professionalName, whatsapp }: LandingFoo
           <h2 className="font-serif text-2xl md:text-3xl font-bold">
             O momento de cuidar de si é agora.
           </h2>
-          <p className="text-background/70 text-lg">
+          <p className="text-muted-foreground text-lg">
             Agende uma conversa e dê o primeiro passo em direção a um reencontro consigo.
           </p>
           <a href={whatsappLink} target="_blank" rel="noopener noreferrer">

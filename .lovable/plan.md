@@ -1,18 +1,35 @@
 
 
-## Plan: Adicionar upload de foto de perfil no AdminPerfil
+## Plan: Imagens separadas para Hero e Sobre
 
-### O que muda
-Adicionar o componente `ImageUpload` (já existente) na página `AdminPerfil` para permitir upload da foto de perfil do profissional.
+Atualmente, a mesma `photo_url` é usada no Hero e na seção Sobre. O objetivo é ter 3 imagens independentes: foto de perfil, imagem do Hero e imagem do Sobre.
 
 ### Alterações
 
-**Arquivo: `src/pages/admin/AdminPerfil.tsx`**
+**1. Migração SQL** -- Adicionar 2 colunas na tabela `professionals`:
+```sql
+ALTER TABLE public.professionals
+  ADD COLUMN hero_image_url text,
+  ADD COLUMN about_image_url text;
+```
 
-1. Importar `ImageUpload` de `@/components/dashboard/ImageUpload`
-2. Adicionar estado `photoUrl` inicializado com `professional.photo_url`
-3. No card "Dados Pessoais", adicionar o `ImageUpload` com `variant="avatar"` e `folder="photos"` acima dos campos de nome/CRP
-4. No `handleSave`, incluir `photo_url: photoUrl` no update da tabela `professionals`
+**2. `src/pages/admin/AdminPerfil.tsx`**
+- Adicionar estados `heroImageUrl` e `aboutImageUrl`, inicializados com `professional.hero_image_url` e `professional.about_image_url`
+- No card "Página Inicial (Hero)", adicionar `ImageUpload` com `folder="hero"` e label "Imagem do Hero"
+- No card "Biografia", adicionar `ImageUpload` com `folder="about"` e label "Imagem da seção Sobre"
+- No `handleSave`, incluir `hero_image_url` e `about_image_url` no update
 
-Nenhuma migração necessária — a coluna `photo_url` já existe na tabela `professionals`.
+**3. `src/pages/ProfessionalLanding.tsx`**
+- Passar `professional.hero_image_url` para `HeroSection` (fallback para `photo_url`)
+- Passar `professional.about_image_url` para `AboutSection` (fallback para `photo_url`)
+
+**4. `src/components/landing/HeroSection.tsx`**
+- Adicionar prop `heroImageUrl` opcional
+- Usar `heroImageUrl || photoUrl` como src da imagem
+
+**5. `src/components/landing/AboutSection.tsx`**
+- Adicionar prop `aboutImageUrl` opcional
+- Usar `aboutImageUrl || photoUrl` como src da imagem
+
+Com isso, o profissional pode ter imagens diferentes em cada seção, usando a foto de perfil como fallback quando não houver imagem específica.
 

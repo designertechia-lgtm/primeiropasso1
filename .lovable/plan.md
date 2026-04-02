@@ -1,35 +1,22 @@
 
 
-## Plan: Imagens separadas para Hero e Sobre
+## Plan: Aplicar cores personalizadas na landing page do profissional
 
-Atualmente, a mesma `photo_url` é usada no Hero e na seção Sobre. O objetivo é ter 3 imagens independentes: foto de perfil, imagem do Hero e imagem do Sobre.
+### Problema
+As cores `primary_color` e `secondary_color` são salvas no banco de dados via AdminConfiguracoes, mas nunca são aplicadas como variáveis CSS na landing page. Os componentes continuam usando as cores padrão do tema.
 
-### Alterações
+### Solução
+Converter as cores hex do profissional em valores HSL e aplicá-las como CSS custom properties no container da landing page, sobrescrevendo as variáveis do tema.
 
-**1. Migração SQL** -- Adicionar 2 colunas na tabela `professionals`:
-```sql
-ALTER TABLE public.professionals
-  ADD COLUMN hero_image_url text,
-  ADD COLUMN about_image_url text;
-```
+### Alteração
 
-**2. `src/pages/admin/AdminPerfil.tsx`**
-- Adicionar estados `heroImageUrl` e `aboutImageUrl`, inicializados com `professional.hero_image_url` e `professional.about_image_url`
-- No card "Página Inicial (Hero)", adicionar `ImageUpload` com `folder="hero"` e label "Imagem do Hero"
-- No card "Biografia", adicionar `ImageUpload` com `folder="about"` e label "Imagem da seção Sobre"
-- No `handleSave`, incluir `hero_image_url` e `about_image_url` no update
+**Arquivo: `src/pages/ProfessionalLanding.tsx`**
 
-**3. `src/pages/ProfessionalLanding.tsx`**
-- Passar `professional.hero_image_url` para `HeroSection` (fallback para `photo_url`)
-- Passar `professional.about_image_url` para `AboutSection` (fallback para `photo_url`)
+1. Criar função auxiliar `hexToHSL` que converte hex (`#87A96B`) para o formato HSL sem `hsl()` (ex: `100 24% 53%`) usado pelas variáveis CSS do Tailwind.
+2. No `div` raiz da landing page, aplicar `style` com as CSS custom properties `--primary` e `--secondary` usando os valores convertidos de `professional.primary_color` e `professional.secondary_color`.
+3. Também derivar `--accent` a partir da primary color (com saturação/lightness ajustados) e `--ring` para manter consistência visual.
 
-**4. `src/components/landing/HeroSection.tsx`**
-- Adicionar prop `heroImageUrl` opcional
-- Usar `heroImageUrl || photoUrl` como src da imagem
+Resultado: todos os componentes que usam `bg-primary`, `text-primary`, `bg-secondary`, etc. automaticamente refletirão as cores escolhidas pelo profissional.
 
-**5. `src/components/landing/AboutSection.tsx`**
-- Adicionar prop `aboutImageUrl` opcional
-- Usar `aboutImageUrl || photoUrl` como src da imagem
-
-Com isso, o profissional pode ter imagens diferentes em cada seção, usando a foto de perfil como fallback quando não houver imagem específica.
+Nenhum outro arquivo precisa ser alterado.
 

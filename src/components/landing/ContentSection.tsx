@@ -86,7 +86,7 @@ export default function ContentSection({ articles, videos, slug }: ContentSectio
                 <Card key={v.id} className="overflow-hidden hover:shadow-md transition-shadow">
                   <div className="aspect-video">
                     <iframe
-                      src={v.embed_url}
+                      src={toEmbedUrl(v.embed_url)}
                       title={v.title}
                       className="w-full h-full"
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"

@@ -19,6 +19,7 @@ import AdminVideos from "./pages/admin/AdminVideos.tsx";
 import AdminLeads from "./pages/admin/AdminLeads.tsx";
 import AdminConfiguracoes from "./pages/admin/AdminConfiguracoes.tsx";
 import AdminDisponibilidade from "./pages/admin/AdminDisponibilidade.tsx";
+import AdminAgendamentos from "./pages/admin/AdminAgendamentos.tsx";
 import PatientBuscar from "./pages/paciente/PatientBuscar.tsx";
 import PatientAgendamentos from "./pages/paciente/PatientAgendamentos.tsx";
 import PatientAgendar from "./pages/paciente/PatientAgendar.tsx";
@@ -62,6 +63,7 @@ const App = () => (
             <Route path="/admin/leads" element={<AdminRoute><AdminLeads /></AdminRoute>} />
             <Route path="/admin/configuracoes" element={<AdminRoute><AdminConfiguracoes /></AdminRoute>} />
             <Route path="/admin/disponibilidade" element={<AdminRoute><AdminDisponibilidade /></AdminRoute>} />
+            <Route path="/admin/agendamentos" element={<AdminRoute><AdminAgendamentos /></AdminRoute>} />
             {/* Dynamic professional landing page - MUST be last before catch-all */}
             <Route path="/:slug" element={<ProfessionalLanding />} />
             <Route path="*" element={<NotFound />} />

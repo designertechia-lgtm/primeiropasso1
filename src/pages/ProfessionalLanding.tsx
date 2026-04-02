@@ -104,6 +104,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         subtitle={professional.hero_subtitle ?? undefined}
         whatsapp={professional.whatsapp ?? undefined}
         photoUrl={professional.photo_url ?? undefined}
+        heroImageUrl={(professional as any).hero_image_url ?? undefined}
         slug={professional.slug}
         professionalName={name}
         crp={professional.crp ?? undefined}

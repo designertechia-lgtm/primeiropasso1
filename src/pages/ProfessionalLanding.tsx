@@ -103,38 +103,57 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     const activeSecondary = (isDark && prof.dark_secondary_color) ? prof.dark_secondary_color : professional.secondary_color;
     const activeBg = (isDark && prof.dark_background_color) ? prof.dark_background_color : prof.background_color;
 
+    const contrastFg = (hslStr: string) => {
+      const l = parseInt(hslStr.split(" ")[2]);
+      return l > 55 ? "220 15% 10%" : "210 40% 98%";
+    };
+
     const primaryHSL = activePrimary ? hexToHSL(activePrimary) : null;
     const secondaryHSL = activeSecondary ? hexToHSL(activeSecondary) : null;
+    const bgHSL = activeBg ? hexToHSL(activeBg) : null;
+    const hasDarkCustomColors = isDark && (prof.dark_primary_color || prof.dark_secondary_color || prof.dark_background_color);
+
     if (primaryHSL) {
       styles["--primary"] = primaryHSL;
+      styles["--primary-foreground"] = contrastFg(primaryHSL);
       const parts = primaryHSL.split(" ");
       const h = parts[0];
       const s = parseInt(parts[1]);
       const l = parseInt(parts[2]);
-      styles["--accent"] = `${h} ${Math.min(s + 6, 100)}% ${Math.max(l - 15, 10)}%`;
+      const accentHSL = `${h} ${Math.min(s + 6, 100)}% ${Math.max(l - 15, 10)}%`;
+      styles["--accent"] = accentHSL;
+      styles["--accent-foreground"] = contrastFg(accentHSL);
       styles["--ring"] = primaryHSL;
     }
     if (secondaryHSL) {
       styles["--secondary"] = secondaryHSL;
+      styles["--secondary-foreground"] = contrastFg(secondaryHSL);
     }
-    const bgHSL = activeBg ? hexToHSL(activeBg) : null;
-    if (bgHSL) {
+
+    // Only override bg/fg vars if we have a custom bg color OR custom dark colors
+    // When dark_mode is on without custom dark colors, let the CSS .dark theme handle bg/fg
+    if (bgHSL && (!isDark || hasDarkCustomColors)) {
       styles["--background"] = bgHSL;
       const parts = bgHSL.split(" ");
       const h = parts[0];
       const s = parseInt(parts[1]);
       const l = parseInt(parts[2]);
-      styles["--card"] = `${h} ${Math.max(s - 5, 0)}% ${Math.min(l + 2, 100)}%`;
+      const cardHSL = `${h} ${Math.max(s - 5, 0)}% ${Math.min(l + 2, 100)}%`;
+      styles["--card"] = cardHSL;
+      styles["--popover"] = cardHSL;
       styles["--muted"] = `${h} ${Math.max(s - 10, 0)}% ${Math.max(l - 5, 0)}%`;
       styles["--border"] = `${h} ${Math.max(s - 10, 0)}% ${Math.max(l - 10, 0)}%`;
       styles["--input"] = `${h} ${Math.max(s - 10, 0)}% ${Math.max(l - 10, 0)}%`;
-      if (l < 50) {
-        styles["--foreground"] = `${h} ${Math.max(s - 15, 0)}% 90%`;
-        styles["--muted-foreground"] = `${h} ${Math.max(s - 15, 0)}% 60%`;
-      } else {
-        styles["--foreground"] = `${h} ${Math.min(s + 10, 100)}% 15%`;
-        styles["--muted-foreground"] = `${h} ${Math.max(s - 5, 0)}% 45%`;
-      }
+      const fgVal = l < 50
+        ? `${h} ${Math.max(s - 15, 0)}% 90%`
+        : `${h} ${Math.min(s + 10, 100)}% 15%`;
+      const mutedFgVal = l < 50
+        ? `${h} ${Math.max(s - 15, 0)}% 60%`
+        : `${h} ${Math.max(s - 5, 0)}% 45%`;
+      styles["--foreground"] = fgVal;
+      styles["--card-foreground"] = fgVal;
+      styles["--popover-foreground"] = fgVal;
+      styles["--muted-foreground"] = mutedFgVal;
     }
     return Object.keys(styles).length > 0 ? styles : undefined;
   }, [professional]);

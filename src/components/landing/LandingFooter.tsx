@@ -12,7 +12,7 @@ export default function LandingFooter({ professionalName, whatsapp }: LandingFoo
     : "#";
 
   return (
-    <footer id="contact" className="bg-foreground text-background py-16">
+    <footer id="contact" className="bg-card text-card-foreground border-t py-16">
       <div className="container mx-auto px-4">
         <div className="max-w-2xl mx-auto text-center space-y-6">
           <Leaf className="h-10 w-10 mx-auto opacity-80" />

@@ -25,6 +25,7 @@ export default function AdminPerfil() {
   const [heroSubtitle, setHeroSubtitle] = useState("");
   const [approaches, setApproaches] = useState<string[]>([]);
   const [newApproach, setNewApproach] = useState("");
+  const [photoUrl, setPhotoUrl] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {

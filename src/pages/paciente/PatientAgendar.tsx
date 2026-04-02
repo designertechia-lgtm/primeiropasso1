@@ -261,18 +261,14 @@ export default function PatientAgendar() {
       <Card>
         <CardHeader><CardTitle className="text-base">Data</CardTitle></CardHeader>
         <CardContent>
-          {availability.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Este profissional ainda não configurou seus horários.</p>
-          ) : (
-            <Calendar
-              mode="single"
-              selected={selectedDate}
-              onSelect={(d) => { setSelectedDate(d); setSelectedTime(""); }}
-              disabled={disableDate}
-              locale={ptBR}
-              className={cn("rounded-md border pointer-events-auto")}
-            />
-          )}
+          <Calendar
+            mode="single"
+            selected={selectedDate}
+            onSelect={(d) => { setSelectedDate(d); setSelectedTime(""); }}
+            disabled={disableDate}
+            locale={ptBR}
+            className={cn("rounded-md border pointer-events-auto")}
+          />
         </CardContent>
       </Card>
 

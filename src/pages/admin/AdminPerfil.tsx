@@ -64,6 +64,7 @@ export default function AdminPerfil() {
         hero_title: heroTitle,
         hero_subtitle: heroSubtitle,
         approaches,
+        photo_url: photoUrl,
       }).eq("id", professional.id),
     ]);
 

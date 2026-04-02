@@ -81,6 +81,10 @@ export default function Cadastro() {
               <Input id="fullName" placeholder="Seu nome" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="phone">Telefone</Label>
+              <Input id="phone" type="tel" placeholder="(11) 99999-9999" value={phone} onChange={(e) => setPhone(e.target.value)} required />
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="email">E-mail</Label>
               <Input id="email" type="email" placeholder="seu@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>

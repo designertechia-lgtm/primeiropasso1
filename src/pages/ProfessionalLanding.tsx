@@ -208,7 +208,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         approaches={professional.approaches ?? undefined}
       />
       <ContentSection articles={articles} videos={videos} slug={professional.slug} />
-      <LeadCaptureSection professionalId={professional.id} />
+      <LeadCaptureSection slug={professional.slug} whatsapp={professional.whatsapp ?? undefined} />
       <LandingFooter professionalName={name} whatsapp={professional.whatsapp ?? undefined} />
     </div>
   );

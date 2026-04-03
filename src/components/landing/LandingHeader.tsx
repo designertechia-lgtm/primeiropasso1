@@ -82,9 +82,11 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
           ) : (
             <Link to={slug ? `/login?ref=${slug}` : "/login"} className="block"><Button variant="outline" size="sm" className="w-full">Entrar</Button></Link>
           )}
-          <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="block">
-            <Button size="sm" className="w-full">Agendar Consulta</Button>
-          </a>
+          {user ? (
+            <Link to="/minha-conta" className="block"><Button size="sm" className="w-full">Agendar Consulta</Button></Link>
+          ) : (
+            <Link to={slug ? `/cadastro?ref=${slug}` : "/cadastro"} className="block"><Button size="sm" className="w-full">Agendar Consulta</Button></Link>
+          )}
         </div>
       )}
     </header>

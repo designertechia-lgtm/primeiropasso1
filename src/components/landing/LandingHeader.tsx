@@ -76,11 +76,7 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
           ) : (
             <Link to={slug ? `/login?ref=${slug}` : "/login"} className="block"><Button variant="outline" size="sm" className="w-full">Entrar</Button></Link>
           )}
-          {user ? (
-            <Link to="/minha-conta" className="block"><Button size="sm" className="w-full">Agendar Consulta</Button></Link>
-          ) : (
-            <Link to={slug ? `/cadastro?ref=${slug}` : "/cadastro"} className="block"><Button size="sm" className="w-full">Agendar Consulta</Button></Link>
-          )}
+          <Link to={slug ? `/${slug}/agendar` : "/cadastro"} className="block"><Button size="sm" className="w-full">Agendar Consulta</Button></Link>
         </div>
       )}
     </header>

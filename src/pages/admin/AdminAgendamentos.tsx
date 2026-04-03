@@ -238,6 +238,18 @@ export default function AdminAgendamentos() {
                               </Button>
                             </>
                           )}
+                          {appt.status === "confirmed" && isToday(new Date(appt.appointment_date + "T12:00:00")) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                const roomName = (appt as any).video_room_id || `primeiropasso-${appt.id.slice(0, 8)}`;
+                                setActiveCall({ roomName, displayName: profile?.full_name || "Profissional" });
+                              }}
+                            >
+                              <Video className="h-3 w-3 mr-1" /> Videochamada
+                            </Button>
+                          )}
                           {appt.status === "confirmed" && (
                             <Button
                               size="sm"

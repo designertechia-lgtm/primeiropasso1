@@ -96,8 +96,14 @@ export default function AdminAgendamentos() {
         .eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["professional-appointments"] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["professional-appointments"] }),
+        queryClient.invalidateQueries({ queryKey: ["patient-appointments"] }),
+        queryClient.invalidateQueries({ queryKey: ["linked-existing"] }),
+        queryClient.invalidateQueries({ queryKey: ["book-existing"] }),
+        queryClient.invalidateQueries({ queryKey: ["agenda-appointments"] }),
+      ]);
       toast.success("Agendamento atualizado!");
     },
     onError: () => toast.error("Erro ao atualizar agendamento"),

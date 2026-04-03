@@ -82,7 +82,13 @@ export default function PatientAgendamentos() {
     if (error) toast.error("Erro ao cancelar");
     else {
       toast.success("Agendamento cancelado");
-      queryClient.invalidateQueries({ queryKey: ["patient-appointments"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["patient-appointments"] }),
+        queryClient.invalidateQueries({ queryKey: ["linked-existing"] }),
+        queryClient.invalidateQueries({ queryKey: ["book-existing"] }),
+        queryClient.invalidateQueries({ queryKey: ["agenda-appointments"] }),
+        queryClient.invalidateQueries({ queryKey: ["professional-appointments"] }),
+      ]);
     }
   };
 

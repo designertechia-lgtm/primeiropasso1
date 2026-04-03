@@ -28,6 +28,7 @@ export type Database = {
           start_time: string
           status: Database["public"]["Enums"]["appointment_status"]
           updated_at: string
+          video_room_id: string | null
         }
         Insert: {
           appointment_date: string
@@ -42,6 +43,7 @@ export type Database = {
           start_time: string
           status?: Database["public"]["Enums"]["appointment_status"]
           updated_at?: string
+          video_room_id?: string | null
         }
         Update: {
           appointment_date?: string
@@ -56,6 +58,7 @@ export type Database = {
           start_time?: string
           status?: Database["public"]["Enums"]["appointment_status"]
           updated_at?: string
+          video_room_id?: string | null
         }
         Relationships: [
           {

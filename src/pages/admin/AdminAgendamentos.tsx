@@ -115,6 +115,16 @@ export default function AdminAgendamentos() {
     {} as Record<string, number>
   );
 
+  if (activeCall) {
+    return (
+      <VideoCall
+        roomName={activeCall.roomName}
+        displayName={activeCall.displayName}
+        onClose={() => setActiveCall(null)}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Agendamentos</h1>

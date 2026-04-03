@@ -1,40 +1,61 @@
 
 
-## Plano: Substituir "Buscar Profissionais" pela agenda do profissional vinculado
+## Plano: Videochamada com Jitsi Meet
 
-### Contexto
-O paciente é vinculado a um profissional via tabela `patient_professionals` (criada pelo fluxo de cadastro com `ref_slug`). A página inicial `/minha-conta` atualmente mostra busca por profissionais. Vamos substituí-la pela tela de agendamento do profissional vinculado.
+### O que muda
+Integrar videochamadas usando Jitsi Meet (gratuito, sem conta necessária). Cada agendamento confirmado terá um botão "Iniciar Videochamada" quando chegar o horário. O profissional também terá uma sala fixa disponível a qualquer momento.
 
 ### Alterações
 
-**1. `src/pages/paciente/PatientBuscar.tsx`** — Reescrever completamente:
-- Buscar o `professional_id` do paciente na tabela `patient_professionals` usando `auth.uid()`
-- Buscar dados do profissional (slug, foto, nome, abordagens, CRP) via `professionals` + `profiles`
-- Reutilizar a lógica de `PatientAgendar.tsx` inline: calendário, slots de horários disponíveis (07:00–20:00), seleção de serviço, observações, botão de confirmar
-- Se o paciente não tiver profissional vinculado, exibir mensagem orientando a acessar a página de um profissional primeiro
-- Renomear o título da página para "Agendar Consulta" ou similar
+**1. Banco de dados** — Adicionar coluna `video_room_id` na tabela `appointments`:
+- `ALTER TABLE appointments ADD COLUMN video_room_id text` — identificador único da sala Jitsi para cada agendamento
+- Gerado automaticamente ao confirmar o agendamento (ex: `primeiropasso-{appointment_id_curto}`)
 
-**2. `src/components/dashboard/PatientSidebar.tsx`**:
-- Trocar item "Buscar Profissionais" (ícone Search) por "Agendar Consulta" (ícone CalendarPlus ou Calendar)
-- Manter URL `/minha-conta`
+**2. Componente `VideoCall.tsx`** — Novo componente reutilizável:
+- Embed do Jitsi Meet via iframe (`https://meet.jit.si/{roomName}`)
+- Props: `roomName`, `displayName`, `onClose`
+- Fullscreen ou modal com botão de fechar
+- Configurações: desabilitar lobby, definir nome do participante automaticamente
 
-**3. `src/App.tsx`**:
-- Remover rota `/minha-conta/agendar/:slug` (não mais necessária, agendamento é direto)
-- Ou manter como fallback — decisão: manter por compatibilidade
+**3. Página do Paciente — `/minha-conta/agendamentos`** (`PatientAgendamentos.tsx`):
+- Nos agendamentos com status `confirmed`, exibir botão "Entrar na Videochamada"
+- Botão visível apenas quando a data/hora do agendamento é hoje e está dentro de uma janela (ex: 10 min antes até o fim)
+- Ao clicar, abre o componente `VideoCall` com a sala do agendamento
 
-### Fluxo resultante
+**4. Página do Profissional — `/admin/agendamentos`** (`AdminAgendamentos.tsx`):
+- Mesmo botão "Iniciar Videochamada" nos agendamentos confirmados do dia
+- Profissional pode iniciar a sala a qualquer momento para agendamentos de hoje
+
+**5. Sala fixa do profissional** — `/admin/sala-virtual` (nova página):
+- Sala permanente com nome baseado no slug do profissional (ex: `primeiropasso-dr-carlos`)
+- Profissional pode compartilhar link ou iniciar direto
+- Adicionada no sidebar do admin com ícone Video
+
+**6. Sidebar do Paciente** (`PatientSidebar.tsx`):
+- Sem alteração — acesso à videochamada é pelo card do agendamento
+
+**7. Sidebar do Admin** (`DashboardSidebar.tsx`):
+- Novo item "Sala Virtual" com ícone Video, link para `/admin/sala-virtual`
+
+**8. Rota** (`App.tsx`):
+- Adicionar `/admin/sala-virtual` como rota protegida profissional
+
+### Fluxo
 ```text
-Paciente acessa /minha-conta
-  → Busca vínculo em patient_professionals
-  → Carrega dados do profissional vinculado
-  → Mostra calendário + horários livres (07:00–20:00)
-  → Paciente seleciona data, horário, serviço
-  → Confirma agendamento
+Agendamento confirmado (hoje)
+  → Paciente vê botão "Entrar na Videochamada"
+  → Profissional vê botão "Iniciar Videochamada"
+  → Ambos entram na mesma sala Jitsi (iframe)
+
+Sala fixa (profissional)
+  → /admin/sala-virtual
+  → Sala sempre disponível para uso avulso
+  → Pode compartilhar link com paciente
 ```
 
 ### Detalhes técnicos
-- Query: `supabase.from("patient_professionals").select("professional_id").eq("patient_id", user.id).limit(1).single()`
-- Depois: `supabase.from("professionals").select("*").eq("id", professional_id).single()`
-- Lógica de slots idêntica à de `PatientAgendar.tsx` (conflitos com appointments + schedule_blocks)
-- Manter rota `/minha-conta/agendar/:slug` funcional para acesso direto
+- Jitsi é 100% gratuito e não requer API key
+- URL do iframe: `https://meet.jit.si/{roomName}?#config.prejoinPageEnabled=false&userInfo.displayName={name}`
+- Room names únicos por agendamento evitam conflitos
+- Sem necessidade de edge functions ou backend adicional
 

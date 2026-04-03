@@ -53,9 +53,15 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
               <Button variant="outline" size="sm">Entrar</Button>
             </Link>
           )}
-          <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
-            <Button size="sm">Agendar Consulta</Button>
-          </a>
+          {user ? (
+            <Link to="/minha-conta">
+              <Button size="sm">Agendar Consulta</Button>
+            </Link>
+          ) : (
+            <Link to={slug ? `/cadastro?ref=${slug}` : "/cadastro"}>
+              <Button size="sm">Agendar Consulta</Button>
+            </Link>
+          )}
         </nav>
 
         {/* Mobile toggle */}

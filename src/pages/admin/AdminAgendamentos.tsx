@@ -1,7 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfessional } from "@/hooks/useProfessional";
-import { format } from "date-fns";
+import { useAuth } from "@/hooks/useAuth";
+import { format, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,8 +14,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { CheckCircle, Clock, XCircle, DollarSign, Calendar } from "lucide-react";
+import { CheckCircle, Clock, XCircle, DollarSign, Calendar, Video } from "lucide-react";
 import { useState } from "react";
+import VideoCall from "@/components/VideoCall";
 
 type AppointmentStatus = "pending" | "confirmed" | "cancelled" | "completed";
 type PaymentStatus = "pending" | "paid";

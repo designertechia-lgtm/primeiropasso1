@@ -1,6 +1,7 @@
 import { Calendar, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
 
 interface LeadCaptureSectionProps {
   slug: string;
@@ -8,6 +9,7 @@ interface LeadCaptureSectionProps {
 }
 
 export default function LeadCaptureSection({ slug, whatsapp }: LeadCaptureSectionProps) {
+  const { user } = useAuth();
   const whatsappLink = whatsapp
     ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent("Olá! Gostaria de agendar uma consulta.")}`
     : null;
@@ -27,7 +29,7 @@ export default function LeadCaptureSection({ slug, whatsapp }: LeadCaptureSectio
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button asChild size="lg" className="gap-2">
-              <Link to={`/${slug}/agendar`}>
+              <Link to={user ? "/minha-conta" : `/cadastro?ref=${slug}`}>
                 <Calendar className="h-5 w-5" />
                 Agendar pelo Site
               </Link>

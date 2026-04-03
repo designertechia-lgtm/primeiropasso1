@@ -1,0 +1,1 @@
+ALTER TABLE public.appointments ADD COLUMN video_room_id text;

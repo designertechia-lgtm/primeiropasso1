@@ -42,8 +42,19 @@ const paymentLabels: Record<PaymentStatus, string> = {
 
 export default function AdminAgendamentos() {
   const { data: professional } = useProfessional();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [activeCall, setActiveCall] = useState<{ roomName: string; displayName: string } | null>(null);
+
+  const { data: profile } = useQuery({
+    queryKey: ["my-profile", user?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from("profiles").select("full_name").eq("user_id", user!.id).maybeSingle();
+      return data;
+    },
+    enabled: !!user?.id,
+  });
 
   const { data: appointments, isLoading } = useQuery({
     queryKey: ["professional-appointments", professional?.id],

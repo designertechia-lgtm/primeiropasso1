@@ -1,20 +1,31 @@
 
 
-## Plano: Simplificar seção "Agende Sua Primeira Consulta"
+## Plano: Remover sistema de videochamada
 
-### O que muda
-Remover o formulário de captura de leads (campos nome, email, WhatsApp) e substituir por dois botões de ação direta: um para agendar pelo site e outro pelo WhatsApp.
+### O que será removido
+Todo o sistema de videochamada via Jitsi Meet: componente, página da sala virtual, botões de videochamada nos agendamentos e rota.
 
 ### Alterações
 
-**1. `src/components/landing/LeadCaptureSection.tsx`**
-- Remover estados, formulário e lógica de submit
-- Adicionar props `whatsapp` e `slug` (para construir os links)
-- Manter título "Agende Sua Primeira Consulta" e ícone
-- Novo conteúdo: texto motivacional + dois botões lado a lado:
-  - **"Agendar pelo Site"** — link para `/{slug}/agendar` (botão primário com ícone Calendar)
-  - **"Agendar pelo WhatsApp"** — link para `https://wa.me/...` (botão outline verde com ícone MessageCircle)
+**1. Deletar arquivos**
+- `src/components/VideoCall.tsx`
+- `src/pages/admin/AdminSalaVirtual.tsx`
 
-**2. `src/pages/ProfessionalLanding.tsx`**
-- Passar `whatsapp` e `slug` como props para `LeadCaptureSection`
+**2. `src/components/dashboard/DashboardSidebar.tsx`**
+- Remover item "Sala Virtual" da lista de navegação
+
+**3. `src/App.tsx`**
+- Remover rota `/admin/sala-virtual` e import do `AdminSalaVirtual`
+
+**4. `src/pages/admin/AdminAgendamentos.tsx`**
+- Remover import do `VideoCall` e ícone `Video`
+- Remover estado `activeCall` e lógica de videochamada
+- Remover botão "Iniciar Videochamada" da listagem
+
+**5. `src/pages/paciente/PatientAgendamentos.tsx`**
+- Remover import do `VideoCall` e ícone `Video`
+- Remover estado `activeCall`, função `canJoinCall` e lógica de videochamada
+- Remover botão de videochamada da listagem
+
+**Nota:** A coluna `video_room_id` na tabela `appointments` será mantida no banco (não causa problemas) para evitar migração desnecessária.
 

@@ -1,7 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfessional } from "@/hooks/useProfessional";
-import { useAuth } from "@/hooks/useAuth";
 import { format, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
@@ -14,9 +13,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { CheckCircle, Clock, XCircle, DollarSign, Calendar, Video } from "lucide-react";
+import { CheckCircle, Clock, XCircle, DollarSign, Calendar } from "lucide-react";
 import { useState } from "react";
-import VideoCall from "@/components/VideoCall";
 
 type AppointmentStatus = "pending" | "confirmed" | "cancelled" | "completed";
 type PaymentStatus = "pending" | "paid";
@@ -42,19 +40,8 @@ const paymentLabels: Record<PaymentStatus, string> = {
 
 export default function AdminAgendamentos() {
   const { data: professional } = useProfessional();
-  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [activeCall, setActiveCall] = useState<{ roomName: string; displayName: string } | null>(null);
-
-  const { data: profile } = useQuery({
-    queryKey: ["my-profile", user?.id],
-    queryFn: async () => {
-      const { data } = await supabase.from("profiles").select("full_name").eq("user_id", user!.id).maybeSingle();
-      return data;
-    },
-    enabled: !!user?.id,
-  });
 
   const { data: appointments, isLoading } = useQuery({
     queryKey: ["professional-appointments", professional?.id],
@@ -69,7 +56,6 @@ export default function AdminAgendamentos() {
         .order("appointment_date", { ascending: false });
       if (error) throw error;
 
-      // Fetch patient profiles
       const patientIds = [...new Set(data.map((a) => a.patient_id))];
       const { data: profiles } = await supabase
         .from("profiles")
@@ -121,21 +107,10 @@ export default function AdminAgendamentos() {
     {} as Record<string, number>
   );
 
-  if (activeCall) {
-    return (
-      <VideoCall
-        roomName={activeCall.roomName}
-        displayName={activeCall.displayName}
-        onClose={() => setActiveCall(null)}
-      />
-    );
-  }
-
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Agendamentos</h1>
 
-      {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {(["pending", "confirmed", "completed", "cancelled"] as const).map((s) => (
           <Card key={s} className="cursor-pointer" onClick={() => setStatusFilter(s)}>
@@ -153,7 +128,6 @@ export default function AdminAgendamentos() {
         ))}
       </div>
 
-      {/* Filter */}
       <div className="flex items-center gap-2">
         <span className="text-sm text-muted-foreground">Filtrar:</span>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -170,7 +144,6 @@ export default function AdminAgendamentos() {
         </Select>
       </div>
 
-      {/* Table */}
       <Card>
         <CardHeader>
           <CardTitle>Lista de Agendamentos</CardTitle>
@@ -243,18 +216,6 @@ export default function AdminAgendamentos() {
                                 <XCircle className="h-3 w-3 mr-1" /> Cancelar
                               </Button>
                             </>
-                          )}
-                          {appt.status === "confirmed" && isToday(new Date(appt.appointment_date + "T12:00:00")) && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                const roomName = (appt as any).video_room_id || `primeiropasso-${appt.id.slice(0, 8)}`;
-                                setActiveCall({ roomName, displayName: profile?.full_name || "Profissional" });
-                              }}
-                            >
-                              <Video className="h-3 w-3 mr-1" /> Videochamada
-                            </Button>
                           )}
                           {appt.status === "confirmed" && (
                             <Button

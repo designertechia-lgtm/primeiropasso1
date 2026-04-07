@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -6,10 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { format, isToday, parse } from "date-fns";
+import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Video } from "lucide-react";
-import VideoCall from "@/components/VideoCall";
 
 const statusLabels: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   pending: { label: "Pendente", variant: "outline" },
@@ -18,28 +15,9 @@ const statusLabels: Record<string, { label: string; variant: "default" | "second
   completed: { label: "Concluído", variant: "secondary" },
 };
 
-function canJoinCall(appointmentDate: string, startTime: string, endTime: string): boolean {
-  if (!isToday(new Date(appointmentDate + "T00:00:00"))) return false;
-  const now = new Date();
-  const start = parse(startTime.slice(0, 5), "HH:mm", new Date());
-  const end = parse(endTime.slice(0, 5), "HH:mm", new Date());
-  start.setMinutes(start.getMinutes() - 10);
-  return now >= start && now <= end;
-}
-
 export default function PatientAgendamentos() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [activeCall, setActiveCall] = useState<{ roomName: string; displayName: string } | null>(null);
-
-  const { data: profile } = useQuery({
-    queryKey: ["my-profile", user?.id],
-    queryFn: async () => {
-      const { data } = await supabase.from("profiles").select("full_name").eq("user_id", user!.id).maybeSingle();
-      return data;
-    },
-    enabled: !!user?.id,
-  });
 
   const { data: appointments = [], isLoading } = useQuery({
     queryKey: ["patient-appointments", user?.id],
@@ -92,16 +70,6 @@ export default function PatientAgendamentos() {
     }
   };
 
-  if (activeCall) {
-    return (
-      <VideoCall
-        roomName={activeCall.roomName}
-        displayName={activeCall.displayName}
-        onClose={() => setActiveCall(null)}
-      />
-    );
-  }
-
   if (isLoading) return <div className="animate-pulse text-muted-foreground">Carregando...</div>;
 
   return (
@@ -114,8 +82,6 @@ export default function PatientAgendamentos() {
         <div className="grid gap-4">
           {appointments.map((a) => {
             const st = statusLabels[a.status] || statusLabels.pending;
-            const roomName = (a as any).video_room_id || `primeiropasso-${a.id.slice(0, 8)}`;
-            const showVideoBtn = a.status === "confirmed" && canJoinCall(a.appointment_date, a.start_time, a.end_time);
             return (
               <Card key={a.id}>
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -134,14 +100,6 @@ export default function PatientAgendamentos() {
                   </div>
                   {a.notes && <p className="text-sm text-muted-foreground italic">"{a.notes}"</p>}
                   <div className="flex gap-2">
-                    {showVideoBtn && (
-                      <Button
-                        size="sm"
-                        onClick={() => setActiveCall({ roomName, displayName: profile?.full_name || "Paciente" })}
-                      >
-                        <Video className="h-3 w-3 mr-1" /> Entrar na Videochamada
-                      </Button>
-                    )}
                     {a.status === "pending" && (
                       <Button variant="outline" size="sm" onClick={() => handleCancel(a.id)}>
                         Cancelar

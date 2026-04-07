@@ -32,7 +32,7 @@ const items = [
   { title: "Novos Pacientes", url: "/admin/leads", icon: Users },
   { title: "Disponibilidade", url: "/admin/disponibilidade", icon: Clock },
   { title: "Agendamentos", url: "/admin/agendamentos", icon: Calendar },
-  { title: "Sala Virtual", url: "/admin/sala-virtual", icon: Video },
+  
   { title: "Configurações", url: "/admin/configuracoes", icon: Settings },
 ];
 

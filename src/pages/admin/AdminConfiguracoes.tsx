@@ -10,6 +10,49 @@ import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 
+function hexToHsl(hex: string): { h: number; s: number; l: number } {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0;
+  const l = (max + min) / 2;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      case b: h = ((r - g) / d + 4) / 6; break;
+    }
+  }
+  return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  s /= 100; l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * color).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+function deriveColors(hex: string, mode: 'light' | 'dark' = 'light') {
+  const { h, s } = hexToHsl(hex);
+  const secH = (h + 30) % 360;
+  const secS = Math.round(s * 0.6);
+  const secL = mode === 'light' ? Math.min(65, 50 + 15) : Math.min(55, 40 + 15);
+  const bgS = Math.round(s * 0.15);
+  const bgL = mode === 'light' ? 94 : 11;
+  return {
+    secondary: hslToHex(secH, secS, secL),
+    background: hslToHex(h, bgS, bgL),
+  };
+}
+
 export default function AdminConfiguracoes() {
   const { data: professional, isLoading } = useProfessional();
   const queryClient = useQueryClient();
@@ -18,13 +61,9 @@ export default function AdminConfiguracoes() {
   const [whatsapp, setWhatsapp] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [photoUrl, setPhotoUrl] = useState("");
-  const [primaryColor, setPrimaryColor] = useState("");
-  const [secondaryColor, setSecondaryColor] = useState("");
-  const [backgroundColor, setBackgroundColor] = useState("");
+  const [primaryColor, setPrimaryColor] = useState("#87A96B");
   const [darkMode, setDarkMode] = useState(false);
   const [darkPrimaryColor, setDarkPrimaryColor] = useState("");
-  const [darkSecondaryColor, setDarkSecondaryColor] = useState("");
-  const [darkBackgroundColor, setDarkBackgroundColor] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -34,14 +73,13 @@ export default function AdminConfiguracoes() {
       setLogoUrl(professional.logo_url || "");
       setPhotoUrl(professional.photo_url || "");
       setPrimaryColor(professional.primary_color || "#87A96B");
-      setSecondaryColor(professional.secondary_color || "#C4A882");
-      setBackgroundColor((professional as any).background_color || "#F5F0EB");
       setDarkMode((professional as any).dark_mode || false);
       setDarkPrimaryColor((professional as any).dark_primary_color || "");
-      setDarkSecondaryColor((professional as any).dark_secondary_color || "");
-      setDarkBackgroundColor((professional as any).dark_background_color || "");
     }
   }, [professional]);
+
+  const lightDerived = deriveColors(primaryColor, 'light');
+  const darkDerived = deriveColors(darkPrimaryColor || primaryColor, 'dark');
 
   const handleSave = async () => {
     if (!professional) return;
@@ -52,12 +90,12 @@ export default function AdminConfiguracoes() {
       logo_url: logoUrl || null,
       photo_url: photoUrl || null,
       primary_color: primaryColor,
-      secondary_color: secondaryColor,
-      background_color: backgroundColor,
+      secondary_color: lightDerived.secondary,
+      background_color: lightDerived.background,
       dark_mode: darkMode,
       dark_primary_color: darkPrimaryColor || null,
-      dark_secondary_color: darkSecondaryColor || null,
-      dark_background_color: darkBackgroundColor || null,
+      dark_secondary_color: darkMode ? darkDerived.secondary : null,
+      dark_background_color: darkMode ? darkDerived.background : null,
     } as any).eq("id", professional.id);
 
     setSaving(false);
@@ -133,29 +171,32 @@ export default function AdminConfiguracoes() {
           <CardTitle>Cores</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="primaryColor">Cor Primária</Label>
-              <div className="flex gap-2 items-center">
-                <input type="color" id="primaryColor" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="h-10 w-10 rounded cursor-pointer border-0" />
-                <Input value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="flex-1" />
-              </div>
+          <div className="space-y-2">
+            <Label htmlFor="primaryColor">Cor Primária</Label>
+            <div className="flex gap-2 items-center">
+              <input type="color" id="primaryColor" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="h-10 w-10 rounded cursor-pointer border-0" />
+              <Input value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="flex-1" />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="secondaryColor">Cor Secundária</Label>
-              <div className="flex gap-2 items-center">
-                <input type="color" id="secondaryColor" value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} className="h-10 w-10 rounded cursor-pointer border-0" />
-                <Input value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} className="flex-1" />
+          </div>
+
+          <div className="pt-3">
+            <Label className="text-sm text-muted-foreground">Paleta gerada automaticamente</Label>
+            <div className="flex gap-3 mt-2">
+              <div className="flex flex-col items-center gap-1">
+                <div className="w-12 h-12 rounded-lg border" style={{ backgroundColor: primaryColor }} />
+                <span className="text-xs text-muted-foreground">Primária</span>
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="backgroundColor">Cor de Fundo</Label>
-              <div className="flex gap-2 items-center">
-                <input type="color" id="backgroundColor" value={backgroundColor} onChange={(e) => setBackgroundColor(e.target.value)} className="h-10 w-10 rounded cursor-pointer border-0" />
-                <Input value={backgroundColor} onChange={(e) => setBackgroundColor(e.target.value)} className="flex-1" />
+              <div className="flex flex-col items-center gap-1">
+                <div className="w-12 h-12 rounded-lg border" style={{ backgroundColor: lightDerived.secondary }} />
+                <span className="text-xs text-muted-foreground">Secundária</span>
+              </div>
+              <div className="flex flex-col items-center gap-1">
+                <div className="w-12 h-12 rounded-lg border" style={{ backgroundColor: lightDerived.background }} />
+                <span className="text-xs text-muted-foreground">Fundo</span>
               </div>
             </div>
           </div>
+
           <div className="flex items-center justify-between pt-4 border-t">
             <div className="space-y-1">
               <Label htmlFor="darkMode">Modo Escuro</Label>
@@ -170,32 +211,32 @@ export default function AdminConfiguracoes() {
         <Card>
           <CardHeader>
             <CardTitle>Cores do Modo Escuro</CardTitle>
-            <p className="text-sm text-muted-foreground">Opcional — se vazio, usa as cores do modo claro.</p>
+            <p className="text-sm text-muted-foreground">Opcional — se vazio, usa a cor primária do modo claro.</p>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="darkPrimaryColor">Cor Primária (Escura)</Label>
-                <div className="flex gap-2 items-center">
-                  <input type="color" id="darkPrimaryColor" value={darkPrimaryColor || primaryColor} onChange={(e) => setDarkPrimaryColor(e.target.value)} className="h-10 w-10 rounded cursor-pointer border-0" />
-                  <Input value={darkPrimaryColor} onChange={(e) => setDarkPrimaryColor(e.target.value)} placeholder="Usar padrão" className="flex-1" />
-                  {darkPrimaryColor && <Button variant="ghost" size="sm" onClick={() => setDarkPrimaryColor("")}>Limpar</Button>}
-                </div>
+            <div className="space-y-2">
+              <Label htmlFor="darkPrimaryColor">Cor Primária (Escura)</Label>
+              <div className="flex gap-2 items-center">
+                <input type="color" id="darkPrimaryColor" value={darkPrimaryColor || primaryColor} onChange={(e) => setDarkPrimaryColor(e.target.value)} className="h-10 w-10 rounded cursor-pointer border-0" />
+                <Input value={darkPrimaryColor} onChange={(e) => setDarkPrimaryColor(e.target.value)} placeholder="Usar padrão" className="flex-1" />
+                {darkPrimaryColor && <Button variant="ghost" size="sm" onClick={() => setDarkPrimaryColor("")}>Limpar</Button>}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="darkSecondaryColor">Cor Secundária (Escura)</Label>
-                <div className="flex gap-2 items-center">
-                  <input type="color" id="darkSecondaryColor" value={darkSecondaryColor || secondaryColor} onChange={(e) => setDarkSecondaryColor(e.target.value)} className="h-10 w-10 rounded cursor-pointer border-0" />
-                  <Input value={darkSecondaryColor} onChange={(e) => setDarkSecondaryColor(e.target.value)} placeholder="Usar padrão" className="flex-1" />
-                  {darkSecondaryColor && <Button variant="ghost" size="sm" onClick={() => setDarkSecondaryColor("")}>Limpar</Button>}
+            </div>
+
+            <div className="pt-3">
+              <Label className="text-sm text-muted-foreground">Paleta escura gerada</Label>
+              <div className="flex gap-3 mt-2">
+                <div className="flex flex-col items-center gap-1">
+                  <div className="w-12 h-12 rounded-lg border" style={{ backgroundColor: darkPrimaryColor || primaryColor }} />
+                  <span className="text-xs text-muted-foreground">Primária</span>
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="darkBackgroundColor">Cor de Fundo (Escura)</Label>
-                <div className="flex gap-2 items-center">
-                  <input type="color" id="darkBackgroundColor" value={darkBackgroundColor || "#1a1a2e"} onChange={(e) => setDarkBackgroundColor(e.target.value)} className="h-10 w-10 rounded cursor-pointer border-0" />
-                  <Input value={darkBackgroundColor} onChange={(e) => setDarkBackgroundColor(e.target.value)} placeholder="Usar padrão" className="flex-1" />
-                  {darkBackgroundColor && <Button variant="ghost" size="sm" onClick={() => setDarkBackgroundColor("")}>Limpar</Button>}
+                <div className="flex flex-col items-center gap-1">
+                  <div className="w-12 h-12 rounded-lg border" style={{ backgroundColor: darkDerived.secondary }} />
+                  <span className="text-xs text-muted-foreground">Secundária</span>
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <div className="w-12 h-12 rounded-lg border" style={{ backgroundColor: darkDerived.background }} />
+                  <span className="text-xs text-muted-foreground">Fundo</span>
                 </div>
               </div>
             </div>

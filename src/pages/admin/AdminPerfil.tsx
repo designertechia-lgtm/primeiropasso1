@@ -31,8 +31,8 @@ export default function AdminPerfil() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (profile) setFullName(profile.full_name || "");
     if (professional) {
+      setFullName((professional as any).full_name || profile?.full_name || "");
       setBio(professional.bio || "");
       setCrp(professional.crp || "");
       setHeroTitle(professional.hero_title || "");
@@ -63,6 +63,7 @@ export default function AdminPerfil() {
     const [profileRes, profRes] = await Promise.all([
       supabase.from("profiles").update({ full_name: fullName }).eq("user_id", user.id),
       supabase.from("professionals").update({
+        full_name: fullName,
         bio,
         crp,
         hero_title: heroTitle,
@@ -71,7 +72,7 @@ export default function AdminPerfil() {
         photo_url: photoUrl,
         hero_image_url: heroImageUrl || null,
         about_image_url: aboutImageUrl || null,
-      }).eq("id", professional.id),
+      } as any).eq("id", professional.id),
     ]);
 
     setSaving(false);

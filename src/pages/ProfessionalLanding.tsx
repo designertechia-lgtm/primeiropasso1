@@ -49,18 +49,6 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     enabled: !!slug,
   });
 
-  const { data: profile } = useQuery({
-    queryKey: ["professional-profile", professional?.user_id],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("full_name, avatar_url")
-        .eq("user_id", professional!.user_id)
-        .single();
-      return data;
-    },
-    enabled: !!professional?.user_id,
-  });
 
   const { data: articles = [] } = useQuery({
     queryKey: ["articles", professional?.id],
@@ -178,7 +166,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     );
   }
 
-  const name = profile?.full_name || "Profissional";
+  const name = (professional as any).full_name || "Profissional";
 
   return (
     <div className={`min-h-screen bg-background ${dark ? 'dark' : ''}`} style={customStyles as React.CSSProperties}>

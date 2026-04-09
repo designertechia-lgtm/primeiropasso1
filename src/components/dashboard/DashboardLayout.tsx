@@ -1,6 +1,10 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { DashboardSidebar } from "./DashboardSidebar";
 import { useAuth } from "@/hooks/useAuth";
+import { useProfessional } from "@/hooks/useProfessional";
+import { useState, useEffect } from "react";
+import { Moon, Sun } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -8,6 +12,20 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const { profile, signOut } = useAuth();
+  const { data: professional } = useProfessional();
+  const darkModeEnabled = (professional as any)?.dark_mode ?? false;
+
+  const [dark, setDark] = useState(() =>
+    document.documentElement.classList.contains("dark")
+  );
+
+  useEffect(() => {
+    if (dark) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }, [dark]);
 
   return (
     <SidebarProvider>
@@ -17,6 +35,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           <header className="h-14 flex items-center justify-between border-b px-4 bg-card">
             <SidebarTrigger className="ml-0" />
             <div className="flex items-center gap-3">
+              {darkModeEnabled && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setDark(!dark)}
+                  className="h-8 w-8"
+                >
+                  {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                </Button>
+              )}
               <span className="text-sm text-muted-foreground">
                 {profile?.full_name || "Profissional"}
               </span>

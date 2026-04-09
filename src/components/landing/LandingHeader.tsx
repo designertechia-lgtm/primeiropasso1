@@ -53,9 +53,11 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
               <Button variant="outline" size="sm">Entrar</Button>
             </Link>
           )}
-          <Link to={slug ? `/${slug}/agendar` : "/cadastro"}>
-            <Button size="sm">Agendar Consulta</Button>
-          </Link>
+          {whatsapp && (
+            <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
+              <Button size="sm">Falar pelo WhatsApp</Button>
+            </a>
+          )}
         </nav>
 
         {/* Mobile toggle */}
@@ -76,7 +78,9 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
           ) : (
             <Link to={slug ? `/login?ref=${slug}` : "/login"} className="block"><Button variant="outline" size="sm" className="w-full">Entrar</Button></Link>
           )}
-          <Link to={slug ? `/${slug}/agendar` : "/cadastro"} className="block"><Button size="sm" className="w-full">Agendar Consulta</Button></Link>
+          {whatsapp && (
+            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="block"><Button size="sm" className="w-full">Falar pelo WhatsApp</Button></a>
+          )}
         </div>
       )}
     </header>

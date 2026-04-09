@@ -80,6 +80,12 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
           <button onClick={() => scrollTo("hero")} className="block w-full text-left py-2 text-sm text-muted-foreground hover:text-foreground">Início</button>
           <button onClick={() => scrollTo("about")} className="block w-full text-left py-2 text-sm text-muted-foreground hover:text-foreground">Sobre</button>
           <button onClick={() => scrollTo("content")} className="block w-full text-left py-2 text-sm text-muted-foreground hover:text-foreground">Conteúdos</button>
+          {darkModeEnabled && onToggleDark && (
+            <Button variant="ghost" size="sm" onClick={onToggleDark} className="w-full justify-start gap-2">
+              {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              {dark ? "Modo Claro" : "Modo Escuro"}
+            </Button>
+          )}
           <button onClick={() => scrollTo("contact")} className="block w-full text-left py-2 text-sm text-muted-foreground hover:text-foreground">Contato</button>
           {user ? (
             <Link to={isProfessional ? "/admin" : "/minha-conta"} className="block"><Button variant="outline" size="sm" className="w-full">{isProfessional ? "Admin" : "Minha Conta"}</Button></Link>

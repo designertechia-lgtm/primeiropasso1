@@ -14,7 +14,7 @@ interface LandingHeaderProps {
   onToggleDark?: () => void;
 }
 
-export default function LandingHeader({ professionalName, whatsapp, logoUrl, slug }: LandingHeaderProps) {
+export default function LandingHeader({ professionalName, whatsapp, logoUrl, slug, darkModeEnabled, dark, onToggleDark }: LandingHeaderProps) {
   const { user, isProfessional } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
 

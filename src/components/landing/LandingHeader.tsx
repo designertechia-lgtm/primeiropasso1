@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Leaf, Menu, X } from "lucide-react";
+import { Leaf, Menu, X, Moon, Sun } from "lucide-react";
 import { useState } from "react";
 
 interface LandingHeaderProps {
@@ -9,6 +9,9 @@ interface LandingHeaderProps {
   whatsapp?: string;
   logoUrl?: string;
   slug?: string;
+  darkModeEnabled?: boolean;
+  dark?: boolean;
+  onToggleDark?: () => void;
 }
 
 export default function LandingHeader({ professionalName, whatsapp, logoUrl, slug }: LandingHeaderProps) {

@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BookOpen, Play } from "lucide-react";
 
@@ -58,19 +59,21 @@ export default function ContentSection({ articles, videos, slug }: ContentSectio
             </h3>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {articles.map((a) => (
-                <Card key={a.id} className="overflow-hidden hover:shadow-md transition-shadow">
-                  {a.image_url && (
-                    <img src={a.image_url} alt={a.title} className="w-full h-40 object-cover" />
-                  )}
-                  <CardHeader>
-                    <CardTitle className="font-serif text-lg">{a.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-xs text-muted-foreground">
-                      {a.published_at ? new Date(a.published_at).toLocaleDateString("pt-BR") : ""}
-                    </p>
-                  </CardContent>
-                </Card>
+                <Link key={a.id} to={`/${slug}/artigo/${a.slug}`}>
+                  <Card className="overflow-hidden hover:shadow-md transition-shadow cursor-pointer">
+                    {a.image_url && (
+                      <img src={a.image_url} alt={a.title} className="w-full h-40 object-cover" />
+                    )}
+                    <CardHeader>
+                      <CardTitle className="font-serif text-lg">{a.title}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-xs text-muted-foreground">
+                        {a.published_at ? new Date(a.published_at).toLocaleDateString("pt-BR") : ""}
+                      </p>
+                    </CardContent>
+                  </Card>
+                </Link>
               ))}
             </div>
           </div>

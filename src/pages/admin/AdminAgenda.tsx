@@ -41,6 +41,21 @@ const STATUS_COLORS: Record<string, string> = {
 export default function AdminAgenda() {
   const { data: professional } = useProfessional();
   const queryClient = useQueryClient();
+
+  // Fetch professional services for default duration
+  const { data: services = [] } = useQuery({
+    queryKey: ["agenda-services", professional?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("professional_services")
+        .select("id, name, duration_minutes")
+        .eq("professional_id", professional!.id)
+        .eq("active", true)
+        .order("created_at", { ascending: true });
+      return data ?? [];
+    },
+    enabled: !!professional?.id,
+  });
   const calendarRef = useRef<FullCalendar>(null);
   const isMobile = useIsMobile();
 
@@ -245,10 +260,11 @@ export default function AdminAgenda() {
   // Handle date select (create block)
   const handleDateSelect = (info: DateSelectArg) => {
     const start = info.start;
-    const end = info.end;
+    const defaultDuration = services.length > 0 ? services[0].duration_minutes : 60;
+    const calculatedEnd = new Date(start.getTime() + defaultDuration * 60000);
     setBlockDate(format(start, "yyyy-MM-dd"));
     setBlockStartTime(format(start, "HH:mm"));
-    setBlockEndTime(format(end, "HH:mm"));
+    setBlockEndTime(format(calculatedEnd, "HH:mm"));
     setBlockDialogOpen(true);
   };
 
@@ -282,6 +298,7 @@ export default function AdminAgenda() {
           firstDay={0}
           slotMinTime="07:00:00"
           slotMaxTime="21:00:00"
+          snapDuration="00:15:00"
           slotDuration="00:30:00"
           slotLabelInterval="01:00:00"
           slotLabelFormat={{

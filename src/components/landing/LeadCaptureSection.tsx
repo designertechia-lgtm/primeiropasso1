@@ -29,7 +29,7 @@ export default function LeadCaptureSection({ slug, whatsapp }: LeadCaptureSectio
               <Button asChild size="lg" className="gap-2">
                 <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
                   <MessageCircle className="h-5 w-5" />
-                  Falar pelo WhatsApp
+                  Agenda
                 </a>
               </Button>
             </div>

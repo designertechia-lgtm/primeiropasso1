@@ -47,6 +47,11 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
           <button onClick={() => scrollTo("about")} className="hover:text-foreground transition-colors">Sobre</button>
           <button onClick={() => scrollTo("content")} className="hover:text-foreground transition-colors">Conteúdos</button>
           <button onClick={() => scrollTo("contact")} className="hover:text-foreground transition-colors">Contato</button>
+          {darkModeEnabled && onToggleDark && (
+            <Button variant="ghost" size="icon" onClick={onToggleDark} className="h-8 w-8">
+              {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+          )}
           {user ? (
             <Link to={isProfessional ? "/admin" : "/minha-conta"}>
               <Button variant="outline" size="sm">{isProfessional ? "Admin" : "Minha Conta"}</Button>
@@ -61,10 +66,6 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
               <Button size="sm">Falar pelo WhatsApp</Button>
             </a>
           )}
-        </nav>
-
-        {/* Mobile toggle */}
-        <button className="md:hidden text-foreground" onClick={() => setMenuOpen(!menuOpen)}>
           {menuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </button>
       </div>

@@ -1,0 +1,1 @@
+ALTER TABLE public.professionals ADD COLUMN full_name text;

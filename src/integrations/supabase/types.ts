@@ -324,6 +324,7 @@ export type Database = {
           dark_mode: boolean | null
           dark_primary_color: string | null
           dark_secondary_color: string | null
+          full_name: string | null
           hero_image_url: string | null
           hero_subtitle: string | null
           hero_title: string | null
@@ -348,6 +349,7 @@ export type Database = {
           dark_mode?: boolean | null
           dark_primary_color?: string | null
           dark_secondary_color?: string | null
+          full_name?: string | null
           hero_image_url?: string | null
           hero_subtitle?: string | null
           hero_title?: string | null
@@ -372,6 +374,7 @@ export type Database = {
           dark_mode?: boolean | null
           dark_primary_color?: string | null
           dark_secondary_color?: string | null
+          full_name?: string | null
           hero_image_url?: string | null
           hero_subtitle?: string | null
           hero_title?: string | null

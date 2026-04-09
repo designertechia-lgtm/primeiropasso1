@@ -178,14 +178,20 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
   }
 
   const name = profile?.full_name || "Profissional";
+  const isDarkModeEnabled = !!(professional as any)?.dark_mode;
+  const [dark, setDark] = useState(isDarkModeEnabled);
+  const toggleDark = useCallback(() => setDark((d) => !d), []);
 
   return (
-    <div className={`min-h-screen bg-background ${(professional as any).dark_mode ? 'dark' : ''}`} style={customStyles as React.CSSProperties}>
+    <div className={`min-h-screen bg-background ${dark ? 'dark' : ''}`} style={customStyles as React.CSSProperties}>
       <LandingHeader
         professionalName={name}
         whatsapp={professional.whatsapp ?? undefined}
         logoUrl={professional.logo_url ?? undefined}
         slug={professional.slug}
+        darkModeEnabled={isDarkModeEnabled}
+        dark={dark}
+        onToggleDark={toggleDark}
       />
       <HeroSection
         title={professional.hero_title ?? undefined}

@@ -165,6 +165,24 @@ export type Database = {
           },
         ]
       }
+      desliga_fluxo: {
+        Row: {
+          created_at: string
+          fluxo_id: number
+          phone: string | null
+        }
+        Insert: {
+          created_at?: string
+          fluxo_id?: number
+          phone?: string | null
+        }
+        Update: {
+          created_at?: string
+          fluxo_id?: number
+          phone?: string | null
+        }
+        Relationships: []
+      }
       leads: {
         Row: {
           created_at: string
@@ -202,6 +220,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      n8n_chat_histories: {
+        Row: {
+          id: number
+          message: Json
+          session_id: string
+        }
+        Insert: {
+          id?: number
+          message: Json
+          session_id: string
+        }
+        Update: {
+          id?: number
+          message?: Json
+          session_id?: string
+        }
+        Relationships: []
       }
       patient_professionals: {
         Row: {

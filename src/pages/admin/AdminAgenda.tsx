@@ -260,10 +260,11 @@ export default function AdminAgenda() {
   // Handle date select (create block)
   const handleDateSelect = (info: DateSelectArg) => {
     const start = info.start;
-    const end = info.end;
+    const defaultDuration = services.length > 0 ? services[0].duration_minutes : 60;
+    const calculatedEnd = new Date(start.getTime() + defaultDuration * 60000);
     setBlockDate(format(start, "yyyy-MM-dd"));
     setBlockStartTime(format(start, "HH:mm"));
-    setBlockEndTime(format(end, "HH:mm"));
+    setBlockEndTime(format(calculatedEnd, "HH:mm"));
     setBlockDialogOpen(true);
   };
 

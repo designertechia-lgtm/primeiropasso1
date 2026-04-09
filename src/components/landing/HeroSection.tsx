@@ -68,22 +68,15 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
           </div>
 
           {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            {slug && (
-              <a href={`/${slug}/agendar`}>
-                <Button size="lg" className="text-base gap-2">
-                  Agendar Consulta <ArrowRight className="h-4 w-4" />
-                </Button>
-              </a>
-            )}
-            {whatsapp && (
+          {whatsapp && (
+            <div className="flex flex-col sm:flex-row gap-3">
               <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
-                <Button size="lg" variant="outline" className="text-base">
-                  Falar pelo WhatsApp
+                <Button size="lg" className="text-base gap-2">
+                  Falar pelo WhatsApp <ArrowRight className="h-4 w-4" />
                 </Button>
               </a>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </section>

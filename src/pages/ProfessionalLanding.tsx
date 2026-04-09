@@ -1,5 +1,5 @@
 import { useParams } from "react-router-dom";
-import { useMemo } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import LandingHeader from "@/components/landing/LandingHeader";
@@ -92,13 +92,16 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     enabled: !!professional?.id,
   });
 
+  const isDarkModeEnabled = !!(professional as any)?.dark_mode;
+  const [dark, setDark] = useState(isDarkModeEnabled);
+  const toggleDark = useCallback(() => setDark((d) => !d), []);
+
   const customStyles = useMemo(() => {
     if (!professional) return undefined;
     const prof = professional as any;
-    const isDark = !!prof.dark_mode;
+    const isDark = dark;
     const styles: Record<string, string> = {};
 
-    // Pick active colors with dark mode fallback
     const activePrimary = (isDark && prof.dark_primary_color) ? prof.dark_primary_color : professional.primary_color;
     const activeSecondary = (isDark && prof.dark_secondary_color) ? prof.dark_secondary_color : professional.secondary_color;
     const activeBg = (isDark && prof.dark_background_color) ? prof.dark_background_color : prof.background_color;
@@ -130,8 +133,6 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
       styles["--secondary-foreground"] = contrastFg(secondaryHSL);
     }
 
-    // Only override bg/fg vars if we have a custom bg color OR custom dark colors
-    // When dark_mode is on without custom dark colors, let the CSS .dark theme handle bg/fg
     if (bgHSL && (!isDark || hasDarkCustomColors)) {
       styles["--background"] = bgHSL;
       const parts = bgHSL.split(" ");
@@ -156,7 +157,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
       styles["--muted-foreground"] = mutedFgVal;
     }
     return Object.keys(styles).length > 0 ? styles : undefined;
-  }, [professional]);
+  }, [professional, dark]);
 
   if (isLoading) {
     return (
@@ -180,12 +181,15 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
   const name = profile?.full_name || "Profissional";
 
   return (
-    <div className={`min-h-screen bg-background ${(professional as any).dark_mode ? 'dark' : ''}`} style={customStyles as React.CSSProperties}>
+    <div className={`min-h-screen bg-background ${dark ? 'dark' : ''}`} style={customStyles as React.CSSProperties}>
       <LandingHeader
         professionalName={name}
         whatsapp={professional.whatsapp ?? undefined}
         logoUrl={professional.logo_url ?? undefined}
         slug={professional.slug}
+        darkModeEnabled={isDarkModeEnabled}
+        dark={dark}
+        onToggleDark={toggleDark}
       />
       <HeroSection
         title={professional.hero_title ?? undefined}

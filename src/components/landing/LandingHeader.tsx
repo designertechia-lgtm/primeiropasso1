@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Leaf, Menu, X } from "lucide-react";
+import { Leaf, Menu, X, Moon, Sun } from "lucide-react";
 import { useState } from "react";
 
 interface LandingHeaderProps {
@@ -9,9 +9,12 @@ interface LandingHeaderProps {
   whatsapp?: string;
   logoUrl?: string;
   slug?: string;
+  darkModeEnabled?: boolean;
+  dark?: boolean;
+  onToggleDark?: () => void;
 }
 
-export default function LandingHeader({ professionalName, whatsapp, logoUrl, slug }: LandingHeaderProps) {
+export default function LandingHeader({ professionalName, whatsapp, logoUrl, slug, darkModeEnabled, dark, onToggleDark }: LandingHeaderProps) {
   const { user, isProfessional } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -44,6 +47,11 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
           <button onClick={() => scrollTo("about")} className="hover:text-foreground transition-colors">Sobre</button>
           <button onClick={() => scrollTo("content")} className="hover:text-foreground transition-colors">Conteúdos</button>
           <button onClick={() => scrollTo("contact")} className="hover:text-foreground transition-colors">Contato</button>
+          {darkModeEnabled && onToggleDark && (
+            <Button variant="ghost" size="icon" onClick={onToggleDark} className="h-8 w-8">
+              {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+          )}
           {user ? (
             <Link to={isProfessional ? "/admin" : "/minha-conta"}>
               <Button variant="outline" size="sm">{isProfessional ? "Admin" : "Minha Conta"}</Button>
@@ -72,6 +80,12 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
           <button onClick={() => scrollTo("hero")} className="block w-full text-left py-2 text-sm text-muted-foreground hover:text-foreground">Início</button>
           <button onClick={() => scrollTo("about")} className="block w-full text-left py-2 text-sm text-muted-foreground hover:text-foreground">Sobre</button>
           <button onClick={() => scrollTo("content")} className="block w-full text-left py-2 text-sm text-muted-foreground hover:text-foreground">Conteúdos</button>
+          {darkModeEnabled && onToggleDark && (
+            <Button variant="ghost" size="sm" onClick={onToggleDark} className="w-full justify-start gap-2">
+              {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              {dark ? "Modo Claro" : "Modo Escuro"}
+            </Button>
+          )}
           <button onClick={() => scrollTo("contact")} className="block w-full text-left py-2 text-sm text-muted-foreground hover:text-foreground">Contato</button>
           {user ? (
             <Link to={isProfessional ? "/admin" : "/minha-conta"} className="block"><Button variant="outline" size="sm" className="w-full">{isProfessional ? "Admin" : "Minha Conta"}</Button></Link>

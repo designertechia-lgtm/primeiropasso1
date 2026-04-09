@@ -1,20 +1,55 @@
 
 
-## Plano: Auto-preencher horário de fim baseado na duração do serviço
+## Plano: Adicionar gráficos de conversão de leads e atendimentos ao Painel
 
-### O que muda
-Quando o profissional clicar ou selecionar um horário na agenda, o horário de fim será calculado automaticamente com base na duração do serviço (ex: serviço de 60min, clica às 9:00 → preenche 9:00–10:00).
+### O que será adicionado
+Dois gráficos abaixo dos cards existentes no `AdminDashboard.tsx`:
 
-### Alterações em `src/pages/admin/AdminAgenda.tsx`
+1. **Gráfico de barras "Leads por mês"** — mostra quantidade de leads capturados nos últimos 6 meses
+2. **Gráfico de barras "Atendimentos por mês"** — mostra quantidade de appointments nos últimos 6 meses, com barras coloridas por status (confirmado, pendente, cancelado)
+3. **Card "Taxa de conversão"** — percentual de leads que viraram appointments (leads com mesmo nome/whatsapp que têm appointment associado, ou simplesmente razão appointments/leads no período)
 
-1. **Buscar serviços do profissional** — adicionar query em `professional_services` para obter a duração padrão (ex: 50 ou 60 minutos)
+### Biblioteca
+Usar **Recharts** (já disponível via shadcn/ui `chart.tsx` que existe no projeto).
 
-2. **Ajustar `snapDuration`** — mudar de 30min para 15min, permitindo seleções como 8:15, 9:15, etc.
+### Alterações
 
-3. **Recalcular `end_time` no `handleDateSelect`** — ao invés de usar o fim do drag, calcular: `end = start + duração do serviço`. Se o profissional tiver múltiplos serviços, usar a duração do primeiro serviço ativo como padrão (editável no dialog)
+**`src/pages/admin/AdminDashboard.tsx`**
+- Adicionar query para buscar `leads` com `created_at` dos últimos 6 meses, agrupando por mês
+- Adicionar query para buscar `appointments` com `appointment_date` dos últimos 6 meses, agrupando por mês e status
+- Renderizar 2 gráficos de barras usando `ChartContainer` do shadcn + Recharts (`BarChart`, `Bar`, `XAxis`, `YAxis`, `Tooltip`)
+- Adicionar card com taxa de conversão (total appointments / total leads × 100)
+- Layout: grid de 2 colunas para os gráficos, responsivo (1 coluna em mobile)
 
-4. **No dialog de bloqueio** — o campo "Fim" já virá preenchido automaticamente mas continua editável
+### Dados consultados
+```sql
+-- Leads por mês (últimos 6 meses)
+SELECT * FROM leads WHERE professional_id = ? AND created_at >= now() - interval '6 months'
 
-### Resultado
-Clicou às 9:15 com serviço de 60min → aparece 9:15–10:15 automaticamente. Simples e prático.
+-- Appointments por mês (últimos 6 meses)  
+SELECT * FROM appointments WHERE professional_id = ? AND appointment_date >= current_date - interval '6 months'
+```
+
+O agrupamento por mês será feito no frontend (JavaScript) para simplicidade.
+
+### Visual
+```text
+┌─ Artigos ─┐ ┌─ Vídeos ──┐ ┌─ Leads ───┐
+│    12     │ │     5     │ │    34     │
+└───────────┘ └───────────┘ └───────────┘
+
+┌─ Leads por mês ──────────┐ ┌─ Atendimentos por mês ───┐
+│  ██                      │ │  ██ ██                    │
+│  ██ ██    ██             │ │  ██ ██ ██    ██           │
+│  ██ ██ ██ ██ ██ ██       │ │  ██ ██ ██ ██ ██ ██       │
+│  Nov Dez Jan Fev Mar Abr │ │  Nov Dez Jan Fev Mar Abr │
+└──────────────────────────┘ └──────────────────────────┘
+
+┌─ Taxa de Conversão ──────────────────────────────────┐
+│  42% dos leads converteram em atendimentos           │
+└──────────────────────────────────────────────────────┘
+```
+
+### Arquivo modificado
+- `src/pages/admin/AdminDashboard.tsx`
 

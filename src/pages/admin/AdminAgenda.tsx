@@ -41,6 +41,21 @@ const STATUS_COLORS: Record<string, string> = {
 export default function AdminAgenda() {
   const { data: professional } = useProfessional();
   const queryClient = useQueryClient();
+
+  // Fetch professional services for default duration
+  const { data: services = [] } = useQuery({
+    queryKey: ["agenda-services", professional?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("professional_services")
+        .select("id, name, duration_minutes")
+        .eq("professional_id", professional!.id)
+        .eq("active", true)
+        .order("created_at", { ascending: true });
+      return data ?? [];
+    },
+    enabled: !!professional?.id,
+  });
   const calendarRef = useRef<FullCalendar>(null);
   const isMobile = useIsMobile();
 

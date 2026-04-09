@@ -1,0 +1,1 @@
+ALTER TABLE public.professionals ADD COLUMN price_first_session numeric DEFAULT NULL;

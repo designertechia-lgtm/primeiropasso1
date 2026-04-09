@@ -24,7 +24,7 @@ export default function LandingFooter({ professionalName, whatsapp }: LandingFoo
           </p>
           <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
             <Button size="lg" variant="secondary" className="text-base mt-2">
-              Agendar Consulta via WhatsApp
+              Agenda
             </Button>
           </a>
         </div>

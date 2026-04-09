@@ -28,6 +28,8 @@ export default function AdminPerfil() {
   const [photoUrl, setPhotoUrl] = useState("");
   const [heroImageUrl, setHeroImageUrl] = useState("");
   const [aboutImageUrl, setAboutImageUrl] = useState("");
+  const [priceMin, setPriceMin] = useState("");
+  const [priceMax, setPriceMax] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -41,6 +43,8 @@ export default function AdminPerfil() {
       setPhotoUrl(professional.photo_url || "");
       setHeroImageUrl((professional as any).hero_image_url || "");
       setAboutImageUrl((professional as any).about_image_url || "");
+      setPriceMin((professional as any).price_min?.toString() || "");
+      setPriceMax((professional as any).price_max?.toString() || "");
     }
   }, [profile, professional]);
 
@@ -72,6 +76,8 @@ export default function AdminPerfil() {
         photo_url: photoUrl,
         hero_image_url: heroImageUrl || null,
         about_image_url: aboutImageUrl || null,
+        price_min: priceMin ? parseFloat(priceMin) : null,
+        price_max: priceMax ? parseFloat(priceMax) : null,
       } as any).eq("id", professional.id),
     ]);
 
@@ -162,6 +168,25 @@ export default function AdminPerfil() {
             />
             <Button type="button" variant="outline" onClick={addApproach}>Adicionar</Button>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Valores da Consulta</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="priceMin">Valor mínimo (R$)</Label>
+              <Input id="priceMin" type="number" min="0" step="0.01" placeholder="Ex: 150" value={priceMin} onChange={(e) => setPriceMin(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="priceMax">Valor máximo (R$)</Label>
+              <Input id="priceMax" type="number" min="0" step="0.01" placeholder="Ex: 300" value={priceMax} onChange={(e) => setPriceMax(e.target.value)} />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">Faixa de valores exibida na sua página profissional.</p>
         </CardContent>
       </Card>
 

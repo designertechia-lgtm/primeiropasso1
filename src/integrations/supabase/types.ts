@@ -331,6 +331,8 @@ export type Database = {
           id: string
           logo_url: string | null
           photo_url: string | null
+          price_max: number | null
+          price_min: number | null
           primary_color: string | null
           secondary_color: string | null
           slug: string
@@ -356,6 +358,8 @@ export type Database = {
           id?: string
           logo_url?: string | null
           photo_url?: string | null
+          price_max?: number | null
+          price_min?: number | null
           primary_color?: string | null
           secondary_color?: string | null
           slug: string
@@ -381,6 +385,8 @@ export type Database = {
           id?: string
           logo_url?: string | null
           photo_url?: string | null
+          price_max?: number | null
+          price_min?: number | null
           primary_color?: string | null
           secondary_color?: string | null
           slug?: string

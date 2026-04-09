@@ -1,28 +1,31 @@
 
 
-## Plano: Simplificar para 1 cor — derivar as outras automaticamente
+## Plano: Criar perfil profissional de demonstração
 
-### O que muda
-O profissional escolhe apenas a **cor primária**. A cor secundária e a cor de fundo são calculadas automaticamente por paleta harmônica (mesma lógica para modo claro e escuro).
+### Situação atual
+Existem 2 usuários com role `professional` mas nenhum registro na tabela `professionals`. Vou criar um registro completo para **Carlos Carneiro** (user_id: `d8375605-...`) com dados fictícios coerentes.
 
-### Algoritmo de derivação
-A partir da cor primária (H, S, L):
-- **Secundária**: matiz rotacionado +30°, saturação reduzida 40%, luminosidade +15% (tom terroso complementar)
-- **Fundo**: mesmo matiz, saturação muito baixa (10-15%), luminosidade alta 93-95% (claro) ou 10-12% (escuro)
+### Dados a inserir
 
-### Alterações
+**1. UPDATE `profiles`** — Atualizar nome para o personagem demo
+- `full_name`: "Dra. Marina Oliveira"
 
-**1. `src/pages/admin/AdminConfiguracoes.tsx`**
-- Remover estados `secondaryColor`, `backgroundColor`, `darkSecondaryColor`, `darkBackgroundColor`
-- Remover os 2 color pickers extras (secundária e fundo) do modo claro
-- Remover os 2 color pickers extras do modo escuro (manter apenas cor primária escura opcional)
-- Adicionar função `deriveColors(hex)` que retorna `{ secondary, background }`
-- Mostrar preview das cores derivadas ao lado do picker primário
-- No `handleSave`, enviar as cores derivadas calculadas para o banco
+**2. INSERT `professionals`** — Registro completo:
+- **user_id**: `d8375605-5ba5-4bbb-aac7-6be323489ebd`
+- **slug**: `dra-marina-oliveira`
+- **crp**: `CRP 06/123456`
+- **bio**: Texto profissional (~150 palavras) sobre formação em psicologia clínica, experiência com ansiedade, depressão e autoconhecimento, pós-graduação em TCC pelo Instituto de Psiquiatria do HC-FMUSP
+- **approaches**: `["Terapia Cognitivo-Comportamental (TCC)", "Terapia de Aceitação e Compromisso (ACT)", "Mindfulness", "Psicologia Positiva"]`
+- **hero_title**: "Dê o primeiro passo para uma mente equilibrada"
+- **hero_subtitle**: "Atendimento online humanizado e acolhedor para você cuidar da sua saúde mental"
+- **photo_url**: Foto profissional do Unsplash (mulher em ambiente de consultório)
+- **hero_image_url**: Imagem suave/acolhedora do Unsplash
+- **about_image_url**: Foto profissional alternativa do Unsplash
+- **primary_color**: `#87A96B` (verde sage — as cores secundária e fundo serão derivadas automaticamente pelo sistema existente ao salvar via admin)
+- **secondary_color**: `#C4A882` (preenchido manualmente para demo funcionar na landing)
+- **background_color**: `#F5F0EB`
+- **whatsapp**: `5511999999999`
 
-**2. `src/pages/ProfessionalLanding.tsx`**
-- Sem mudanças — já consome `primary_color`, `secondary_color` e `background_color` do banco, que agora serão preenchidos automaticamente
-
-**3. Banco de dados**
-- Sem mudanças — as colunas continuam existindo, apenas são preenchidas automaticamente
+### Resultado
+A landing page ficará acessível em `/{slug}` (ex: `/dra-marina-oliveira`) com todos os dados visuais preenchidos. Nenhuma alteração de código necessária.
 

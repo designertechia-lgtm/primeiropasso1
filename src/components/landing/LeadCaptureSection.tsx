@@ -1,6 +1,5 @@
-import { Calendar, MessageCircle } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Link } from "react-router-dom";
 
 interface LeadCaptureSectionProps {
   slug: string;

@@ -1,31 +1,33 @@
 
 
-## Plano: Criar perfil profissional de demonstração
+## Plano: Perfil fake de demonstração como fallback
 
-### Situação atual
-Existem 2 usuários com role `professional` mas nenhum registro na tabela `professionals`. Vou criar um registro completo para **Carlos Carneiro** (user_id: `d8375605-...`) com dados fictícios coerentes.
+### Objetivo
+Quando não houver nenhum profissional cadastrado no banco, a página inicial (`/`) exibirá uma landing page completa com dados fictícios de demonstração, em vez da mensagem vazia "Nenhum profissional cadastrado".
 
-### Dados a inserir
+### Abordagem
+Criar os dados fake diretamente no código (sem depender do banco), passando-os ao `ProfessionalLanding` como props ou renderizando os componentes da landing diretamente.
 
-**1. UPDATE `profiles`** — Atualizar nome para o personagem demo
-- `full_name`: "Dra. Marina Oliveira"
+### Alterações
 
-**2. INSERT `professionals`** — Registro completo:
-- **user_id**: `d8375605-5ba5-4bbb-aac7-6be323489ebd`
-- **slug**: `dra-marina-oliveira`
-- **crp**: `CRP 06/123456`
-- **bio**: Texto profissional (~150 palavras) sobre formação em psicologia clínica, experiência com ansiedade, depressão e autoconhecimento, pós-graduação em TCC pelo Instituto de Psiquiatria do HC-FMUSP
-- **approaches**: `["Terapia Cognitivo-Comportamental (TCC)", "Terapia de Aceitação e Compromisso (ACT)", "Mindfulness", "Psicologia Positiva"]`
-- **hero_title**: "Dê o primeiro passo para uma mente equilibrada"
-- **hero_subtitle**: "Atendimento online humanizado e acolhedor para você cuidar da sua saúde mental"
-- **photo_url**: Foto profissional do Unsplash (mulher em ambiente de consultório)
-- **hero_image_url**: Imagem suave/acolhedora do Unsplash
-- **about_image_url**: Foto profissional alternativa do Unsplash
-- **primary_color**: `#87A96B` (verde sage — as cores secundária e fundo serão derivadas automaticamente pelo sistema existente ao salvar via admin)
-- **secondary_color**: `#C4A882` (preenchido manualmente para demo funcionar na landing)
-- **background_color**: `#F5F0EB`
-- **whatsapp**: `5511999999999`
+**1. Criar `src/data/demoProffessional.ts`**
+- Exportar um objeto constante com todos os campos de um profissional demo:
+  - Nome: "Dra. Marina Oliveira", CRP: "06/123456"
+  - Bio profissional coerente (~150 palavras)
+  - Abordagens: TCC, ACT, Mindfulness, Psicologia Positiva
+  - Hero title/subtitle motivacionais
+  - Fotos: URLs do Unsplash (perfil, hero, about)
+  - Cores: primary `#87A96B`, secondary `#C4A882`, background `#F5F0EB`
+  - Slug: `demo`
+  - WhatsApp fictício
+
+**2. Alterar `src/pages/Index.tsx`**
+- Quando `!professional` (nenhum cadastrado), em vez da mensagem vazia, renderizar os componentes da landing page (HeroSection, AboutSection, etc.) usando os dados do `demoProfessional`
+- Adicionar um banner sutil no topo indicando "Este é um perfil de demonstração" com CTA para cadastro
+
+**3. Sem alterações no banco de dados**
+- Tudo fica no código frontend, sem inserir dados fictícios no banco
 
 ### Resultado
-A landing page ficará acessível em `/{slug}` (ex: `/dra-marina-oliveira`) com todos os dados visuais preenchidos. Nenhuma alteração de código necessária.
+Visitantes veem uma landing page profissional completa como modelo, com indicação clara de que é uma demonstração e botão para se cadastrar.
 

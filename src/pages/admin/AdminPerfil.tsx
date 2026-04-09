@@ -30,6 +30,7 @@ export default function AdminPerfil() {
   const [aboutImageUrl, setAboutImageUrl] = useState("");
   const [priceMin, setPriceMin] = useState("");
   const [priceMax, setPriceMax] = useState("");
+  const [priceFirstSession, setPriceFirstSession] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -45,6 +46,7 @@ export default function AdminPerfil() {
       setAboutImageUrl((professional as any).about_image_url || "");
       setPriceMin((professional as any).price_min?.toString() || "");
       setPriceMax((professional as any).price_max?.toString() || "");
+      setPriceFirstSession((professional as any).price_first_session?.toString() || "");
     }
   }, [profile, professional]);
 
@@ -78,6 +80,7 @@ export default function AdminPerfil() {
         about_image_url: aboutImageUrl || null,
         price_min: priceMin ? parseFloat(priceMin) : null,
         price_max: priceMax ? parseFloat(priceMax) : null,
+        price_first_session: priceFirstSession ? parseFloat(priceFirstSession) : null,
       } as any).eq("id", professional.id),
     ]);
 
@@ -186,7 +189,11 @@ export default function AdminPerfil() {
               <Input id="priceMax" type="number" min="0" step="0.01" placeholder="Ex: 300" value={priceMax} onChange={(e) => setPriceMax(e.target.value)} />
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">Faixa de valores exibida na sua página profissional.</p>
+          <div className="space-y-2">
+            <Label htmlFor="priceFirstSession">Valor primeira consulta - Promocional (R$)</Label>
+            <Input id="priceFirstSession" type="number" min="0" step="0.01" placeholder="Ex: 100" value={priceFirstSession} onChange={(e) => setPriceFirstSession(e.target.value)} />
+          </div>
+          <p className="text-xs text-muted-foreground">Faixa de valores e promoção exibidos na sua página profissional.</p>
         </CardContent>
       </Card>
 

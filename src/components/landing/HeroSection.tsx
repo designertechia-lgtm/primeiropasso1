@@ -72,7 +72,7 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
             <div className="flex flex-col sm:flex-row gap-3">
               <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
                 <Button size="lg" className="text-base gap-2">
-                  Falar pelo WhatsApp <ArrowRight className="h-4 w-4" />
+                  Agenda <ArrowRight className="h-4 w-4" />
                 </Button>
               </a>
             </div>

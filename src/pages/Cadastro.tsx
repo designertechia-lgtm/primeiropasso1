@@ -84,7 +84,7 @@ export default function Cadastro() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="phone">Telefone</Label>
-              <Input id="phone" type="tel" placeholder="(11) 99999-9999" value={phone} onChange={(e) => setPhone(e.target.value)} required />
+              <Input id="phone" type="tel" placeholder="5548998385330" value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))} required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">E-mail</Label>

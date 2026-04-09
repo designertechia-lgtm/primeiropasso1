@@ -66,6 +66,10 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
               <Button size="sm">Falar pelo WhatsApp</Button>
             </a>
           )}
+        </nav>
+
+        {/* Mobile toggle */}
+        <button className="md:hidden text-foreground" onClick={() => setMenuOpen(!menuOpen)}>
           {menuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </button>
       </div>

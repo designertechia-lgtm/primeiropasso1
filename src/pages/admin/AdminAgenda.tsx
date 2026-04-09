@@ -1,50 +1,62 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfessional } from "@/hooks/useProfessional";
-import { Calendar } from "@/components/ui/calendar";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import FullCalendar from "@fullcalendar/react";
+import timeGridPlugin from "@fullcalendar/timegrid";
+import dayGridPlugin from "@fullcalendar/daygrid";
+import interactionPlugin from "@fullcalendar/interaction";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { cn } from "@/lib/utils";
-import { Plus, X, Clock, User, Ban } from "lucide-react";
+import { Plus, X, User, Ban, Clock } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
+import type { EventInput, EventClickArg, DateSelectArg } from "@fullcalendar/core";
 
-type TimeSlot = {
-  time: string;
-  endTime: string;
-  type: "free" | "appointment" | "block";
-  label?: string;
-  id?: string;
-  status?: string;
-  patientName?: string;
+const STATUS_LABELS: Record<string, string> = {
+  pending: "Pendente",
+  confirmed: "Confirmado",
+  completed: "Concluído",
+  cancelled: "Cancelado",
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  pending: "hsl(45, 80%, 50%)",
+  confirmed: "hsl(var(--primary))",
+  completed: "hsl(var(--accent))",
+  cancelled: "hsl(var(--destructive))",
 };
 
 export default function AdminAgenda() {
   const { data: professional } = useProfessional();
   const queryClient = useQueryClient();
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const calendarRef = useRef<FullCalendar>(null);
+  const isMobile = useIsMobile();
+
+  // Block dialog state
+  const [blockDialogOpen, setBlockDialogOpen] = useState(false);
   const [blockTitle, setBlockTitle] = useState("Compromisso pessoal");
+  const [blockDate, setBlockDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [blockStartTime, setBlockStartTime] = useState("09:00");
   const [blockEndTime, setBlockEndTime] = useState("10:00");
   const [blockType, setBlockType] = useState("personal");
 
-  const dateStr = format(selectedDate, "yyyy-MM-dd");
+  // Event detail dialog
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<any>(null);
 
-  // Fetch availability for selected day of week
+  // Fetch all availability
   const { data: availability = [] } = useQuery({
     queryKey: ["agenda-availability", professional?.id],
     queryFn: async () => {
@@ -58,19 +70,17 @@ export default function AdminAgenda() {
     enabled: !!professional?.id,
   });
 
-  // Fetch appointments for selected date
-  const { data: appointments = [] } = useQuery({
-    queryKey: ["agenda-appointments", professional?.id, dateStr],
+  // Fetch appointments (wide range)
+  const { data: appointments = [], refetch: refetchAppointments } = useQuery({
+    queryKey: ["agenda-appointments-all", professional?.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("appointments")
         .select("*, professional_services(name)")
         .eq("professional_id", professional!.id)
-        .eq("appointment_date", dateStr)
         .in("status", ["pending", "confirmed", "completed"]);
       if (error) throw error;
 
-      // Fetch patient names
       const patientIds = [...new Set(data.map((a) => a.patient_id))];
       if (patientIds.length === 0) return data.map((a) => ({ ...a, patientName: "Paciente" }));
 
@@ -88,26 +98,48 @@ export default function AdminAgenda() {
     enabled: !!professional?.id,
   });
 
-  // Fetch blocks for selected date
-  const { data: blocks = [] } = useQuery({
-    queryKey: ["agenda-blocks", professional?.id, dateStr],
+  // Fetch all blocks
+  const { data: blocks = [], refetch: refetchBlocks } = useQuery({
+    queryKey: ["agenda-blocks-all", professional?.id],
     queryFn: async () => {
       const { data } = await supabase
         .from("schedule_blocks")
         .select("*")
-        .eq("professional_id", professional!.id)
-        .eq("block_date", dateStr);
+        .eq("professional_id", professional!.id);
       return data ?? [];
     },
     enabled: !!professional?.id,
   });
+
+  // Realtime subscriptions
+  useEffect(() => {
+    if (!professional?.id) return;
+
+    const channel = supabase
+      .channel("agenda-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "appointments", filter: `professional_id=eq.${professional.id}` },
+        () => refetchAppointments()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "schedule_blocks", filter: `professional_id=eq.${professional.id}` },
+        () => refetchBlocks()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [professional?.id, refetchAppointments, refetchBlocks]);
 
   // Add block mutation
   const addBlock = useMutation({
     mutationFn: async () => {
       const { error } = await supabase.from("schedule_blocks").insert({
         professional_id: professional!.id,
-        block_date: dateStr,
+        block_date: blockDate,
         start_time: blockStartTime,
         end_time: blockEndTime,
         title: blockTitle,
@@ -116,12 +148,10 @@ export default function AdminAgenda() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["agenda-blocks"] });
+      queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
       toast.success("Bloqueio adicionado!");
-      setDialogOpen(false);
-      setBlockTitle("Compromisso pessoal");
-      setBlockStartTime("09:00");
-      setBlockEndTime("10:00");
+      setBlockDialogOpen(false);
+      resetBlockForm();
     },
     onError: () => toast.error("Erro ao adicionar bloqueio"),
   });
@@ -133,215 +163,262 @@ export default function AdminAgenda() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["agenda-blocks"] });
+      queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
       toast.success("Bloqueio removido!");
+      setDetailDialogOpen(false);
     },
     onError: () => toast.error("Erro ao remover bloqueio"),
   });
 
-  // Build timeline for the day using default 07:00–20:00 range
-  const buildTimeline = (): TimeSlot[] => {
-    const DEFAULT_START = 7 * 60; // 07:00
-    const DEFAULT_END = 20 * 60;  // 20:00
-
-    const slots: TimeSlot[] = [];
-
-    for (let t = DEFAULT_START; t + 60 <= DEFAULT_END; t += 60) {
-      const time = `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
-      const end = `${String(Math.floor((t + 60) / 60)).padStart(2, "0")}:${String((t + 60) % 60).padStart(2, "0")}`;
-
-      // Check if this slot overlaps with an appointment
-      const appt = appointments.find((a) => {
-        const aStart = a.start_time.slice(0, 5);
-        const aEnd = a.end_time.slice(0, 5);
-        return time >= aStart && time < aEnd;
-      });
-
-      if (appt) {
-        const aStart = appt.start_time.slice(0, 5);
-        if (time === aStart) {
-          slots.push({
-            time: aStart,
-            endTime: appt.end_time.slice(0, 5),
-            type: "appointment",
-            label: (appt as any).professional_services?.name || "Consulta",
-            id: appt.id,
-            status: appt.status,
-            patientName: (appt as any).patientName,
-          });
-        }
-        continue;
-      }
-
-      // Check if this slot overlaps with a block
-      const block = blocks.find((b) => {
-        const bStart = b.start_time.slice(0, 5);
-        const bEnd = b.end_time.slice(0, 5);
-        return time >= bStart && time < bEnd;
-      });
-
-      if (block) {
-        const bStart = block.start_time.slice(0, 5);
-        if (time === bStart) {
-          slots.push({
-            time: bStart,
-            endTime: block.end_time.slice(0, 5),
-            type: "block",
-            label: block.title || "Bloqueado",
-            id: block.id,
-          });
-        }
-        continue;
-      }
-
-      slots.push({ time, endTime: end, type: "free" });
-    }
-
-    return slots;
+  const resetBlockForm = () => {
+    setBlockTitle("Compromisso pessoal");
+    setBlockStartTime("09:00");
+    setBlockEndTime("10:00");
+    setBlockType("personal");
   };
 
-  const timeline = buildTimeline();
+  // Build FullCalendar events
+  const buildEvents = useCallback((): EventInput[] => {
+    const events: EventInput[] = [];
 
-  const statusLabel: Record<string, string> = {
-    pending: "Pendente",
-    confirmed: "Confirmado",
-    completed: "Concluído",
+    // Appointments
+    appointments.forEach((appt: any) => {
+      events.push({
+        id: `appt-${appt.id}`,
+        title: `${appt.patientName} — ${appt.professional_services?.name || "Consulta"}`,
+        start: `${appt.appointment_date}T${appt.start_time}`,
+        end: `${appt.appointment_date}T${appt.end_time}`,
+        backgroundColor: STATUS_COLORS[appt.status] || "hsl(var(--primary))",
+        borderColor: STATUS_COLORS[appt.status] || "hsl(var(--primary))",
+        textColor: "#fff",
+        extendedProps: {
+          type: "appointment",
+          ...appt,
+        },
+      });
+    });
+
+    // Blocks
+    blocks.forEach((block) => {
+      events.push({
+        id: `block-${block.id}`,
+        title: block.title || "Bloqueado",
+        start: `${block.block_date}T${block.start_time}`,
+        end: `${block.block_date}T${block.end_time}`,
+        backgroundColor: "hsl(var(--destructive))",
+        borderColor: "hsl(var(--destructive))",
+        textColor: "#fff",
+        extendedProps: {
+          type: "block",
+          ...block,
+        },
+      });
+    });
+
+    // Availability as background events (recurring weekly)
+    availability.forEach((avail) => {
+      events.push({
+        id: `avail-${avail.id}`,
+        title: "",
+        daysOfWeek: [avail.day_of_week],
+        startTime: avail.start_time,
+        endTime: avail.end_time,
+        display: "background",
+        backgroundColor: "hsl(var(--primary) / 0.12)",
+        extendedProps: {
+          type: "availability",
+        },
+      });
+    });
+
+    return events;
+  }, [appointments, blocks, availability]);
+
+  // Handle event click
+  const handleEventClick = (info: EventClickArg) => {
+    const props = info.event.extendedProps;
+    if (props.type === "availability") return;
+    setSelectedEvent(props);
+    setDetailDialogOpen(true);
+  };
+
+  // Handle date select (create block)
+  const handleDateSelect = (info: DateSelectArg) => {
+    const start = info.start;
+    const end = info.end;
+    setBlockDate(format(start, "yyyy-MM-dd"));
+    setBlockStartTime(format(start, "HH:mm"));
+    setBlockEndTime(format(end, "HH:mm"));
+    setBlockDialogOpen(true);
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Agenda</h1>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm">
-              <Plus className="h-4 w-4 mr-1" /> Bloquear horário
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Bloquear horário</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label>Título</Label>
-                <Input value={blockTitle} onChange={(e) => setBlockTitle(e.target.value)} />
-              </div>
-              <div>
-                <Label>Data</Label>
-                <Input value={format(selectedDate, "dd/MM/yyyy")} disabled />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Início</Label>
-                  <Input type="time" value={blockStartTime} onChange={(e) => setBlockStartTime(e.target.value)} />
-                </div>
-                <div>
-                  <Label>Fim</Label>
-                  <Input type="time" value={blockEndTime} onChange={(e) => setBlockEndTime(e.target.value)} />
-                </div>
-              </div>
-              <div>
-                <Label>Tipo</Label>
-                <Select value={blockType} onValueChange={setBlockType}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="personal">Pessoal</SelectItem>
-                    <SelectItem value="vacation">Férias / Folga</SelectItem>
-                    <SelectItem value="other">Outro</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button onClick={() => addBlock.mutate()} disabled={addBlock.isPending} className="w-full">
-                {addBlock.isPending ? "Salvando..." : "Confirmar bloqueio"}
-              </Button>
+        <Button
+          size="sm"
+          onClick={() => {
+            setBlockDate(format(new Date(), "yyyy-MM-dd"));
+            resetBlockForm();
+            setBlockDialogOpen(true);
+          }}
+        >
+          <Plus className="h-4 w-4 mr-1" /> Bloquear horário
+        </Button>
+      </div>
+
+      <div className="fc-wrapper bg-card rounded-lg border p-2 sm:p-4">
+        <FullCalendar
+          ref={calendarRef}
+          plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
+          initialView={isMobile ? "timeGridDay" : "timeGridWeek"}
+          headerToolbar={{
+            left: "prev,next today",
+            center: "title",
+            right: "timeGridWeek,timeGridDay",
+          }}
+          locale="pt-br"
+          firstDay={0}
+          slotMinTime="07:00:00"
+          slotMaxTime="21:00:00"
+          slotDuration="00:30:00"
+          slotLabelInterval="01:00:00"
+          slotLabelFormat={{
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          }}
+          allDaySlot={false}
+          nowIndicator={true}
+          selectable={true}
+          selectMirror={true}
+          select={handleDateSelect}
+          eventClick={handleEventClick}
+          events={buildEvents()}
+          height="auto"
+          expandRows={true}
+          dayHeaderFormat={{ weekday: "short", day: "numeric", month: "numeric" }}
+          buttonText={{
+            today: "Hoje",
+            week: "Semana",
+            day: "Dia",
+          }}
+          eventTimeFormat={{
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          }}
+        />
+      </div>
+
+      {/* Block Dialog */}
+      <Dialog open={blockDialogOpen} onOpenChange={setBlockDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Bloquear horário</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Título</Label>
+              <Input value={blockTitle} onChange={(e) => setBlockTitle(e.target.value)} />
             </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-[auto_1fr] gap-6">
-        {/* Calendar sidebar */}
-        <Card className="h-fit">
-          <CardContent className="pt-4">
-            <Calendar
-              mode="single"
-              selected={selectedDate}
-              onSelect={(d) => d && setSelectedDate(d)}
-              locale={ptBR}
-              className="rounded-md"
-            />
-          </CardContent>
-        </Card>
-
-        {/* Day timeline */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">
-              {format(selectedDate, "EEEE, dd 'de' MMMM", { locale: ptBR })}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {timeline.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nenhum horário nesta data.</p>
-            ) : (
-              <div className="space-y-1">
-                {timeline.map((slot, i) => (
-                  <div
-                    key={`${slot.time}-${i}`}
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2 text-sm",
-                      slot.type === "free" && "bg-accent/30 text-muted-foreground",
-                      slot.type === "appointment" && "bg-primary/10 border border-primary/20",
-                      slot.type === "block" && "bg-destructive/10 border border-destructive/20"
-                    )}
-                  >
-                    <span className="font-mono text-xs w-24 shrink-0">
-                      {slot.time} – {slot.endTime}
-                    </span>
-
-                    {slot.type === "free" && (
-                      <span className="flex items-center gap-1 text-muted-foreground">
-                        <Clock className="h-3 w-3" /> Livre
-                      </span>
-                    )}
-
-                    {slot.type === "appointment" && (
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <User className="h-3 w-3 text-primary shrink-0" />
-                        <span className="font-medium truncate">{slot.patientName}</span>
-                        <span className="text-muted-foreground truncate">— {slot.label}</span>
-                        {slot.status && (
-                          <Badge variant="outline" className="text-xs shrink-0">
-                            {statusLabel[slot.status] || slot.status}
-                          </Badge>
-                        )}
-                      </div>
-                    )}
-
-                    {slot.type === "block" && (
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <Ban className="h-3 w-3 text-destructive shrink-0" />
-                        <span className="truncate">{slot.label}</span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 ml-auto shrink-0"
-                          onClick={() => slot.id && removeBlock.mutate(slot.id)}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                ))}
+            <div>
+              <Label>Data</Label>
+              <Input type="date" value={blockDate} onChange={(e) => setBlockDate(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Início</Label>
+                <Input type="time" value={blockStartTime} onChange={(e) => setBlockStartTime(e.target.value)} />
               </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+              <div>
+                <Label>Fim</Label>
+                <Input type="time" value={blockEndTime} onChange={(e) => setBlockEndTime(e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <Label>Tipo</Label>
+              <Select value={blockType} onValueChange={setBlockType}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="personal">Pessoal</SelectItem>
+                  <SelectItem value="vacation">Férias / Folga</SelectItem>
+                  <SelectItem value="other">Outro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={() => addBlock.mutate()} disabled={addBlock.isPending} className="w-full">
+              {addBlock.isPending ? "Salvando..." : "Confirmar bloqueio"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Event Detail Dialog */}
+      <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {selectedEvent?.type === "appointment" ? "Consulta" : "Bloqueio"}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedEvent && (
+            <div className="space-y-3">
+              {selectedEvent.type === "appointment" && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-primary" />
+                    <span className="font-medium">{selectedEvent.patientName}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <span>
+                      {selectedEvent.start_time?.slice(0, 5)} – {selectedEvent.end_time?.slice(0, 5)}
+                    </span>
+                  </div>
+                  {selectedEvent.professional_services?.name && (
+                    <div className="text-sm text-muted-foreground">
+                      Serviço: {selectedEvent.professional_services.name}
+                    </div>
+                  )}
+                  <Badge variant="outline">
+                    {STATUS_LABELS[selectedEvent.status] || selectedEvent.status}
+                  </Badge>
+                  {selectedEvent.notes && (
+                    <p className="text-sm text-muted-foreground border-t pt-2">{selectedEvent.notes}</p>
+                  )}
+                </>
+              )}
+              {selectedEvent.type === "block" && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Ban className="h-4 w-4 text-destructive" />
+                    <span className="font-medium">{selectedEvent.title || "Bloqueado"}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <span>
+                      {selectedEvent.start_time?.slice(0, 5)} – {selectedEvent.end_time?.slice(0, 5)}
+                    </span>
+                  </div>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => selectedEvent.id && removeBlock.mutate(selectedEvent.id)}
+                    disabled={removeBlock.isPending}
+                  >
+                    <X className="h-4 w-4 mr-1" />
+                    {removeBlock.isPending ? "Removendo..." : "Remover bloqueio"}
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

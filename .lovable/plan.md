@@ -1,55 +1,26 @@
 
 
-## Plano: Adicionar gráficos de conversão de leads e atendimentos ao Painel
+## Problem
 
-### O que será adicionado
-Dois gráficos abaixo dos cards existentes no `AdminDashboard.tsx`:
+The full name is being saved to the `profiles` table, but the landing page and other features read from the `professionals` table, so the name doesn't appear. Adding a `full_name` column directly to `professionals` simplifies access.
 
-1. **Gráfico de barras "Leads por mês"** — mostra quantidade de leads capturados nos últimos 6 meses
-2. **Gráfico de barras "Atendimentos por mês"** — mostra quantidade de appointments nos últimos 6 meses, com barras coloridas por status (confirmado, pendente, cancelado)
-3. **Card "Taxa de conversão"** — percentual de leads que viraram appointments (leads com mesmo nome/whatsapp que têm appointment associado, ou simplesmente razão appointments/leads no período)
+## Plan
 
-### Biblioteca
-Usar **Recharts** (já disponível via shadcn/ui `chart.tsx` que existe no projeto).
-
-### Alterações
-
-**`src/pages/admin/AdminDashboard.tsx`**
-- Adicionar query para buscar `leads` com `created_at` dos últimos 6 meses, agrupando por mês
-- Adicionar query para buscar `appointments` com `appointment_date` dos últimos 6 meses, agrupando por mês e status
-- Renderizar 2 gráficos de barras usando `ChartContainer` do shadcn + Recharts (`BarChart`, `Bar`, `XAxis`, `YAxis`, `Tooltip`)
-- Adicionar card com taxa de conversão (total appointments / total leads × 100)
-- Layout: grid de 2 colunas para os gráficos, responsivo (1 coluna em mobile)
-
-### Dados consultados
+### Step 1: Database migration
+Add a `full_name` column to the `professionals` table:
 ```sql
--- Leads por mês (últimos 6 meses)
-SELECT * FROM leads WHERE professional_id = ? AND created_at >= now() - interval '6 months'
-
--- Appointments por mês (últimos 6 meses)  
-SELECT * FROM appointments WHERE professional_id = ? AND appointment_date >= current_date - interval '6 months'
+ALTER TABLE public.professionals ADD COLUMN full_name text;
 ```
 
-O agrupamento por mês será feito no frontend (JavaScript) para simplicidade.
+### Step 2: Update AdminPerfil.tsx save logic
+Include `full_name` in the professionals update call (can keep the profiles update too for backward compatibility).
 
-### Visual
-```text
-┌─ Artigos ─┐ ┌─ Vídeos ──┐ ┌─ Leads ───┐
-│    12     │ │     5     │ │    34     │
-└───────────┘ └───────────┘ └───────────┘
+### Step 3: Update AdminPerfil.tsx load logic
+Load `fullName` from `professional.full_name` instead of `profile.full_name`.
 
-┌─ Leads por mês ──────────┐ ┌─ Atendimentos por mês ───┐
-│  ██                      │ │  ██ ██                    │
-│  ██ ██    ██             │ │  ██ ██ ██    ██           │
-│  ██ ██ ██ ██ ██ ██       │ │  ██ ██ ██ ██ ██ ██       │
-│  Nov Dez Jan Fev Mar Abr │ │  Nov Dez Jan Fev Mar Abr │
-└──────────────────────────┘ └──────────────────────────┘
+### Step 4: Update TypeScript types usage
+Since `professionals` table will now have `full_name`, the generated types will include it after migration — no `as any` cast needed.
 
-┌─ Taxa de Conversão ──────────────────────────────────┐
-│  42% dos leads converteram em atendimentos           │
-└──────────────────────────────────────────────────────┘
-```
-
-### Arquivo modificado
-- `src/pages/admin/AdminDashboard.tsx`
+### Step 5: Update landing page references
+Anywhere the professional's name is displayed (e.g., `ProfessionalLanding.tsx`, `LandingHeader.tsx`), use `professional.full_name` directly instead of joining with profiles.
 

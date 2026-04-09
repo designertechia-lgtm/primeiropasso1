@@ -9,6 +9,7 @@ import Index from "./pages/Index.tsx";
 import Login from "./pages/Login.tsx";
 import Cadastro from "./pages/Cadastro.tsx";
 import ProfessionalLanding from "./pages/ProfessionalLanding.tsx";
+import ArticlePage from "./pages/ArticlePage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import DashboardLayout from "./components/dashboard/DashboardLayout.tsx";
 import PatientLayout from "./components/dashboard/PatientLayout.tsx";
@@ -70,6 +71,7 @@ const App = () => (
             
             {/* Dynamic professional landing page - MUST be last before catch-all */}
             <Route path="/:slug" element={<ProfessionalLanding />} />
+            <Route path="/:slug/artigo/:articleSlug" element={<ArticlePage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

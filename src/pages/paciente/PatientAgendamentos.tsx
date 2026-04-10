@@ -30,6 +30,7 @@ export default function PatientAgendamentos() {
           professional_services!appointments_service_id_fkey (name)
         `)
         .eq("patient_id", user!.id)
+        .eq("appointment_type", "booking")
         .order("appointment_date", { ascending: false });
 
       if (!data) return [];

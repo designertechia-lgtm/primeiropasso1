@@ -96,8 +96,10 @@ export default function AdminAgenda() {
         .in("status", ["pending", "confirmed", "completed"]);
       if (error) throw error;
 
-      const patientIds = [...new Set(data.map((a) => a.patient_id))];
-      if (patientIds.length === 0) return data.map((a) => ({ ...a, patientName: "Paciente" }));
+      // Filter only bookings for the appointment events
+      const bookings = data.filter((a) => !a.appointment_type || a.appointment_type === 'booking');
+      const patientIds = [...new Set(bookings.map((a) => a.patient_id).filter(Boolean))];
+      if (patientIds.length === 0) return bookings.map((a) => ({ ...a, patientName: "Paciente" }));
 
       const { data: profiles } = await supabase
         .from("profiles")
@@ -105,7 +107,7 @@ export default function AdminAgenda() {
         .in("user_id", patientIds);
       const profileMap = new Map(profiles?.map((p) => [p.user_id, p.full_name]) ?? []);
 
-      return data.map((a) => ({
+      return bookings.map((a) => ({
         ...a,
         patientName: profileMap.get(a.patient_id) || "Paciente",
       }));
@@ -113,14 +115,15 @@ export default function AdminAgenda() {
     enabled: !!professional?.id,
   });
 
-  // Fetch all blocks
+  // Fetch all blocks (from appointments table with appointment_type = 'block')
   const { data: blocks = [], refetch: refetchBlocks } = useQuery({
     queryKey: ["agenda-blocks-all", professional?.id],
     queryFn: async () => {
       const { data } = await supabase
-        .from("schedule_blocks")
+        .from("appointments")
         .select("*")
-        .eq("professional_id", professional!.id);
+        .eq("professional_id", professional!.id)
+        .eq("appointment_type", "block");
       return data ?? [];
     },
     enabled: !!professional?.id,
@@ -139,8 +142,8 @@ export default function AdminAgenda() {
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "schedule_blocks", filter: `professional_id=eq.${professional.id}` },
-        () => refetchBlocks()
+        { event: "*", schema: "public", table: "appointments", filter: `professional_id=eq.${professional.id}` },
+        () => { refetchAppointments(); refetchBlocks(); }
       )
       .subscribe();
 
@@ -149,21 +152,25 @@ export default function AdminAgenda() {
     };
   }, [professional?.id, refetchAppointments, refetchBlocks]);
 
-  // Add block mutation
+  // Add block mutation (now inserts into appointments table)
   const addBlock = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("schedule_blocks").insert({
+      const { error } = await supabase.from("appointments").insert({
         professional_id: professional!.id,
-        block_date: blockDate,
+        appointment_date: blockDate,
         start_time: blockStartTime,
         end_time: blockEndTime,
-        title: blockTitle,
+        notes: blockTitle,
         block_type: blockType,
+        appointment_type: "block",
+        status: "confirmed" as const,
+        patient_id: null,
       });
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
+      queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
       toast.success("Bloqueio adicionado!");
       setBlockDialogOpen(false);
       resetBlockForm();
@@ -171,14 +178,15 @@ export default function AdminAgenda() {
     onError: () => toast.error("Erro ao adicionar bloqueio"),
   });
 
-  // Remove block mutation
+  // Remove block mutation (now deletes from appointments table)
   const removeBlock = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("schedule_blocks").delete().eq("id", id);
+      const { error } = await supabase.from("appointments").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
+      queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
       toast.success("Bloqueio removido!");
       setDetailDialogOpen(false);
     },
@@ -213,13 +221,13 @@ export default function AdminAgenda() {
       });
     });
 
-    // Blocks
-    blocks.forEach((block) => {
+    // Blocks (now from appointments table)
+    blocks.forEach((block: any) => {
       events.push({
         id: `block-${block.id}`,
-        title: block.title || "Bloqueado",
-        start: `${block.block_date}T${block.start_time}`,
-        end: `${block.block_date}T${block.end_time}`,
+        title: block.notes || "Bloqueado",
+        start: `${block.appointment_date}T${block.start_time}`,
+        end: `${block.appointment_date}T${block.end_time}`,
         backgroundColor: "hsl(var(--destructive))",
         borderColor: "hsl(var(--destructive))",
         textColor: "#fff",
@@ -413,7 +421,7 @@ export default function AdminAgenda() {
                 <>
                   <div className="flex items-center gap-2">
                     <Ban className="h-4 w-4 text-destructive" />
-                    <span className="font-medium">{selectedEvent.title || "Bloqueado"}</span>
+                    <span className="font-medium">{selectedEvent.notes || "Bloqueado"}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4 text-muted-foreground" />

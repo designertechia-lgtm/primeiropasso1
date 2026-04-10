@@ -9,6 +9,7 @@ import {
   Calendar,
   CalendarDays,
   ClockIcon,
+  FileUp,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -33,7 +34,7 @@ const items = [
   { title: "Vídeos", url: "/admin/videos", icon: Video },
   { title: "Novos Pacientes", url: "/admin/leads", icon: Users },
   { title: "Agendamentos", url: "/admin/agendamentos", icon: Calendar },
-  
+  { title: "Documentos", url: "/admin/documentos", icon: FileUp },
   { title: "Configurações", url: "/admin/configuracoes", icon: Settings },
 ];
 

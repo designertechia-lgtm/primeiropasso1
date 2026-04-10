@@ -8,6 +8,7 @@ import {
   Clock,
   Calendar,
   CalendarDays,
+  ClockIcon,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -27,10 +28,10 @@ const items = [
   { title: "Painel", url: "/admin", icon: LayoutDashboard },
   { title: "Meu Perfil", url: "/admin/perfil", icon: User },
   { title: "Agenda", url: "/admin/agenda", icon: CalendarDays },
+  { title: "Disponibilidade", url: "/admin/disponibilidade", icon: ClockIcon },
   { title: "Artigos", url: "/admin/artigos", icon: FileText },
   { title: "Vídeos", url: "/admin/videos", icon: Video },
   { title: "Novos Pacientes", url: "/admin/leads", icon: Users },
-  
   { title: "Agendamentos", url: "/admin/agendamentos", icon: Calendar },
   
   { title: "Configurações", url: "/admin/configuracoes", icon: Settings },

@@ -1,28 +1,40 @@
 
 
-## Problem
+## Unificar bloqueios e agendamentos em uma única tabela
 
-Two issues identified:
+### Problema atual
+Os horários bloqueados (`schedule_blocks`) e os agendamentos (`appointments`) ficam em tabelas separadas, dificultando a gestão centralizada.
 
-1. **Name shows "Profissional"**: Both `PatientBuscar.tsx` and `PatientAgendar.tsx` fetch the name from the `profiles` table (`profile.full_name`), but the professional's name is stored in the `professionals` table (`full_name = "Fagnher Marques"`). The `profiles` table has no row for this user. The fix we did for the landing page and admin profile wasn't applied to these patient-facing pages.
+### Solução
+Migrar os bloqueios para a tabela `appointments` usando um novo campo `appointment_type` para diferenciar agendamentos de bloqueios.
 
-2. **No time slots available**: The `availability` table is empty for this professional. The booking pages check `availability` for configured slots; when none exist, the fallback shows 07:00-20:00 (which should work). However, the real issue is that **the professional has no availability records configured**. The default fallback of 07:00-20:00 should still show slots -- let me verify this is actually working. Looking at the code again, the fallback IS there (line 133/139 in both files), so slots should appear. If the user says they don't, the issue might be on a different page or related to date selection.
+### Passo 1: Migração do banco de dados
+- Adicionar coluna `appointment_type` na tabela `appointments` (valores: `'booking'` ou `'block'`, default `'booking'`)
+- Adicionar coluna `block_type` (text, nullable) para o tipo de bloqueio (personal, etc.)
+- Tornar `patient_id` nullable (bloqueios não têm paciente)
+- Atualizar a policy RLS de INSERT para permitir bloqueios sem patient_id
+- Migrar dados existentes de `schedule_blocks` para `appointments`
 
-**Wait** -- re-reading the user's message: "não tenho disponibilidade dos horários disponíveis para eu escolher". This could mean the availability management page (`AdminDisponibilidade`) isn't accessible/linked in the sidebar, OR the patient side isn't showing slots. Since the fallback logic exists, the patient side should show 07:00-20:00 slots. Let me focus on what's confirmed broken.
+### Passo 2: Atualizar a Agenda do Admin (`AdminAgenda.tsx`)
+- Remover query e realtime de `schedule_blocks`
+- Inserir/deletar bloqueios na tabela `appointments` com `appointment_type = 'block'`
+- Separar visualmente bloqueios e agendamentos usando o campo `appointment_type`
 
-## Plan
+### Passo 3: Atualizar páginas do paciente (`PatientAgendar.tsx`, `PatientBuscar.tsx`)
+- Substituir query de `schedule_blocks` por filtro em `appointments` onde `appointment_type = 'block'`
 
-### Step 1: Fix professional name in patient booking pages
-In both `PatientBuscar.tsx` and `PatientAgendar.tsx`:
-- Remove the `profiles` query
-- Use `professional.full_name` (already available from the `professionals` table) instead of `profile?.full_name`
+### Passo 4: Atualizar lista de agendamentos do paciente (`PatientAgendamentos.tsx`)
+- Filtrar apenas `appointment_type = 'booking'` para não exibir bloqueios ao paciente
 
-### Step 2: Ensure availability page is accessible
-Verify `AdminDisponibilidade` is linked in the admin sidebar. If it's missing, add a link so the professional can configure their availability slots.
+### Passo 5: Atualizar RLS policies
+- Adicionar policy para profissionais criarem bloqueios (INSERT sem patient_id)
+- Adicionar policy para profissionais deletarem bloqueios próprios
 
-### Technical Details
-- `PatientBuscar.tsx` line 220: change `profile?.full_name || "Profissional"` to `(professional as any).full_name || "Profissional"`
-- `PatientAgendar.tsx` line 201: same change
-- Remove the profile query blocks (lines 46-57 in PatientAgendar, lines 57-68 in PatientBuscar)
-- Check `DashboardSidebar.tsx` for the availability link
+### Detalhes técnicos
+- Nova coluna: `appointment_type TEXT NOT NULL DEFAULT 'booking'`
+- Nova coluna: `block_type TEXT` (nullable)
+- `patient_id` passa a ser nullable
+- Dados existentes em `schedule_blocks` são copiados como appointments com `appointment_type = 'block'`, `status = 'confirmed'`
+- A tabela `schedule_blocks` será mantida temporariamente (pode ser removida depois)
+- 4 arquivos de código alterados: `AdminAgenda.tsx`, `PatientAgendar.tsx`, `PatientBuscar.tsx`, `PatientAgendamentos.tsx`
 

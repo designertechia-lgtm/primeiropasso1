@@ -87,15 +87,16 @@ export default function PatientAgendar() {
     enabled: !!professional?.id && !!dateStr,
   });
 
-  // Fetch schedule blocks for the selected date
+  // Fetch schedule blocks for the selected date (from appointments table)
   const { data: scheduleBlocks = [] } = useQuery({
     queryKey: ["book-blocks", professional?.id, dateStr],
     queryFn: async () => {
       const { data } = await supabase
-        .from("schedule_blocks")
+        .from("appointments")
         .select("start_time, end_time")
         .eq("professional_id", professional!.id)
-        .eq("block_date", dateStr);
+        .eq("appointment_date", dateStr)
+        .eq("appointment_type", "block");
       return data ?? [];
     },
     enabled: !!professional?.id && !!dateStr,

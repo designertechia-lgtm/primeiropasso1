@@ -17,11 +17,13 @@ export type Database = {
       appointments: {
         Row: {
           appointment_date: string
+          appointment_type: string
+          block_type: string | null
           created_at: string
           end_time: string
           id: string
           notes: string | null
-          patient_id: string
+          patient_id: string | null
           payment_status: Database["public"]["Enums"]["payment_status"]
           professional_id: string
           service_id: string | null
@@ -32,11 +34,13 @@ export type Database = {
         }
         Insert: {
           appointment_date: string
+          appointment_type?: string
+          block_type?: string | null
           created_at?: string
           end_time: string
           id?: string
           notes?: string | null
-          patient_id: string
+          patient_id?: string | null
           payment_status?: Database["public"]["Enums"]["payment_status"]
           professional_id: string
           service_id?: string | null
@@ -47,11 +51,13 @@ export type Database = {
         }
         Update: {
           appointment_date?: string
+          appointment_type?: string
+          block_type?: string | null
           created_at?: string
           end_time?: string
           id?: string
           notes?: string | null
-          patient_id?: string
+          patient_id?: string | null
           payment_status?: Database["public"]["Enums"]["payment_status"]
           professional_id?: string
           service_id?: string | null

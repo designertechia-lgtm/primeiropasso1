@@ -101,6 +101,7 @@ export default function AdminDocumentos() {
           file_url: fileUrl,
           file_name: fileName,
           professional_id: professional!.id,
+          document_id: docId,
         }),
       });
       await supabase

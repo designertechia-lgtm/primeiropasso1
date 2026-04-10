@@ -54,18 +54,6 @@ export default function PatientBuscar() {
     enabled: !!link?.professional_id,
   });
 
-  const { data: profile } = useQuery({
-    queryKey: ["linked-profile", professional?.user_id],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("full_name")
-        .eq("user_id", professional!.user_id)
-        .single();
-      return data;
-    },
-    enabled: !!professional?.user_id,
-  });
 
   const { data: services = [] } = useQuery({
     queryKey: ["linked-services", professional?.id],
@@ -217,7 +205,7 @@ export default function PatientBuscar() {
 
   if (!professional) return <p className="text-muted-foreground">Profissional não encontrado.</p>;
 
-  const name = profile?.full_name || "Profissional";
+  const name = professional.full_name || "Profissional";
 
   return (
     <div className="space-y-6 max-w-3xl">

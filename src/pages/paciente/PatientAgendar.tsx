@@ -42,19 +42,6 @@ export default function PatientAgendar() {
     enabled: !!slug,
   });
 
-  // Fetch profile name
-  const { data: profile } = useQuery({
-    queryKey: ["book-profile", professional?.user_id],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("full_name")
-        .eq("user_id", professional!.user_id)
-        .single();
-      return data;
-    },
-    enabled: !!professional?.user_id,
-  });
 
   // Fetch services
   const { data: services = [] } = useQuery({
@@ -198,7 +185,7 @@ export default function PatientAgendar() {
   if (isLoading) return <div className="animate-pulse text-muted-foreground">Carregando...</div>;
   if (!professional) return <p className="text-muted-foreground">Profissional não encontrado.</p>;
 
-  const name = profile?.full_name || "Profissional";
+  const name = professional.full_name || "Profissional";
 
   return (
     <div className="space-y-6 max-w-3xl">

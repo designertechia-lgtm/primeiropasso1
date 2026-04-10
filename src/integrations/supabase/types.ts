@@ -435,50 +435,6 @@ export type Database = {
         }
         Relationships: []
       }
-      schedule_blocks: {
-        Row: {
-          block_date: string
-          block_type: string
-          created_at: string | null
-          end_time: string
-          id: string
-          professional_id: string
-          start_time: string
-          title: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          block_date: string
-          block_type?: string
-          created_at?: string | null
-          end_time: string
-          id?: string
-          professional_id: string
-          start_time: string
-          title?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          block_date?: string
-          block_type?: string
-          created_at?: string | null
-          end_time?: string
-          id?: string
-          professional_id?: string
-          start_time?: string
-          title?: string | null
-          updated_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "schedule_blocks_professional_id_fkey"
-            columns: ["professional_id"]
-            isOneToOne: false
-            referencedRelation: "professionals"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       user_roles: {
         Row: {
           id: string

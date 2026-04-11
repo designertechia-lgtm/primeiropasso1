@@ -23,7 +23,8 @@ import {
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Plus, X, User, Ban, Clock, CalendarIcon, Settings2 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Plus, X, User, Ban, Clock, CalendarIcon, Settings2, Pencil } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { generateRecurrenceDates, type RecurrenceType } from "@/lib/recurrence";

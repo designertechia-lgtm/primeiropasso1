@@ -10,7 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -20,8 +23,10 @@ import {
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Plus, X, User, Ban, Clock } from "lucide-react";
+import { Plus, X, User, Ban, Clock, CalendarIcon, Settings2 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
+import { generateRecurrenceDates, type RecurrenceType } from "@/lib/recurrence";
 import type { EventInput, EventClickArg, DateSelectArg } from "@fullcalendar/core";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -38,11 +43,28 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: "hsl(var(--destructive))",
 };
 
+const DAYS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+
+const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
+  unico: "Único",
+  diario: "Diário",
+  semanal: "Semanal",
+  quinzenal: "Quinzenal",
+  selecionavel: "Datas específicas",
+};
+
+interface AvailSlot {
+  id?: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  active: boolean;
+}
+
 export default function AdminAgenda() {
   const { data: professional } = useProfessional();
   const queryClient = useQueryClient();
 
-  // Fetch professional services for default duration
   const { data: services = [] } = useQuery({
     queryKey: ["agenda-services", professional?.id],
     queryFn: async () => {
@@ -56,22 +78,30 @@ export default function AdminAgenda() {
     },
     enabled: !!professional?.id,
   });
+
   const calendarRef = useRef<FullCalendar>(null);
   const isMobile = useIsMobile();
 
   // Block dialog state
   const [blockDialogOpen, setBlockDialogOpen] = useState(false);
   const [blockTitle, setBlockTitle] = useState("Compromisso pessoal");
-  const [blockDate, setBlockDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [blockDate, setBlockDate] = useState<Date>(new Date());
   const [blockStartTime, setBlockStartTime] = useState("09:00");
   const [blockEndTime, setBlockEndTime] = useState("10:00");
   const [blockType, setBlockType] = useState("personal");
+  const [recurrence, setRecurrence] = useState<RecurrenceType>("unico");
+  const [recEndDate, setRecEndDate] = useState<Date>(new Date());
+  const [selectedDates, setSelectedDates] = useState<Date[]>([]);
 
   // Event detail dialog
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
 
-  // Fetch all availability
+  // Availability dialog
+  const [availDialogOpen, setAvailDialogOpen] = useState(false);
+  const [savingAvail, setSavingAvail] = useState(false);
+
+  // Fetch availability
   const { data: availability = [] } = useQuery({
     queryKey: ["agenda-availability", professional?.id],
     queryFn: async () => {
@@ -79,13 +109,27 @@ export default function AdminAgenda() {
         .from("availability")
         .select("*")
         .eq("professional_id", professional!.id)
-        .eq("active", true);
+        .order("day_of_week")
+        .order("start_time");
       return data ?? [];
     },
     enabled: !!professional?.id,
   });
 
-  // Fetch appointments (wide range)
+  const [localSlots, setLocalSlots] = useState<AvailSlot[]>([]);
+  useEffect(() => {
+    if (availability.length > 0) {
+      setLocalSlots(availability.map((s) => ({
+        id: s.id,
+        day_of_week: s.day_of_week,
+        start_time: s.start_time,
+        end_time: s.end_time,
+        active: s.active,
+      })));
+    }
+  }, [availability]);
+
+  // Fetch appointments
   const { data: appointments = [], refetch: refetchAppointments } = useQuery({
     queryKey: ["agenda-appointments-all", professional?.id],
     queryFn: async () => {
@@ -96,8 +140,7 @@ export default function AdminAgenda() {
         .in("status", ["pending", "confirmed", "completed"]);
       if (error) throw error;
 
-      // Filter only bookings for the appointment events
-      const bookings = data.filter((a) => !a.appointment_type || a.appointment_type === 'booking');
+      const bookings = data.filter((a) => !a.appointment_type || a.appointment_type === "booking");
       const patientIds = [...new Set(bookings.map((a) => a.patient_id).filter(Boolean))];
       if (patientIds.length === 0) return bookings.map((a) => ({ ...a, patientName: "Paciente" }));
 
@@ -115,7 +158,7 @@ export default function AdminAgenda() {
     enabled: !!professional?.id,
   });
 
-  // Fetch all blocks (from appointments table with appointment_type = 'block')
+  // Fetch blocks
   const { data: blocks = [], refetch: refetchBlocks } = useQuery({
     queryKey: ["agenda-blocks-all", professional?.id],
     queryFn: async () => {
@@ -129,48 +172,57 @@ export default function AdminAgenda() {
     enabled: !!professional?.id,
   });
 
-  // Realtime subscriptions
+  // Realtime
   useEffect(() => {
     if (!professional?.id) return;
-
     const channel = supabase
       .channel("agenda-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "appointments", filter: `professional_id=eq.${professional.id}` },
-        () => refetchAppointments()
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "appointments", filter: `professional_id=eq.${professional.id}` },
-        () => { refetchAppointments(); refetchBlocks(); }
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "appointments", filter: `professional_id=eq.${professional.id}` }, () => {
+        refetchAppointments();
+        refetchBlocks();
+      })
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [professional?.id, refetchAppointments, refetchBlocks]);
 
-  // Add block mutation (now inserts into appointments table)
+  // Add block mutation with recurrence
   const addBlock = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("appointments").insert({
-        professional_id: professional!.id,
-        appointment_date: blockDate,
+      if (!professional) throw new Error("No professional");
+
+      let dates: string[];
+      if (recurrence === "selecionavel") {
+        dates = selectedDates.map((d) => format(d, "yyyy-MM-dd"));
+      } else if (recurrence === "unico") {
+        dates = [format(blockDate, "yyyy-MM-dd")];
+      } else {
+        dates = generateRecurrenceDates(blockDate, recEndDate, recurrence);
+      }
+
+      if (dates.length === 0) throw new Error("Nenhuma data");
+
+      const recurrenceGroup = dates.length > 1 ? crypto.randomUUID() : null;
+
+      const records = dates.map((date) => ({
+        professional_id: professional.id,
+        appointment_date: date,
         start_time: blockStartTime,
         end_time: blockEndTime,
         notes: blockTitle,
         block_type: blockType,
-        appointment_type: "block",
+        appointment_type: "block" as const,
         status: "confirmed" as const,
         patient_id: null,
-      });
+        recurrence_group: recurrenceGroup,
+      }));
+
+      const { error } = await supabase.from("appointments").insert(records);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
       queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-block-groups"] });
       toast.success("Bloqueio adicionado!");
       setBlockDialogOpen(false);
       resetBlockForm();
@@ -178,7 +230,7 @@ export default function AdminAgenda() {
     onError: () => toast.error("Erro ao adicionar bloqueio"),
   });
 
-  // Remove block mutation (now deletes from appointments table)
+  // Remove single block
   const removeBlock = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from("appointments").delete().eq("id", id);
@@ -187,24 +239,69 @@ export default function AdminAgenda() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
       queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-block-groups"] });
       toast.success("Bloqueio removido!");
       setDetailDialogOpen(false);
     },
     onError: () => toast.error("Erro ao remover bloqueio"),
   });
 
+  // Remove entire series
+  const removeBlockSeries = useMutation({
+    mutationFn: async (recurrenceGroup: string) => {
+      const { error } = await supabase.from("appointments").delete().eq("recurrence_group", recurrenceGroup);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
+      queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-block-groups"] });
+      toast.success("Série de bloqueios removida!");
+      setDetailDialogOpen(false);
+    },
+    onError: () => toast.error("Erro ao remover série"),
+  });
+
+  // Save availability
+  const handleSaveAvailability = async () => {
+    if (!professional) return;
+    setSavingAvail(true);
+    await supabase.from("availability").delete().eq("professional_id", professional.id);
+    if (localSlots.length > 0) {
+      const { error } = await supabase.from("availability").insert(
+        localSlots.map((s) => ({
+          professional_id: professional.id,
+          day_of_week: s.day_of_week,
+          start_time: s.start_time,
+          end_time: s.end_time,
+          active: s.active,
+        }))
+      );
+      if (error) {
+        toast.error("Erro ao salvar", { description: error.message });
+        setSavingAvail(false);
+        return;
+      }
+    }
+    toast.success("Disponibilidade salva!");
+    queryClient.invalidateQueries({ queryKey: ["agenda-availability"] });
+    setSavingAvail(false);
+    setAvailDialogOpen(false);
+  };
+
   const resetBlockForm = () => {
     setBlockTitle("Compromisso pessoal");
     setBlockStartTime("09:00");
     setBlockEndTime("10:00");
     setBlockType("personal");
+    setRecurrence("unico");
+    setSelectedDates([]);
   };
 
-  // Build FullCalendar events
+  // Build events
   const buildEvents = useCallback((): EventInput[] => {
     const events: EventInput[] = [];
 
-    // Appointments
     appointments.forEach((appt: any) => {
       events.push({
         id: `appt-${appt.id}`,
@@ -214,14 +311,10 @@ export default function AdminAgenda() {
         backgroundColor: STATUS_COLORS[appt.status] || "hsl(var(--primary))",
         borderColor: STATUS_COLORS[appt.status] || "hsl(var(--primary))",
         textColor: "#fff",
-        extendedProps: {
-          type: "appointment",
-          ...appt,
-        },
+        extendedProps: { type: "appointment", ...appt },
       });
     });
 
-    // Blocks (now from appointments table)
     blocks.forEach((block: any) => {
       events.push({
         id: `block-${block.id}`,
@@ -231,15 +324,11 @@ export default function AdminAgenda() {
         backgroundColor: "hsl(var(--destructive))",
         borderColor: "hsl(var(--destructive))",
         textColor: "#fff",
-        extendedProps: {
-          type: "block",
-          ...block,
-        },
+        extendedProps: { type: "block", ...block },
       });
     });
 
-    // Availability as background events (recurring weekly)
-    availability.forEach((avail) => {
+    availability.filter((a) => a.active).forEach((avail) => {
       events.push({
         id: `avail-${avail.id}`,
         title: "",
@@ -248,16 +337,13 @@ export default function AdminAgenda() {
         endTime: avail.end_time,
         display: "background",
         backgroundColor: "hsl(var(--primary) / 0.12)",
-        extendedProps: {
-          type: "availability",
-        },
+        extendedProps: { type: "availability" },
       });
     });
 
     return events;
   }, [appointments, blocks, availability]);
 
-  // Handle event click
   const handleEventClick = (info: EventClickArg) => {
     const props = info.event.extendedProps;
     if (props.type === "availability") return;
@@ -265,31 +351,41 @@ export default function AdminAgenda() {
     setDetailDialogOpen(true);
   };
 
-  // Handle date select (create block)
   const handleDateSelect = (info: DateSelectArg) => {
     const start = info.start;
     const defaultDuration = services.length > 0 ? services[0].duration_minutes : 60;
     const calculatedEnd = new Date(start.getTime() + defaultDuration * 60000);
-    setBlockDate(format(start, "yyyy-MM-dd"));
+    setBlockDate(start);
     setBlockStartTime(format(start, "HH:mm"));
     setBlockEndTime(format(calculatedEnd, "HH:mm"));
+    setRecurrence("unico");
     setBlockDialogOpen(true);
+  };
+
+  const addAvailSlot = (day: number) => {
+    setLocalSlots([...localSlots, { day_of_week: day, start_time: "08:00", end_time: "17:00", active: true }]);
+  };
+
+  const removeAvailSlot = (index: number) => {
+    setLocalSlots(localSlots.filter((_, i) => i !== index));
+  };
+
+  const updateAvailSlot = (index: number, field: keyof AvailSlot, value: string | boolean) => {
+    setLocalSlots(localSlots.map((s, i) => (i === index ? { ...s, [field]: value } : s)));
   };
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold">Agenda</h1>
-        <Button
-          size="sm"
-          onClick={() => {
-            setBlockDate(format(new Date(), "yyyy-MM-dd"));
-            resetBlockForm();
-            setBlockDialogOpen(true);
-          }}
-        >
-          <Plus className="h-4 w-4 mr-1" /> Bloquear horário
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setAvailDialogOpen(true)}>
+            <Settings2 className="h-4 w-4 mr-1" /> Horários de Atendimento
+          </Button>
+          <Button size="sm" onClick={() => { setBlockDate(new Date()); resetBlockForm(); setBlockDialogOpen(true); }}>
+            <Plus className="h-4 w-4 mr-1" /> Bloquear horário
+          </Button>
+        </div>
       </div>
 
       <div className="fc-wrapper bg-card rounded-lg border p-2 sm:p-4">
@@ -297,11 +393,7 @@ export default function AdminAgenda() {
           ref={calendarRef}
           plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
           initialView={isMobile ? "timeGridDay" : "timeGridWeek"}
-          headerToolbar={{
-            left: "prev,next today",
-            center: "title",
-            right: "timeGridWeek,timeGridDay",
-          }}
+          headerToolbar={{ left: "prev,next today", center: "title", right: "timeGridWeek,timeGridDay" }}
           locale="pt-br"
           firstDay={0}
           slotMinTime="07:00:00"
@@ -309,11 +401,7 @@ export default function AdminAgenda() {
           snapDuration="00:15:00"
           slotDuration="00:30:00"
           slotLabelInterval="01:00:00"
-          slotLabelFormat={{
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-          }}
+          slotLabelFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
           allDaySlot={false}
           nowIndicator={true}
           selectable={true}
@@ -324,22 +412,14 @@ export default function AdminAgenda() {
           height="auto"
           expandRows={true}
           dayHeaderFormat={{ weekday: "short", day: "numeric", month: "numeric" }}
-          buttonText={{
-            today: "Hoje",
-            week: "Semana",
-            day: "Dia",
-          }}
-          eventTimeFormat={{
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-          }}
+          buttonText={{ today: "Hoje", week: "Semana", day: "Dia" }}
+          eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
         />
       </div>
 
-      {/* Block Dialog */}
+      {/* Block Dialog with Recurrence */}
       <Dialog open={blockDialogOpen} onOpenChange={setBlockDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Bloquear horário</DialogTitle>
           </DialogHeader>
@@ -347,10 +427,6 @@ export default function AdminAgenda() {
             <div>
               <Label>Título</Label>
               <Input value={blockTitle} onChange={(e) => setBlockTitle(e.target.value)} />
-            </div>
-            <div>
-              <Label>Data</Label>
-              <Input type="date" value={blockDate} onChange={(e) => setBlockDate(e.target.value)} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -365,9 +441,7 @@ export default function AdminAgenda() {
             <div>
               <Label>Tipo</Label>
               <Select value={blockType} onValueChange={setBlockType}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="personal">Pessoal</SelectItem>
                   <SelectItem value="vacation">Férias / Folga</SelectItem>
@@ -375,6 +449,86 @@ export default function AdminAgenda() {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label>Recorrência</Label>
+              <Select value={recurrence} onValueChange={(v) => setRecurrence(v as RecurrenceType)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(RECURRENCE_LABELS).map(([key, label]) => (
+                    <SelectItem key={key} value={key}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {recurrence === "unico" && (
+              <div>
+                <Label>Data</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className={cn("w-full justify-start text-left font-normal")}>
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {format(blockDate, "dd/MM/yyyy")}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar mode="single" selected={blockDate} onSelect={(d) => d && setBlockDate(d)} locale={ptBR} className="p-3 pointer-events-auto" />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            )}
+
+            {(recurrence === "diario" || recurrence === "semanal" || recurrence === "quinzenal") && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Data início</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full justify-start text-left font-normal">
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {format(blockDate, "dd/MM/yyyy")}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar mode="single" selected={blockDate} onSelect={(d) => d && setBlockDate(d)} locale={ptBR} className="p-3 pointer-events-auto" />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div>
+                  <Label>Data fim</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full justify-start text-left font-normal">
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {format(recEndDate, "dd/MM/yyyy")}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar mode="single" selected={recEndDate} onSelect={(d) => d && setRecEndDate(d)} locale={ptBR} className="p-3 pointer-events-auto" />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+            )}
+
+            {recurrence === "selecionavel" && (
+              <div>
+                <Label>Selecione as datas</Label>
+                <div className="border rounded-md p-2 mt-1">
+                  <Calendar
+                    mode="multiple"
+                    selected={selectedDates}
+                    onSelect={(dates) => setSelectedDates(dates || [])}
+                    locale={ptBR}
+                    className="p-3 pointer-events-auto mx-auto"
+                  />
+                  {selectedDates.length > 0 && (
+                    <p className="text-sm text-muted-foreground mt-1">{selectedDates.length} data(s)</p>
+                  )}
+                </div>
+              </div>
+            )}
+
             <Button onClick={() => addBlock.mutate()} disabled={addBlock.isPending} className="w-full">
               {addBlock.isPending ? "Salvando..." : "Confirmar bloqueio"}
             </Button>
@@ -400,21 +554,13 @@ export default function AdminAgenda() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4 text-muted-foreground" />
-                    <span>
-                      {selectedEvent.start_time?.slice(0, 5)} – {selectedEvent.end_time?.slice(0, 5)}
-                    </span>
+                    <span>{selectedEvent.start_time?.slice(0, 5)} – {selectedEvent.end_time?.slice(0, 5)}</span>
                   </div>
                   {selectedEvent.professional_services?.name && (
-                    <div className="text-sm text-muted-foreground">
-                      Serviço: {selectedEvent.professional_services.name}
-                    </div>
+                    <div className="text-sm text-muted-foreground">Serviço: {selectedEvent.professional_services.name}</div>
                   )}
-                  <Badge variant="outline">
-                    {STATUS_LABELS[selectedEvent.status] || selectedEvent.status}
-                  </Badge>
-                  {selectedEvent.notes && (
-                    <p className="text-sm text-muted-foreground border-t pt-2">{selectedEvent.notes}</p>
-                  )}
+                  <Badge variant="outline">{STATUS_LABELS[selectedEvent.status] || selectedEvent.status}</Badge>
+                  {selectedEvent.notes && <p className="text-sm text-muted-foreground border-t pt-2">{selectedEvent.notes}</p>}
                 </>
               )}
               {selectedEvent.type === "block" && (
@@ -425,23 +571,79 @@ export default function AdminAgenda() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4 text-muted-foreground" />
-                    <span>
-                      {selectedEvent.start_time?.slice(0, 5)} – {selectedEvent.end_time?.slice(0, 5)}
-                    </span>
+                    <span>{selectedEvent.start_time?.slice(0, 5)} – {selectedEvent.end_time?.slice(0, 5)}</span>
                   </div>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => selectedEvent.id && removeBlock.mutate(selectedEvent.id)}
-                    disabled={removeBlock.isPending}
-                  >
-                    <X className="h-4 w-4 mr-1" />
-                    {removeBlock.isPending ? "Removendo..." : "Remover bloqueio"}
-                  </Button>
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => selectedEvent.id && removeBlock.mutate(selectedEvent.id)}
+                      disabled={removeBlock.isPending}
+                    >
+                      <X className="h-4 w-4 mr-1" />
+                      {removeBlock.isPending ? "Removendo..." : "Remover este bloqueio"}
+                    </Button>
+                    {selectedEvent.recurrence_group && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => removeBlockSeries.mutate(selectedEvent.recurrence_group)}
+                        disabled={removeBlockSeries.isPending}
+                      >
+                        <X className="h-4 w-4 mr-1" />
+                        {removeBlockSeries.isPending ? "Removendo..." : "Remover toda a série"}
+                      </Button>
+                    )}
+                  </div>
                 </>
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Availability Dialog */}
+      <Dialog open={availDialogOpen} onOpenChange={setAvailDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Horários de Atendimento</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">Defina os horários em que você atende em cada dia da semana.</p>
+          <div className="space-y-4 mt-2">
+            {DAYS.map((name, day) => {
+              const daySlots = localSlots
+                .map((s, idx) => ({ ...s, _index: idx }))
+                .filter((s) => s.day_of_week === day);
+              return (
+                <div key={day} className="border rounded-md p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-medium text-sm">{name}</span>
+                    <Button variant="ghost" size="sm" onClick={() => addAvailSlot(day)}>
+                      <Plus className="h-3 w-3 mr-1" /> Horário
+                    </Button>
+                  </div>
+                  {daySlots.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Sem horários</p>
+                  ) : (
+                    daySlots.map((slot) => (
+                      <div key={slot._index} className="flex items-center gap-2 mb-1 flex-wrap">
+                        <Input type="time" value={slot.start_time} onChange={(e) => updateAvailSlot(slot._index, "start_time", e.target.value)} className="w-24 h-8 text-xs" />
+                        <span className="text-xs">–</span>
+                        <Input type="time" value={slot.end_time} onChange={(e) => updateAvailSlot(slot._index, "end_time", e.target.value)} className="w-24 h-8 text-xs" />
+                        <Switch checked={slot.active} onCheckedChange={(v) => updateAvailSlot(slot._index, "active", v)} />
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeAvailSlot(slot._index)}>
+                          <X className="h-3 w-3 text-destructive" />
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <Button onClick={handleSaveAvailability} disabled={savingAvail} className="w-full mt-2">
+            {savingAvail ? "Salvando..." : "Salvar Disponibilidade"}
+          </Button>
         </DialogContent>
       </Dialog>
     </div>

@@ -29,7 +29,7 @@ const items = [
   { title: "Painel", url: "/admin", icon: LayoutDashboard },
   { title: "Meu Perfil", url: "/admin/perfil", icon: User },
   { title: "Agenda", url: "/admin/agenda", icon: CalendarDays },
-  { title: "Disponibilidade", url: "/admin/disponibilidade", icon: ClockIcon },
+  { title: "Bloqueios", url: "/admin/disponibilidade", icon: Ban },
   { title: "Artigos", url: "/admin/artigos", icon: FileText },
   { title: "Vídeos", url: "/admin/videos", icon: Video },
   { title: "Novos Pacientes", url: "/admin/leads", icon: Users },

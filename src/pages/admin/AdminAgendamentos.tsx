@@ -49,6 +49,26 @@ export default function AdminAgendamentos() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
+  const getStatusColor = useCallback((status: string) => {
+    if (!professional) return DEFAULT_STATUS_COLORS[status as AppointmentStatus] || DEFAULT_STATUS_COLORS.pending;
+    const map: Record<string, string | null | undefined> = {
+      pending: (professional as any).color_status_pending,
+      confirmed: (professional as any).color_status_confirmed,
+      completed: (professional as any).color_status_completed,
+      cancelled: (professional as any).color_status_cancelled,
+    };
+    return map[status] || DEFAULT_STATUS_COLORS[status as AppointmentStatus] || DEFAULT_STATUS_COLORS.pending;
+  }, [professional]);
+
+  const getPaymentColor = useCallback((status: string) => {
+    if (!professional) return DEFAULT_PAYMENT_COLORS[status as PaymentStatus] || DEFAULT_PAYMENT_COLORS.pending;
+    const map: Record<string, string | null | undefined> = {
+      pending: (professional as any).color_payment_pending,
+      paid: (professional as any).color_payment_paid,
+    };
+    return map[status] || DEFAULT_PAYMENT_COLORS[status as PaymentStatus] || DEFAULT_PAYMENT_COLORS.pending;
+  }, [professional]);
+
   const { data: appointments, isLoading } = useQuery({
     queryKey: ["professional-appointments", professional?.id],
     queryFn: async () => {
@@ -189,12 +209,12 @@ export default function AdminAgendamentos() {
                         {(appt as any).professional_services?.name || "—"}
                       </TableCell>
                       <TableCell>
-                        <Badge className={statusColors[appt.status as AppointmentStatus]}>
+                        <Badge style={{ backgroundColor: getStatusColor(appt.status), color: "#fff", borderColor: getStatusColor(appt.status) }}>
                           {statusLabels[appt.status as AppointmentStatus]}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={appt.payment_status === "paid" ? "default" : "outline"}>
+                        <Badge style={{ backgroundColor: getPaymentColor(appt.payment_status), color: "#fff", borderColor: getPaymentColor(appt.payment_status) }}>
                           {paymentLabels[appt.payment_status as PaymentStatus]}
                         </Badge>
                       </TableCell>

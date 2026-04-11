@@ -1,37 +1,83 @@
 
 
-## Criar trigger para atualizar id_vector e limpeza de storage na exclusão
+## Corrigir funcao trigger para extrair document_id e file_url do metadata
 
-### Situação atual
-- A função `update_professional_document_id()` já existe no banco e faz o correto: quando um registro é inserido na tabela `documents`, ela busca o `file_url` no campo `metadata->>'data'` e atualiza `id_vector` e `rag_status = 'completed'` na `professional_documents`.
-- **Problema**: Nenhum trigger está vinculado a essa função. Ela nunca é executada.
-- A exclusão de arquivos do Storage já é feita no código frontend (`AdminDocumentos.tsx`), mas a exclusão da linha vetorial na tabela `documents` precisa usar `id_vector` corretamente.
+### Formato do metadata (confirmado)
+O campo `metadata` e um JSON com a estrutura:
+```json
+{
+  "data": "Documento_id:UUID, file_url:URL. Conteudo...",
+  "loc": {...},
+  "source": "blob",
+  "blobType": "application/json"
+}
+```
 
-### Plano
+O n8n agora inclui `Documento_id` e `file_url` no inicio do campo `data`. A funcao precisa extrair esses valores com regex.
 
-**Passo 1: Criar trigger na tabela `documents`**
-Migration SQL:
+### Migration SQL
+
 ```sql
+CREATE OR REPLACE FUNCTION public.update_professional_document_id()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  raw_data TEXT;
+  doc_id TEXT;
+  doc_file_url TEXT;
+  rows_affected INT;
+BEGIN
+  raw_data := NEW.metadata->>'data';
+
+  -- Extrair Documento_id do texto
+  IF raw_data ~ 'Documento_id:([0-9a-fA-F-]{36})' THEN
+    doc_id := (regexp_match(raw_data, 'Documento_id:([0-9a-fA-F-]{36})'))[1];
+  END IF;
+
+  -- Extrair file_url do texto
+  IF raw_data ~ 'file_url:(https?://[^,\s\.]+\.[^\s,]+)' THEN
+    doc_file_url := (regexp_match(raw_data, 'file_url:(https?://[^\s,]+\.[^\s,]+)'))[1];
+    -- Remover ponto final se existir
+    doc_file_url := rtrim(doc_file_url, '.');
+  END IF;
+
+  -- Match por document_id (UUID) - mais preciso
+  IF doc_id IS NOT NULL THEN
+    UPDATE professional_documents
+    SET id_vector = NEW.id_vector, rag_status = 'completed'
+    WHERE id = doc_id::uuid;
+    GET DIAGNOSTICS rows_affected = ROW_COUNT;
+  END IF;
+
+  -- Fallback: match por file_url
+  IF (rows_affected IS NULL OR rows_affected = 0) AND doc_file_url IS NOT NULL THEN
+    UPDATE professional_documents
+    SET id_vector = NEW.id_vector, rag_status = 'completed'
+    WHERE file_url = doc_file_url;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_update_professional_document_id ON public.documents;
 CREATE TRIGGER trg_update_professional_document_id
 AFTER INSERT ON public.documents
 FOR EACH ROW
 EXECUTE FUNCTION public.update_professional_document_id();
 ```
-Isso faz com que, sempre que o n8n inserir um vetor na tabela `documents`, a função existente seja acionada automaticamente para atualizar `id_vector` e `rag_status` na `professional_documents`.
 
-**Passo 2: Corrigir exclusão vetorial no frontend**
-No `AdminDocumentos.tsx`, a exclusão já tenta deletar da tabela `documents` usando `id_vetor`. Preciso verificar se o campo de match está correto (`id_vector` é a PK da tabela `documents`, tipo `bigint`). A query deve ser:
-```typescript
-await supabase.from("documents").delete().eq("id_vector", doc.id_vetor);
-```
-
-**Passo 3 (opcional): Criar trigger para deletar arquivo do Storage automaticamente**
-Quando um registro de `professional_documents` for deletado, um trigger pode extrair o path do `file_url` e chamar `storage.delete`. Porém, o Storage API não é acessível via SQL puro de forma simples. O frontend já faz essa limpeza, então isso é opcional. Se preferir, posso criar uma edge function para isso.
+### Logica
+1. Extrai `Documento_id` (UUID) do inicio do campo `metadata->>'data'` via regex
+2. Extrai `file_url` (URL completa) do mesmo campo
+3. Tenta atualizar `professional_documents` pelo `id` (UUID) primeiro
+4. Se nao encontrar, tenta pelo `file_url` como fallback
+5. Atualiza `id_vector` e `rag_status = 'completed'`
 
 ### Arquivos alterados
-- Nova migration SQL (criar trigger)
-- Verificação/ajuste em `src/pages/admin/AdminDocumentos.tsx` (se necessário)
-
-### Resultado esperado
-Quando o n8n inserir um vetor na tabela `documents` com `metadata->>'data'` contendo o `file_url`, o trigger vai automaticamente preencher `id_vector` e marcar `rag_status = 'completed'` na `professional_documents`. Na exclusão, o frontend já remove o arquivo do Storage e a linha vetorial.
+- Nova migration SQL (recriar funcao + trigger)
+- Nenhuma alteracao no frontend
 

@@ -76,6 +76,26 @@ export default function AdminAgenda() {
   const { data: professional } = useProfessional();
   const queryClient = useQueryClient();
 
+  const getStatusColor = useCallback((status: string) => {
+    if (!professional) return DEFAULT_STATUS_COLORS[status] || DEFAULT_STATUS_COLORS.pending;
+    const map: Record<string, string | null | undefined> = {
+      pending: (professional as any).color_status_pending,
+      confirmed: (professional as any).color_status_confirmed,
+      completed: (professional as any).color_status_completed,
+      cancelled: (professional as any).color_status_cancelled,
+    };
+    return map[status] || DEFAULT_STATUS_COLORS[status] || DEFAULT_STATUS_COLORS.pending;
+  }, [professional]);
+
+  const getPaymentColor = useCallback((status: string) => {
+    if (!professional) return DEFAULT_PAYMENT_COLORS[status] || DEFAULT_PAYMENT_COLORS.pending;
+    const map: Record<string, string | null | undefined> = {
+      pending: (professional as any).color_payment_pending,
+      paid: (professional as any).color_payment_paid,
+    };
+    return map[status] || DEFAULT_PAYMENT_COLORS[status] || DEFAULT_PAYMENT_COLORS.pending;
+  }, [professional]);
+
   const { data: services = [] } = useQuery({
     queryKey: ["agenda-services", professional?.id],
     queryFn: async () => {

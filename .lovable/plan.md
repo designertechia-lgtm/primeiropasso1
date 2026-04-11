@@ -1,27 +1,48 @@
 
 
-## Correções: Lista de Agendamentos + Cores da Agenda
+## Corrigir nome do paciente e descricao do servico na lista de Agendamentos
 
-### Problemas identificados
+### Problemas
 
-1. **Lista de Agendamentos mostra bloqueios como "Paciente"** -- A query não filtra por `appointment_type = 'booking'`, então bloqueios aparecem na lista. Na coluna "Paciente" deveria mostrar o tipo do bloqueio (Pessoal, Atendimento, etc.) ou simplesmente filtrar bloqueios fora da lista.
-2. **Coluna "Serviço" mostra "—" para bloqueios** -- Deveria mostrar a descrição/notas do bloqueio.
-3. **Cores dos cards na Agenda não acompanham as cores da lista** -- Já estão usando `getStatusColor` em ambos, mas o pedido é garantir consistência visual.
+1. **Coluna "Paciente"** mostra "Paciente" generico -- o lookup de perfil ja existe mas pode falhar porque `patient_id` pode ser null ou o perfil nao tem `full_name`. Precisa mostrar o nome real quando disponivel.
 
-### Solução
+2. **Coluna "Servico"** mostra "—" -- a join `professional_services(name, ...)` provavelmente falha silenciosamente porque nao ha foreign key definida entre `appointments.service_id` e `professional_services.id`. Precisamos buscar os servicos separadamente.
+
+### Solucao
 
 **Arquivo: `src/pages/admin/AdminAgendamentos.tsx`**
 
-1. Filtrar a query para mostrar apenas `appointment_type = 'booking'` (agendamentos reais), removendo bloqueios da lista. Ou, alternativamente, manter bloqueios mas:
-   - Na coluna "Paciente": mostrar o tipo do bloqueio (ex: "Pessoal", "Atendimento") usando `BLOCK_TYPE_LABELS` quando `appointment_type === 'block'`
-   - Na coluna "Serviço": mostrar `appt.notes` (descrição do bloqueio) ao invés de "—"
+1. Alem de buscar profiles, buscar tambem os servicos (`professional_services`) do profissional e montar um mapa `serviceId -> service`
+2. Na coluna "Paciente": usar `appt.patient?.full_name || "Sem paciente"`
+3. Na coluna "Servico": usar o mapa de servicos para mostrar `service.name` (nome do servico) e como fallback mostrar `appt.notes` (descricao/notas do agendamento) ou "—"
 
-A abordagem mais limpa é **filtrar bloqueios fora da lista** adicionando `.eq("appointment_type", "booking")` na query, já que bloqueios são gerenciados na Agenda. Os cards de contagem também devem contar apenas bookings.
+### Detalhes tecnicos
 
-**Arquivo: `src/pages/admin/AdminAgenda.tsx`**
+Na query, substituir a join `professional_services(name, ...)` por uma busca separada:
 
-As cores dos eventos no calendário já usam `getStatusColor(appt.status)` (linha 475), que é a mesma lógica da lista. Estão consistentes. Se a percepção do usuário é que são diferentes, pode ser porque os bloqueios usam cores de `BLOCK_TYPE_COLORS` (roxo, azul, etc.) que não coincidem com as cores de status -- isso é correto pois são tipos diferentes.
+```typescript
+// Buscar servicos
+const serviceIds = [...new Set(data.filter(a => a.service_id).map(a => a.service_id))];
+let serviceMap = new Map();
+if (serviceIds.length > 0) {
+  const { data: services } = await supabase
+    .from("professional_services")
+    .select("id, name, description, duration_minutes, price")
+    .in("id", serviceIds);
+  serviceMap = new Map(services?.map(s => [s.id, s]) ?? []);
+}
+
+return data.map((a) => ({
+  ...a,
+  patient: profileMap.get(a.patient_id),
+  service: serviceMap.get(a.service_id),
+}));
+```
+
+Na renderizacao:
+- Paciente: `appt.patient?.full_name || "Sem paciente"`
+- Servico: `appt.service?.name || appt.notes || "—"`
 
 ### Arquivos alterados
-- `src/pages/admin/AdminAgendamentos.tsx`: adicionar filtro `.eq("appointment_type", "booking")` na query para excluir bloqueios da lista
+- `src/pages/admin/AdminAgendamentos.tsx`
 

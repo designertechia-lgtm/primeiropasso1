@@ -434,6 +434,12 @@ export type Database = {
           approaches: string[] | null
           background_color: string | null
           bio: string | null
+          color_payment_paid: string | null
+          color_payment_pending: string | null
+          color_status_cancelled: string | null
+          color_status_completed: string | null
+          color_status_confirmed: string | null
+          color_status_pending: string | null
           created_at: string
           crp: string | null
           dark_background_color: string | null
@@ -462,6 +468,12 @@ export type Database = {
           approaches?: string[] | null
           background_color?: string | null
           bio?: string | null
+          color_payment_paid?: string | null
+          color_payment_pending?: string | null
+          color_status_cancelled?: string | null
+          color_status_completed?: string | null
+          color_status_confirmed?: string | null
+          color_status_pending?: string | null
           created_at?: string
           crp?: string | null
           dark_background_color?: string | null
@@ -490,6 +502,12 @@ export type Database = {
           approaches?: string[] | null
           background_color?: string | null
           bio?: string | null
+          color_payment_paid?: string | null
+          color_payment_pending?: string | null
+          color_status_cancelled?: string | null
+          color_status_completed?: string | null
+          color_status_confirmed?: string | null
+          color_status_pending?: string | null
           created_at?: string
           crp?: string | null
           dark_background_color?: string | null

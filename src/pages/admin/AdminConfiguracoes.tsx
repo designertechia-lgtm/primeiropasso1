@@ -66,6 +66,14 @@ export default function AdminConfiguracoes() {
   const [darkPrimaryColor, setDarkPrimaryColor] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Status colors
+  const [colorStatusPending, setColorStatusPending] = useState("#EAB308");
+  const [colorStatusConfirmed, setColorStatusConfirmed] = useState("#22C55E");
+  const [colorStatusCompleted, setColorStatusCompleted] = useState("#3B82F6");
+  const [colorStatusCancelled, setColorStatusCancelled] = useState("#EF4444");
+  const [colorPaymentPending, setColorPaymentPending] = useState("#F97316");
+  const [colorPaymentPaid, setColorPaymentPaid] = useState("#10B981");
+
   useEffect(() => {
     if (professional) {
       setSlug(professional.slug || "");
@@ -75,6 +83,12 @@ export default function AdminConfiguracoes() {
       setPrimaryColor(professional.primary_color || "#87A96B");
       setDarkMode((professional as any).dark_mode || false);
       setDarkPrimaryColor((professional as any).dark_primary_color || "");
+      setColorStatusPending((professional as any).color_status_pending || "#EAB308");
+      setColorStatusConfirmed((professional as any).color_status_confirmed || "#22C55E");
+      setColorStatusCompleted((professional as any).color_status_completed || "#3B82F6");
+      setColorStatusCancelled((professional as any).color_status_cancelled || "#EF4444");
+      setColorPaymentPending((professional as any).color_payment_pending || "#F97316");
+      setColorPaymentPaid((professional as any).color_payment_paid || "#10B981");
     }
   }, [professional]);
 
@@ -96,6 +110,12 @@ export default function AdminConfiguracoes() {
       dark_primary_color: darkPrimaryColor || null,
       dark_secondary_color: darkMode ? darkDerived.secondary : null,
       dark_background_color: darkMode ? darkDerived.background : null,
+      color_status_pending: colorStatusPending,
+      color_status_confirmed: colorStatusConfirmed,
+      color_status_completed: colorStatusCompleted,
+      color_status_cancelled: colorStatusCancelled,
+      color_payment_pending: colorPaymentPending,
+      color_payment_paid: colorPaymentPaid,
     } as any).eq("id", professional.id);
 
     setSaving(false);
@@ -243,6 +263,65 @@ export default function AdminConfiguracoes() {
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Cores dos Status</CardTitle>
+          <p className="text-sm text-muted-foreground">Personalize as cores dos status de agendamento e pagamento na agenda.</p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            {[
+              { label: "Pendente", value: colorStatusPending, setter: setColorStatusPending },
+              { label: "Confirmado", value: colorStatusConfirmed, setter: setColorStatusConfirmed },
+              { label: "Concluído", value: colorStatusCompleted, setter: setColorStatusCompleted },
+              { label: "Cancelado", value: colorStatusCancelled, setter: setColorStatusCancelled },
+            ].map(({ label, value, setter }) => (
+              <div key={label} className="space-y-1">
+                <Label className="text-xs">{label}</Label>
+                <div className="flex gap-2 items-center">
+                  <input type="color" value={value} onChange={(e) => setter(e.target.value)} className="h-8 w-8 rounded cursor-pointer border-0" />
+                  <Input value={value} onChange={(e) => setter(e.target.value)} className="flex-1 h-8 text-xs" />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="border-t pt-3">
+            <Label className="text-xs text-muted-foreground">Pagamento</Label>
+            <div className="grid grid-cols-2 gap-4 mt-2">
+              {[
+                { label: "Pgto Pendente", value: colorPaymentPending, setter: setColorPaymentPending },
+                { label: "Pago", value: colorPaymentPaid, setter: setColorPaymentPaid },
+              ].map(({ label, value, setter }) => (
+                <div key={label} className="space-y-1">
+                  <Label className="text-xs">{label}</Label>
+                  <div className="flex gap-2 items-center">
+                    <input type="color" value={value} onChange={(e) => setter(e.target.value)} className="h-8 w-8 rounded cursor-pointer border-0" />
+                    <Input value={value} onChange={(e) => setter(e.target.value)} className="flex-1 h-8 text-xs" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="border-t pt-3">
+            <Label className="text-xs text-muted-foreground">Preview</Label>
+            <div className="flex gap-2 flex-wrap mt-2">
+              {[
+                { label: "Pendente", color: colorStatusPending },
+                { label: "Confirmado", color: colorStatusConfirmed },
+                { label: "Concluído", color: colorStatusCompleted },
+                { label: "Cancelado", color: colorStatusCancelled },
+                { label: "Pgto Pendente", color: colorPaymentPending },
+                { label: "Pago", color: colorPaymentPaid },
+              ].map(({ label, color }) => (
+                <span key={label} className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold text-white" style={{ backgroundColor: color }}>
+                  {label}
+                </span>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Button onClick={handleSave} disabled={saving} size="lg">
         {saving ? "Salvando..." : "Salvar Configurações"}

@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { CheckCircle, Clock, XCircle, DollarSign, Calendar } from "lucide-react";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 
 type AppointmentStatus = "pending" | "confirmed" | "cancelled" | "completed";
 type PaymentStatus = "pending" | "paid";
@@ -26,11 +26,16 @@ const statusLabels: Record<AppointmentStatus, string> = {
   completed: "Concluído",
 };
 
-const statusColors: Record<AppointmentStatus, string> = {
-  pending: "bg-yellow-100 text-yellow-800",
-  confirmed: "bg-blue-100 text-blue-800",
-  cancelled: "bg-red-100 text-red-800",
-  completed: "bg-green-100 text-green-800",
+const DEFAULT_STATUS_COLORS: Record<AppointmentStatus, string> = {
+  pending: "#EAB308",
+  confirmed: "#22C55E",
+  cancelled: "#EF4444",
+  completed: "#3B82F6",
+};
+
+const DEFAULT_PAYMENT_COLORS: Record<PaymentStatus, string> = {
+  pending: "#F97316",
+  paid: "#10B981",
 };
 
 const paymentLabels: Record<PaymentStatus, string> = {
@@ -38,10 +43,31 @@ const paymentLabels: Record<PaymentStatus, string> = {
   paid: "Pago",
 };
 
+
 export default function AdminAgendamentos() {
   const { data: professional } = useProfessional();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  const getStatusColor = useCallback((status: string) => {
+    if (!professional) return DEFAULT_STATUS_COLORS[status as AppointmentStatus] || DEFAULT_STATUS_COLORS.pending;
+    const map: Record<string, string | null | undefined> = {
+      pending: (professional as any).color_status_pending,
+      confirmed: (professional as any).color_status_confirmed,
+      completed: (professional as any).color_status_completed,
+      cancelled: (professional as any).color_status_cancelled,
+    };
+    return map[status] || DEFAULT_STATUS_COLORS[status as AppointmentStatus] || DEFAULT_STATUS_COLORS.pending;
+  }, [professional]);
+
+  const getPaymentColor = useCallback((status: string) => {
+    if (!professional) return DEFAULT_PAYMENT_COLORS[status as PaymentStatus] || DEFAULT_PAYMENT_COLORS.pending;
+    const map: Record<string, string | null | undefined> = {
+      pending: (professional as any).color_payment_pending,
+      paid: (professional as any).color_payment_paid,
+    };
+    return map[status] || DEFAULT_PAYMENT_COLORS[status as PaymentStatus] || DEFAULT_PAYMENT_COLORS.pending;
+  }, [professional]);
 
   const { data: appointments, isLoading } = useQuery({
     queryKey: ["professional-appointments", professional?.id],
@@ -183,12 +209,12 @@ export default function AdminAgendamentos() {
                         {(appt as any).professional_services?.name || "—"}
                       </TableCell>
                       <TableCell>
-                        <Badge className={statusColors[appt.status as AppointmentStatus]}>
+                        <Badge style={{ backgroundColor: getStatusColor(appt.status), color: "#fff", borderColor: getStatusColor(appt.status) }}>
                           {statusLabels[appt.status as AppointmentStatus]}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={appt.payment_status === "paid" ? "default" : "outline"}>
+                        <Badge style={{ backgroundColor: getPaymentColor(appt.payment_status), color: "#fff", borderColor: getPaymentColor(appt.payment_status) }}>
                           {paymentLabels[appt.payment_status as PaymentStatus]}
                         </Badge>
                       </TableCell>

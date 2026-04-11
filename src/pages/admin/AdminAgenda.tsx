@@ -24,7 +24,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, X, User, Ban, Clock, CalendarIcon, Settings2, Pencil } from "lucide-react";
+import { Plus, X, User, Ban, Clock, CalendarIcon, Settings2, Pencil, CheckCircle, DollarSign, XCircle } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { generateRecurrenceDates, type RecurrenceType } from "@/lib/recurrence";
@@ -37,11 +37,21 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: "Cancelado",
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: "hsl(45, 80%, 50%)",
-  confirmed: "hsl(var(--primary))",
-  completed: "hsl(var(--accent))",
-  cancelled: "hsl(var(--destructive))",
+const DEFAULT_STATUS_COLORS: Record<string, string> = {
+  pending: "#EAB308",
+  confirmed: "#22C55E",
+  completed: "#3B82F6",
+  cancelled: "#EF4444",
+};
+
+const DEFAULT_PAYMENT_COLORS: Record<string, string> = {
+  pending: "#F97316",
+  paid: "#10B981",
+};
+
+const PAYMENT_LABELS: Record<string, string> = {
+  pending: "Pgto Pendente",
+  paid: "Pago",
 };
 
 const DAYS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -65,6 +75,26 @@ interface AvailSlot {
 export default function AdminAgenda() {
   const { data: professional } = useProfessional();
   const queryClient = useQueryClient();
+
+  const getStatusColor = useCallback((status: string) => {
+    if (!professional) return DEFAULT_STATUS_COLORS[status] || DEFAULT_STATUS_COLORS.pending;
+    const map: Record<string, string | null | undefined> = {
+      pending: (professional as any).color_status_pending,
+      confirmed: (professional as any).color_status_confirmed,
+      completed: (professional as any).color_status_completed,
+      cancelled: (professional as any).color_status_cancelled,
+    };
+    return map[status] || DEFAULT_STATUS_COLORS[status] || DEFAULT_STATUS_COLORS.pending;
+  }, [professional]);
+
+  const getPaymentColor = useCallback((status: string) => {
+    if (!professional) return DEFAULT_PAYMENT_COLORS[status] || DEFAULT_PAYMENT_COLORS.pending;
+    const map: Record<string, string | null | undefined> = {
+      pending: (professional as any).color_payment_pending,
+      paid: (professional as any).color_payment_paid,
+    };
+    return map[status] || DEFAULT_PAYMENT_COLORS[status] || DEFAULT_PAYMENT_COLORS.pending;
+  }, [professional]);
 
   const { data: services = [] } = useQuery({
     queryKey: ["agenda-services", professional?.id],
@@ -112,6 +142,7 @@ export default function AdminAgenda() {
   const [editApptStartTime, setEditApptStartTime] = useState("");
   const [editApptEndTime, setEditApptEndTime] = useState("");
   const [editApptDate, setEditApptDate] = useState<Date>(new Date());
+  const [editApptPaymentStatus, setEditApptPaymentStatus] = useState("pending");
 
   // Availability dialog
   const [availDialogOpen, setAvailDialogOpen] = useState(false);
@@ -310,6 +341,7 @@ export default function AdminAgenda() {
         .from("appointments")
         .update({
           status: editApptStatus as any,
+          payment_status: editApptPaymentStatus as any,
           notes: editApptNotes || null,
           start_time: editApptStartTime,
           end_time: editApptEndTime,
@@ -327,6 +359,40 @@ export default function AdminAgenda() {
     onError: () => toast.error("Erro ao atualizar agendamento"),
   });
 
+  // Quick status change mutation
+  const quickStatusChange = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      const { error } = await supabase
+        .from("appointments")
+        .update({ status: status as any })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
+      toast.success("Status atualizado!");
+      setDetailDialogOpen(false);
+    },
+    onError: () => toast.error("Erro ao atualizar status"),
+  });
+
+  // Quick payment toggle mutation
+  const quickPaymentChange = useMutation({
+    mutationFn: async ({ id, payment_status }: { id: string; payment_status: string }) => {
+      const { error } = await supabase
+        .from("appointments")
+        .update({ payment_status: payment_status as any })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
+      toast.success("Pagamento atualizado!");
+      setDetailDialogOpen(false);
+    },
+    onError: () => toast.error("Erro ao atualizar pagamento"),
+  });
+
   const enterEditMode = () => {
     if (!selectedEvent) return;
     if (selectedEvent.type === "block") {
@@ -341,6 +407,7 @@ export default function AdminAgenda() {
       setEditApptStartTime(selectedEvent.start_time?.slice(0, 5) || "09:00");
       setEditApptEndTime(selectedEvent.end_time?.slice(0, 5) || "10:00");
       setEditApptDate(new Date(selectedEvent.appointment_date + "T12:00:00"));
+      setEditApptPaymentStatus(selectedEvent.payment_status || "pending");
     }
     setEditMode(true);
   };
@@ -391,8 +458,8 @@ export default function AdminAgenda() {
         title: `${appt.patientName} — ${appt.professional_services?.name || "Consulta"}`,
         start: `${appt.appointment_date}T${appt.start_time}`,
         end: `${appt.appointment_date}T${appt.end_time}`,
-        backgroundColor: STATUS_COLORS[appt.status] || "hsl(var(--primary))",
-        borderColor: STATUS_COLORS[appt.status] || "hsl(var(--primary))",
+        backgroundColor: getStatusColor(appt.status),
+        borderColor: getStatusColor(appt.status),
         textColor: "#fff",
         extendedProps: { type: "appointment", ...appt },
       });
@@ -425,7 +492,7 @@ export default function AdminAgenda() {
     });
 
     return events;
-  }, [appointments, blocks, availability]);
+  }, [appointments, blocks, availability, getStatusColor]);
 
   const handleEventClick = (info: EventClickArg) => {
     const props = info.event.extendedProps;
@@ -646,8 +713,53 @@ export default function AdminAgenda() {
                   {selectedEvent.professional_services?.name && (
                     <div className="text-sm text-muted-foreground">Serviço: {selectedEvent.professional_services.name}</div>
                   )}
-                  <Badge variant="outline">{STATUS_LABELS[selectedEvent.status] || selectedEvent.status}</Badge>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge style={{ backgroundColor: getStatusColor(selectedEvent.status), color: "#fff", borderColor: getStatusColor(selectedEvent.status) }}>
+                      {STATUS_LABELS[selectedEvent.status] || selectedEvent.status}
+                    </Badge>
+                    <Badge style={{ backgroundColor: getPaymentColor(selectedEvent.payment_status || "pending"), color: "#fff", borderColor: getPaymentColor(selectedEvent.payment_status || "pending") }}>
+                      <DollarSign className="h-3 w-3 mr-1" />
+                      {PAYMENT_LABELS[selectedEvent.payment_status || "pending"]}
+                    </Badge>
+                  </div>
                   {selectedEvent.notes && <p className="text-sm text-muted-foreground border-t pt-2">{selectedEvent.notes}</p>}
+
+                  {/* Quick status buttons */}
+                  <div className="border-t pt-3 space-y-2">
+                    <Label className="text-xs text-muted-foreground">Alterar status:</Label>
+                    <div className="flex gap-1 flex-wrap">
+                      {selectedEvent.status !== "confirmed" && (
+                        <Button size="sm" variant="outline" onClick={() => quickStatusChange.mutate({ id: selectedEvent.id, status: "confirmed" })} disabled={quickStatusChange.isPending}>
+                          <CheckCircle className="h-3 w-3 mr-1" /> Confirmar
+                        </Button>
+                      )}
+                      {selectedEvent.status !== "completed" && (
+                        <Button size="sm" variant="outline" onClick={() => quickStatusChange.mutate({ id: selectedEvent.id, status: "completed" })} disabled={quickStatusChange.isPending}>
+                          <CheckCircle className="h-3 w-3 mr-1" /> Concluir
+                        </Button>
+                      )}
+                      {selectedEvent.status !== "cancelled" && (
+                        <Button size="sm" variant="outline" className="text-destructive" onClick={() => quickStatusChange.mutate({ id: selectedEvent.id, status: "cancelled" })} disabled={quickStatusChange.isPending}>
+                          <XCircle className="h-3 w-3 mr-1" /> Cancelar
+                        </Button>
+                      )}
+                    </div>
+                    <div className="flex gap-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => quickPaymentChange.mutate({
+                          id: selectedEvent.id,
+                          payment_status: selectedEvent.payment_status === "paid" ? "pending" : "paid",
+                        })}
+                        disabled={quickPaymentChange.isPending}
+                      >
+                        <DollarSign className="h-3 w-3 mr-1" />
+                        {selectedEvent.payment_status === "paid" ? "Marcar Pendente" : "Marcar Pago"}
+                      </Button>
+                    </div>
+                  </div>
+
                   <Button variant="outline" size="sm" onClick={enterEditMode} className="w-full">
                     <Pencil className="h-4 w-4 mr-1" /> Editar agendamento
                   </Button>
@@ -788,6 +900,16 @@ export default function AdminAgenda() {
                     <SelectItem value="confirmed">Confirmado</SelectItem>
                     <SelectItem value="completed">Concluído</SelectItem>
                     <SelectItem value="cancelled">Cancelado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Pagamento</Label>
+                <Select value={editApptPaymentStatus} onValueChange={setEditApptPaymentStatus}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">Pendente</SelectItem>
+                    <SelectItem value="paid">Pago</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

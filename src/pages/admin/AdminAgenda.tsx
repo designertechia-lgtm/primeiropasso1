@@ -358,6 +358,40 @@ export default function AdminAgenda() {
     onError: () => toast.error("Erro ao atualizar agendamento"),
   });
 
+  // Quick status change mutation
+  const quickStatusChange = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      const { error } = await supabase
+        .from("appointments")
+        .update({ status: status as any })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
+      toast.success("Status atualizado!");
+      setDetailDialogOpen(false);
+    },
+    onError: () => toast.error("Erro ao atualizar status"),
+  });
+
+  // Quick payment toggle mutation
+  const quickPaymentChange = useMutation({
+    mutationFn: async ({ id, payment_status }: { id: string; payment_status: string }) => {
+      const { error } = await supabase
+        .from("appointments")
+        .update({ payment_status: payment_status as any })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
+      toast.success("Pagamento atualizado!");
+      setDetailDialogOpen(false);
+    },
+    onError: () => toast.error("Erro ao atualizar pagamento"),
+  });
+
   const enterEditMode = () => {
     if (!selectedEvent) return;
     if (selectedEvent.type === "block") {
@@ -372,6 +406,7 @@ export default function AdminAgenda() {
       setEditApptStartTime(selectedEvent.start_time?.slice(0, 5) || "09:00");
       setEditApptEndTime(selectedEvent.end_time?.slice(0, 5) || "10:00");
       setEditApptDate(new Date(selectedEvent.appointment_date + "T12:00:00"));
+      setEditApptPaymentStatus(selectedEvent.payment_status || "pending");
     }
     setEditMode(true);
   };
@@ -456,7 +491,7 @@ export default function AdminAgenda() {
     });
 
     return events;
-  }, [appointments, blocks, availability]);
+  }, [appointments, blocks, availability, getStatusColor]);
 
   const handleEventClick = (info: EventClickArg) => {
     const props = info.event.extendedProps;

@@ -20,7 +20,7 @@ export default function AdminDocumentos() {
   const [webhookLoaded, setWebhookLoaded] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; file_url: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; file_url: string; id_vetor?: number | null } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const { data: settings } = useQuery({

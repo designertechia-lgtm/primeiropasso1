@@ -92,8 +92,8 @@ export default function AdminAgendamentos() {
           : Promise.resolve({ data: [] }),
       ]);
 
-      const profileMap = new Map(profilesRes.data?.map((p) => [p.user_id, p]) ?? []);
-      const serviceMap = new Map(servicesRes.data?.map((s) => [s.id, s]) ?? []);
+      const profileMap = new Map((profilesRes.data ?? []).map((p) => [p.user_id, p] as const));
+      const serviceMap = new Map((servicesRes.data ?? []).map((s) => [s.id, s] as const));
 
       return data.map((a) => ({
         ...a,

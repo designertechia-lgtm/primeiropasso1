@@ -422,8 +422,8 @@ export default function AdminAgenda() {
         title: `${appt.patientName} — ${appt.professional_services?.name || "Consulta"}`,
         start: `${appt.appointment_date}T${appt.start_time}`,
         end: `${appt.appointment_date}T${appt.end_time}`,
-        backgroundColor: STATUS_COLORS[appt.status] || "hsl(var(--primary))",
-        borderColor: STATUS_COLORS[appt.status] || "hsl(var(--primary))",
+        backgroundColor: getStatusColor(appt.status),
+        borderColor: getStatusColor(appt.status),
         textColor: "#fff",
         extendedProps: { type: "appointment", ...appt },
       });

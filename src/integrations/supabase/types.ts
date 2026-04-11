@@ -26,6 +26,7 @@ export type Database = {
           patient_id: string | null
           payment_status: Database["public"]["Enums"]["payment_status"]
           professional_id: string
+          recurrence_group: string | null
           service_id: string | null
           start_time: string
           status: Database["public"]["Enums"]["appointment_status"]
@@ -43,6 +44,7 @@ export type Database = {
           patient_id?: string | null
           payment_status?: Database["public"]["Enums"]["payment_status"]
           professional_id: string
+          recurrence_group?: string | null
           service_id?: string | null
           start_time: string
           status?: Database["public"]["Enums"]["appointment_status"]
@@ -60,6 +62,7 @@ export type Database = {
           patient_id?: string | null
           payment_status?: Database["public"]["Enums"]["payment_status"]
           professional_id?: string
+          recurrence_group?: string | null
           service_id?: string | null
           start_time?: string
           status?: Database["public"]["Enums"]["appointment_status"]

@@ -194,21 +194,21 @@ export type Database = {
           content: string | null
           embedding: string | null
           fts: unknown
-          id_vetor: number
+          id_vector: number
           metadata: Json | null
         }
         Insert: {
           content?: string | null
           embedding?: string | null
           fts?: unknown
-          id_vetor?: number
+          id_vector?: number
           metadata?: Json | null
         }
         Update: {
           content?: string | null
           embedding?: string | null
           fts?: unknown
-          id_vetor?: number
+          id_vector?: number
           metadata?: Json | null
         }
         Relationships: []
@@ -305,7 +305,7 @@ export type Database = {
           file_size: number
           file_url: string
           id: string
-          id_vetor: number | null
+          id_vector: number | null
           professional_id: string
           rag_status: string
           webhook_status: string
@@ -316,7 +316,7 @@ export type Database = {
           file_size?: number
           file_url: string
           id?: string
-          id_vetor?: number | null
+          id_vector?: number | null
           professional_id: string
           rag_status?: string
           webhook_status?: string
@@ -327,18 +327,18 @@ export type Database = {
           file_size?: number
           file_url?: string
           id?: string
-          id_vetor?: number | null
+          id_vector?: number | null
           professional_id?: string
           rag_status?: string
           webhook_status?: string
         }
         Relationships: [
           {
-            foreignKeyName: "professional_documents_id_vetor_fkey"
-            columns: ["id_vetor"]
+            foreignKeyName: "professional_documents_id_vector_fkey"
+            columns: ["id_vector"]
             isOneToOne: false
             referencedRelation: "documents"
-            referencedColumns: ["id_vetor"]
+            referencedColumns: ["id_vector"]
           },
           {
             foreignKeyName: "professional_documents_professional_id_fkey"

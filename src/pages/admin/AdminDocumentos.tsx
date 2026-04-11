@@ -20,7 +20,7 @@ export default function AdminDocumentos() {
   const [webhookLoaded, setWebhookLoaded] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; file_url: string; id_vetor?: number | null } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; file_url: string; id_vector?: number | null } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const { data: settings } = useQuery({
@@ -115,10 +115,10 @@ export default function AdminDocumentos() {
   };
 
   const deleteDoc = useMutation({
-    mutationFn: async (doc: { id: string; file_url: string; id_vetor?: number | null }) => {
+    mutationFn: async (doc: { id: string; file_url: string; id_vector?: number | null }) => {
       // Remove vector row if exists
-      if (doc.id_vetor) {
-        await supabase.from("documents").delete().eq("id_vetor", doc.id_vetor);
+      if (doc.id_vector) {
+        await supabase.from("documents").delete().eq("id_vector", doc.id_vector);
       }
       // Remove file from storage
       const url = new URL(doc.file_url);
@@ -201,14 +201,19 @@ export default function AdminDocumentos() {
                           <RefreshCw className="h-3.5 w-3.5" />
                         </Button>
                       )}
-                      <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setDeleteTarget({ id: doc.id, file_url: doc.file_url, id_vetor: doc.id_vetor })}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => setDeleteTarget({ id: doc.id, file_url: doc.file_url, id_vector: doc.id_vector })}
+                      >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground space-y-1 pl-7">
                     <p>{formatSize(doc.file_size)} • {new Date(doc.created_at).toLocaleDateString("pt-BR")}</p>
-                    <p className="font-mono text-[11px]">ID: {doc.id}{doc.id_vetor ? ` • Vetor: #${doc.id_vetor}` : ""}</p>
+                    <p className="font-mono text-[11px]"><p className="font-mono text-[11px]">ID: {doc.id}{doc.id_vector ? ` • Vetor: #${doc.id_vector}` : ""}</p></p>
                     <div className="flex items-center gap-1">
                       <span className="truncate max-w-[400px] font-mono text-[11px]">{doc.file_url}</span>
                       <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => copyToClipboard(doc.file_url, doc.id)} title="Copiar link">

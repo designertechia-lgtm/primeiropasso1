@@ -194,21 +194,21 @@ export type Database = {
           content: string | null
           embedding: string | null
           fts: unknown
-          id: number
+          id_vetor: number
           metadata: Json | null
         }
         Insert: {
           content?: string | null
           embedding?: string | null
           fts?: unknown
-          id?: never
+          id_vetor?: number
           metadata?: Json | null
         }
         Update: {
           content?: string | null
           embedding?: string | null
           fts?: unknown
-          id?: never
+          id_vetor?: number
           metadata?: Json | null
         }
         Relationships: []
@@ -305,6 +305,7 @@ export type Database = {
           file_size: number
           file_url: string
           id: string
+          id_vetor: number | null
           professional_id: string
           rag_status: string
           webhook_status: string
@@ -315,6 +316,7 @@ export type Database = {
           file_size?: number
           file_url: string
           id?: string
+          id_vetor?: number | null
           professional_id: string
           rag_status?: string
           webhook_status?: string
@@ -325,11 +327,19 @@ export type Database = {
           file_size?: number
           file_url?: string
           id?: string
+          id_vetor?: number | null
           professional_id?: string
           rag_status?: string
           webhook_status?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "professional_documents_id_vetor_fkey"
+            columns: ["id_vetor"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id_vetor"]
+          },
           {
             foreignKeyName: "professional_documents_professional_id_fkey"
             columns: ["professional_id"]

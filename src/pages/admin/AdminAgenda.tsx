@@ -384,6 +384,7 @@ export default function AdminAgenda() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
+      queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
       toast.success("Status atualizado!");
       setDetailDialogOpen(false);
     },
@@ -485,8 +486,8 @@ export default function AdminAgenda() {
         title: block.notes || "Bloqueado",
         start: `${block.appointment_date}T${block.start_time}`,
         end: `${block.appointment_date}T${block.end_time}`,
-        backgroundColor: BLOCK_TYPE_COLORS[block.block_type] || BLOCK_TYPE_COLORS.other,
-        borderColor: BLOCK_TYPE_COLORS[block.block_type] || BLOCK_TYPE_COLORS.other,
+        backgroundColor: getStatusColor(block.status || "pending"),
+        borderColor: getStatusColor(block.status || "pending"),
         textColor: "#fff",
         extendedProps: { type: "block", ...block },
       });
@@ -547,7 +548,7 @@ export default function AdminAgenda() {
             <Settings2 className="h-4 w-4 mr-1" /> Horários de Atendimento
           </Button>
           <Button size="sm" onClick={() => { setBlockDate(new Date()); resetBlockForm(); setBlockDialogOpen(true); }}>
-            <Plus className="h-4 w-4 mr-1" /> Bloquear horário
+            <Plus className="h-4 w-4 mr-1" /> Novo Agendamento
           </Button>
         </div>
       </div>
@@ -585,7 +586,7 @@ export default function AdminAgenda() {
       <Dialog open={blockDialogOpen} onOpenChange={setBlockDialogOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Bloquear horário</DialogTitle>
+            <DialogTitle>Novo Agendamento</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -695,7 +696,7 @@ export default function AdminAgenda() {
             )}
 
             <Button onClick={() => addBlock.mutate()} disabled={addBlock.isPending} className="w-full">
-              {addBlock.isPending ? "Salvando..." : "Confirmar bloqueio"}
+              {addBlock.isPending ? "Salvando..." : "Confirmar agendamento"}
             </Button>
           </div>
         </DialogContent>
@@ -706,7 +707,7 @@ export default function AdminAgenda() {
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {selectedEvent?.type === "appointment" ? "Consulta" : "Bloqueio"}
+              {selectedEvent?.type === "appointment" ? "Consulta" : "Agendamento"}
             </DialogTitle>
           </DialogHeader>
           {selectedEvent && !editMode && (
@@ -783,12 +784,17 @@ export default function AdminAgenda() {
               {selectedEvent.type === "block" && (
                 <>
                   <div className="flex items-center gap-2">
-                    <Ban className="h-4 w-4 text-destructive" />
-                    <span className="font-medium">{selectedEvent.notes || "Bloqueado"}</span>
+                    <CalendarIcon className="h-4 w-4 text-primary" />
+                    <span className="font-medium">{selectedEvent.notes || "Agendamento"}</span>
                   </div>
-                  <Badge style={{ backgroundColor: BLOCK_TYPE_COLORS[selectedEvent.block_type] || BLOCK_TYPE_COLORS.other, color: "#fff", borderColor: BLOCK_TYPE_COLORS[selectedEvent.block_type] || BLOCK_TYPE_COLORS.other }}>
-                    {BLOCK_TYPE_LABELS[selectedEvent.block_type] || "Outro"}
-                  </Badge>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge style={{ backgroundColor: getStatusColor(selectedEvent.status || "pending"), color: "#fff", borderColor: getStatusColor(selectedEvent.status || "pending") }}>
+                      {STATUS_LABELS[selectedEvent.status] || selectedEvent.status || "Pendente"}
+                    </Badge>
+                    <Badge style={{ backgroundColor: BLOCK_TYPE_COLORS[selectedEvent.block_type] || BLOCK_TYPE_COLORS.other, color: "#fff", borderColor: BLOCK_TYPE_COLORS[selectedEvent.block_type] || BLOCK_TYPE_COLORS.other }}>
+                      {BLOCK_TYPE_LABELS[selectedEvent.block_type] || "Outro"}
+                    </Badge>
+                  </div>
                   <div className="flex items-center gap-2">
                     <CalendarIcon className="h-4 w-4 text-muted-foreground" />
                     <span>{format(new Date(selectedEvent.appointment_date + "T12:00:00"), "dd/MM/yyyy")}</span>
@@ -797,9 +803,32 @@ export default function AdminAgenda() {
                     <Clock className="h-4 w-4 text-muted-foreground" />
                     <span>{selectedEvent.start_time?.slice(0, 5)} – {selectedEvent.end_time?.slice(0, 5)}</span>
                   </div>
+
+                  {/* Quick status buttons */}
+                  <div className="border-t pt-3 space-y-2">
+                    <Label className="text-xs text-muted-foreground">Alterar status:</Label>
+                    <div className="flex gap-1 flex-wrap">
+                      {selectedEvent.status !== "confirmed" && (
+                        <Button size="sm" variant="outline" onClick={() => quickStatusChange.mutate({ id: selectedEvent.id, status: "confirmed" })} disabled={quickStatusChange.isPending}>
+                          <CheckCircle className="h-3 w-3 mr-1" /> Confirmar
+                        </Button>
+                      )}
+                      {selectedEvent.status !== "completed" && (
+                        <Button size="sm" variant="outline" onClick={() => quickStatusChange.mutate({ id: selectedEvent.id, status: "completed" })} disabled={quickStatusChange.isPending}>
+                          <CheckCircle className="h-3 w-3 mr-1" /> Concluir
+                        </Button>
+                      )}
+                      {selectedEvent.status !== "cancelled" && (
+                        <Button size="sm" variant="outline" className="text-destructive" onClick={() => quickStatusChange.mutate({ id: selectedEvent.id, status: "cancelled" })} disabled={quickStatusChange.isPending}>
+                          <XCircle className="h-3 w-3 mr-1" /> Cancelar
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="flex flex-col gap-2">
                     <Button variant="outline" size="sm" onClick={enterEditMode} className="w-full">
-                      <Pencil className="h-4 w-4 mr-1" /> Editar bloqueio
+                      <Pencil className="h-4 w-4 mr-1" /> Editar agendamento
                     </Button>
                     <Button
                       variant="destructive"
@@ -808,7 +837,7 @@ export default function AdminAgenda() {
                       disabled={removeBlock.isPending}
                     >
                       <X className="h-4 w-4 mr-1" />
-                      {removeBlock.isPending ? "Removendo..." : "Remover este bloqueio"}
+                      {removeBlock.isPending ? "Removendo..." : "Remover este agendamento"}
                     </Button>
                     {selectedEvent.recurrence_group && (
                       <Button

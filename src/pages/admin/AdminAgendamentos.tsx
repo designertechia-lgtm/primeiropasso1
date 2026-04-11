@@ -213,10 +213,10 @@ export default function AdminAgendamentos() {
                         {appt.start_time.slice(0, 5)} – {appt.end_time.slice(0, 5)}
                       </TableCell>
                       <TableCell>
-                        {(appt as any).patient?.full_name || "Paciente"}
+                        {(appt as any).patient?.full_name || "Sem paciente"}
                       </TableCell>
                       <TableCell>
-                        {(appt as any).professional_services?.name || "—"}
+                        {(appt as any).service?.name || appt.notes || "—"}
                       </TableCell>
                       <TableCell>
                         <Badge style={{ backgroundColor: getStatusColor(appt.status), color: "#fff", borderColor: getStatusColor(appt.status) }}>

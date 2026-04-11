@@ -278,7 +278,74 @@ export default function AdminAgenda() {
     onError: () => toast.error("Erro ao remover série"),
   });
 
-  // Save availability
+  // Update block mutation
+  const updateBlock = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("appointments")
+        .update({
+          notes: editBlockTitle,
+          start_time: editBlockStartTime,
+          end_time: editBlockEndTime,
+          block_type: editBlockType,
+          appointment_date: format(editBlockDate, "yyyy-MM-dd"),
+        })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
+      queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
+      toast.success("Bloqueio atualizado!");
+      setDetailDialogOpen(false);
+      setEditMode(false);
+    },
+    onError: () => toast.error("Erro ao atualizar bloqueio"),
+  });
+
+  // Update appointment mutation
+  const updateAppointment = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("appointments")
+        .update({
+          status: editApptStatus as any,
+          notes: editApptNotes || null,
+          start_time: editApptStartTime,
+          end_time: editApptEndTime,
+          appointment_date: format(editApptDate, "yyyy-MM-dd"),
+        })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
+      toast.success("Agendamento atualizado!");
+      setDetailDialogOpen(false);
+      setEditMode(false);
+    },
+    onError: () => toast.error("Erro ao atualizar agendamento"),
+  });
+
+  const enterEditMode = () => {
+    if (!selectedEvent) return;
+    if (selectedEvent.type === "block") {
+      setEditBlockTitle(selectedEvent.notes || "");
+      setEditBlockStartTime(selectedEvent.start_time?.slice(0, 5) || "09:00");
+      setEditBlockEndTime(selectedEvent.end_time?.slice(0, 5) || "10:00");
+      setEditBlockType(selectedEvent.block_type || "personal");
+      setEditBlockDate(new Date(selectedEvent.appointment_date + "T12:00:00"));
+    } else {
+      setEditApptStatus(selectedEvent.status || "pending");
+      setEditApptNotes(selectedEvent.notes || "");
+      setEditApptStartTime(selectedEvent.start_time?.slice(0, 5) || "09:00");
+      setEditApptEndTime(selectedEvent.end_time?.slice(0, 5) || "10:00");
+      setEditApptDate(new Date(selectedEvent.appointment_date + "T12:00:00"));
+    }
+    setEditMode(true);
+  };
+
+
   const handleSaveAvailability = async () => {
     if (!professional) return;
     setSavingAvail(true);

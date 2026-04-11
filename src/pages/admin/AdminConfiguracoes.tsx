@@ -110,6 +110,12 @@ export default function AdminConfiguracoes() {
       dark_primary_color: darkPrimaryColor || null,
       dark_secondary_color: darkMode ? darkDerived.secondary : null,
       dark_background_color: darkMode ? darkDerived.background : null,
+      color_status_pending: colorStatusPending,
+      color_status_confirmed: colorStatusConfirmed,
+      color_status_completed: colorStatusCompleted,
+      color_status_cancelled: colorStatusCancelled,
+      color_payment_pending: colorPaymentPending,
+      color_payment_paid: colorPaymentPaid,
     } as any).eq("id", professional.id);
 
     setSaving(false);

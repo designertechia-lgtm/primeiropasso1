@@ -66,6 +66,14 @@ export default function AdminConfiguracoes() {
   const [darkPrimaryColor, setDarkPrimaryColor] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Status colors
+  const [colorStatusPending, setColorStatusPending] = useState("#EAB308");
+  const [colorStatusConfirmed, setColorStatusConfirmed] = useState("#22C55E");
+  const [colorStatusCompleted, setColorStatusCompleted] = useState("#3B82F6");
+  const [colorStatusCancelled, setColorStatusCancelled] = useState("#EF4444");
+  const [colorPaymentPending, setColorPaymentPending] = useState("#F97316");
+  const [colorPaymentPaid, setColorPaymentPaid] = useState("#10B981");
+
   useEffect(() => {
     if (professional) {
       setSlug(professional.slug || "");
@@ -75,6 +83,12 @@ export default function AdminConfiguracoes() {
       setPrimaryColor(professional.primary_color || "#87A96B");
       setDarkMode((professional as any).dark_mode || false);
       setDarkPrimaryColor((professional as any).dark_primary_color || "");
+      setColorStatusPending((professional as any).color_status_pending || "#EAB308");
+      setColorStatusConfirmed((professional as any).color_status_confirmed || "#22C55E");
+      setColorStatusCompleted((professional as any).color_status_completed || "#3B82F6");
+      setColorStatusCancelled((professional as any).color_status_cancelled || "#EF4444");
+      setColorPaymentPending((professional as any).color_payment_pending || "#F97316");
+      setColorPaymentPaid((professional as any).color_payment_paid || "#10B981");
     }
   }, [professional]);
 

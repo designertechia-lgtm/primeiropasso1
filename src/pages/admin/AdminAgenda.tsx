@@ -903,6 +903,16 @@ export default function AdminAgenda() {
                 </Select>
               </div>
               <div>
+                <Label>Pagamento</Label>
+                <Select value={editApptPaymentStatus} onValueChange={setEditApptPaymentStatus}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">Pendente</SelectItem>
+                    <SelectItem value="paid">Pago</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
                 <Label>Observações</Label>
                 <Textarea value={editApptNotes} onChange={(e) => setEditApptNotes(e.target.value)} placeholder="Notas sobre a consulta..." rows={3} />
               </div>

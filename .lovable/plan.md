@@ -1,48 +1,29 @@
 
 
-## Corrigir nome do paciente e descricao do servico na lista de Agendamentos
+## Ajustes na Agenda: cores por status, campo de status para bloqueios, renomear "Bloqueio" para "Agendamento"
 
-### Problemas
+### O que muda
 
-1. **Coluna "Paciente"** mostra "Paciente" generico -- o lookup de perfil ja existe mas pode falhar porque `patient_id` pode ser null ou o perfil nao tem `full_name`. Precisa mostrar o nome real quando disponivel.
+1. **Cores dos bloqueios na agenda seguem as cores de status** -- Atualmente bloqueios usam `BLOCK_TYPE_COLORS` (roxo, azul, laranja). Passarao a usar `getStatusColor(block.status)` para manter consistencia visual com a lista de agendamentos.
 
-2. **Coluna "Servico"** mostra "—" -- a join `professional_services(name, ...)` provavelmente falha silenciosamente porque nao ha foreign key definida entre `appointments.service_id` e `professional_services.id`. Precisamos buscar os servicos separadamente.
+2. **Campo de status no detalhe do bloqueio** -- Ao clicar num bloqueio na agenda, adicionar botoes de alteracao rapida de status (Confirmar, Concluir, Cancelar) identicos aos que ja existem para consultas (linhas 743-761).
 
-### Solucao
+3. **Renomear "Bloqueio" para "Agendamento"** -- No dialog de detalhe, titulo do dialog, botoes e textos:
+   - `"Bloqueio"` -> `"Agendamento"` (titulo do dialog, linha 709)
+   - `"Bloquear horário"` -> `"Novo Agendamento"` (botao header, linha 550; titulo dialog criar, linha 588)
+   - `"Confirmar bloqueio"` -> `"Confirmar agendamento"` (botao submit, linha 698)
+   - `"Editar bloqueio"` -> `"Editar agendamento"` (botao editar, linha 802)
+   - `"Remover este bloqueio"` -> `"Remover este agendamento"` (botao remover, linha 811)
+   - Icone `Ban` no detalhe do bloqueio (linha 786) -> `CalendarIcon` ou remover
 
-**Arquivo: `src/pages/admin/AdminAgendamentos.tsx`**
-
-1. Alem de buscar profiles, buscar tambem os servicos (`professional_services`) do profissional e montar um mapa `serviceId -> service`
-2. Na coluna "Paciente": usar `appt.patient?.full_name || "Sem paciente"`
-3. Na coluna "Servico": usar o mapa de servicos para mostrar `service.name` (nome do servico) e como fallback mostrar `appt.notes` (descricao/notas do agendamento) ou "—"
+### Arquivo alterado
+- `src/pages/admin/AdminAgenda.tsx`
 
 ### Detalhes tecnicos
 
-Na query, substituir a join `professional_services(name, ...)` por uma busca separada:
+**buildEvents** (linha 482-493): trocar `BLOCK_TYPE_COLORS[block.block_type]` por `getStatusColor(block.status || "pending")`.
 
-```typescript
-// Buscar servicos
-const serviceIds = [...new Set(data.filter(a => a.service_id).map(a => a.service_id))];
-let serviceMap = new Map();
-if (serviceIds.length > 0) {
-  const { data: services } = await supabase
-    .from("professional_services")
-    .select("id, name, description, duration_minutes, price")
-    .in("id", serviceIds);
-  serviceMap = new Map(services?.map(s => [s.id, s]) ?? []);
-}
+**Detalhe do bloqueio** (linhas 783-826): adicionar badge de status + botoes de alteracao rapida de status (reutilizando `quickStatusChange` mutation que ja existe).
 
-return data.map((a) => ({
-  ...a,
-  patient: profileMap.get(a.patient_id),
-  service: serviceMap.get(a.service_id),
-}));
-```
-
-Na renderizacao:
-- Paciente: `appt.patient?.full_name || "Sem paciente"`
-- Servico: `appt.service?.name || appt.notes || "—"`
-
-### Arquivos alterados
-- `src/pages/admin/AdminAgendamentos.tsx`
+**Textos**: substituicoes de string conforme listado acima.
 

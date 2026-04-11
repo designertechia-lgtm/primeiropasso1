@@ -115,10 +115,16 @@ export default function AdminDocumentos() {
   };
 
   const deleteDoc = useMutation({
-    mutationFn: async (doc: { id: string; file_url: string }) => {
+    mutationFn: async (doc: { id: string; file_url: string; id_vetor?: number | null }) => {
+      // Remove vector row if exists
+      if (doc.id_vetor) {
+        await supabase.from("documents").delete().eq("id_vetor", doc.id_vetor);
+      }
+      // Remove file from storage
       const url = new URL(doc.file_url);
       const pathParts = url.pathname.split("/storage/v1/object/public/documents/");
       if (pathParts[1]) { await supabase.storage.from("documents").remove([decodeURIComponent(pathParts[1])]); }
+      // Remove document record
       const { error } = await supabase.from("professional_documents").delete().eq("id", doc.id);
       if (error) throw error;
     },

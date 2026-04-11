@@ -23,7 +23,8 @@ import {
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Plus, X, User, Ban, Clock, CalendarIcon, Settings2 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Plus, X, User, Ban, Clock, CalendarIcon, Settings2, Pencil } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { generateRecurrenceDates, type RecurrenceType } from "@/lib/recurrence";
@@ -96,6 +97,21 @@ export default function AdminAgenda() {
   // Event detail dialog
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
+  const [editMode, setEditMode] = useState(false);
+
+  // Edit block fields
+  const [editBlockTitle, setEditBlockTitle] = useState("");
+  const [editBlockStartTime, setEditBlockStartTime] = useState("");
+  const [editBlockEndTime, setEditBlockEndTime] = useState("");
+  const [editBlockType, setEditBlockType] = useState("personal");
+  const [editBlockDate, setEditBlockDate] = useState<Date>(new Date());
+
+  // Edit appointment fields
+  const [editApptStatus, setEditApptStatus] = useState("pending");
+  const [editApptNotes, setEditApptNotes] = useState("");
+  const [editApptStartTime, setEditApptStartTime] = useState("");
+  const [editApptEndTime, setEditApptEndTime] = useState("");
+  const [editApptDate, setEditApptDate] = useState<Date>(new Date());
 
   // Availability dialog
   const [availDialogOpen, setAvailDialogOpen] = useState(false);
@@ -262,7 +278,74 @@ export default function AdminAgenda() {
     onError: () => toast.error("Erro ao remover série"),
   });
 
-  // Save availability
+  // Update block mutation
+  const updateBlock = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("appointments")
+        .update({
+          notes: editBlockTitle,
+          start_time: editBlockStartTime,
+          end_time: editBlockEndTime,
+          block_type: editBlockType,
+          appointment_date: format(editBlockDate, "yyyy-MM-dd"),
+        })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
+      queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
+      toast.success("Bloqueio atualizado!");
+      setDetailDialogOpen(false);
+      setEditMode(false);
+    },
+    onError: () => toast.error("Erro ao atualizar bloqueio"),
+  });
+
+  // Update appointment mutation
+  const updateAppointment = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("appointments")
+        .update({
+          status: editApptStatus as any,
+          notes: editApptNotes || null,
+          start_time: editApptStartTime,
+          end_time: editApptEndTime,
+          appointment_date: format(editApptDate, "yyyy-MM-dd"),
+        })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
+      toast.success("Agendamento atualizado!");
+      setDetailDialogOpen(false);
+      setEditMode(false);
+    },
+    onError: () => toast.error("Erro ao atualizar agendamento"),
+  });
+
+  const enterEditMode = () => {
+    if (!selectedEvent) return;
+    if (selectedEvent.type === "block") {
+      setEditBlockTitle(selectedEvent.notes || "");
+      setEditBlockStartTime(selectedEvent.start_time?.slice(0, 5) || "09:00");
+      setEditBlockEndTime(selectedEvent.end_time?.slice(0, 5) || "10:00");
+      setEditBlockType(selectedEvent.block_type || "personal");
+      setEditBlockDate(new Date(selectedEvent.appointment_date + "T12:00:00"));
+    } else {
+      setEditApptStatus(selectedEvent.status || "pending");
+      setEditApptNotes(selectedEvent.notes || "");
+      setEditApptStartTime(selectedEvent.start_time?.slice(0, 5) || "09:00");
+      setEditApptEndTime(selectedEvent.end_time?.slice(0, 5) || "10:00");
+      setEditApptDate(new Date(selectedEvent.appointment_date + "T12:00:00"));
+    }
+    setEditMode(true);
+  };
+
+
   const handleSaveAvailability = async () => {
     if (!professional) return;
     setSavingAvail(true);
@@ -537,20 +620,24 @@ export default function AdminAgenda() {
       </Dialog>
 
       {/* Event Detail Dialog */}
-      <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
-        <DialogContent>
+      <Dialog open={detailDialogOpen} onOpenChange={(open) => { setDetailDialogOpen(open); if (!open) setEditMode(false); }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {selectedEvent?.type === "appointment" ? "Consulta" : "Bloqueio"}
             </DialogTitle>
           </DialogHeader>
-          {selectedEvent && (
+          {selectedEvent && !editMode && (
             <div className="space-y-3">
               {selectedEvent.type === "appointment" && (
                 <>
                   <div className="flex items-center gap-2">
                     <User className="h-4 w-4 text-primary" />
                     <span className="font-medium">{selectedEvent.patientName}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                    <span>{format(new Date(selectedEvent.appointment_date + "T12:00:00"), "dd/MM/yyyy")}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4 text-muted-foreground" />
@@ -561,6 +648,9 @@ export default function AdminAgenda() {
                   )}
                   <Badge variant="outline">{STATUS_LABELS[selectedEvent.status] || selectedEvent.status}</Badge>
                   {selectedEvent.notes && <p className="text-sm text-muted-foreground border-t pt-2">{selectedEvent.notes}</p>}
+                  <Button variant="outline" size="sm" onClick={enterEditMode} className="w-full">
+                    <Pencil className="h-4 w-4 mr-1" /> Editar agendamento
+                  </Button>
                 </>
               )}
               {selectedEvent.type === "block" && (
@@ -570,10 +660,17 @@ export default function AdminAgenda() {
                     <span className="font-medium">{selectedEvent.notes || "Bloqueado"}</span>
                   </div>
                   <div className="flex items-center gap-2">
+                    <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                    <span>{format(new Date(selectedEvent.appointment_date + "T12:00:00"), "dd/MM/yyyy")}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4 text-muted-foreground" />
                     <span>{selectedEvent.start_time?.slice(0, 5)} – {selectedEvent.end_time?.slice(0, 5)}</span>
                   </div>
                   <div className="flex flex-col gap-2">
+                    <Button variant="outline" size="sm" onClick={enterEditMode} className="w-full">
+                      <Pencil className="h-4 w-4 mr-1" /> Editar bloqueio
+                    </Button>
                     <Button
                       variant="destructive"
                       size="sm"
@@ -597,6 +694,113 @@ export default function AdminAgenda() {
                   </div>
                 </>
               )}
+            </div>
+          )}
+
+          {/* Edit Mode - Block */}
+          {selectedEvent && editMode && selectedEvent.type === "block" && (
+            <div className="space-y-4">
+              <div>
+                <Label>Título</Label>
+                <Input value={editBlockTitle} onChange={(e) => setEditBlockTitle(e.target.value)} />
+              </div>
+              <div>
+                <Label>Data</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full justify-start text-left font-normal">
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {format(editBlockDate, "dd/MM/yyyy")}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar mode="single" selected={editBlockDate} onSelect={(d) => d && setEditBlockDate(d)} locale={ptBR} className="p-3 pointer-events-auto" />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Início</Label>
+                  <Input type="time" value={editBlockStartTime} onChange={(e) => setEditBlockStartTime(e.target.value)} />
+                </div>
+                <div>
+                  <Label>Fim</Label>
+                  <Input type="time" value={editBlockEndTime} onChange={(e) => setEditBlockEndTime(e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <Label>Tipo</Label>
+                <Select value={editBlockType} onValueChange={setEditBlockType}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="personal">Pessoal</SelectItem>
+                    <SelectItem value="vacation">Férias / Folga</SelectItem>
+                    <SelectItem value="other">Outro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setEditMode(false)} className="flex-1">Cancelar</Button>
+                <Button onClick={() => updateBlock.mutate(selectedEvent.id)} disabled={updateBlock.isPending} className="flex-1">
+                  {updateBlock.isPending ? "Salvando..." : "Salvar"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Edit Mode - Appointment */}
+          {selectedEvent && editMode && selectedEvent.type === "appointment" && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <User className="h-4 w-4" />
+                <span>{selectedEvent.patientName}</span>
+              </div>
+              <div>
+                <Label>Data</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full justify-start text-left font-normal">
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {format(editApptDate, "dd/MM/yyyy")}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar mode="single" selected={editApptDate} onSelect={(d) => d && setEditApptDate(d)} locale={ptBR} className="p-3 pointer-events-auto" />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Início</Label>
+                  <Input type="time" value={editApptStartTime} onChange={(e) => setEditApptStartTime(e.target.value)} />
+                </div>
+                <div>
+                  <Label>Fim</Label>
+                  <Input type="time" value={editApptEndTime} onChange={(e) => setEditApptEndTime(e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <Label>Status</Label>
+                <Select value={editApptStatus} onValueChange={setEditApptStatus}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">Pendente</SelectItem>
+                    <SelectItem value="confirmed">Confirmado</SelectItem>
+                    <SelectItem value="completed">Concluído</SelectItem>
+                    <SelectItem value="cancelled">Cancelado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Observações</Label>
+                <Textarea value={editApptNotes} onChange={(e) => setEditApptNotes(e.target.value)} placeholder="Notas sobre a consulta..." rows={3} />
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setEditMode(false)} className="flex-1">Cancelar</Button>
+                <Button onClick={() => updateAppointment.mutate(selectedEvent.id)} disabled={updateAppointment.isPending} className="flex-1">
+                  {updateAppointment.isPending ? "Salvando..." : "Salvar"}
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>

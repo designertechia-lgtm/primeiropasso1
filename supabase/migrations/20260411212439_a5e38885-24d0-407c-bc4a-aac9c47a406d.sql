@@ -1,0 +1,1 @@
+ALTER TABLE public.appointments ADD COLUMN recurrence_group uuid DEFAULT NULL;

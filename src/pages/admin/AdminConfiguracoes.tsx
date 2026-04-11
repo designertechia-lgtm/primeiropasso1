@@ -264,6 +264,65 @@ export default function AdminConfiguracoes() {
         </Card>
       )}
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Cores dos Status</CardTitle>
+          <p className="text-sm text-muted-foreground">Personalize as cores dos status de agendamento e pagamento na agenda.</p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            {[
+              { label: "Pendente", value: colorStatusPending, setter: setColorStatusPending },
+              { label: "Confirmado", value: colorStatusConfirmed, setter: setColorStatusConfirmed },
+              { label: "Concluído", value: colorStatusCompleted, setter: setColorStatusCompleted },
+              { label: "Cancelado", value: colorStatusCancelled, setter: setColorStatusCancelled },
+            ].map(({ label, value, setter }) => (
+              <div key={label} className="space-y-1">
+                <Label className="text-xs">{label}</Label>
+                <div className="flex gap-2 items-center">
+                  <input type="color" value={value} onChange={(e) => setter(e.target.value)} className="h-8 w-8 rounded cursor-pointer border-0" />
+                  <Input value={value} onChange={(e) => setter(e.target.value)} className="flex-1 h-8 text-xs" />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="border-t pt-3">
+            <Label className="text-xs text-muted-foreground">Pagamento</Label>
+            <div className="grid grid-cols-2 gap-4 mt-2">
+              {[
+                { label: "Pgto Pendente", value: colorPaymentPending, setter: setColorPaymentPending },
+                { label: "Pago", value: colorPaymentPaid, setter: setColorPaymentPaid },
+              ].map(({ label, value, setter }) => (
+                <div key={label} className="space-y-1">
+                  <Label className="text-xs">{label}</Label>
+                  <div className="flex gap-2 items-center">
+                    <input type="color" value={value} onChange={(e) => setter(e.target.value)} className="h-8 w-8 rounded cursor-pointer border-0" />
+                    <Input value={value} onChange={(e) => setter(e.target.value)} className="flex-1 h-8 text-xs" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="border-t pt-3">
+            <Label className="text-xs text-muted-foreground">Preview</Label>
+            <div className="flex gap-2 flex-wrap mt-2">
+              {[
+                { label: "Pendente", color: colorStatusPending },
+                { label: "Confirmado", color: colorStatusConfirmed },
+                { label: "Concluído", color: colorStatusCompleted },
+                { label: "Cancelado", color: colorStatusCancelled },
+                { label: "Pgto Pendente", color: colorPaymentPending },
+                { label: "Pago", color: colorPaymentPaid },
+              ].map(({ label, color }) => (
+                <span key={label} className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold text-white" style={{ backgroundColor: color }}>
+                  {label}
+                </span>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Button onClick={handleSave} disabled={saving} size="lg">
         {saving ? "Salvando..." : "Salvar Configurações"}
       </Button>

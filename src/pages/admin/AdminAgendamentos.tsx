@@ -43,10 +43,6 @@ const paymentLabels: Record<PaymentStatus, string> = {
   paid: "Pago",
 };
 
-const paymentLabels: Record<PaymentStatus, string> = {
-  pending: "Pendente",
-  paid: "Pago",
-};
 
 export default function AdminAgendamentos() {
   const { data: professional } = useProfessional();

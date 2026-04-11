@@ -1,48 +1,37 @@
 
 
-## Melhorar tela de Documentos: exclusão, links e status vetorial
+## Revisao de Bugs e Discordancias - AdminDocumentos.tsx
 
-### Problema
-A tela atual mostra apenas status do webhook (pendente/enviado/erro). Falta visibilidade sobre o status do processamento RAG (vetorização) e os links completos dos documentos.
+### Bug 1: Cast desnecessario `(doc as any).rag_status` (linha 213)
+O tipo `rag_status` ja existe no tipo `professional_documents.Row` do Supabase (`types.ts` linha 309). O cast `as any` e desnecessario e esconde erros de tipo.
 
-### O que será feito
+**Correção:** Trocar `(doc as any).rag_status || "pending"` por `doc.rag_status`.
 
-**1. Nova coluna `rag_status` na tabela `professional_documents`**
-- Valores: `pending`, `processing`, `completed`, `error`
-- Default: `pending`
-- O n8n pode atualizar esse campo via Supabase quando o RAG finalizar
+### Bug 2: `onDrop` com dependencias incorretas no `useCallback` (linha 129)
+O callback `onDrop` chama `handleUpload`, que depende de `professional`, `webhookUrl`, `settings`, e `uploading`. Mas `handleUpload` nao esta nas dependencias do `useCallback`, e como `handleUpload` nao e memoizado, as dependencias listadas nao capturam mudancas corretamente.
 
-**2. Melhorar a UI da lista de documentos**
-- Mostrar link completo do arquivo (copiável com botão)
-- Mostrar dois badges de status separados: **Webhook** e **Vetorial (RAG)**
-- Confirmação antes de excluir (dialog)
-- Exibir o `document_id` para referência
+**Correção:** Remover o `useCallback` do `onDrop` (nao ha ganho de performance real aqui) ou adicionar `handleUpload` como dependencia com `useCallback` nele tambem.
 
-**3. Incluir `rag_status` no payload do webhook**
-- Para que o n8n saiba qual campo atualizar de volta
+### Bug 3: `sendWebhook` nao verifica resposta HTTP (linhas 77-81)
+O `fetch` so lanca erro em caso de falha de rede. Se o webhook retornar 4xx/5xx, o status ainda sera marcado como "sent".
 
-### Detalhes técnicos
+**Correção:** Adicionar `if (!response.ok) throw new Error()` apos o `fetch`.
 
-**Migration:**
-```sql
-ALTER TABLE public.professional_documents
-ADD COLUMN rag_status text NOT NULL DEFAULT 'pending';
-```
+### Bug 4: Estado derivado no corpo do componente (linhas 38-39)
+Os `if` que setam `webhookUrl` e `webhookLoaded` no corpo do componente sao chamados a cada render. Isso funciona mas e um anti-pattern que pode causar renders extras.
 
-**UI por documento:**
-```text
-┌──────────────────────────────────────────────────┐
-│ 📄 nome-do-arquivo.pdf                           │
-│ 1.2 MB • 10/04/2026                             │
-│ ID: abc-123-def                                  │
-│ Link: https://...supabase.co/...  [Copiar]       │
-│ Webhook: ✅ Enviado  |  RAG: ⏳ Pendente         │
-│                          [Reenviar] [Excluir]    │
-└──────────────────────────────────────────────────┘
-```
+**Correção:** Mover para um `useEffect` com dependencias em `settings` e `webhookLoaded`.
 
-**Arquivos alterados:**
-- Nova migration SQL (adicionar `rag_status`)
-- `src/pages/admin/AdminDocumentos.tsx` (UI completa com links, status vetorial, confirmação de exclusão)
-- `src/integrations/supabase/types.ts` (atualizado automaticamente)
+### Bug 5: `sendWebhook` envia `rag_status` inicial no payload? (linha 79)
+O plano anterior mencionava incluir `rag_status` no payload do webhook, mas o codigo atual nao envia. Pode ser intencional, mas vale alinhar.
+
+**Correção:** Adicionar `rag_status: "pending"` ao body do webhook se desejado.
+
+### Resumo das alterações
+- **Arquivo:** `src/pages/admin/AdminDocumentos.tsx`
+  1. Remover `(doc as any)` e usar `doc.rag_status` diretamente
+  2. Remover `useCallback` do `onDrop` ou corrigir dependencias
+  3. Verificar `response.ok` no `sendWebhook`
+  4. Mover logica de `webhookLoaded` para `useEffect`
+  5. Adicionar `rag_status` ao payload do webhook
 

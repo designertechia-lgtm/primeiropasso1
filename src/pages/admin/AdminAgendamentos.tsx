@@ -79,6 +79,7 @@ export default function AdminAgendamentos() {
           professional_services(name, duration_minutes, price)
         `)
         .eq("professional_id", professional!.id)
+        .eq("appointment_type", "booking")
         .order("appointment_date", { ascending: false });
       if (error) throw error;
 

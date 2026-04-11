@@ -208,7 +208,7 @@ export default function AdminDocumentos() {
                   </div>
                   <div className="text-xs text-muted-foreground space-y-1 pl-7">
                     <p>{formatSize(doc.file_size)} • {new Date(doc.created_at).toLocaleDateString("pt-BR")}</p>
-                    <p className="font-mono text-[11px]">ID: {doc.id}</p>
+                    <p className="font-mono text-[11px]">ID: {doc.id}{doc.id_vetor ? ` • Vetor: #${doc.id_vetor}` : ""}</p>
                     <div className="flex items-center gap-1">
                       <span className="truncate max-w-[400px] font-mono text-[11px]">{doc.file_url}</span>
                       <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => copyToClipboard(doc.file_url, doc.id)} title="Copiar link">

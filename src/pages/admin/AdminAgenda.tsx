@@ -24,7 +24,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, X, User, Ban, Clock, CalendarIcon, Settings2, Pencil } from "lucide-react";
+import { Plus, X, User, Ban, Clock, CalendarIcon, Settings2, Pencil, CheckCircle, DollarSign, XCircle } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { generateRecurrenceDates, type RecurrenceType } from "@/lib/recurrence";
@@ -37,11 +37,21 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: "Cancelado",
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: "hsl(45, 80%, 50%)",
-  confirmed: "hsl(var(--primary))",
-  completed: "hsl(var(--accent))",
-  cancelled: "hsl(var(--destructive))",
+const DEFAULT_STATUS_COLORS: Record<string, string> = {
+  pending: "#EAB308",
+  confirmed: "#22C55E",
+  completed: "#3B82F6",
+  cancelled: "#EF4444",
+};
+
+const DEFAULT_PAYMENT_COLORS: Record<string, string> = {
+  pending: "#F97316",
+  paid: "#10B981",
+};
+
+const PAYMENT_LABELS: Record<string, string> = {
+  pending: "Pgto Pendente",
+  paid: "Pago",
 };
 
 const DAYS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];

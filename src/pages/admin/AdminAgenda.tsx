@@ -97,6 +97,21 @@ export default function AdminAgenda() {
   // Event detail dialog
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
+  const [editMode, setEditMode] = useState(false);
+
+  // Edit block fields
+  const [editBlockTitle, setEditBlockTitle] = useState("");
+  const [editBlockStartTime, setEditBlockStartTime] = useState("");
+  const [editBlockEndTime, setEditBlockEndTime] = useState("");
+  const [editBlockType, setEditBlockType] = useState("personal");
+  const [editBlockDate, setEditBlockDate] = useState<Date>(new Date());
+
+  // Edit appointment fields
+  const [editApptStatus, setEditApptStatus] = useState("pending");
+  const [editApptNotes, setEditApptNotes] = useState("");
+  const [editApptStartTime, setEditApptStartTime] = useState("");
+  const [editApptEndTime, setEditApptEndTime] = useState("");
+  const [editApptDate, setEditApptDate] = useState<Date>(new Date());
 
   // Availability dialog
   const [availDialogOpen, setAvailDialogOpen] = useState(false);

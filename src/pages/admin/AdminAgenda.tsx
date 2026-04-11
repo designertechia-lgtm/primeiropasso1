@@ -54,6 +54,20 @@ const PAYMENT_LABELS: Record<string, string> = {
   paid: "Pago",
 };
 
+const BLOCK_TYPE_COLORS: Record<string, string> = {
+  personal: "#9b87f5",
+  appointment: "#0EA5E9",
+  vacation: "#F97316",
+  other: "#94A3B8",
+};
+
+const BLOCK_TYPE_LABELS: Record<string, string> = {
+  personal: "Pessoal",
+  appointment: "Atendimento",
+  vacation: "Férias / Folga",
+  other: "Outro",
+};
+
 const DAYS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 
 const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
@@ -471,8 +485,8 @@ export default function AdminAgenda() {
         title: block.notes || "Bloqueado",
         start: `${block.appointment_date}T${block.start_time}`,
         end: `${block.appointment_date}T${block.end_time}`,
-        backgroundColor: "hsl(var(--destructive))",
-        borderColor: "hsl(var(--destructive))",
+        backgroundColor: BLOCK_TYPE_COLORS[block.block_type] || BLOCK_TYPE_COLORS.other,
+        borderColor: BLOCK_TYPE_COLORS[block.block_type] || BLOCK_TYPE_COLORS.other,
         textColor: "#fff",
         extendedProps: { type: "block", ...block },
       });
@@ -594,6 +608,7 @@ export default function AdminAgenda() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="personal">Pessoal</SelectItem>
+                  <SelectItem value="appointment">Atendimento</SelectItem>
                   <SelectItem value="vacation">Férias / Folga</SelectItem>
                   <SelectItem value="other">Outro</SelectItem>
                 </SelectContent>
@@ -771,6 +786,9 @@ export default function AdminAgenda() {
                     <Ban className="h-4 w-4 text-destructive" />
                     <span className="font-medium">{selectedEvent.notes || "Bloqueado"}</span>
                   </div>
+                  <Badge style={{ backgroundColor: BLOCK_TYPE_COLORS[selectedEvent.block_type] || BLOCK_TYPE_COLORS.other, color: "#fff", borderColor: BLOCK_TYPE_COLORS[selectedEvent.block_type] || BLOCK_TYPE_COLORS.other }}>
+                    {BLOCK_TYPE_LABELS[selectedEvent.block_type] || "Outro"}
+                  </Badge>
                   <div className="flex items-center gap-2">
                     <CalendarIcon className="h-4 w-4 text-muted-foreground" />
                     <span>{format(new Date(selectedEvent.appointment_date + "T12:00:00"), "dd/MM/yyyy")}</span>
@@ -846,6 +864,7 @@ export default function AdminAgenda() {
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="personal">Pessoal</SelectItem>
+                    <SelectItem value="appointment">Atendimento</SelectItem>
                     <SelectItem value="vacation">Férias / Folga</SelectItem>
                     <SelectItem value="other">Outro</SelectItem>
                   </SelectContent>

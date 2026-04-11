@@ -255,40 +255,7 @@ export default function AdminDocumentos() {
         </p>
       </div>
 
-      {/* Webhook config */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Link className="h-5 w-5" />
-            Webhook n8n
-          </CardTitle>
-          <CardDescription>
-            Configure a URL do webhook para enviar os documentos. Use a URL de teste e depois troque pela de produção.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <Label htmlFor="webhook-url" className="sr-only">URL do Webhook</Label>
-              <Input
-                id="webhook-url"
-                placeholder="https://seu-n8n.app/webhook/..."
-                value={webhookUrl}
-                onChange={(e) => setWebhookUrl(e.target.value)}
-              />
-            </div>
-            <Button
-              onClick={() => saveWebhook.mutate(webhookUrl)}
-              disabled={saveWebhook.isPending}
-            >
-              <Save className="h-4 w-4 mr-1" />
-              Salvar
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Upload area */}
+      {/* Document list - TOP */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">

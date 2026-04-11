@@ -835,22 +835,20 @@ export default function AdminAgenda() {
                         </Button>
                       )}
                     </div>
-                    {selectedEvent.block_type === "atendimento" && (
-                      <div className="flex gap-1">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => quickPaymentChange.mutate({
-                            id: selectedEvent.id,
-                            payment_status: selectedEvent.payment_status === "paid" ? "pending" : "paid",
-                          })}
-                          disabled={quickPaymentChange.isPending}
-                        >
-                          <DollarSign className="h-3 w-3 mr-1" />
-                          {selectedEvent.payment_status === "paid" ? "Marcar Pendente" : "Marcar Pago"}
-                        </Button>
-                      </div>
-                    )}
+                    <div className="flex gap-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => quickPaymentChange.mutate({
+                          id: selectedEvent.id,
+                          payment_status: selectedEvent.payment_status === "paid" ? "pending" : "paid",
+                        })}
+                        disabled={quickPaymentChange.isPending}
+                      >
+                        <DollarSign className="h-3 w-3 mr-1" />
+                        {selectedEvent.payment_status === "paid" ? "Marcar Pendente" : "Marcar Pago"}
+                      </Button>
+                    </div>
                   </div>
 
                   <div className="flex flex-col gap-2">

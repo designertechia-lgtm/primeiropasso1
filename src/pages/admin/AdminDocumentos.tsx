@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfessional } from "@/hooks/useProfessional";
@@ -35,8 +35,11 @@ export default function AdminDocumentos() {
     enabled: !!professional?.id,
   });
 
-  if (settings && !webhookLoaded) { setWebhookUrl(settings.webhook_url || ""); setWebhookLoaded(true); }
-  if (!settings && professional?.id && !webhookLoaded) { setWebhookLoaded(true); }
+  useEffect(() => {
+    if (webhookLoaded) return;
+    if (settings) { setWebhookUrl(settings.webhook_url || ""); setWebhookLoaded(true); }
+    else if (professional?.id) { setWebhookLoaded(true); }
+  }, [settings, professional?.id, webhookLoaded]);
 
   const { data: documents = [] } = useQuery({
     queryKey: ["professional-documents", professional?.id],
@@ -74,10 +77,11 @@ export default function AdminDocumentos() {
     const currentUrl = webhookUrl || settings?.webhook_url;
     if (!currentUrl) return;
     try {
-      await fetch(currentUrl, {
+      const response = await fetch(currentUrl, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file_url: fileUrl, file_name: fileName, professional_id: professional!.id, document_id: docId }),
+        body: JSON.stringify({ file_url: fileUrl, file_name: fileName, professional_id: professional!.id, document_id: docId, rag_status: "pending" }),
       });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       await supabase.from("professional_documents").update({ webhook_status: "sent" }).eq("id", docId);
     } catch {
       await supabase.from("professional_documents").update({ webhook_status: "error" }).eq("id", docId);
@@ -122,11 +126,11 @@ export default function AdminDocumentos() {
     onError: () => { toast({ title: "Erro ao excluir", variant: "destructive" }); },
   });
 
-  const onDrop = useCallback((e: React.DragEvent) => {
+  const onDrop = (e: React.DragEvent) => {
     e.preventDefault(); setDragOver(false);
     const file = e.dataTransfer.files[0];
     if (file) handleUpload(file);
-  }, [professional, webhookUrl, settings]);
+  };
 
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
@@ -210,7 +214,7 @@ export default function AdminDocumentos() {
                     <span className="text-xs text-muted-foreground">Webhook:</span>
                     {webhookBadge(doc.webhook_status)}
                     <span className="text-xs text-muted-foreground ml-2">RAG:</span>
-                    {ragBadge((doc as any).rag_status || "pending")}
+                    {ragBadge(doc.rag_status)}
                   </div>
                 </div>
               ))}

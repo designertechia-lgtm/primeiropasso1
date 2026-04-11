@@ -74,23 +74,32 @@ export default function AdminAgendamentos() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("appointments")
-        .select(`
-          *,
-          professional_services(name, duration_minutes, price)
-        `)
+        .select("*")
         .eq("professional_id", professional!.id)
         .eq("appointment_type", "booking")
         .order("appointment_date", { ascending: false });
       if (error) throw error;
 
-      const patientIds = [...new Set(data.map((a) => a.patient_id))];
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("user_id, full_name, phone")
-        .in("user_id", patientIds);
+      const patientIds = [...new Set(data.filter((a) => a.patient_id).map((a) => a.patient_id!))];
+      const serviceIds = [...new Set(data.filter((a) => a.service_id).map((a) => a.service_id!))];
 
-      const profileMap = new Map(profiles?.map((p) => [p.user_id, p]) ?? []);
-      return data.map((a) => ({ ...a, patient: profileMap.get(a.patient_id) }));
+      const [profilesRes, servicesRes] = await Promise.all([
+        patientIds.length > 0
+          ? supabase.from("profiles").select("user_id, full_name, phone").in("user_id", patientIds)
+          : Promise.resolve({ data: [] }),
+        serviceIds.length > 0
+          ? supabase.from("professional_services").select("id, name, description, duration_minutes, price").in("id", serviceIds)
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      const profileMap = new Map((profilesRes.data ?? []).map((p) => [p.user_id, p] as const));
+      const serviceMap = new Map((servicesRes.data ?? []).map((s) => [s.id, s] as const));
+
+      return data.map((a) => ({
+        ...a,
+        patient: profileMap.get(a.patient_id),
+        service: serviceMap.get(a.service_id),
+      }));
     },
     enabled: !!professional?.id,
   });
@@ -204,10 +213,10 @@ export default function AdminAgendamentos() {
                         {appt.start_time.slice(0, 5)} – {appt.end_time.slice(0, 5)}
                       </TableCell>
                       <TableCell>
-                        {(appt as any).patient?.full_name || "Paciente"}
+                        {(appt as any).patient?.full_name || "Sem paciente"}
                       </TableCell>
                       <TableCell>
-                        {(appt as any).professional_services?.name || "—"}
+                        {(appt as any).service?.name || appt.notes || "—"}
                       </TableCell>
                       <TableCell>
                         <Badge style={{ backgroundColor: getStatusColor(appt.status), color: "#fff", borderColor: getStatusColor(appt.status) }}>

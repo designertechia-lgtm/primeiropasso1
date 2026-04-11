@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
-import { Plus, Trash2, CalendarIcon, Ban, Repeat } from "lucide-react";
+import { Plus, Trash2, CalendarIcon, Lock, Repeat } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -295,7 +295,7 @@ export default function AdminDisponibilidade() {
             <Card key={group.groupId}>
               <CardContent className="flex items-center justify-between py-4 px-5 gap-4 flex-wrap">
                 <div className="flex items-center gap-3 min-w-0">
-                  <Ban className="h-5 w-5 text-destructive shrink-0" />
+                  <Lock className="h-5 w-5 text-muted-foreground shrink-0" />
                   <div className="min-w-0">
                     <p className="font-medium truncate">{group.title}</p>
                     <p className="text-sm text-muted-foreground">

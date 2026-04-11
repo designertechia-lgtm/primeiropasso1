@@ -787,13 +787,19 @@ export default function AdminAgenda() {
                     <CalendarIcon className="h-4 w-4 text-primary" />
                     <span className="font-medium">{selectedEvent.notes || "Agendamento"}</span>
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap">
+                   <div className="flex items-center gap-2 flex-wrap">
                     <Badge style={{ backgroundColor: getStatusColor(selectedEvent.status || "pending"), color: "#fff", borderColor: getStatusColor(selectedEvent.status || "pending") }}>
                       {STATUS_LABELS[selectedEvent.status] || selectedEvent.status || "Pendente"}
                     </Badge>
                     <Badge style={{ backgroundColor: BLOCK_TYPE_COLORS[selectedEvent.block_type] || BLOCK_TYPE_COLORS.other, color: "#fff", borderColor: BLOCK_TYPE_COLORS[selectedEvent.block_type] || BLOCK_TYPE_COLORS.other }}>
                       {BLOCK_TYPE_LABELS[selectedEvent.block_type] || "Outro"}
                     </Badge>
+                    {selectedEvent.block_type === "atendimento" && (
+                      <Badge style={{ backgroundColor: getPaymentColor(selectedEvent.payment_status || "pending"), color: "#fff", borderColor: getPaymentColor(selectedEvent.payment_status || "pending") }}>
+                        <DollarSign className="h-3 w-3 mr-1" />
+                        {PAYMENT_LABELS[selectedEvent.payment_status || "pending"]}
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <CalendarIcon className="h-4 w-4 text-muted-foreground" />
@@ -808,6 +814,11 @@ export default function AdminAgenda() {
                   <div className="border-t pt-3 space-y-2">
                     <Label className="text-xs text-muted-foreground">Alterar status:</Label>
                     <div className="flex gap-1 flex-wrap">
+                      {selectedEvent.status !== "pending" && (
+                        <Button size="sm" variant="outline" onClick={() => quickStatusChange.mutate({ id: selectedEvent.id, status: "pending" })} disabled={quickStatusChange.isPending}>
+                          <Clock className="h-3 w-3 mr-1" /> Pendente
+                        </Button>
+                      )}
                       {selectedEvent.status !== "confirmed" && (
                         <Button size="sm" variant="outline" onClick={() => quickStatusChange.mutate({ id: selectedEvent.id, status: "confirmed" })} disabled={quickStatusChange.isPending}>
                           <CheckCircle className="h-3 w-3 mr-1" /> Confirmar
@@ -824,6 +835,22 @@ export default function AdminAgenda() {
                         </Button>
                       )}
                     </div>
+                    {selectedEvent.block_type === "atendimento" && (
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => quickPaymentChange.mutate({
+                            id: selectedEvent.id,
+                            payment_status: selectedEvent.payment_status === "paid" ? "pending" : "paid",
+                          })}
+                          disabled={quickPaymentChange.isPending}
+                        >
+                          <DollarSign className="h-3 w-3 mr-1" />
+                          {selectedEvent.payment_status === "paid" ? "Marcar Pendente" : "Marcar Pago"}
+                        </Button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex flex-col gap-2">

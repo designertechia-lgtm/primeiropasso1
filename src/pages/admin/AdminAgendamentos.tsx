@@ -16,6 +16,12 @@ import { toast } from "sonner";
 import { CheckCircle, Clock, XCircle, DollarSign, Calendar } from "lucide-react";
 import { useState, useCallback } from "react";
 
+const BLOCK_TYPE_LABELS: Record<string, string> = {
+  personal: "Pessoal",
+  appointment: "Atendimento",
+  other: "Outro",
+};
+
 type AppointmentStatus = "pending" | "confirmed" | "cancelled" | "completed";
 type PaymentStatus = "pending" | "paid";
 
@@ -76,7 +82,7 @@ export default function AdminAgendamentos() {
         .from("appointments")
         .select("*")
         .eq("professional_id", professional!.id)
-        .eq("appointment_type", "booking")
+        
         .order("appointment_date", { ascending: false });
       if (error) throw error;
 
@@ -196,7 +202,7 @@ export default function AdminAgendamentos() {
                   <TableRow>
                     <TableHead>Data</TableHead>
                     <TableHead>Horário</TableHead>
-                    <TableHead>Paciente</TableHead>
+                    <TableHead>Tipo</TableHead>
                     <TableHead>Serviço</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Pagamento</TableHead>
@@ -213,7 +219,9 @@ export default function AdminAgendamentos() {
                         {appt.start_time.slice(0, 5)} – {appt.end_time.slice(0, 5)}
                       </TableCell>
                       <TableCell>
-                        {(appt as any).patient?.full_name || "Sem paciente"}
+                        {appt.appointment_type === "block"
+                          ? BLOCK_TYPE_LABELS[appt.block_type || "other"] || appt.block_type || "Bloqueio"
+                          : (appt as any).patient?.full_name || "Sem paciente"}
                       </TableCell>
                       <TableCell>
                         {(appt as any).service?.name || appt.notes || "—"}

@@ -201,7 +201,12 @@ export default function AdminDocumentos() {
                           <RefreshCw className="h-3.5 w-3.5" />
                         </Button>
                       )}
-                      <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setDeleteTarget({ id: doc.id, file_url: doc.file_url, id_vector: doc.id_vector })}>>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => setDeleteTarget({ id: doc.id, file_url: doc.file_url, id_vector: doc.id_vector })}
+                      >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>

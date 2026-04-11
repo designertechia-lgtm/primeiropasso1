@@ -142,6 +142,7 @@ export default function AdminAgenda() {
   const [editApptStartTime, setEditApptStartTime] = useState("");
   const [editApptEndTime, setEditApptEndTime] = useState("");
   const [editApptDate, setEditApptDate] = useState<Date>(new Date());
+  const [editApptPaymentStatus, setEditApptPaymentStatus] = useState("pending");
 
   // Availability dialog
   const [availDialogOpen, setAvailDialogOpen] = useState(false);

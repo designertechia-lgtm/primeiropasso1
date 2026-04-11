@@ -341,6 +341,7 @@ export default function AdminAgenda() {
         .from("appointments")
         .update({
           status: editApptStatus as any,
+          payment_status: editApptPaymentStatus as any,
           notes: editApptNotes || null,
           start_time: editApptStartTime,
           end_time: editApptEndTime,

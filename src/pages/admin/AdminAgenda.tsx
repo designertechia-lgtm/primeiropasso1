@@ -712,8 +712,53 @@ export default function AdminAgenda() {
                   {selectedEvent.professional_services?.name && (
                     <div className="text-sm text-muted-foreground">Serviço: {selectedEvent.professional_services.name}</div>
                   )}
-                  <Badge variant="outline">{STATUS_LABELS[selectedEvent.status] || selectedEvent.status}</Badge>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge style={{ backgroundColor: getStatusColor(selectedEvent.status), color: "#fff", borderColor: getStatusColor(selectedEvent.status) }}>
+                      {STATUS_LABELS[selectedEvent.status] || selectedEvent.status}
+                    </Badge>
+                    <Badge style={{ backgroundColor: getPaymentColor(selectedEvent.payment_status || "pending"), color: "#fff", borderColor: getPaymentColor(selectedEvent.payment_status || "pending") }}>
+                      <DollarSign className="h-3 w-3 mr-1" />
+                      {PAYMENT_LABELS[selectedEvent.payment_status || "pending"]}
+                    </Badge>
+                  </div>
                   {selectedEvent.notes && <p className="text-sm text-muted-foreground border-t pt-2">{selectedEvent.notes}</p>}
+
+                  {/* Quick status buttons */}
+                  <div className="border-t pt-3 space-y-2">
+                    <Label className="text-xs text-muted-foreground">Alterar status:</Label>
+                    <div className="flex gap-1 flex-wrap">
+                      {selectedEvent.status !== "confirmed" && (
+                        <Button size="sm" variant="outline" onClick={() => quickStatusChange.mutate({ id: selectedEvent.id, status: "confirmed" })} disabled={quickStatusChange.isPending}>
+                          <CheckCircle className="h-3 w-3 mr-1" /> Confirmar
+                        </Button>
+                      )}
+                      {selectedEvent.status !== "completed" && (
+                        <Button size="sm" variant="outline" onClick={() => quickStatusChange.mutate({ id: selectedEvent.id, status: "completed" })} disabled={quickStatusChange.isPending}>
+                          <CheckCircle className="h-3 w-3 mr-1" /> Concluir
+                        </Button>
+                      )}
+                      {selectedEvent.status !== "cancelled" && (
+                        <Button size="sm" variant="outline" className="text-destructive" onClick={() => quickStatusChange.mutate({ id: selectedEvent.id, status: "cancelled" })} disabled={quickStatusChange.isPending}>
+                          <XCircle className="h-3 w-3 mr-1" /> Cancelar
+                        </Button>
+                      )}
+                    </div>
+                    <div className="flex gap-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => quickPaymentChange.mutate({
+                          id: selectedEvent.id,
+                          payment_status: selectedEvent.payment_status === "paid" ? "pending" : "paid",
+                        })}
+                        disabled={quickPaymentChange.isPending}
+                      >
+                        <DollarSign className="h-3 w-3 mr-1" />
+                        {selectedEvent.payment_status === "paid" ? "Marcar Pendente" : "Marcar Pago"}
+                      </Button>
+                    </div>
+                  </div>
+
                   <Button variant="outline" size="sm" onClick={enterEditMode} className="w-full">
                     <Pencil className="h-4 w-4 mr-1" /> Editar agendamento
                   </Button>

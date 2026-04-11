@@ -384,6 +384,7 @@ export default function AdminAgenda() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
+      queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
       toast.success("Status atualizado!");
       setDetailDialogOpen(false);
     },

@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
+import { DEMO_PROFESSIONAL } from "@/data/demoProfessional";
 
 interface HeroSectionProps {
   title?: string;
@@ -13,7 +14,11 @@ interface HeroSectionProps {
 }
 
 export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroImageUrl, slug, professionalName, crp }: HeroSectionProps) {
-  const displayImage = heroImageUrl || photoUrl;
+  const displayImage = heroImageUrl || photoUrl || DEMO_PROFESSIONAL.hero_image_url || DEMO_PROFESSIONAL.photo_url;
+  const displayName = professionalName && professionalName !== "Profissional" ? professionalName : DEMO_PROFESSIONAL.full_name;
+  const displayCrp = crp || DEMO_PROFESSIONAL.crp;
+  const displayTitle = title || DEMO_PROFESSIONAL.hero_title;
+  const displaySubtitle = subtitle || DEMO_PROFESSIONAL.hero_subtitle;
   const whatsappLink = whatsapp
     ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=Olá! Gostaria de agendar uma consulta.`
     : "#";

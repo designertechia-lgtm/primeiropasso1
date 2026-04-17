@@ -13,6 +13,17 @@ import { toast } from "sonner";
 import { X } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 
+const DRAFT_KEY = "admin-perfil-draft";
+
+function loadDraft() {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function AdminPerfil() {
   const { user, profile } = useAuth();
   const { data: professional, isLoading } = useProfessional();
@@ -32,8 +43,52 @@ export default function AdminPerfil() {
   const [priceMax, setPriceMax] = useState("");
   const [priceFirstSession, setPriceFirstSession] = useState("");
   const [saving, setSaving] = useState(false);
+  const [hasDraft, setHasDraft] = useState(false);
 
   useEffect(() => {
+    if (!professional) return;
+    const draft = loadDraft();
+    if (draft) {
+      setFullName(draft.fullName ?? "");
+      setBio(draft.bio ?? "");
+      setCrp(draft.crp ?? "");
+      setHeroTitle(draft.heroTitle ?? "");
+      setHeroSubtitle(draft.heroSubtitle ?? "");
+      setApproaches(draft.approaches ?? []);
+      setPhotoUrl(draft.photoUrl ?? "");
+      setHeroImageUrl(draft.heroImageUrl ?? "");
+      setAboutImageUrl(draft.aboutImageUrl ?? "");
+      setPriceMin(draft.priceMin ?? "");
+      setPriceMax(draft.priceMax ?? "");
+      setPriceFirstSession(draft.priceFirstSession ?? "");
+      setHasDraft(true);
+    } else {
+      setFullName((professional as any).full_name || profile?.full_name || "");
+      setBio(professional.bio || "");
+      setCrp(professional.crp || "");
+      setHeroTitle(professional.hero_title || "");
+      setHeroSubtitle(professional.hero_subtitle || "");
+      setApproaches(professional.approaches || []);
+      setPhotoUrl(professional.photo_url || "");
+      setHeroImageUrl((professional as any).hero_image_url || "");
+      setAboutImageUrl((professional as any).about_image_url || "");
+      setPriceMin((professional as any).price_min?.toString() || "");
+      setPriceMax((professional as any).price_max?.toString() || "");
+      setPriceFirstSession((professional as any).price_first_session?.toString() || "");
+    }
+  }, [professional]);
+
+  useEffect(() => {
+    if (!professional) return;
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({
+      fullName, bio, crp, heroTitle, heroSubtitle, approaches,
+      photoUrl, heroImageUrl, aboutImageUrl, priceMin, priceMax, priceFirstSession,
+    }));
+  }, [fullName, bio, crp, heroTitle, heroSubtitle, approaches, photoUrl, heroImageUrl, aboutImageUrl, priceMin, priceMax, priceFirstSession]);
+
+  const discardDraft = () => {
+    localStorage.removeItem(DRAFT_KEY);
+    setHasDraft(false);
     if (professional) {
       setFullName((professional as any).full_name || profile?.full_name || "");
       setBio(professional.bio || "");
@@ -48,7 +103,7 @@ export default function AdminPerfil() {
       setPriceMax((professional as any).price_max?.toString() || "");
       setPriceFirstSession((professional as any).price_first_session?.toString() || "");
     }
-  }, [profile, professional]);
+  };
 
   const addApproach = () => {
     const trimmed = newApproach.trim();
@@ -89,6 +144,8 @@ export default function AdminPerfil() {
     if (profileRes.error || profRes.error) {
       toast.error("Erro ao salvar");
     } else {
+      localStorage.removeItem(DRAFT_KEY);
+      setHasDraft(false);
       toast.success("Perfil atualizado!");
       queryClient.invalidateQueries({ queryKey: ["my-professional"] });
     }
@@ -99,6 +156,13 @@ export default function AdminPerfil() {
   return (
     <div className="space-y-6 max-w-2xl">
       <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">Meu Perfil</h1>
+
+      {hasDraft && (
+        <div className="flex items-center justify-between rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-2 text-sm text-yellow-800">
+          <span>Você tem alterações não salvas.</span>
+          <button onClick={discardDraft} className="underline hover:no-underline ml-4">Descartar</button>
+        </div>
+      )}
 
       <Card>
         <CardHeader>

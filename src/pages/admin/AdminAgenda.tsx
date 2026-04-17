@@ -24,7 +24,8 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, X, User, Ban, Clock, CalendarIcon, Settings2, Pencil, CheckCircle, DollarSign, XCircle } from "lucide-react";
+import { Plus, X, User, Clock, CalendarIcon, Settings2, Pencil, CheckCircle, DollarSign, XCircle, CalendarDays } from "lucide-react";
+import { fetchIcal } from "@/lib/ical";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { generateRecurrenceDates, type RecurrenceType } from "@/lib/recurrence";
@@ -161,6 +162,43 @@ export default function AdminAgenda() {
   // Availability dialog
   const [availDialogOpen, setAvailDialogOpen] = useState(false);
   const [savingAvail, setSavingAvail] = useState(false);
+
+  // Google Calendar import
+  const [icalDialogOpen, setIcalDialogOpen] = useState(false);
+  const [icalUrl, setIcalUrl] = useState(() => localStorage.getItem("ical-url") || "");
+  const [syncing, setSyncing] = useState(false);
+
+  const handleIcalSync = async () => {
+    if (!professional || !icalUrl.trim()) return;
+    setSyncing(true);
+    try {
+      localStorage.setItem("ical-url", icalUrl);
+      const events = await fetchIcal(icalUrl);
+      if (events.length === 0) { toast.info("Nenhum evento encontrado."); return; }
+      const recurrenceGroup = crypto.randomUUID();
+      const records = events.map((ev) => ({
+        professional_id: professional.id,
+        appointment_date: format(ev.dtstart, "yyyy-MM-dd"),
+        start_time: ev.allDay ? "00:00" : format(ev.dtstart, "HH:mm"),
+        end_time: ev.allDay ? "23:59" : format(ev.dtend, "HH:mm"),
+        notes: ev.summary,
+        block_type: "other",
+        appointment_type: "block" as const,
+        status: "confirmed" as const,
+        patient_id: null,
+        recurrence_group: recurrenceGroup,
+      }));
+      const { error } = await supabase.from("appointments").insert(records);
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
+      toast.success(`${events.length} evento(s) importado(s) do Google Agenda!`);
+      setIcalDialogOpen(false);
+    } catch (e: any) {
+      toast.error("Erro ao importar", { description: e.message });
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   // Fetch availability
   const { data: availability = [] } = useQuery({
@@ -543,7 +581,10 @@ export default function AdminAgenda() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold">Agenda</h1>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" size="sm" onClick={() => setIcalDialogOpen(true)}>
+            <CalendarDays className="h-4 w-4 mr-1" /> Google Agenda
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setAvailDialogOpen(true)}>
             <Settings2 className="h-4 w-4 mr-1" /> Horários de Atendimento
           </Button>
@@ -998,6 +1039,39 @@ export default function AdminAgenda() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Google Calendar Import Dialog */}
+      <Dialog open={icalDialogOpen} onOpenChange={setIcalDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarDays className="h-5 w-5" /> Importar Google Agenda
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Cole o link iCal público do seu Google Agenda para importar eventos como bloqueios.{" "}
+              <a href="https://support.google.com/calendar/answer/37648" target="_blank" rel="noopener noreferrer" className="underline">Como obter o link?</a>
+            </p>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Link iCal (webcal:// ou https://)</label>
+              <input
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={icalUrl}
+                onChange={(e) => setIcalUrl(e.target.value)}
+                placeholder="https://calendar.google.com/calendar/ical/..."
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">Os eventos serão criados como bloqueios. O calendário precisa ser público no Google.</p>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setIcalDialogOpen(false)} className="flex-1">Cancelar</Button>
+              <Button onClick={handleIcalSync} disabled={syncing || !icalUrl.trim()} className="flex-1">
+                {syncing ? "Importando..." : "Importar eventos"}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

@@ -60,7 +60,7 @@ export default function AdminArtigos() {
   const handleSave = async () => {
     if (!professional || !form.title) return;
     setSaving(true);
-    const slug = form.slug || generateSlug(form.title);
+    const slug = (form.slug || generateSlug(form.title)) || crypto.randomUUID().slice(0, 8);
     const payload = {
       professional_id: professional.id,
       title: form.title,

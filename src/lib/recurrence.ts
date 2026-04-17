@@ -10,9 +10,10 @@ export function generateRecurrenceDates(
   const dates: string[] = [];
   let current = new Date(startDate);
 
-  const increment = type === "diario" ? 1 : type === "semanal" ? 7 : type === "quinzenal" ? 14 : 0;
+  if (type === "selecionavel") return [];
+  if (type === "unico") return [format(startDate, "yyyy-MM-dd")];
 
-  if (increment === 0) return [format(startDate, "yyyy-MM-dd")];
+  const increment = type === "diario" ? 1 : type === "semanal" ? 7 : 14;
 
   while (isBefore(current, endDate) || isEqual(current, endDate)) {
     dates.push(format(current, "yyyy-MM-dd"));

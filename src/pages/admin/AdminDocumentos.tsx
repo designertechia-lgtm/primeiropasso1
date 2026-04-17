@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { FileUp, Trash2, RefreshCw, Save, Upload, FileText, Link, Copy, Check } from "lucide-react";
 
 export default function AdminDocumentos() {
@@ -69,8 +69,8 @@ export default function AdminDocumentos() {
         if (error) throw error;
       }
     },
-    onSuccess: () => { toast({ title: "Webhook salvo com sucesso!" }); queryClient.invalidateQueries({ queryKey: ["professional-settings"] }); },
-    onError: () => { toast({ title: "Erro ao salvar webhook", variant: "destructive" }); },
+    onSuccess: () => { toast.success("Webhook salvo com sucesso!"); queryClient.invalidateQueries({ queryKey: ["professional-settings"] }); },
+    onError: () => { toast.error("Erro ao salvar webhook"); },
   });
 
   const sendWebhook = async (fileUrl: string, fileName: string, docId: string) => {
@@ -91,8 +91,8 @@ export default function AdminDocumentos() {
 
   const handleUpload = async (file: File) => {
     if (!professional?.id) return;
-    if (file.type !== "application/pdf") { toast({ title: "Apenas arquivos PDF são aceitos", variant: "destructive" }); return; }
-    if (file.size > 20 * 1024 * 1024) { toast({ title: "Arquivo deve ter no máximo 20MB", variant: "destructive" }); return; }
+    if (file.type !== "application/pdf") { toast.error("Apenas arquivos PDF são aceitos"); return; }
+    if (file.size > 20 * 1024 * 1024) { toast.error("Arquivo deve ter no máximo 20MB"); return; }
     setUploading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -105,12 +105,12 @@ export default function AdminDocumentos() {
         .insert({ professional_id: professional.id, file_name: file.name, file_url: publicUrl, file_size: file.size, webhook_status: "pending" })
         .select().single();
       if (insertError) throw insertError;
-      toast({ title: "PDF enviado com sucesso!" });
+      toast.success("PDF enviado com sucesso!");
       queryClient.invalidateQueries({ queryKey: ["professional-documents"] });
       const currentUrl = webhookUrl || settings?.webhook_url;
       if (currentUrl && doc) { await sendWebhook(publicUrl, file.name, doc.id); }
     } catch (err: any) {
-      toast({ title: "Erro no upload", description: err.message, variant: "destructive" });
+      toast.error("Erro no upload", { description: err.message });
     } finally { setUploading(false); }
   };
 
@@ -128,8 +128,8 @@ export default function AdminDocumentos() {
       const { error } = await supabase.from("professional_documents").delete().eq("id", doc.id);
       if (error) throw error;
     },
-    onSuccess: () => { toast({ title: "Documento excluído" }); setDeleteTarget(null); queryClient.invalidateQueries({ queryKey: ["professional-documents"] }); },
-    onError: () => { toast({ title: "Erro ao excluir", variant: "destructive" }); },
+    onSuccess: () => { toast.success("Documento excluído"); setDeleteTarget(null); queryClient.invalidateQueries({ queryKey: ["professional-documents"] }); },
+    onError: () => { toast.error("Erro ao excluir"); },
   });
 
   const onDrop = (e: React.DragEvent) => {
@@ -148,7 +148,7 @@ export default function AdminDocumentos() {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
-    toast({ title: "Link copiado!" });
+    toast.success("Link copiado!");
   };
 
   const webhookBadge = (status: string) => {
@@ -213,7 +213,7 @@ export default function AdminDocumentos() {
                   </div>
                   <div className="text-xs text-muted-foreground space-y-1 pl-7">
                     <p>{formatSize(doc.file_size)} • {new Date(doc.created_at).toLocaleDateString("pt-BR")}</p>
-                    <p className="font-mono text-[11px]"><p className="font-mono text-[11px]">ID: {doc.id}{doc.id_vector ? ` • Vetor: #${doc.id_vector}` : ""}</p></p>
+                    <p className="font-mono text-[11px]">ID: {doc.id}{doc.id_vector ? ` • Vetor: #${doc.id_vector}` : ""}</p>
                     <div className="flex items-center gap-1">
                       <span className="truncate max-w-[400px] font-mono text-[11px]">{doc.file_url}</span>
                       <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => copyToClipboard(doc.file_url, doc.id)} title="Copiar link">

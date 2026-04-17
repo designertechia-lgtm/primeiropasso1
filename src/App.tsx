@@ -28,6 +28,7 @@ import PatientBuscar from "./pages/paciente/PatientBuscar.tsx";
 import PatientAgendamentos from "./pages/paciente/PatientAgendamentos.tsx";
 import PatientAgendar from "./pages/paciente/PatientAgendar.tsx";
 import PatientPerfil from "./pages/paciente/PatientPerfil.tsx";
+import FaviconUpdater from "./components/FaviconUpdater.tsx";
 
 const queryClient = new QueryClient();
 
@@ -46,6 +47,7 @@ const PatientRoute = ({ children }: { children: React.ReactNode }) => (
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
+      <FaviconUpdater />
       <Toaster />
       <Sonner />
       <BrowserRouter>

@@ -16,6 +16,8 @@ import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { generateRecurrenceDates, type RecurrenceType } from "@/lib/recurrence";
 import { FieldHint } from "@/components/ui/FieldHint";
+import { fetchIcal } from "@/lib/ical";
+import { CalendarDays } from "lucide-react";
 
 const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   unico: "Único",
@@ -36,6 +38,44 @@ export default function AdminDisponibilidade() {
   const queryClient = useQueryClient();
 
   // Form state
+  const [icalUrl, setIcalUrl] = useState(() => localStorage.getItem("ical-url") || "");
+  const [syncing, setSyncing] = useState(false);
+
+  const handleIcalSync = async () => {
+    if (!professional || !icalUrl.trim()) return;
+    setSyncing(true);
+    try {
+      localStorage.setItem("ical-url", icalUrl);
+      const events = await fetchIcal(icalUrl);
+      if (events.length === 0) {
+        toast.info("Nenhum evento encontrado no calendário.");
+        return;
+      }
+      const recurrenceGroup = crypto.randomUUID();
+      const records = events.map((ev) => ({
+        professional_id: professional.id,
+        appointment_date: format(ev.dtstart, "yyyy-MM-dd"),
+        start_time: ev.allDay ? "00:00" : format(ev.dtstart, "HH:mm"),
+        end_time: ev.allDay ? "23:59" : format(ev.dtend, "HH:mm"),
+        notes: ev.summary,
+        block_type: "other",
+        appointment_type: "block" as const,
+        status: "confirmed" as const,
+        patient_id: null,
+        recurrence_group: recurrenceGroup,
+      }));
+      const { error } = await supabase.from("appointments").insert(records);
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["admin-block-groups"] });
+      queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
+      toast.success(`${events.length} evento(s) importado(s) do Google Agenda!`);
+    } catch (e: any) {
+      toast.error("Erro ao importar", { description: e.message });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const [blockTitle, setBlockTitle] = useState("Compromisso pessoal");
   const [blockStartTime, setBlockStartTime] = useState("08:00");
   const [blockEndTime, setBlockEndTime] = useState("17:00");
@@ -158,6 +198,46 @@ export default function AdminDisponibilidade() {
     <div className="space-y-6 max-w-3xl">
       <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">Bloqueios de Horário</h1>
       <p className="text-muted-foreground">Crie bloqueios recorrentes ou pontuais para impedir agendamentos.</p>
+
+      {/* Google Calendar Import */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <CalendarDays className="h-5 w-5" /> Importar do Google Agenda
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Cole o link iCal público do seu Google Agenda para importar eventos como bloqueios.{" "}
+            <a
+              href="https://support.google.com/calendar/answer/37648"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:no-underline"
+            >
+              Como obter o link?
+            </a>
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <Label>
+              Link iCal (webcal:// ou https://)
+              <FieldHint text="No Google Agenda: Configurações → selecione o calendário → 'Endereço secreto no formato iCal'. Torne o calendário público antes." />
+            </Label>
+            <Input
+              value={icalUrl}
+              onChange={(e) => setIcalUrl(e.target.value)}
+              placeholder="https://calendar.google.com/calendar/ical/..."
+              className="mt-1 font-mono text-xs"
+            />
+          </div>
+          <Button onClick={handleIcalSync} disabled={syncing || !icalUrl.trim()} variant="outline" className="w-full">
+            {syncing ? "Importando..." : "Importar eventos como bloqueios"}
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            Os eventos serão criados como bloqueios de horário. Você pode excluí-los individualmente depois.
+          </p>
+        </CardContent>
+      </Card>
 
       {/* Create Block Form */}
       <Card>

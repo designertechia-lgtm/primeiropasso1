@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { X } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
+import { FieldHint } from "@/components/ui/FieldHint";
 
 const DRAFT_KEY = "admin-perfil-draft";
 
@@ -170,7 +171,7 @@ export default function AdminPerfil() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Foto de perfil</Label>
+            <Label>Foto de perfil <FieldHint text="Sua foto principal exibida no topo da sua página e na seção Sobre." /></Label>
             <ImageUpload
               currentUrl={photoUrl || null}
               onUploaded={(url) => setPhotoUrl(url)}
@@ -179,11 +180,11 @@ export default function AdminPerfil() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="fullName">Nome completo</Label>
+            <Label htmlFor="fullName">Nome completo <FieldHint text="Seu nome como será exibido para os pacientes na sua página pública." /></Label>
             <Input id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="crp">CRP</Label>
+            <Label htmlFor="crp">CRP <FieldHint text="Número do seu registro no Conselho Regional de Psicologia. Ex: CRP 06/12345." /></Label>
             <Input id="crp" placeholder="CRP 00/00000" value={crp} onChange={(e) => setCrp(e.target.value)} />
           </div>
         </CardContent>
@@ -195,11 +196,11 @@ export default function AdminPerfil() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="bio">Sobre mim</Label>
+            <Label htmlFor="bio">Sobre mim <FieldHint text="Conte sua história, formação e experiência. Esse texto aparece na seção 'Sobre' da sua página pública." /></Label>
             <Textarea id="bio" rows={5} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Conte sobre sua formação e experiência..." />
           </div>
           <div className="space-y-2">
-            <Label>Imagem da seção Sobre</Label>
+            <Label>Imagem da seção Sobre <FieldHint text="Foto exibida na seção 'Sobre'. Se não definida, usa sua foto de perfil." /></Label>
             <p className="text-xs text-muted-foreground">Imagem exibida na seção "Sobre" da sua página. Se não definida, usa a foto de perfil.</p>
             <ImageUpload
               currentUrl={aboutImageUrl || null}
@@ -245,16 +246,16 @@ export default function AdminPerfil() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="priceMin">Valor mínimo (R$)</Label>
+              <Label htmlFor="priceMin">Valor mínimo (R$) <FieldHint text="Menor valor cobrado por consulta. Exibido como faixa de preço na sua página." /></Label>
               <Input id="priceMin" type="number" min="0" step="0.01" placeholder="Ex: 150" value={priceMin} onChange={(e) => setPriceMin(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="priceMax">Valor máximo (R$)</Label>
+              <Label htmlFor="priceMax">Valor máximo (R$) <FieldHint text="Maior valor cobrado por consulta." /></Label>
               <Input id="priceMax" type="number" min="0" step="0.01" placeholder="Ex: 300" value={priceMax} onChange={(e) => setPriceMax(e.target.value)} />
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="priceFirstSession">Valor primeira consulta - Promocional (R$)</Label>
+            <Label htmlFor="priceFirstSession">Valor primeira consulta - Promocional (R$) <FieldHint text="Valor especial para a primeira consulta. Aparece com destaque na sua página para atrair novos pacientes." /></Label>
             <Input id="priceFirstSession" type="number" min="0" step="0.01" placeholder="Ex: 100" value={priceFirstSession} onChange={(e) => setPriceFirstSession(e.target.value)} />
           </div>
           <p className="text-xs text-muted-foreground">Faixa de valores e promoção exibidos na sua página profissional.</p>
@@ -267,7 +268,7 @@ export default function AdminPerfil() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Imagem do Hero</Label>
+            <Label>Imagem do Hero <FieldHint text="Foto de destaque no topo da sua página. Recomendado: 1200×800px. Se não definida, usa sua foto de perfil." /></Label>
             <p className="text-xs text-muted-foreground">Imagem exibida no topo da sua página. Se não definida, usa a foto de perfil.</p>
             <ImageUpload
               currentUrl={heroImageUrl || null}
@@ -277,11 +278,11 @@ export default function AdminPerfil() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="heroTitle">Título principal</Label>
+            <Label htmlFor="heroTitle">Título principal <FieldHint text="Frase de impacto no topo da sua página. Ex: 'Seu caminho para o equilíbrio começa aqui.'" /></Label>
             <Input id="heroTitle" value={heroTitle} onChange={(e) => setHeroTitle(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="heroSubtitle">Subtítulo</Label>
+            <Label htmlFor="heroSubtitle">Subtítulo <FieldHint text="Texto complementar abaixo do título. Ex: 'Psicóloga especialista em ansiedade e relacionamentos.'" /></Label>
             <Input id="heroSubtitle" value={heroSubtitle} onChange={(e) => setHeroSubtitle(e.target.value)} />
           </div>
         </CardContent>

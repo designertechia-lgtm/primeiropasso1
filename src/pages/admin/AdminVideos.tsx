@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Upload, Film } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
+import { FieldHint } from "@/components/ui/FieldHint";
 
 interface VideoForm {
   id?: string;
@@ -107,11 +108,11 @@ export default function AdminVideos() {
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Título</Label>
+                <Label>Título <FieldHint text="Nome do vídeo exibido na sua página pública." /></Label>
                 <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
               </div>
               <div className="space-y-2">
-                <Label>Vídeo</Label>
+                <Label>Vídeo <FieldHint text="Faça upload de um arquivo da galeria (até 100MB) ou cole um link do YouTube." /></Label>
                 <div className="space-y-3">
                   {form.embed_url && (
                     <div className="text-sm text-muted-foreground truncate border rounded-md px-3 py-2 bg-muted/30">
@@ -169,7 +170,7 @@ export default function AdminVideos() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Thumbnail / Capa</Label>
+                <Label>Thumbnail / Capa <FieldHint text="Imagem de capa exibida antes do vídeo ser reproduzido na sua página." /></Label>
                 <ImageUpload
                   currentUrl={form.thumbnail_url || null}
                   onUploaded={(url) => setForm({ ...form, thumbnail_url: url })}
@@ -177,12 +178,12 @@ export default function AdminVideos() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Descrição</Label>
+                <Label>Descrição <FieldHint text="Texto explicativo exibido abaixo do vídeo na sua página." /></Label>
                 <Textarea rows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
               </div>
               <div className="flex items-center gap-2">
                 <Switch checked={form.published} onCheckedChange={(v) => setForm({ ...form, published: v })} />
-                <Label>Publicado</Label>
+                <Label>Publicado <FieldHint text="Vídeos publicados ficam visíveis na sua página pública. Desativado = rascunho." /></Label>
               </div>
               <Button onClick={handleSave} disabled={saving} className="w-full">
                 {saving ? "Salvando..." : "Salvar"}

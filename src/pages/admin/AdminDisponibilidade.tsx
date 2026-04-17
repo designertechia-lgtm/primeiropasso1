@@ -15,6 +15,7 @@ import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { generateRecurrenceDates, type RecurrenceType } from "@/lib/recurrence";
+import { FieldHint } from "@/components/ui/FieldHint";
 
 const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   unico: "Único",
@@ -168,11 +169,11 @@ export default function AdminDisponibilidade() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <Label>Título</Label>
+              <Label>Título <FieldHint text="Descrição interna do bloqueio. Ex: 'Férias de janeiro', 'Reunião semanal'. Não é exibido para pacientes." /></Label>
               <Input value={blockTitle} onChange={(e) => setBlockTitle(e.target.value)} />
             </div>
             <div>
-              <Label>Tipo</Label>
+              <Label>Tipo <FieldHint text="Categoria do bloqueio para sua organização interna." /></Label>
               <Select value={blockType} onValueChange={setBlockType}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -186,17 +187,17 @@ export default function AdminDisponibilidade() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label>Hora início</Label>
+              <Label>Hora início <FieldHint text="Horário de início do bloqueio. Agendamentos neste período serão impedidos." /></Label>
               <Input type="time" value={blockStartTime} onChange={(e) => setBlockStartTime(e.target.value)} />
             </div>
             <div>
-              <Label>Hora fim</Label>
+              <Label>Hora fim <FieldHint text="Horário de fim do bloqueio." /></Label>
               <Input type="time" value={blockEndTime} onChange={(e) => setBlockEndTime(e.target.value)} />
             </div>
           </div>
 
           <div>
-            <Label>Recorrência</Label>
+            <Label>Recorrência <FieldHint text="Único: bloqueia só uma data. Semanal/Quinzenal: repete no período definido. Datas específicas: você escolhe cada data manualmente." /></Label>
             <Select value={recurrence} onValueChange={(v) => setRecurrence(v as RecurrenceType)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>

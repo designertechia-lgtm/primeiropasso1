@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import ImageUpload from "@/components/dashboard/ImageUpload";
+import { FieldHint } from "@/components/ui/FieldHint";
 
 function hexToHsl(hex: string): { h: number; s: number; l: number } {
   const r = parseInt(hex.slice(1, 3), 16) / 255;
@@ -139,7 +140,7 @@ export default function AdminConfiguracoes() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="slug">Slug (URL)</Label>
+            <Label htmlFor="slug">Slug (URL) <FieldHint text="Endereço único da sua página. Ex: 'daia-silva' → primeiropasso.online/daia-silva. Use apenas letras minúsculas, números e hífens." /></Label>
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground whitespace-nowrap">primeiropasso.com/</span>
               <Input id="slug" value={slug} onChange={(e) => setSlug(e.target.value)} />
@@ -154,7 +155,7 @@ export default function AdminConfiguracoes() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="whatsapp">WhatsApp</Label>
+            <Label htmlFor="whatsapp">WhatsApp <FieldHint text="Número de contato exibido na sua página. Pacientes podem clicar para te contatar diretamente. Ex: (11) 99999-9999." /></Label>
             <Input id="whatsapp" placeholder="(11) 99999-9999" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} />
           </div>
         </CardContent>
@@ -166,7 +167,7 @@ export default function AdminConfiguracoes() {
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-2">
-            <Label>Logo</Label>
+            <Label>Logo <FieldHint text="Logo da sua marca exibida na sua página e como ícone no navegador (favicon). Recomendado: PNG com fundo transparente, 200×200px." /></Label>
             <ImageUpload
               currentUrl={logoUrl || null}
               onUploaded={(url) => setLogoUrl(url)}
@@ -175,7 +176,7 @@ export default function AdminConfiguracoes() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Foto de Perfil</Label>
+            <Label>Foto de Perfil <FieldHint text="Sua foto principal. Usada como fallback nas seções Hero e Sobre quando não há imagem específica definida." /></Label>
             <ImageUpload
               currentUrl={photoUrl || null}
               onUploaded={(url) => setPhotoUrl(url)}
@@ -192,7 +193,7 @@ export default function AdminConfiguracoes() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="primaryColor">Cor Primária</Label>
+            <Label htmlFor="primaryColor">Cor Primária <FieldHint text="Cor principal da sua página (botões, destaques). As cores secundária e de fundo são geradas automaticamente a partir dela." /></Label>
             <div className="flex gap-2 items-center">
               <input type="color" id="primaryColor" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="h-10 w-10 rounded cursor-pointer border-0" />
               <Input value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="flex-1" />

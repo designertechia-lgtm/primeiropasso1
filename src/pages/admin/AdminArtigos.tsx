@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
+import { FieldHint } from "@/components/ui/FieldHint";
 
 interface ArticleForm {
   id?: string;
@@ -111,15 +112,15 @@ export default function AdminArtigos() {
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Título</Label>
+                <Label>Título <FieldHint text="Nome do artigo exibido na sua página e nos resultados de busca." /></Label>
                 <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value, slug: form.id ? form.slug : generateSlug(e.target.value) })} />
               </div>
               <div className="space-y-2">
-                <Label>Slug</Label>
+                <Label>Slug <FieldHint text="Endereço único do artigo na URL. Ex: 'como-lidar-com-ansiedade'. Gerado automaticamente pelo título, mas pode ser editado." /></Label>
                 <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} />
               </div>
               <div className="space-y-2">
-                <Label>Imagem</Label>
+                <Label>Imagem <FieldHint text="Imagem de capa exibida na listagem de artigos e no topo da página do artigo." /></Label>
                 <ImageUpload
                   currentUrl={form.image_url || null}
                   onUploaded={(url) => setForm({ ...form, image_url: url })}
@@ -133,12 +134,12 @@ export default function AdminArtigos() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Conteúdo</Label>
+                <Label>Conteúdo <FieldHint text="Texto completo do artigo. Suporta quebras de parágrafo." /></Label>
                 <Textarea rows={8} value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} />
               </div>
               <div className="flex items-center gap-2">
                 <Switch checked={form.published} onCheckedChange={(v) => setForm({ ...form, published: v })} />
-                <Label>Publicado</Label>
+                <Label>Publicado <FieldHint text="Artigos publicados ficam visíveis para os pacientes. Rascunhos só você vê." /></Label>
               </div>
               <Button onClick={handleSave} disabled={saving} className="w-full">
                 {saving ? "Salvando..." : "Salvar"}

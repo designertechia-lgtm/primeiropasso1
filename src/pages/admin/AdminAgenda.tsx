@@ -1044,19 +1044,46 @@ export default function AdminAgenda() {
 
       {/* Google Calendar Import Dialog */}
       <Dialog open={icalDialogOpen} onOpenChange={setIcalDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CalendarDays className="h-5 w-5" /> Importar Google Agenda
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Cole o link iCal público do seu Google Agenda para importar eventos como bloqueios.{" "}
-              <a href="https://support.google.com/calendar/answer/37648" target="_blank" rel="noopener noreferrer" className="underline">Como obter o link?</a>
-            </p>
+            {/* Step-by-step instructions */}
+            <div className="rounded-lg border bg-muted/40 p-4 space-y-3">
+              <p className="text-sm font-medium">Como obter o link iCal do Google Agenda:</p>
+              <ol className="space-y-2 text-sm text-muted-foreground list-none">
+                <li className="flex gap-2">
+                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">1</span>
+                  <span>Acesse <strong>calendar.google.com</strong> no navegador.</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">2</span>
+                  <span>Clique no ícone de engrenagem (⚙️) no canto superior direito → <strong>Configurações</strong>.</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">3</span>
+                  <span>No menu esquerdo, em <strong>Meus calendários</strong>, clique no calendário desejado.</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">4</span>
+                  <span>Em <strong>Permissões de acesso</strong>, marque <strong>"Disponibilizar ao público"</strong> e confirme.</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">5</span>
+                  <span>Role a página até <strong>"Endereço secreto no formato iCal"</strong> e clique no ícone de cópia.</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">6</span>
+                  <span>Cole o link copiado no campo abaixo e clique em <strong>Importar eventos</strong>.</span>
+                </li>
+              </ol>
+            </div>
+
             <div className="space-y-2">
-              <label className="text-sm font-medium">Link iCal (webcal:// ou https://)</label>
+              <label className="text-sm font-medium">Link iCal</label>
               <input
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 value={icalUrl}
@@ -1064,7 +1091,7 @@ export default function AdminAgenda() {
                 placeholder="https://calendar.google.com/calendar/ical/..."
               />
             </div>
-            <p className="text-xs text-muted-foreground">Os eventos serão criados como bloqueios. O calendário precisa ser público no Google.</p>
+            <p className="text-xs text-muted-foreground">Os eventos serão importados como bloqueios de horário na sua agenda.</p>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setIcalDialogOpen(false)} className="flex-1">Cancelar</Button>
               <Button onClick={handleIcalSync} disabled={syncing || !icalUrl.trim()} className="flex-1">

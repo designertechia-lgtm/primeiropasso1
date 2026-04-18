@@ -1054,26 +1054,26 @@ export default function AdminAgenda() {
             {/* Step-by-step instructions */}
             <div className="rounded-lg border bg-muted/40 p-4 space-y-3">
               <p className="text-sm font-medium">Como obter o link iCal do Google Agenda:</p>
-              <ol className="space-y-2 text-sm text-muted-foreground list-none">
+              <ol className="space-y-2.5 text-sm text-muted-foreground list-none">
                 <li className="flex gap-2">
                   <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">1</span>
-                  <span>Acesse <strong>calendar.google.com</strong> no navegador.</span>
+                  <span>Acesse <strong>calendar.google.com</strong> e clique no ícone de engrenagem <strong>⚙️</strong> no canto superior direito, depois em <strong>Configurações</strong>.</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">2</span>
-                  <span>Clique no ícone de engrenagem (⚙️) no canto superior direito → <strong>Configurações</strong>.</span>
+                  <span>No menu esquerdo, role até <strong>"Configurações das minhas agendas"</strong> e clique no nome do seu calendário (ex: seu nome ou empresa).</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">3</span>
-                  <span>No menu esquerdo, em <strong>Meus calendários</strong>, clique no calendário desejado.</span>
+                  <span>Na seção <strong>"Permissões de acesso a eventos"</strong>, marque a caixa <strong>"Disponibilizar ao público"</strong> e confirme no popup clicando em <strong>OK</strong>.</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">4</span>
-                  <span>Em <strong>Permissões de acesso</strong>, marque <strong>"Disponibilizar ao público"</strong> e confirme.</span>
+                  <span>Role a página para baixo até encontrar a seção <strong>"Integrar agenda"</strong>.</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">5</span>
-                  <span>Role a página até <strong>"Endereço secreto no formato iCal"</strong> e clique no ícone de cópia.</span>
+                  <span>Localize o campo <strong>"Endereço secreto no formato iCal"</strong> e clique no ícone de cópia ao lado do link.</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">6</span>

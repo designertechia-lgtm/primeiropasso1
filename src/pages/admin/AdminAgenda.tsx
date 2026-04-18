@@ -1065,7 +1065,7 @@ export default function AdminAgenda() {
                 </li>
                 <li className="flex gap-2">
                   <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">3</span>
-                  <span>No submenu, clique em <strong>"Autorizações de acesso a eventos"</strong>. Marque a caixa <strong>☐ "Disponibilizar ao público"</strong> (ela aparece desmarcada por padrão) e confirme clicando em <strong>OK</strong> no popup de aviso.</span>
+                  <span>No submenu, clique em <strong>"Autorizações de acesso a eventos"</strong>. Marque a caixa <strong>"Disponibilizar ao público"</strong> e no dropdown que aparecer ao lado selecione <strong>"Mais detalhes de todos os eventos"</strong>. Confirme clicando em <strong>OK</strong> no popup.</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">4</span>

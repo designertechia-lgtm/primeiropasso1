@@ -1061,15 +1061,15 @@ export default function AdminAgenda() {
                 </li>
                 <li className="flex gap-2">
                   <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">2</span>
-                  <span>No menu esquerdo, role até <strong>"Configurações das minhas agendas"</strong> e clique no nome do seu calendário (ex: seu nome ou empresa).</span>
+                  <span>No menu esquerdo, role até <strong>"Configurações das minhas agendas"</strong> e clique no nome do seu calendário (ex: seu nome ou empresa). Um submenu será aberto abaixo dele.</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">3</span>
-                  <span>Na seção <strong>"Permissões de acesso a eventos"</strong>, marque a caixa <strong>"Disponibilizar ao público"</strong> e confirme no popup clicando em <strong>OK</strong>.</span>
+                  <span>No submenu, clique em <strong>"Autorizações de acesso a eventos"</strong>. Marque a caixa <strong>"Disponibilizar ao público"</strong> e confirme clicando em <strong>OK</strong> no popup.</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">4</span>
-                  <span>Role a página para baixo até encontrar a seção <strong>"Integrar agenda"</strong>.</span>
+                  <span>No mesmo submenu, clique em <strong>"Integrar agenda"</strong>.</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">5</span>

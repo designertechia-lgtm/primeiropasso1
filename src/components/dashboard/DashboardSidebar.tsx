@@ -30,11 +30,11 @@ const items = [
   { title: "Painel", url: "/admin", icon: LayoutDashboard },
   { title: "Meu Perfil", url: "/admin/perfil", icon: User },
   { title: "Agenda", url: "/admin/agenda", icon: CalendarDays },
+  { title: "Agendamentos", url: "/admin/agendamentos", icon: Calendar },
   { title: "Bloqueios", url: "/admin/disponibilidade", icon: Ban },
   { title: "Artigos", url: "/admin/artigos", icon: FileText },
   { title: "Vídeos", url: "/admin/videos", icon: Video },
   { title: "Novos Pacientes", url: "/admin/leads", icon: Users },
-  { title: "Agendamentos", url: "/admin/agendamentos", icon: Calendar },
   { title: "Documentos", url: "/admin/documentos", icon: FileUp },
   { title: "Configurações", url: "/admin/configuracoes", icon: Settings },
 ];

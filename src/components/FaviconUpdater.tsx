@@ -14,7 +14,8 @@ export default function FaviconUpdater() {
         .maybeSingle();
       return data;
     },
-    staleTime: 1000 * 60 * 10,
+    staleTime: 0,
+    gcTime: 0,
   });
 
   useEffect(() => {
@@ -26,7 +27,8 @@ export default function FaviconUpdater() {
       link.rel = "icon";
       document.head.appendChild(link);
     }
-    link.href = data.logo_url;
+    link.type = "image/png";
+    link.href = `${data.logo_url}?t=${Date.now()}`;
 
     if (data.name) {
       document.title = data.name;

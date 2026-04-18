@@ -599,7 +599,7 @@ export default function AdminAgenda() {
           ref={calendarRef}
           plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
           initialView={isMobile ? "timeGridDay" : "timeGridWeek"}
-          headerToolbar={{ left: "prev,next today", center: "title", right: "timeGridWeek,timeGridDay" }}
+          headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek,timeGridDay" }}
           locale="pt-br"
           firstDay={0}
           slotMinTime="07:00:00"
@@ -618,7 +618,7 @@ export default function AdminAgenda() {
           height="auto"
           expandRows={true}
           dayHeaderFormat={{ weekday: "short", day: "numeric", month: "numeric" }}
-          buttonText={{ today: "Hoje", week: "Semana", day: "Dia" }}
+          buttonText={{ today: "Hoje", month: "Mês", week: "Semana", day: "Dia" }}
           eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
         />
       </div>

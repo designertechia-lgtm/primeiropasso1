@@ -1069,11 +1069,11 @@ export default function AdminAgenda() {
                 </li>
                 <li className="flex gap-2">
                   <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">4</span>
-                  <span>No mesmo submenu, clique em <strong>"Integrar agenda"</strong>.</span>
+                  <span>No menu esquerdo, clique em <strong>"Integrar agenda"</strong> (logo abaixo de "Autorizações de acesso a eventos").</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">5</span>
-                  <span>Localize o campo <strong>"Endereço secreto no formato iCal"</strong> e clique no ícone de cópia ao lado do link.</span>
+                  <span>Role a página até encontrar o campo <strong>"Endereço público no formato iCal"</strong>. Clique sobre o link para selecioná-lo, copie-o e cole no campo abaixo. <em>(Não use o "Endereço secreto".)</em></span>
                 </li>
                 <li className="flex gap-2">
                   <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">6</span>

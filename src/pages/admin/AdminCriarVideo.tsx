@@ -5,11 +5,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   Film, Loader2, CheckCircle2, AlertCircle,
   ChevronRight, ChevronLeft, Mic, Monitor, Smartphone,
-  Lightbulb, Circle, Square, RotateCcw, Play,
+  Lightbulb, Circle, Square, RotateCcw, Sparkles, BookOpen,
 } from "lucide-react";
 
 const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
@@ -26,6 +27,7 @@ const EDGE_VOICES = [
   { id: "pt-BR-AntonioNeural",   label: "Antônio",   gender: "Masculina" },
 ];
 
+type VoiceMode = "edge" | "gravacao" | "elevenlabs";
 type Legenda   = { tempo: number; texto: string };
 type Script    = { titulo: string; narracao: string; cta: string; legendas: Legenda[] };
 type JobStatus = {
@@ -37,14 +39,22 @@ type JobStatus = {
   message?: string;
 };
 
-// ── Gravador de Voz ──────────────────────────────────────────
-function VoiceRecorder({ onRecorded }: { onRecorded: (blob: Blob) => void }) {
-  const [state, setState]     = useState<"idle" | "recording" | "done">("idle");
-  const [seconds, setSeconds] = useState(0);
+// ── Gravador reutilizável ────────────────────────────────────
+function VoiceRecorder({
+  onRecorded,
+  label,
+  hint,
+}: {
+  onRecorded: (blob: Blob) => void;
+  label: string;
+  hint?: string;
+}) {
+  const [state, setState]       = useState<"idle" | "recording" | "done">("idle");
+  const [seconds, setSeconds]   = useState(0);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const mediaRef    = useRef<MediaRecorder | null>(null);
-  const chunksRef   = useRef<Blob[]>([]);
-  const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mediaRef  = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const timerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => () => { timerRef.current && clearInterval(timerRef.current); }, []);
 
@@ -56,8 +66,7 @@ function VoiceRecorder({ onRecorded }: { onRecorded: (blob: Blob) => void }) {
       mr.ondataavailable = (e) => chunksRef.current.push(e.data);
       mr.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        const url  = URL.createObjectURL(blob);
-        setAudioUrl(url);
+        setAudioUrl(URL.createObjectURL(blob));
         onRecorded(blob);
         stream.getTracks().forEach((t) => t.stop());
       };
@@ -77,19 +86,15 @@ function VoiceRecorder({ onRecorded }: { onRecorded: (blob: Blob) => void }) {
     setState("done");
   };
 
-  const reset = () => {
-    setAudioUrl(null);
-    setState("idle");
-    setSeconds(0);
-  };
-
-  const fmt = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+  const reset = () => { setAudioUrl(null); setState("idle"); setSeconds(0); };
+  const fmt   = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
   return (
     <div className="rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 p-4 space-y-3">
-      <p className="text-sm text-muted-foreground">
-        Grave <strong>30 a 60 segundos</strong> lendo qualquer texto em voz normal — sua voz será usada na narração.
-      </p>
+      <div>
+        <p className="text-sm font-medium">{label}</p>
+        {hint && <p className="text-xs text-muted-foreground mt-0.5">{hint}</p>}
+      </div>
 
       {state === "idle" && (
         <Button onClick={start} variant="outline" className="w-full gap-2">
@@ -123,15 +128,16 @@ function VoiceRecorder({ onRecorded }: { onRecorded: (blob: Blob) => void }) {
   );
 }
 
-// ── Página Principal ─────────────────────────────────────────
+// ── Página principal ─────────────────────────────────────────
 export default function AdminCriarVideo() {
   const { data: professional } = useProfessional();
   const [step, setStep]             = useState<1 | 2 | 3>(1);
   const [objetivo, setObjetivo]     = useState("");
   const [script, setScript]         = useState<Script | null>(null);
-  const [voiceMode, setVoiceMode]   = useState<"edge" | "minha-voz">("edge");
+  const [voiceMode, setVoiceMode]   = useState<VoiceMode>("edge");
   const [edgeVoice, setEdgeVoice]   = useState("pt-BR-FranciscaNeural");
-  const [voiceBlob, setVoiceBlob]   = useState<Blob | null>(null);
+  const [voiceBlob, setVoiceBlob]   = useState<Blob | null>(null);   // ElevenLabs amostra
+  const [narBlob, setNarBlob]       = useState<Blob | null>(null);   // gravação do roteiro
   const [format, setFormat]         = useState<"portrait" | "landscape">("portrait");
   const [jobStatus, setJobStatus]   = useState<JobStatus>({ status: "idle" });
 
@@ -160,9 +166,12 @@ export default function AdminCriarVideo() {
   const handleGenerate = async () => {
     if (!professional?.slug || !script) return;
 
-    // Valida gravação se modo "minha voz"
-    if (voiceMode === "minha-voz" && !voiceBlob) {
-      toast.error("Grave sua voz antes de gerar o vídeo.");
+    if (voiceMode === "gravacao" && !narBlob) {
+      toast.error("Grave o roteiro antes de gerar o vídeo.");
+      return;
+    }
+    if (voiceMode === "elevenlabs" && !voiceBlob) {
+      toast.error("Grave uma amostra de voz antes de gerar o vídeo.");
       return;
     }
 
@@ -171,20 +180,30 @@ export default function AdminCriarVideo() {
 
     try {
       let voiceId: string | null = null;
+      let narrationPath: string | null = null;
 
-      // 1. Clona voz se necessário
-      if (voiceMode === "minha-voz" && voiceBlob) {
+      // Upload gravação do roteiro
+      if (voiceMode === "gravacao" && narBlob) {
+        setJobStatus({ status: "processing", progress: 5, step: "Enviando gravação..." });
+        const form = new FormData();
+        form.append("audio", narBlob, "narracao.webm");
+        const res  = await fetch(`${API}/upload-narracao`, { method: "POST", body: form });
+        const data = await res.json();
+        narrationPath = data.path;
+      }
+
+      // Clonagem ElevenLabs
+      if (voiceMode === "elevenlabs" && voiceBlob) {
         setJobStatus({ status: "processing", progress: 5, step: "Clonando sua voz..." });
         const form = new FormData();
         form.append("audio", voiceBlob, "voice.webm");
         form.append("nome", professional.full_name || "Profissional");
-        const cloneRes  = await fetch(`${API}/clone-voz`, { method: "POST", body: form });
-        const cloneData = await cloneRes.json();
-        if (!cloneRes.ok) throw new Error(cloneData.detail || "Erro ao clonar voz");
-        voiceId = cloneData.voice_id;
+        const res  = await fetch(`${API}/clone-voz`, { method: "POST", body: form });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Erro ao clonar voz");
+        voiceId = data.voice_id;
       }
 
-      // 2. Gera vídeo
       const res = await fetch(`${API}/gerar-video`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -194,8 +213,9 @@ export default function AdminCriarVideo() {
           objetivo: objetivo.trim(),
           script,
           voice: edgeVoice,
-          voice_provider: voiceMode === "minha-voz" ? "elevenlabs" : "edge",
+          voice_provider: voiceMode,
           elevenlabs_voice_id: voiceId,
+          narration_audio_path: narrationPath,
           format,
         }),
       });
@@ -219,7 +239,7 @@ export default function AdminCriarVideo() {
         }
       } catch {
         clearInterval(iv);
-        setJobStatus({ status: "error", message: "Erro de conexão com a API" });
+        setJobStatus({ status: "error", message: "Erro de conexão" });
       }
     }, 3000);
   };
@@ -227,7 +247,7 @@ export default function AdminCriarVideo() {
   const handleReset = () => {
     setStep(1); setScript(null); setObjetivo("");
     setVoiceMode("edge"); setEdgeVoice("pt-BR-FranciscaNeural");
-    setVoiceBlob(null); setFormat("portrait");
+    setVoiceBlob(null); setNarBlob(null); setFormat("portrait");
     setJobStatus({ status: "idle" });
   };
 
@@ -334,8 +354,7 @@ export default function AdminCriarVideo() {
                   className="text-center text-sm" />
                 <p className="text-xs text-center text-muted-foreground mt-0.5">seg</p>
               </div>
-              <Input value={leg.texto}
-                onChange={(e) => updateLegenda(i, "texto", e.target.value)}
+              <Input value={leg.texto} onChange={(e) => updateLegenda(i, "texto", e.target.value)}
                 placeholder="Texto do slide..." className="flex-1" />
               <Button variant="ghost" size="sm" className="text-destructive px-2"
                 onClick={() => script.legendas.length > 1 && setScript({ ...script, legendas: script.legendas.filter((_, j) => j !== i) })}
@@ -351,33 +370,46 @@ export default function AdminCriarVideo() {
         <Input value={script.cta} onChange={(e) => setScript({ ...script, cta: e.target.value })} />
       </div>
 
-      {/* Voz */}
+      {/* ── Voz ── */}
       <div className="space-y-3">
         <Label className="text-base font-semibold flex items-center gap-2">
           <Mic className="h-4 w-4" /> Voz da Narração
         </Label>
 
-        {/* Toggle edge vs minha voz */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Seleção do modo */}
+        <div className="grid grid-cols-3 gap-3">
+          {/* Automática */}
           <Card className={`cursor-pointer border-2 transition-all ${voiceMode === "edge" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
             onClick={() => setVoiceMode("edge")}>
-            <CardContent className="p-3 text-center">
-              <p className="font-medium text-sm">Voz Automática</p>
-              <p className="text-xs text-muted-foreground">3 opções em português</p>
+            <CardContent className="p-3 text-center space-y-1">
+              <Mic className="h-5 w-5 mx-auto text-muted-foreground" />
+              <p className="font-medium text-sm">Automática</p>
+              <p className="text-xs text-muted-foreground">3 vozes pt-BR</p>
             </CardContent>
           </Card>
-          <Card className={`cursor-pointer border-2 transition-all ${voiceMode === "minha-voz" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
-            onClick={() => setVoiceMode("minha-voz")}>
-            <CardContent className="p-3 text-center">
-              <p className="font-medium text-sm flex items-center justify-center gap-1.5">
-                <Mic className="h-3.5 w-3.5 text-primary" /> Minha Voz
-              </p>
-              <p className="text-xs text-muted-foreground">Clonagem com IA</p>
+
+          {/* Gravar Roteiro */}
+          <Card className={`cursor-pointer border-2 transition-all ${voiceMode === "gravacao" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+            onClick={() => setVoiceMode("gravacao")}>
+            <CardContent className="p-3 text-center space-y-1">
+              <BookOpen className="h-5 w-5 mx-auto text-muted-foreground" />
+              <p className="font-medium text-sm">Gravar Roteiro</p>
+              <p className="text-xs text-muted-foreground">Você lê o texto</p>
+            </CardContent>
+          </Card>
+
+          {/* ElevenLabs */}
+          <Card className={`cursor-pointer border-2 transition-all ${voiceMode === "elevenlabs" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+            onClick={() => setVoiceMode("elevenlabs")}>
+            <CardContent className="p-3 text-center space-y-1">
+              <Sparkles className="h-5 w-5 mx-auto text-muted-foreground" />
+              <p className="font-medium text-sm">ElevenLabs</p>
+              <Badge variant="outline" className="text-xs">Plano pago</Badge>
             </CardContent>
           </Card>
         </div>
 
-        {/* Edge voices */}
+        {/* Vozes automáticas */}
         {voiceMode === "edge" && (
           <div className="grid grid-cols-3 gap-3">
             {EDGE_VOICES.map((v) => (
@@ -393,9 +425,27 @@ export default function AdminCriarVideo() {
           </div>
         )}
 
-        {/* Gravador */}
-        {voiceMode === "minha-voz" && (
-          <VoiceRecorder onRecorded={setVoiceBlob} />
+        {/* Gravar o roteiro completo */}
+        {voiceMode === "gravacao" && (
+          <div className="space-y-3">
+            <div className="rounded-lg bg-muted/50 border p-3 text-sm text-muted-foreground leading-relaxed max-h-36 overflow-y-auto">
+              {script.narracao}
+            </div>
+            <VoiceRecorder
+              onRecorded={setNarBlob}
+              label="Leia o texto acima em voz alta e grave aqui"
+              hint="Fale de forma clara e natural — esse áudio será a narração do vídeo."
+            />
+          </div>
+        )}
+
+        {/* ElevenLabs — amostra de voz */}
+        {voiceMode === "elevenlabs" && (
+          <VoiceRecorder
+            onRecorded={setVoiceBlob}
+            label="Grave uma amostra da sua voz (mín. 30 segundos)"
+            hint="Pode ler qualquer texto. O ElevenLabs vai clonar sua voz e narrar o roteiro automaticamente."
+          />
         )}
       </div>
 
@@ -449,7 +499,8 @@ export default function AdminCriarVideo() {
               <p className="text-muted-foreground mt-1 text-sm">{jobStatus.step}</p>
             </div>
             <div className="w-full bg-muted rounded-full h-2">
-              <div className="bg-primary h-2 rounded-full transition-all duration-500" style={{ width: `${jobStatus.progress || 0}%` }} />
+              <div className="bg-primary h-2 rounded-full transition-all duration-500"
+                style={{ width: `${jobStatus.progress || 0}%` }} />
             </div>
             <p className="text-sm text-muted-foreground">{jobStatus.progress || 0}%</p>
           </CardContent>
@@ -486,7 +537,9 @@ export default function AdminCriarVideo() {
               <p className="text-muted-foreground mt-1 text-sm">{jobStatus.message}</p>
             </div>
             <div className="flex gap-3">
-              <Button onClick={() => setStep(2)} variant="outline"><ChevronLeft className="mr-2 h-4 w-4" /> Editar</Button>
+              <Button onClick={() => setStep(2)} variant="outline">
+                <ChevronLeft className="mr-2 h-4 w-4" /> Editar
+              </Button>
               <Button onClick={handleReset} variant="outline">Recomeçar</Button>
             </div>
           </CardContent>

@@ -11,6 +11,7 @@ import {
   Film, Loader2, CheckCircle2, AlertCircle,
   ChevronRight, ChevronLeft, Mic, Monitor, Smartphone,
   Lightbulb, Circle, Square, RotateCcw, Sparkles, BookOpen,
+  ImagePlus, X, ArrowUp, ArrowDown, Images,
 } from "lucide-react";
 
 const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
@@ -136,8 +137,10 @@ export default function AdminCriarVideo() {
   const [script, setScript]         = useState<Script | null>(null);
   const [voiceMode, setVoiceMode]   = useState<VoiceMode>("edge");
   const [edgeVoice, setEdgeVoice]   = useState("pt-BR-FranciscaNeural");
-  const [voiceBlob, setVoiceBlob]   = useState<Blob | null>(null);   // ElevenLabs amostra
-  const [narBlob, setNarBlob]       = useState<Blob | null>(null);   // gravação do roteiro
+  const [voiceBlob, setVoiceBlob]   = useState<Blob | null>(null);
+  const [narBlob, setNarBlob]       = useState<Blob | null>(null);
+  const [imageMode, setImageMode]   = useState<"auto" | "custom">("auto");
+  const [userImages, setUserImages] = useState<{ file: File; preview: string }[]>([]);
   const [format, setFormat]         = useState<"portrait" | "landscape">("portrait");
   const [jobStatus, setJobStatus]   = useState<JobStatus>({ status: "idle" });
 
@@ -181,6 +184,17 @@ export default function AdminCriarVideo() {
     try {
       let voiceId: string | null = null;
       let narrationPath: string | null = null;
+      let customImagePaths: string[] | null = null;
+
+      // Upload imagens do usuário
+      if (imageMode === "custom" && userImages.length > 0) {
+        setJobStatus({ status: "processing", progress: 3, step: "Enviando imagens..." });
+        const form = new FormData();
+        userImages.forEach((img) => form.append("files", img.file));
+        const res  = await fetch(`${API}/upload-imagens`, { method: "POST", body: form });
+        const data = await res.json();
+        customImagePaths = data.paths;
+      }
 
       // Upload gravação do roteiro
       if (voiceMode === "gravacao" && narBlob) {
@@ -216,6 +230,7 @@ export default function AdminCriarVideo() {
           voice_provider: voiceMode,
           elevenlabs_voice_id: voiceId,
           narration_audio_path: narrationPath,
+          custom_image_paths: customImagePaths,
           format,
         }),
       });
@@ -247,7 +262,8 @@ export default function AdminCriarVideo() {
   const handleReset = () => {
     setStep(1); setScript(null); setObjetivo("");
     setVoiceMode("edge"); setEdgeVoice("pt-BR-FranciscaNeural");
-    setVoiceBlob(null); setNarBlob(null); setFormat("portrait");
+    setVoiceBlob(null); setNarBlob(null);
+    setImageMode("auto"); setUserImages([]); setFormat("portrait");
     setJobStatus({ status: "idle" });
   };
 
@@ -446,6 +462,93 @@ export default function AdminCriarVideo() {
             label="Grave uma amostra da sua voz (mín. 30 segundos)"
             hint="Pode ler qualquer texto. O ElevenLabs vai clonar sua voz e narrar o roteiro automaticamente."
           />
+        )}
+      </div>
+
+      {/* ── Imagens ── */}
+      <div className="space-y-3">
+        <Label className="text-base font-semibold flex items-center gap-2">
+          <Images className="h-4 w-4" /> Imagens de Fundo
+        </Label>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Card className={`cursor-pointer border-2 transition-all ${imageMode === "auto" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+            onClick={() => setImageMode("auto")}>
+            <CardContent className="p-3 text-center space-y-1">
+              <Sparkles className="h-5 w-5 mx-auto text-muted-foreground" />
+              <p className="font-medium text-sm">Automáticas</p>
+              <p className="text-xs text-muted-foreground">Pexels via IA</p>
+            </CardContent>
+          </Card>
+          <Card className={`cursor-pointer border-2 transition-all ${imageMode === "custom" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+            onClick={() => setImageMode("custom")}>
+            <CardContent className="p-3 text-center space-y-1">
+              <ImagePlus className="h-5 w-5 mx-auto text-muted-foreground" />
+              <p className="font-medium text-sm">Minhas Imagens</p>
+              <p className="text-xs text-muted-foreground">Upload pessoal</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {imageMode === "custom" && (
+          <div className="space-y-3">
+            {/* Botão de upload */}
+            <label className="flex items-center justify-center gap-2 w-full h-24 border-2 border-dashed border-primary/40 rounded-xl cursor-pointer hover:bg-primary/5 transition-all text-sm text-muted-foreground hover:text-foreground">
+              <ImagePlus className="h-5 w-5" />
+              Clique para adicionar imagens
+              <input
+                type="file" multiple accept="image/*" className="hidden"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  const newImgs = files.map((f) => ({ file: f, preview: URL.createObjectURL(f) }));
+                  setUserImages((prev) => [...prev, ...newImgs]);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+
+            {userImages.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  {userImages.length} imagem(ns) · slides sem imagem usam Pexels como fallback
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {userImages.map((img, i) => (
+                    <div key={i} className="relative group rounded-lg overflow-hidden aspect-square border">
+                      <img src={img.preview} alt="" className="w-full h-full object-cover" />
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-all flex flex-col items-center justify-center gap-1">
+                        <div className="flex gap-1">
+                          <Button size="icon" variant="ghost" className="h-6 w-6 text-white"
+                            disabled={i === 0}
+                            onClick={() => {
+                              const imgs = [...userImages];
+                              [imgs[i - 1], imgs[i]] = [imgs[i], imgs[i - 1]];
+                              setUserImages(imgs);
+                            }}>
+                            <ArrowUp className="h-3 w-3" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-6 w-6 text-white"
+                            disabled={i === userImages.length - 1}
+                            onClick={() => {
+                              const imgs = [...userImages];
+                              [imgs[i], imgs[i + 1]] = [imgs[i + 1], imgs[i]];
+                              setUserImages(imgs);
+                            }}>
+                            <ArrowDown className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        <Button size="icon" variant="ghost" className="h-6 w-6 text-red-400"
+                          onClick={() => setUserImages(userImages.filter((_, j) => j !== i))}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <span className="absolute top-1 left-1 bg-black/60 text-white text-xs rounded px-1">{i + 1}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
 

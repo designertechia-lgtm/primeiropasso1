@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useProfessional } from "@/hooks/useProfessional";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
   Film, Loader2, CheckCircle2, AlertCircle,
-  ChevronRight, ChevronLeft, Mic, Monitor, Smartphone, Lightbulb,
+  ChevronRight, ChevronLeft, Mic, Monitor, Smartphone,
+  Lightbulb, Circle, Square, RotateCcw, Play,
 } from "lucide-react";
 
 const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
@@ -19,7 +20,7 @@ const OBJETIVO_EXEMPLOS = [
   "Apresentar minha plataforma para psicólogos que perdem pacientes por demora no retorno",
 ];
 
-const VOICES = [
+const EDGE_VOICES = [
   { id: "pt-BR-FranciscaNeural", label: "Francisca", gender: "Feminina" },
   { id: "pt-BR-ThalitaNeural",   label: "Thalita",   gender: "Feminina, jovem" },
   { id: "pt-BR-AntonioNeural",   label: "Antônio",   gender: "Masculina" },
@@ -36,14 +37,103 @@ type JobStatus = {
   message?: string;
 };
 
+// ── Gravador de Voz ──────────────────────────────────────────
+function VoiceRecorder({ onRecorded }: { onRecorded: (blob: Blob) => void }) {
+  const [state, setState]     = useState<"idle" | "recording" | "done">("idle");
+  const [seconds, setSeconds] = useState(0);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const mediaRef    = useRef<MediaRecorder | null>(null);
+  const chunksRef   = useRef<Blob[]>([]);
+  const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => () => { timerRef.current && clearInterval(timerRef.current); }, []);
+
+  const start = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      chunksRef.current = [];
+      mr.ondataavailable = (e) => chunksRef.current.push(e.data);
+      mr.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        const url  = URL.createObjectURL(blob);
+        setAudioUrl(url);
+        onRecorded(blob);
+        stream.getTracks().forEach((t) => t.stop());
+      };
+      mr.start();
+      mediaRef.current = mr;
+      setState("recording");
+      setSeconds(0);
+      timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
+    } catch {
+      toast.error("Não foi possível acessar o microfone");
+    }
+  };
+
+  const stop = () => {
+    mediaRef.current?.stop();
+    timerRef.current && clearInterval(timerRef.current);
+    setState("done");
+  };
+
+  const reset = () => {
+    setAudioUrl(null);
+    setState("idle");
+    setSeconds(0);
+  };
+
+  const fmt = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+
+  return (
+    <div className="rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 p-4 space-y-3">
+      <p className="text-sm text-muted-foreground">
+        Grave <strong>30 a 60 segundos</strong> lendo qualquer texto em voz normal — sua voz será usada na narração.
+      </p>
+
+      {state === "idle" && (
+        <Button onClick={start} variant="outline" className="w-full gap-2">
+          <Circle className="h-4 w-4 text-red-500 fill-red-500" /> Iniciar Gravação
+        </Button>
+      )}
+
+      {state === "recording" && (
+        <div className="flex flex-col items-center gap-3">
+          <div className="flex items-center gap-2 text-red-500 font-mono text-lg font-bold animate-pulse">
+            <Circle className="h-3 w-3 fill-red-500" /> {fmt(seconds)}
+          </div>
+          <Button onClick={stop} variant="destructive" className="w-full gap-2">
+            <Square className="h-4 w-4" /> Parar Gravação
+          </Button>
+        </div>
+      )}
+
+      {state === "done" && audioUrl && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-green-600 text-sm font-medium">
+            <CheckCircle2 className="h-4 w-4" /> Gravação concluída ({fmt(seconds)})
+          </div>
+          <audio src={audioUrl} controls className="w-full h-8" />
+          <Button onClick={reset} variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
+            <RotateCcw className="h-3.5 w-3.5" /> Gravar novamente
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Página Principal ─────────────────────────────────────────
 export default function AdminCriarVideo() {
   const { data: professional } = useProfessional();
-  const [step, setStep]           = useState<1 | 2 | 3>(1);
-  const [objetivo, setObjetivo]   = useState("");
-  const [script, setScript]       = useState<Script | null>(null);
-  const [voice, setVoice]         = useState("pt-BR-FranciscaNeural");
-  const [format, setFormat]       = useState<"landscape" | "portrait">("portrait");
-  const [jobStatus, setJobStatus] = useState<JobStatus>({ status: "idle" });
+  const [step, setStep]             = useState<1 | 2 | 3>(1);
+  const [objetivo, setObjetivo]     = useState("");
+  const [script, setScript]         = useState<Script | null>(null);
+  const [voiceMode, setVoiceMode]   = useState<"edge" | "minha-voz">("edge");
+  const [edgeVoice, setEdgeVoice]   = useState("pt-BR-FranciscaNeural");
+  const [voiceBlob, setVoiceBlob]   = useState<Blob | null>(null);
+  const [format, setFormat]         = useState<"portrait" | "landscape">("portrait");
+  const [jobStatus, setJobStatus]   = useState<JobStatus>({ status: "idle" });
 
   const handleNextStep = async () => {
     if (!professional?.slug || !objetivo.trim()) return;
@@ -58,8 +148,7 @@ export default function AdminCriarVideo() {
           objetivo: objetivo.trim(),
         }),
       });
-      const data: Script = await res.json();
-      setScript(data);
+      setScript(await res.json());
       setJobStatus({ status: "editing" });
       setStep(2);
     } catch {
@@ -70,9 +159,32 @@ export default function AdminCriarVideo() {
 
   const handleGenerate = async () => {
     if (!professional?.slug || !script) return;
+
+    // Valida gravação se modo "minha voz"
+    if (voiceMode === "minha-voz" && !voiceBlob) {
+      toast.error("Grave sua voz antes de gerar o vídeo.");
+      return;
+    }
+
     setJobStatus({ status: "processing", progress: 0, step: "Iniciando..." });
     setStep(3);
+
     try {
+      let voiceId: string | null = null;
+
+      // 1. Clona voz se necessário
+      if (voiceMode === "minha-voz" && voiceBlob) {
+        setJobStatus({ status: "processing", progress: 5, step: "Clonando sua voz..." });
+        const form = new FormData();
+        form.append("audio", voiceBlob, "voice.webm");
+        form.append("nome", professional.full_name || "Profissional");
+        const cloneRes  = await fetch(`${API}/clone-voz`, { method: "POST", body: form });
+        const cloneData = await cloneRes.json();
+        if (!cloneRes.ok) throw new Error(cloneData.detail || "Erro ao clonar voz");
+        voiceId = cloneData.voice_id;
+      }
+
+      // 2. Gera vídeo
       const res = await fetch(`${API}/gerar-video`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -81,30 +193,32 @@ export default function AdminCriarVideo() {
           video_type: "objetivo_livre",
           objetivo: objetivo.trim(),
           script,
-          voice,
+          voice: edgeVoice,
+          voice_provider: voiceMode === "minha-voz" ? "elevenlabs" : "edge",
+          elevenlabs_voice_id: voiceId,
           format,
         }),
       });
       const data = await res.json();
       pollStatus(data.job_id);
-    } catch {
-      setJobStatus({ status: "error", message: "Não foi possível conectar à API de vídeos" });
+    } catch (e: any) {
+      setJobStatus({ status: "error", message: e.message || "Erro ao conectar à API" });
     }
   };
 
   const pollStatus = (id: string) => {
-    const interval = setInterval(async () => {
+    const iv = setInterval(async () => {
       try {
-        const res  = await fetch(`${API}/status/${id}`);
-        const data = await res.json();
+        const data = await (await fetch(`${API}/status/${id}`)).json();
         setJobStatus(data);
         if (data.status === "done" || data.status === "error") {
-          clearInterval(interval);
-          if (data.status === "done") toast.success("Vídeo criado com sucesso!");
-          else toast.error("Erro: " + data.message);
+          clearInterval(iv);
+          data.status === "done"
+            ? toast.success("Vídeo criado com sucesso!")
+            : toast.error("Erro: " + data.message);
         }
       } catch {
-        clearInterval(interval);
+        clearInterval(iv);
         setJobStatus({ status: "error", message: "Erro de conexão com a API" });
       }
     }, 3000);
@@ -112,7 +226,8 @@ export default function AdminCriarVideo() {
 
   const handleReset = () => {
     setStep(1); setScript(null); setObjetivo("");
-    setVoice("pt-BR-FranciscaNeural"); setFormat("portrait");
+    setVoiceMode("edge"); setEdgeVoice("pt-BR-FranciscaNeural");
+    setVoiceBlob(null); setFormat("portrait");
     setJobStatus({ status: "idle" });
   };
 
@@ -121,17 +236,6 @@ export default function AdminCriarVideo() {
     const legendas = [...script.legendas];
     legendas[i] = { ...legendas[i], [field]: field === "tempo" ? Number(value) : value };
     setScript({ ...script, legendas });
-  };
-
-  const addLegenda = () => {
-    if (!script) return;
-    const last = script.legendas[script.legendas.length - 1];
-    setScript({ ...script, legendas: [...script.legendas, { tempo: (last?.tempo ?? 0) + 4, texto: "" }] });
-  };
-
-  const removeLegenda = (i: number) => {
-    if (!script || script.legendas.length <= 1) return;
-    setScript({ ...script, legendas: script.legendas.filter((_, idx) => idx !== i) });
   };
 
   const StepIndicator = () => (
@@ -150,54 +254,41 @@ export default function AdminCriarVideo() {
     </div>
   );
 
-  // ── Step 1: Objetivo ───────────────────────────────────────
+  // ── Step 1 ─────────────────────────────────────────────────
   if (step === 1) return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Criar Vídeo</h1>
-        <p className="text-muted-foreground mt-1">
-          Descreva o objetivo do vídeo e geraremos o roteiro, narração e imagens automaticamente.
-        </p>
+        <p className="text-muted-foreground mt-1">Descreva o objetivo e geramos roteiro, narração e imagens automaticamente.</p>
       </div>
       <StepIndicator />
 
       <div className="space-y-3">
         <Label className="text-base font-semibold">Qual o objetivo deste vídeo?</Label>
         <Textarea
-          rows={4}
-          value={objetivo}
+          rows={4} value={objetivo}
           onChange={(e) => setObjetivo(e.target.value)}
-          placeholder="Ex: quero atrair terapeutas que ainda não têm presença digital e mostrar que é possível ter a agenda cheia sem esforço manual..."
+          placeholder="Ex: quero atrair terapeutas sem presença digital e mostrar que é possível ter a agenda cheia sem esforço manual..."
           className="resize-none text-base"
         />
-        <p className="text-xs text-muted-foreground">
-          Quanto mais específico, melhor o roteiro gerado.
-        </p>
+        <p className="text-xs text-muted-foreground">Quanto mais específico, melhor o roteiro.</p>
       </div>
 
-      {/* Exemplos rápidos */}
       <div className="space-y-2">
         <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-          <Lightbulb className="h-3.5 w-3.5" /> Exemplos de objetivo
+          <Lightbulb className="h-3.5 w-3.5" /> Exemplos
         </p>
-        <div className="flex flex-col gap-2">
-          {OBJETIVO_EXEMPLOS.map((ex) => (
-            <button
-              key={ex}
-              className="text-left text-sm px-3 py-2 rounded-lg border border-dashed border-muted-foreground/40 hover:border-primary hover:bg-primary/5 transition-all text-muted-foreground hover:text-foreground"
-              onClick={() => setObjetivo(ex)}
-            >
-              "{ex}"
-            </button>
-          ))}
-        </div>
+        {OBJETIVO_EXEMPLOS.map((ex) => (
+          <button key={ex} onClick={() => setObjetivo(ex)}
+            className="w-full text-left text-sm px-3 py-2 rounded-lg border border-dashed border-muted-foreground/40 hover:border-primary hover:bg-primary/5 transition-all text-muted-foreground hover:text-foreground">
+            "{ex}"
+          </button>
+        ))}
       </div>
 
-      <Button
-        className="w-full" size="lg"
+      <Button className="w-full" size="lg"
         disabled={!objetivo.trim() || jobStatus.status === "loading"}
-        onClick={handleNextStep}
-      >
+        onClick={handleNextStep}>
         {jobStatus.status === "loading"
           ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Gerando roteiro...</>
           : <><ChevronRight className="mr-2 h-4 w-4" /> Gerar Roteiro</>}
@@ -205,7 +296,7 @@ export default function AdminCriarVideo() {
     </div>
   );
 
-  // ── Step 2: Revisar ────────────────────────────────────────
+  // ── Step 2 ─────────────────────────────────────────────────
   if (step === 2 && script) return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
@@ -217,14 +308,11 @@ export default function AdminCriarVideo() {
       {/* Narração */}
       <div className="space-y-2">
         <Label className="text-base font-semibold">Narração</Label>
-        <Textarea
-          rows={5}
-          value={script.narracao}
+        <Textarea rows={5} value={script.narracao}
           onChange={(e) => setScript({ ...script, narracao: e.target.value })}
-          className="resize-none"
-        />
+          className="resize-none" />
         <p className="text-xs text-muted-foreground">
-          {script.narracao.length} caracteres · aprox. {Math.round(script.narracao.length / 15)}s de duração
+          {script.narracao.length} caracteres · aprox. {Math.round(script.narracao.length / 15)}s
         </p>
       </div>
 
@@ -232,29 +320,26 @@ export default function AdminCriarVideo() {
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label className="text-base font-semibold">Slides</Label>
-          <Button variant="outline" size="sm" onClick={addLegenda}>+ Slide</Button>
+          <Button variant="outline" size="sm" onClick={() => {
+            const last = script.legendas[script.legendas.length - 1];
+            setScript({ ...script, legendas: [...script.legendas, { tempo: (last?.tempo ?? 0) + 4, texto: "" }] });
+          }}>+ Slide</Button>
         </div>
         <div className="space-y-2">
           {script.legendas.map((leg, i) => (
             <div key={i} className="flex gap-2 items-center">
               <div className="w-16 flex-shrink-0">
-                <Input
-                  type="number" min={0} value={leg.tempo}
+                <Input type="number" min={0} value={leg.tempo}
                   onChange={(e) => updateLegenda(i, "tempo", e.target.value)}
-                  className="text-center text-sm"
-                />
+                  className="text-center text-sm" />
                 <p className="text-xs text-center text-muted-foreground mt-0.5">seg</p>
               </div>
-              <Input
-                value={leg.texto}
+              <Input value={leg.texto}
                 onChange={(e) => updateLegenda(i, "texto", e.target.value)}
-                placeholder="Texto do slide..."
-                className="flex-1"
-              />
-              <Button
-                variant="ghost" size="sm" className="text-destructive px-2"
-                onClick={() => removeLegenda(i)} disabled={script.legendas.length <= 1}
-              >✕</Button>
+                placeholder="Texto do slide..." className="flex-1" />
+              <Button variant="ghost" size="sm" className="text-destructive px-2"
+                onClick={() => script.legendas.length > 1 && setScript({ ...script, legendas: script.legendas.filter((_, j) => j !== i) })}
+                disabled={script.legendas.length <= 1}>✕</Button>
             </div>
           ))}
         </div>
@@ -267,52 +352,69 @@ export default function AdminCriarVideo() {
       </div>
 
       {/* Voz */}
-      <div className="space-y-2">
+      <div className="space-y-3">
         <Label className="text-base font-semibold flex items-center gap-2">
           <Mic className="h-4 w-4" /> Voz da Narração
         </Label>
-        <div className="grid grid-cols-3 gap-3">
-          {VOICES.map((v) => (
-            <Card
-              key={v.id}
-              className={`cursor-pointer border-2 transition-all ${voice === v.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
-              onClick={() => setVoice(v.id)}
-            >
-              <CardContent className="p-3 text-center">
-                <p className="font-medium text-sm">{v.label}</p>
-                <p className="text-xs text-muted-foreground">{v.gender}</p>
-              </CardContent>
-            </Card>
-          ))}
+
+        {/* Toggle edge vs minha voz */}
+        <div className="grid grid-cols-2 gap-3">
+          <Card className={`cursor-pointer border-2 transition-all ${voiceMode === "edge" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+            onClick={() => setVoiceMode("edge")}>
+            <CardContent className="p-3 text-center">
+              <p className="font-medium text-sm">Voz Automática</p>
+              <p className="text-xs text-muted-foreground">3 opções em português</p>
+            </CardContent>
+          </Card>
+          <Card className={`cursor-pointer border-2 transition-all ${voiceMode === "minha-voz" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+            onClick={() => setVoiceMode("minha-voz")}>
+            <CardContent className="p-3 text-center">
+              <p className="font-medium text-sm flex items-center justify-center gap-1.5">
+                <Mic className="h-3.5 w-3.5 text-primary" /> Minha Voz
+              </p>
+              <p className="text-xs text-muted-foreground">Clonagem com IA</p>
+            </CardContent>
+          </Card>
         </div>
+
+        {/* Edge voices */}
+        {voiceMode === "edge" && (
+          <div className="grid grid-cols-3 gap-3">
+            {EDGE_VOICES.map((v) => (
+              <Card key={v.id}
+                className={`cursor-pointer border-2 transition-all ${edgeVoice === v.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
+                onClick={() => setEdgeVoice(v.id)}>
+                <CardContent className="p-3 text-center">
+                  <p className="font-medium text-sm">{v.label}</p>
+                  <p className="text-xs text-muted-foreground">{v.gender}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* Gravador */}
+        {voiceMode === "minha-voz" && (
+          <VoiceRecorder onRecorded={setVoiceBlob} />
+        )}
       </div>
 
       {/* Formato */}
       <div className="space-y-2">
         <Label className="text-base font-semibold">Formato</Label>
         <div className="grid grid-cols-2 gap-3">
-          <Card
-            className={`cursor-pointer border-2 transition-all ${format === "portrait" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
-            onClick={() => setFormat("portrait")}
-          >
+          <Card className={`cursor-pointer border-2 transition-all ${format === "portrait" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
+            onClick={() => setFormat("portrait")}>
             <CardContent className="p-4 flex items-center gap-3">
               <Smartphone className="h-6 w-6 text-primary" />
-              <div>
-                <p className="font-medium text-sm">Vertical 9:16</p>
-                <p className="text-xs text-muted-foreground">Reels, Stories, TikTok</p>
-              </div>
+              <div><p className="font-medium text-sm">Vertical 9:16</p><p className="text-xs text-muted-foreground">Reels, Stories, TikTok</p></div>
             </CardContent>
           </Card>
-          <Card
-            className={`cursor-pointer border-2 transition-all ${format === "landscape" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
-            onClick={() => setFormat("landscape")}
-          >
+          <Card className={`cursor-pointer border-2 transition-all ${format === "landscape" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
+            onClick={() => setFormat("landscape")}>
             <CardContent className="p-4 flex items-center gap-3">
               <Monitor className="h-6 w-6 text-primary" />
-              <div>
-                <p className="font-medium text-sm">Paisagem 16:9</p>
-                <p className="text-xs text-muted-foreground">YouTube, Feed</p>
-              </div>
+              <div><p className="font-medium text-sm">Paisagem 16:9</p><p className="text-xs text-muted-foreground">YouTube, Feed</p></div>
             </CardContent>
           </Card>
         </div>
@@ -329,7 +431,7 @@ export default function AdminCriarVideo() {
     </div>
   );
 
-  // ── Step 3: Processando / Resultado ───────────────────────
+  // ── Step 3 ─────────────────────────────────────────────────
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
@@ -347,10 +449,7 @@ export default function AdminCriarVideo() {
               <p className="text-muted-foreground mt-1 text-sm">{jobStatus.step}</p>
             </div>
             <div className="w-full bg-muted rounded-full h-2">
-              <div
-                className="bg-primary h-2 rounded-full transition-all duration-500"
-                style={{ width: `${jobStatus.progress || 0}%` }}
-              />
+              <div className="bg-primary h-2 rounded-full transition-all duration-500" style={{ width: `${jobStatus.progress || 0}%` }} />
             </div>
             <p className="text-sm text-muted-foreground">{jobStatus.progress || 0}%</p>
           </CardContent>
@@ -370,9 +469,7 @@ export default function AdminCriarVideo() {
             )}
             <div className="flex gap-3 mt-2">
               {jobStatus.video_url && (
-                <Button asChild variant="outline">
-                  <a href={jobStatus.video_url} download>Baixar Vídeo</a>
-                </Button>
+                <Button asChild variant="outline"><a href={jobStatus.video_url} download>Baixar Vídeo</a></Button>
               )}
               <Button onClick={handleReset}>Criar Outro Vídeo</Button>
             </div>
@@ -389,9 +486,7 @@ export default function AdminCriarVideo() {
               <p className="text-muted-foreground mt-1 text-sm">{jobStatus.message}</p>
             </div>
             <div className="flex gap-3">
-              <Button onClick={() => setStep(2)} variant="outline">
-                <ChevronLeft className="mr-2 h-4 w-4" /> Editar Roteiro
-              </Button>
+              <Button onClick={() => setStep(2)} variant="outline"><ChevronLeft className="mr-2 h-4 w-4" /> Editar</Button>
               <Button onClick={handleReset} variant="outline">Recomeçar</Button>
             </div>
           </CardContent>

@@ -11,6 +11,7 @@ import {
   ClockIcon,
   FileUp,
   Ban,
+  Clapperboard,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -32,9 +33,10 @@ const items = [
   { title: "Agenda", url: "/admin/agenda", icon: CalendarDays },
   { title: "Agendamentos", url: "/admin/agendamentos", icon: Calendar },
   { title: "Bloqueios", url: "/admin/disponibilidade", icon: Ban },
+  { title: "Novos Pacientes", url: "/admin/leads", icon: Users },
   { title: "Artigos", url: "/admin/artigos", icon: FileText },
   { title: "Vídeos", url: "/admin/videos", icon: Video },
-  { title: "Novos Pacientes", url: "/admin/leads", icon: Users },
+  { title: "Criar Vídeo", url: "/admin/criar-video", icon: Clapperboard },
   { title: "Documentos", url: "/admin/documentos", icon: FileUp },
   { title: "Configurações", url: "/admin/configuracoes", icon: Settings },
 ];

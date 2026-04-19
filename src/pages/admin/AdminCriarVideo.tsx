@@ -5,41 +5,18 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   Film, Loader2, CheckCircle2, AlertCircle,
-  ChevronRight, ChevronLeft, Mic, Monitor, Smartphone, Sparkles,
+  ChevronRight, ChevronLeft, Mic, Monitor, Smartphone, Lightbulb,
 } from "lucide-react";
 
 const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
 
-const VIDEO_TYPES = [
-  {
-    id: "objetivo_livre",
-    label: "Objetivo Livre",
-    description: "Você descreve o objetivo — o roteiro é gerado para você",
-    duration: "~25s",
-    highlight: true,
-  },
-  {
-    id: "atrair_pacientes",
-    label: "Atrair Pacientes",
-    description: "Mostre que você perde pacientes sem automação",
-    duration: "~25s",
-  },
-  {
-    id: "demo_plataforma",
-    label: "Demo da Plataforma",
-    description: "Tour completo da sua página e sistema de agendamento",
-    duration: "~30s",
-  },
-  {
-    id: "whatsapp_bot",
-    label: "WhatsApp Automático",
-    description: "Demonstra o assistente agendando pacientes sozinho",
-    duration: "~28s",
-  },
+const OBJETIVO_EXEMPLOS = [
+  "Atrair terapeutas sem presença digital que querem lotar a agenda",
+  "Mostrar como o WhatsApp automático agenda pacientes enquanto você dorme",
+  "Apresentar minha plataforma para psicólogos que perdem pacientes por demora no retorno",
 ];
 
 const VOICES = [
@@ -48,8 +25,8 @@ const VOICES = [
   { id: "pt-BR-AntonioNeural",   label: "Antônio",   gender: "Masculina" },
 ];
 
-type Legenda  = { tempo: number; texto: string };
-type Script   = { titulo: string; narracao: string; cta: string; legendas: Legenda[] };
+type Legenda   = { tempo: number; texto: string };
+type Script    = { titulo: string; narracao: string; cta: string; legendas: Legenda[] };
 type JobStatus = {
   status: "idle" | "loading" | "editing" | "processing" | "done" | "error";
   progress?: number;
@@ -61,20 +38,15 @@ type JobStatus = {
 
 export default function AdminCriarVideo() {
   const { data: professional } = useProfessional();
-  const [step, setStep]               = useState<1 | 2 | 3>(1);
-  const [selectedType, setSelectedType] = useState<string | null>(null);
-  const [objetivo, setObjetivo]       = useState("");
-  const [script, setScript]           = useState<Script | null>(null);
-  const [voice, setVoice]             = useState("pt-BR-FranciscaNeural");
-  const [format, setFormat]           = useState<"landscape" | "portrait">("landscape");
-  const [jobStatus, setJobStatus]     = useState<JobStatus>({ status: "idle" });
+  const [step, setStep]           = useState<1 | 2 | 3>(1);
+  const [objetivo, setObjetivo]   = useState("");
+  const [script, setScript]       = useState<Script | null>(null);
+  const [voice, setVoice]         = useState("pt-BR-FranciscaNeural");
+  const [format, setFormat]       = useState<"landscape" | "portrait">("portrait");
+  const [jobStatus, setJobStatus] = useState<JobStatus>({ status: "idle" });
 
   const handleNextStep = async () => {
-    if (!selectedType || !professional?.slug) return;
-    if (selectedType === "objetivo_livre" && !objetivo.trim()) {
-      toast.error("Descreva o objetivo do vídeo antes de continuar.");
-      return;
-    }
+    if (!professional?.slug || !objetivo.trim()) return;
     setJobStatus({ status: "loading" });
     try {
       const res = await fetch(`${API}/preview-roteiro`, {
@@ -82,7 +54,7 @@ export default function AdminCriarVideo() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           professional_slug: professional.slug,
-          video_type: selectedType,
+          video_type: "objetivo_livre",
           objetivo: objetivo.trim(),
         }),
       });
@@ -106,7 +78,7 @@ export default function AdminCriarVideo() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           professional_slug: professional.slug,
-          video_type: selectedType,
+          video_type: "objetivo_livre",
           objetivo: objetivo.trim(),
           script,
           voice,
@@ -139,9 +111,9 @@ export default function AdminCriarVideo() {
   };
 
   const handleReset = () => {
-    setStep(1); setSelectedType(null); setScript(null);
-    setObjetivo(""); setVoice("pt-BR-FranciscaNeural");
-    setFormat("landscape"); setJobStatus({ status: "idle" });
+    setStep(1); setScript(null); setObjetivo("");
+    setVoice("pt-BR-FranciscaNeural"); setFormat("portrait");
+    setJobStatus({ status: "idle" });
   };
 
   const updateLegenda = (i: number, field: keyof Legenda, value: string | number) => {
@@ -163,11 +135,11 @@ export default function AdminCriarVideo() {
   };
 
   const StepIndicator = () => (
-    <div className="flex items-center gap-2 mb-6">
-      {[{ n: 1, label: "Tipo" }, { n: 2, label: "Personalizar" }, { n: 3, label: "Gerar" }].map(({ n, label }, i) => (
+    <div className="flex items-center gap-2 mb-8">
+      {[{ n: 1, label: "Objetivo" }, { n: 2, label: "Revisar" }, { n: 3, label: "Gerar" }].map(({ n, label }, i) => (
         <div key={n} className="flex items-center gap-2">
           <div className={`flex items-center gap-1.5 ${step === n ? "text-primary font-semibold" : step > n ? "text-green-500" : "text-muted-foreground"}`}>
-            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border-2 ${step === n ? "border-primary bg-primary text-white" : step > n ? "border-green-500 bg-green-500 text-white" : "border-muted-foreground"}`}>
+            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 ${step === n ? "border-primary bg-primary text-white" : step > n ? "border-green-500 bg-green-500 text-white" : "border-muted-foreground"}`}>
               {step > n ? "✓" : n}
             </div>
             <span className="text-sm hidden sm:inline">{label}</span>
@@ -178,102 +150,111 @@ export default function AdminCriarVideo() {
     </div>
   );
 
-  // ── Step 1 ─────────────────────────────────────────────────
+  // ── Step 1: Objetivo ───────────────────────────────────────
   if (step === 1) return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-2xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Criar Vídeo</h1>
-        <p className="text-muted-foreground mt-1">Gere vídeos de divulgação com imagens reais e narração automática.</p>
+        <p className="text-muted-foreground mt-1">
+          Descreva o objetivo do vídeo e geraremos o roteiro, narração e imagens automaticamente.
+        </p>
       </div>
       <StepIndicator />
 
-      <div className="grid gap-4">
-        {VIDEO_TYPES.map((type) => (
-          <Card
-            key={type.id}
-            className={`cursor-pointer transition-all border-2 ${selectedType === type.id ? "border-primary bg-primary/5" : type.highlight ? "border-primary/40 hover:border-primary" : "border-border hover:border-primary/50"}`}
-            onClick={() => setSelectedType(type.id)}
-          >
-            <CardContent className="flex items-center gap-4 p-4">
-              <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${selectedType === type.id ? "border-primary bg-primary" : "border-muted-foreground"}`} />
-              <div className="flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{type.label}</span>
-                    {type.highlight && <Badge variant="secondary" className="text-xs gap-1"><Sparkles className="h-3 w-3" />Recomendado</Badge>}
-                  </div>
-                  <span className="text-xs text-muted-foreground flex-shrink-0">{type.duration}</span>
-                </div>
-                <p className="text-sm text-muted-foreground mt-0.5">{type.description}</p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+      <div className="space-y-3">
+        <Label className="text-base font-semibold">Qual o objetivo deste vídeo?</Label>
+        <Textarea
+          rows={4}
+          value={objetivo}
+          onChange={(e) => setObjetivo(e.target.value)}
+          placeholder="Ex: quero atrair terapeutas que ainda não têm presença digital e mostrar que é possível ter a agenda cheia sem esforço manual..."
+          className="resize-none text-base"
+        />
+        <p className="text-xs text-muted-foreground">
+          Quanto mais específico, melhor o roteiro gerado.
+        </p>
       </div>
 
-      {selectedType === "objetivo_livre" && (
-        <div className="space-y-2">
-          <Label className="text-base font-semibold">Qual o objetivo do seu vídeo?</Label>
-          <Textarea
-            rows={3}
-            value={objetivo}
-            onChange={(e) => setObjetivo(e.target.value)}
-            placeholder="Ex: quero atrair mães que buscam terapia infantil em São Paulo..."
-            className="resize-none"
-          />
-          <p className="text-xs text-muted-foreground">Seja específico — o roteiro será gerado com base nesse objetivo.</p>
+      {/* Exemplos rápidos */}
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+          <Lightbulb className="h-3.5 w-3.5" /> Exemplos de objetivo
+        </p>
+        <div className="flex flex-col gap-2">
+          {OBJETIVO_EXEMPLOS.map((ex) => (
+            <button
+              key={ex}
+              className="text-left text-sm px-3 py-2 rounded-lg border border-dashed border-muted-foreground/40 hover:border-primary hover:bg-primary/5 transition-all text-muted-foreground hover:text-foreground"
+              onClick={() => setObjetivo(ex)}
+            >
+              "{ex}"
+            </button>
+          ))}
         </div>
-      )}
+      </div>
 
       <Button
         className="w-full" size="lg"
-        disabled={!selectedType || jobStatus.status === "loading" || (selectedType === "objetivo_livre" && !objetivo.trim())}
+        disabled={!objetivo.trim() || jobStatus.status === "loading"}
         onClick={handleNextStep}
       >
         {jobStatus.status === "loading"
-          ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          : <ChevronRight className="mr-2 h-4 w-4" />}
-        Próximo: Personalizar
+          ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Gerando roteiro...</>
+          : <><ChevronRight className="mr-2 h-4 w-4" /> Gerar Roteiro</>}
       </Button>
     </div>
   );
 
-  // ── Step 2 ─────────────────────────────────────────────────
+  // ── Step 2: Revisar ────────────────────────────────────────
   if (step === 2 && script) return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-2xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Criar Vídeo</h1>
-        <p className="text-muted-foreground mt-1">Edite o roteiro e configure voz e formato.</p>
+        <h1 className="text-2xl font-bold">Revisar Roteiro</h1>
+        <p className="text-muted-foreground mt-1">Edite o conteúdo, escolha a voz e o formato.</p>
       </div>
       <StepIndicator />
 
       {/* Narração */}
       <div className="space-y-2">
-        <Label className="text-base font-semibold">Narração (texto falado)</Label>
+        <Label className="text-base font-semibold">Narração</Label>
         <Textarea
           rows={5}
           value={script.narracao}
           onChange={(e) => setScript({ ...script, narracao: e.target.value })}
-          placeholder="Texto que será narrado..."
+          className="resize-none"
         />
-        <p className="text-xs text-muted-foreground">{script.narracao.length} caracteres · aprox. {Math.round(script.narracao.length / 15)}s</p>
+        <p className="text-xs text-muted-foreground">
+          {script.narracao.length} caracteres · aprox. {Math.round(script.narracao.length / 15)}s de duração
+        </p>
       </div>
 
       {/* Slides */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label className="text-base font-semibold">Slides</Label>
-          <Button variant="outline" size="sm" onClick={addLegenda}>+ Adicionar slide</Button>
+          <Button variant="outline" size="sm" onClick={addLegenda}>+ Slide</Button>
         </div>
         <div className="space-y-2">
           {script.legendas.map((leg, i) => (
             <div key={i} className="flex gap-2 items-center">
-              <div className="w-16">
-                <Input type="number" min={0} value={leg.tempo} onChange={(e) => updateLegenda(i, "tempo", e.target.value)} className="text-center text-sm" />
+              <div className="w-16 flex-shrink-0">
+                <Input
+                  type="number" min={0} value={leg.tempo}
+                  onChange={(e) => updateLegenda(i, "tempo", e.target.value)}
+                  className="text-center text-sm"
+                />
                 <p className="text-xs text-center text-muted-foreground mt-0.5">seg</p>
               </div>
-              <Input value={leg.texto} onChange={(e) => updateLegenda(i, "texto", e.target.value)} placeholder="Texto do slide..." className="flex-1" />
-              <Button variant="ghost" size="sm" className="text-destructive px-2" onClick={() => removeLegenda(i)} disabled={script.legendas.length <= 1}>✕</Button>
+              <Input
+                value={leg.texto}
+                onChange={(e) => updateLegenda(i, "texto", e.target.value)}
+                placeholder="Texto do slide..."
+                className="flex-1"
+              />
+              <Button
+                variant="ghost" size="sm" className="text-destructive px-2"
+                onClick={() => removeLegenda(i)} disabled={script.legendas.length <= 1}
+              >✕</Button>
             </div>
           ))}
         </div>
@@ -287,10 +268,16 @@ export default function AdminCriarVideo() {
 
       {/* Voz */}
       <div className="space-y-2">
-        <Label className="text-base font-semibold flex items-center gap-2"><Mic className="h-4 w-4" /> Voz</Label>
+        <Label className="text-base font-semibold flex items-center gap-2">
+          <Mic className="h-4 w-4" /> Voz da Narração
+        </Label>
         <div className="grid grid-cols-3 gap-3">
           {VOICES.map((v) => (
-            <Card key={v.id} className={`cursor-pointer border-2 transition-all ${voice === v.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`} onClick={() => setVoice(v.id)}>
+            <Card
+              key={v.id}
+              className={`cursor-pointer border-2 transition-all ${voice === v.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
+              onClick={() => setVoice(v.id)}
+            >
               <CardContent className="p-3 text-center">
                 <p className="font-medium text-sm">{v.label}</p>
                 <p className="text-xs text-muted-foreground">{v.gender}</p>
@@ -304,31 +291,47 @@ export default function AdminCriarVideo() {
       <div className="space-y-2">
         <Label className="text-base font-semibold">Formato</Label>
         <div className="grid grid-cols-2 gap-3">
-          <Card className={`cursor-pointer border-2 transition-all ${format === "landscape" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`} onClick={() => setFormat("landscape")}>
-            <CardContent className="p-4 flex items-center gap-3">
-              <Monitor className="h-6 w-6 text-primary" />
-              <div><p className="font-medium text-sm">Paisagem 16:9</p><p className="text-xs text-muted-foreground">YouTube, Feed</p></div>
-            </CardContent>
-          </Card>
-          <Card className={`cursor-pointer border-2 transition-all ${format === "portrait" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`} onClick={() => setFormat("portrait")}>
+          <Card
+            className={`cursor-pointer border-2 transition-all ${format === "portrait" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
+            onClick={() => setFormat("portrait")}
+          >
             <CardContent className="p-4 flex items-center gap-3">
               <Smartphone className="h-6 w-6 text-primary" />
-              <div><p className="font-medium text-sm">Vertical 9:16</p><p className="text-xs text-muted-foreground">Reels, Stories, TikTok</p></div>
+              <div>
+                <p className="font-medium text-sm">Vertical 9:16</p>
+                <p className="text-xs text-muted-foreground">Reels, Stories, TikTok</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card
+            className={`cursor-pointer border-2 transition-all ${format === "landscape" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
+            onClick={() => setFormat("landscape")}
+          >
+            <CardContent className="p-4 flex items-center gap-3">
+              <Monitor className="h-6 w-6 text-primary" />
+              <div>
+                <p className="font-medium text-sm">Paisagem 16:9</p>
+                <p className="text-xs text-muted-foreground">YouTube, Feed</p>
+              </div>
             </CardContent>
           </Card>
         </div>
       </div>
 
       <div className="flex gap-3 pt-2">
-        <Button variant="outline" onClick={() => setStep(1)}><ChevronLeft className="mr-2 h-4 w-4" /> Voltar</Button>
-        <Button className="flex-1" size="lg" onClick={handleGenerate}><Film className="mr-2 h-5 w-5" /> Gerar Vídeo</Button>
+        <Button variant="outline" onClick={() => setStep(1)}>
+          <ChevronLeft className="mr-2 h-4 w-4" /> Voltar
+        </Button>
+        <Button className="flex-1" size="lg" onClick={handleGenerate}>
+          <Film className="mr-2 h-5 w-5" /> Gerar Vídeo
+        </Button>
       </div>
     </div>
   );
 
-  // ── Step 3 ─────────────────────────────────────────────────
+  // ── Step 3: Processando / Resultado ───────────────────────
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-2xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Criar Vídeo</h1>
         <p className="text-muted-foreground mt-1">Aguarde enquanto seu vídeo é gerado.</p>
@@ -337,14 +340,17 @@ export default function AdminCriarVideo() {
 
       {jobStatus.status === "processing" && (
         <Card>
-          <CardContent className="py-10 flex flex-col items-center gap-4">
-            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+          <CardContent className="py-12 flex flex-col items-center gap-5">
+            <Loader2 className="h-14 w-14 animate-spin text-primary" />
             <div className="text-center">
-              <p className="font-medium text-lg">Gerando seu vídeo...</p>
-              <p className="text-muted-foreground mt-1">{jobStatus.step}</p>
+              <p className="font-semibold text-lg">Gerando seu vídeo...</p>
+              <p className="text-muted-foreground mt-1 text-sm">{jobStatus.step}</p>
             </div>
-            <div className="w-full bg-muted rounded-full h-2 mt-2">
-              <div className="bg-primary h-2 rounded-full transition-all duration-500" style={{ width: `${jobStatus.progress || 0}%` }} />
+            <div className="w-full bg-muted rounded-full h-2">
+              <div
+                className="bg-primary h-2 rounded-full transition-all duration-500"
+                style={{ width: `${jobStatus.progress || 0}%` }}
+              />
             </div>
             <p className="text-sm text-muted-foreground">{jobStatus.progress || 0}%</p>
           </CardContent>
@@ -354,14 +360,20 @@ export default function AdminCriarVideo() {
       {jobStatus.status === "done" && (
         <Card>
           <CardContent className="py-8 flex flex-col items-center gap-4">
-            <CheckCircle2 className="h-12 w-12 text-green-500" />
+            <CheckCircle2 className="h-14 w-14 text-green-500" />
             <div className="text-center">
-              <p className="font-medium text-lg">Vídeo criado com sucesso!</p>
-              <p className="text-muted-foreground mt-1">{jobStatus.titulo}</p>
+              <p className="font-semibold text-lg">Vídeo criado com sucesso!</p>
+              <p className="text-muted-foreground mt-1 text-sm">{jobStatus.titulo}</p>
             </div>
-            {jobStatus.video_url && <video src={jobStatus.video_url} controls className="w-full rounded-lg mt-2 max-h-72" />}
+            {jobStatus.video_url && (
+              <video src={jobStatus.video_url} controls className="w-full max-w-xs rounded-xl mt-2 shadow-lg" />
+            )}
             <div className="flex gap-3 mt-2">
-              {jobStatus.video_url && <Button asChild variant="outline"><a href={jobStatus.video_url} download>Baixar Vídeo</a></Button>}
+              {jobStatus.video_url && (
+                <Button asChild variant="outline">
+                  <a href={jobStatus.video_url} download>Baixar Vídeo</a>
+                </Button>
+              )}
               <Button onClick={handleReset}>Criar Outro Vídeo</Button>
             </div>
           </CardContent>
@@ -371,13 +383,15 @@ export default function AdminCriarVideo() {
       {jobStatus.status === "error" && (
         <Card className="border-destructive">
           <CardContent className="py-8 flex flex-col items-center gap-4">
-            <AlertCircle className="h-12 w-12 text-destructive" />
+            <AlertCircle className="h-14 w-14 text-destructive" />
             <div className="text-center">
-              <p className="font-medium text-lg">Erro ao gerar vídeo</p>
-              <p className="text-muted-foreground mt-1">{jobStatus.message}</p>
+              <p className="font-semibold text-lg">Erro ao gerar vídeo</p>
+              <p className="text-muted-foreground mt-1 text-sm">{jobStatus.message}</p>
             </div>
             <div className="flex gap-3">
-              <Button onClick={() => setStep(2)} variant="outline"><ChevronLeft className="mr-2 h-4 w-4" /> Editar Roteiro</Button>
+              <Button onClick={() => setStep(2)} variant="outline">
+                <ChevronLeft className="mr-2 h-4 w-4" /> Editar Roteiro
+              </Button>
               <Button onClick={handleReset} variant="outline">Recomeçar</Button>
             </div>
           </CardContent>

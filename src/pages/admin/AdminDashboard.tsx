@@ -2,8 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfessional } from "@/hooks/useProfessional";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FileText, Video, Users, ExternalLink, TrendingUp } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { FileText, Video, Users, TrendingUp } from "lucide-react";
 import { Link } from "react-router-dom";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis } from "recharts";
@@ -131,12 +130,6 @@ export default function AdminDashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">Painel</h1>
-        <Button variant="outline" size="sm" asChild>
-          <a href={`/${professional.slug}`} target="_blank" rel="noopener noreferrer">
-            <ExternalLink className="h-4 w-4 mr-2" />
-            Ver minha página
-          </a>
-        </Button>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">

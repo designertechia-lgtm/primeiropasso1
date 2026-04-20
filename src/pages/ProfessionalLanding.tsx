@@ -191,8 +191,16 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         photoStyle={(professional as any).photo_style ?? "portrait"}
         photoFit={(professional as any).photo_fit ?? "contain"}
       />
-      <PainSection />
-      <SolutionSection />
+      <PainSection
+        title={(professional as any).pain_title ?? undefined}
+        subtitle={(professional as any).pain_subtitle ?? undefined}
+        items={(professional as any).pain_items ?? undefined}
+      />
+      <SolutionSection
+        title={(professional as any).solution_title ?? undefined}
+        subtitle={(professional as any).solution_subtitle ?? undefined}
+        items={(professional as any).solution_items ?? undefined}
+      />
       <AboutSection
         name={name}
         bio={professional.bio ?? undefined}

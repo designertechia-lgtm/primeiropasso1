@@ -24,6 +24,16 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
     setPreview(currentUrl);
   }, [currentUrl]);
 
+  const deleteFromStorage = async (url: string) => {
+    try {
+      const withoutQuery = url.split("?")[0];
+      const match = withoutQuery.split("/object/public/images/")[1];
+      if (match) await supabase.storage.from("images").remove([decodeURIComponent(match)]);
+    } catch {
+      // silently ignore delete errors
+    }
+  };
+
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
@@ -35,6 +45,7 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
     }
 
     setUploading(true);
+    const oldUrl = preview;
     const ext = file.name.split(".").pop();
     const path = `${user.id}/${folder}/${Date.now()}.${ext}`;
 
@@ -45,6 +56,9 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
       setUploading(false);
       return;
     }
+
+    // só deleta a antiga após o novo upload ter sucesso
+    if (oldUrl) await deleteFromStorage(oldUrl);
 
     const { data: urlData } = supabase.storage.from("images").getPublicUrl(path);
     const publicUrl = urlData.publicUrl;
@@ -64,6 +78,7 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
           <img
             src={preview}
             alt="Preview"
+            onError={() => { setPreview(null); onUploaded(""); }}
             className={cn(
               "object-cover object-center border",
               isAvatar ? "h-[116px] w-[116px] rounded-full"
@@ -73,7 +88,7 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
           />
           <button
             type="button"
-            onClick={() => { setPreview(null); onUploaded(""); }}
+            onClick={async () => { if (preview) await deleteFromStorage(preview); setPreview(null); onUploaded(""); }}
             className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1 hover:opacity-80"
           >
             <X className="h-3 w-3" />

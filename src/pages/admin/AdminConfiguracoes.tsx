@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Switch } from "@/components/ui/switch";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
 
@@ -62,9 +61,6 @@ export default function AdminConfiguracoes() {
   const [whatsapp, setWhatsapp] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [photoUrl, setPhotoUrl] = useState("");
-  const [primaryColor, setPrimaryColor] = useState("#87A96B");
-  const [darkMode, setDarkMode] = useState(false);
-  const [darkPrimaryColor, setDarkPrimaryColor] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Status colors
@@ -81,9 +77,6 @@ export default function AdminConfiguracoes() {
       setWhatsapp(professional.whatsapp || "");
       setLogoUrl(professional.logo_url || "");
       setPhotoUrl(professional.photo_url || "");
-      setPrimaryColor(professional.primary_color || "#87A96B");
-      setDarkMode((professional as any).dark_mode || false);
-      setDarkPrimaryColor((professional as any).dark_primary_color || "");
       setColorStatusPending((professional as any).color_status_pending || "#EAB308");
       setColorStatusConfirmed((professional as any).color_status_confirmed || "#22C55E");
       setColorStatusCompleted((professional as any).color_status_completed || "#3B82F6");
@@ -93,9 +86,6 @@ export default function AdminConfiguracoes() {
     }
   }, [professional]);
 
-  const lightDerived = deriveColors(primaryColor, 'light');
-  const darkDerived = deriveColors(darkPrimaryColor || primaryColor, 'dark');
-
   const handleSave = async () => {
     if (!professional) return;
     setSaving(true);
@@ -104,13 +94,6 @@ export default function AdminConfiguracoes() {
       whatsapp: whatsapp || null,
       logo_url: logoUrl || null,
       photo_url: photoUrl || null,
-      primary_color: primaryColor,
-      secondary_color: lightDerived.secondary,
-      background_color: lightDerived.background,
-      dark_mode: darkMode,
-      dark_primary_color: darkPrimaryColor || null,
-      dark_secondary_color: darkMode ? darkDerived.secondary : null,
-      dark_background_color: darkMode ? darkDerived.background : null,
       color_status_pending: colorStatusPending,
       color_status_confirmed: colorStatusConfirmed,
       color_status_completed: colorStatusCompleted,
@@ -186,84 +169,6 @@ export default function AdminConfiguracoes() {
           </div>
         </CardContent>
       </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Cores</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="primaryColor">Cor Primária <FieldHint text="Cor principal da sua página (botões, destaques). As cores secundária e de fundo são geradas automaticamente a partir dela." /></Label>
-            <div className="flex gap-2 items-center">
-              <input type="color" id="primaryColor" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="h-10 w-10 rounded cursor-pointer border-0" />
-              <Input value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="flex-1" />
-            </div>
-          </div>
-
-          <div className="pt-3">
-            <Label className="text-sm text-muted-foreground">Paleta gerada automaticamente</Label>
-            <div className="flex gap-3 mt-2">
-              <div className="flex flex-col items-center gap-1">
-                <div className="w-12 h-12 rounded-lg border" style={{ backgroundColor: primaryColor }} />
-                <span className="text-xs text-muted-foreground">Primária</span>
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <div className="w-12 h-12 rounded-lg border" style={{ backgroundColor: lightDerived.secondary }} />
-                <span className="text-xs text-muted-foreground">Secundária</span>
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <div className="w-12 h-12 rounded-lg border" style={{ backgroundColor: lightDerived.background }} />
-                <span className="text-xs text-muted-foreground">Fundo</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between pt-4 border-t">
-            <div className="space-y-1">
-              <Label htmlFor="darkMode">Modo Escuro</Label>
-              <p className="text-sm text-muted-foreground">Ativar tema escuro na landing page</p>
-            </div>
-            <Switch id="darkMode" checked={darkMode} onCheckedChange={setDarkMode} />
-          </div>
-        </CardContent>
-      </Card>
-
-      {darkMode && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Cores do Modo Escuro</CardTitle>
-            <p className="text-sm text-muted-foreground">Opcional — se vazio, usa a cor primária do modo claro.</p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="darkPrimaryColor">Cor Primária (Escura)</Label>
-              <div className="flex gap-2 items-center">
-                <input type="color" id="darkPrimaryColor" value={darkPrimaryColor || primaryColor} onChange={(e) => setDarkPrimaryColor(e.target.value)} className="h-10 w-10 rounded cursor-pointer border-0" />
-                <Input value={darkPrimaryColor} onChange={(e) => setDarkPrimaryColor(e.target.value)} placeholder="Usar padrão" className="flex-1" />
-                {darkPrimaryColor && <Button variant="ghost" size="sm" onClick={() => setDarkPrimaryColor("")}>Limpar</Button>}
-              </div>
-            </div>
-
-            <div className="pt-3">
-              <Label className="text-sm text-muted-foreground">Paleta escura gerada</Label>
-              <div className="flex gap-3 mt-2">
-                <div className="flex flex-col items-center gap-1">
-                  <div className="w-12 h-12 rounded-lg border" style={{ backgroundColor: darkPrimaryColor || primaryColor }} />
-                  <span className="text-xs text-muted-foreground">Primária</span>
-                </div>
-                <div className="flex flex-col items-center gap-1">
-                  <div className="w-12 h-12 rounded-lg border" style={{ backgroundColor: darkDerived.secondary }} />
-                  <span className="text-xs text-muted-foreground">Secundária</span>
-                </div>
-                <div className="flex flex-col items-center gap-1">
-                  <div className="w-12 h-12 rounded-lg border" style={{ backgroundColor: darkDerived.background }} />
-                  <span className="text-xs text-muted-foreground">Fundo</span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       <Card>
         <CardHeader>

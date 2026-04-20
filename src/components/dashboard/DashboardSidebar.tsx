@@ -12,6 +12,7 @@ import {
   FileUp,
   Ban,
   Clapperboard,
+  Monitor,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -30,6 +31,7 @@ import {
 const items = [
   { title: "Painel", url: "/admin", icon: LayoutDashboard },
   { title: "Meu Perfil", url: "/admin/perfil", icon: User },
+  { title: "Minha Página", url: "/admin/landing", icon: Monitor },
   { title: "Agenda", url: "/admin/agenda", icon: CalendarDays },
   { title: "Agendamentos", url: "/admin/agendamentos", icon: Calendar },
   { title: "Bloqueios", url: "/admin/disponibilidade", icon: Ban },

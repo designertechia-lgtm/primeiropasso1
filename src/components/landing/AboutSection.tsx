@@ -1,5 +1,3 @@
-import { Badge } from "@/components/ui/badge";
-
 interface AboutSectionProps {
   name?: string;
   bio?: string;
@@ -37,9 +35,14 @@ export default function AboutSection({ name, bio, crp, photoUrl, aboutImageUrl, 
             {approaches && approaches.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {approaches.map((a, i) => (
-                  <Badge key={i} variant="secondary" className="text-xs">
+                  <span
+                    key={a}
+                    style={{ animationDelay: `${i * 50}ms` }}
+                    className="animate-in fade-in zoom-in-75 duration-300 inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-gradient-to-r from-primary/15 to-primary/5 px-3 py-1 text-xs font-medium text-primary shadow-sm"
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary/60" />
                     {a}
-                  </Badge>
+                  </span>
                 ))}
               </div>
             )}

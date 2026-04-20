@@ -59,13 +59,13 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
   return (
     <div className={cn("space-y-3", className)}>
       {preview ? (
-        <div className="relative inline-block">
+        <div className={cn("relative", isAvatar ? "w-fit" : "inline-block")}>
           <img
             src={preview}
             alt="Preview"
             className={cn(
-              "object-cover border",
-              isAvatar ? "h-24 w-24 rounded-full" : "h-16 max-w-[200px] rounded-md"
+              "object-cover object-center border",
+              isAvatar ? "h-[116px] w-[116px] rounded-full" : "h-16 max-w-[200px] rounded-md"
             )}
           />
           <button
@@ -81,7 +81,7 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
           onClick={() => inputRef.current?.click()}
           className={cn(
             "border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer hover:border-primary/50 transition-colors text-muted-foreground",
-            isAvatar ? "h-24 w-24 rounded-full" : "h-20 w-full max-w-[200px]"
+            isAvatar ? "h-[116px] w-[116px] rounded-full" : "h-20 w-full max-w-[200px]"
           )}
         >
           <Upload className="h-5 w-5" />

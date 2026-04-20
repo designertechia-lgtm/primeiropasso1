@@ -2,6 +2,14 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { DEMO_PROFESSIONAL } from "@/data/demoProfessional";
 
+type PhotoStyle = "portrait" | "circle" | "square";
+
+const PHOTO_STYLES: Record<PhotoStyle, { shape: string; aspect: string }> = {
+  portrait: { shape: "rounded-[2rem]",  aspect: "aspect-[3/4]"  },
+  circle:   { shape: "rounded-full",    aspect: "aspect-square" },
+  square:   { shape: "rounded-[1rem]",  aspect: "aspect-square" },
+};
+
 interface HeroSectionProps {
   title?: string;
   subtitle?: string;
@@ -11,9 +19,11 @@ interface HeroSectionProps {
   slug?: string;
   professionalName?: string;
   crp?: string;
+  photoStyle?: string;
+  photoFit?: string;
 }
 
-export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroImageUrl, slug, professionalName, crp }: HeroSectionProps) {
+export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroImageUrl, slug, professionalName, crp, photoStyle = "portrait", photoFit = "contain" }: HeroSectionProps) {
   const displayImage = heroImageUrl || photoUrl || DEMO_PROFESSIONAL.hero_image_url || DEMO_PROFESSIONAL.photo_url;
   const displayName = professionalName && professionalName !== "Profissional" ? professionalName : DEMO_PROFESSIONAL.full_name;
   const displayCrp = crp || DEMO_PROFESSIONAL.crp;
@@ -29,22 +39,28 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
       <div className="container mx-auto px-4 py-20 md:py-32 relative">
         <div className="flex flex-col items-center text-center gap-8">
           {/* Profile Photo - Hero Protagonist */}
-          <div className="relative">
-            {displayImage ? (
+          {(() => {
+            const style = PHOTO_STYLES[(photoStyle as PhotoStyle)] ?? PHOTO_STYLES.portrait;
+            const fitClass = photoFit === "cover" ? "object-cover object-top" : "object-contain";
+            return (
               <div className="relative">
-                <div className="absolute -inset-3 rounded-full bg-gradient-to-br from-primary/30 to-accent/30 blur-md" />
-                <img
-                  src={displayImage}
-                  alt={displayName || "Profissional"}
-                  className="relative w-48 h-48 md:w-64 md:h-64 lg:w-72 lg:h-72 rounded-full object-cover border-4 border-background shadow-2xl"
-                />
+                {displayImage ? (
+                  <div className="relative">
+                    <div className={`absolute -inset-3 ${style.shape} bg-gradient-to-br from-primary/30 to-accent/30 blur-md`} />
+                    <img
+                      src={displayImage}
+                      alt={displayName || "Profissional"}
+                      className={`relative w-56 md:w-72 lg:w-80 ${style.aspect} ${style.shape} ${fitClass} border-4 border-background shadow-2xl`}
+                    />
+                  </div>
+                ) : (
+                  <div className={`w-56 md:w-72 lg:w-80 ${style.aspect} ${style.shape} bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center border-4 border-background shadow-xl`}>
+                    <span className="text-muted-foreground text-sm">Foto do profissional</span>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="w-48 h-48 md:w-64 md:h-64 lg:w-72 lg:h-72 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center border-4 border-background shadow-xl">
-                <span className="text-muted-foreground text-sm">Foto do profissional</span>
-              </div>
-            )}
-          </div>
+            );
+          })()}
 
           {/* Name & CRP */}
           {(displayName || displayCrp) && (
@@ -56,7 +72,7 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
               )}
               {displayCrp && (
                 <p className="text-sm text-muted-foreground tracking-wide uppercase">
-                  CRP {displayCrp}
+                  {displayCrp}
                 </p>
               )}
             </div>

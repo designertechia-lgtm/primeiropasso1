@@ -188,6 +188,8 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         slug={professional.slug}
         professionalName={name}
         crp={professional.crp ?? undefined}
+        photoStyle={(professional as any).photo_style ?? "portrait"}
+        photoFit={(professional as any).photo_fit ?? "contain"}
       />
       <PainSection />
       <SolutionSection />

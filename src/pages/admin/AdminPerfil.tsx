@@ -38,6 +38,8 @@ export default function AdminPerfil() {
   const [approaches, setApproaches] = useState<string[]>([]);
   const [newApproach, setNewApproach] = useState("");
   const [photoUrl, setPhotoUrl] = useState("");
+  const [photoStyle, setPhotoStyle] = useState("portrait");
+  const [photoFit, setPhotoFit] = useState("contain");
   const [heroImageUrl, setHeroImageUrl] = useState("");
   const [aboutImageUrl, setAboutImageUrl] = useState("");
   const [priceMin, setPriceMin] = useState("");
@@ -57,6 +59,8 @@ export default function AdminPerfil() {
       setHeroSubtitle(draft.heroSubtitle ?? "");
       setApproaches(draft.approaches ?? []);
       setPhotoUrl(draft.photoUrl ?? "");
+      setPhotoStyle(draft.photoStyle ?? "portrait");
+      setPhotoFit(draft.photoFit ?? "contain");
       setHeroImageUrl(draft.heroImageUrl ?? "");
       setAboutImageUrl(draft.aboutImageUrl ?? "");
       setPriceMin(draft.priceMin ?? "");
@@ -71,6 +75,8 @@ export default function AdminPerfil() {
       setHeroSubtitle(professional.hero_subtitle || "");
       setApproaches(professional.approaches || []);
       setPhotoUrl(professional.photo_url || "");
+      setPhotoStyle((professional as any).photo_style || "portrait");
+      setPhotoFit((professional as any).photo_fit || "contain");
       setHeroImageUrl((professional as any).hero_image_url || "");
       setAboutImageUrl((professional as any).about_image_url || "");
       setPriceMin((professional as any).price_min?.toString() || "");
@@ -83,9 +89,9 @@ export default function AdminPerfil() {
     if (!professional) return;
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
       fullName, bio, crp, heroTitle, heroSubtitle, approaches,
-      photoUrl, heroImageUrl, aboutImageUrl, priceMin, priceMax, priceFirstSession,
+      photoUrl, photoStyle, photoFit, heroImageUrl, aboutImageUrl, priceMin, priceMax, priceFirstSession,
     }));
-  }, [fullName, bio, crp, heroTitle, heroSubtitle, approaches, photoUrl, heroImageUrl, aboutImageUrl, priceMin, priceMax, priceFirstSession]);
+  }, [fullName, bio, crp, heroTitle, heroSubtitle, approaches, photoUrl, photoStyle, photoFit, heroImageUrl, aboutImageUrl, priceMin, priceMax, priceFirstSession]);
 
   const discardDraft = () => {
     localStorage.removeItem(DRAFT_KEY);
@@ -98,6 +104,8 @@ export default function AdminPerfil() {
       setHeroSubtitle(professional.hero_subtitle || "");
       setApproaches(professional.approaches || []);
       setPhotoUrl(professional.photo_url || "");
+      setPhotoStyle((professional as any).photo_style || "portrait");
+      setPhotoFit((professional as any).photo_fit || "contain");
       setHeroImageUrl((professional as any).hero_image_url || "");
       setAboutImageUrl((professional as any).about_image_url || "");
       setPriceMin((professional as any).price_min?.toString() || "");
@@ -132,6 +140,8 @@ export default function AdminPerfil() {
         hero_subtitle: heroSubtitle,
         approaches,
         photo_url: photoUrl,
+        photo_style: photoStyle,
+        photo_fit: photoFit,
         hero_image_url: heroImageUrl || null,
         about_image_url: aboutImageUrl || null,
         price_min: priceMin ? parseFloat(priceMin) : null,
@@ -184,8 +194,8 @@ export default function AdminPerfil() {
             <Input id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="crp">CRP <FieldHint text="Número do seu registro no Conselho Regional de Psicologia. Ex: CRP 06/12345." /></Label>
-            <Input id="crp" placeholder="CRP 00/00000" value={crp} onChange={(e) => setCrp(e.target.value)} />
+            <Label htmlFor="crp">Número do conselho / associação <FieldHint text="Número do seu registro profissional. Ex: CRP 06/12345, CFP 01/00000, CREFITO 3/12345-F, CRM 123456." /></Label>
+            <Input id="crp" placeholder="Ex: CRP 06/12345 · CFP 01/00000 · CREFITO 3/12345-F" value={crp} onChange={(e) => setCrp(e.target.value)} />
           </div>
         </CardContent>
       </Card>
@@ -200,8 +210,8 @@ export default function AdminPerfil() {
             <Textarea id="bio" rows={5} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Conte sobre sua formação e experiência..." />
           </div>
           <div className="space-y-2">
-            <Label>Imagem da seção Sobre <FieldHint text="Foto exibida na seção 'Sobre'. Se não definida, usa sua foto de perfil." /></Label>
-            <p className="text-xs text-muted-foreground">Imagem exibida na seção "Sobre" da sua página. Se não definida, usa a foto de perfil.</p>
+            <Label>Imagem para seção da biografia <FieldHint text="Foto exibida na seção 'Sobre' da sua página pública (ex: foto no consultório). Se não definida, usa sua foto de perfil." /></Label>
+            <p className="text-xs text-muted-foreground">Aparece na seção "Sobre" da sua página. Se não definida, usa a foto de perfil.</p>
             <ImageUpload
               currentUrl={aboutImageUrl || null}
               onUploaded={(url) => setAboutImageUrl(url)}
@@ -277,6 +287,88 @@ export default function AdminPerfil() {
               variant="logo"
             />
           </div>
+          <div className="space-y-2">
+            <Label>Estilo da foto <FieldHint text="Como sua foto aparece no topo da sua página. Escolha o estilo que melhor combina com a sua imagem." /></Label>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { value: "portrait", label: "Retrato", desc: "3:4 vertical", preview: "rounded-[1rem]", aspect: "aspect-[3/4]" },
+                { value: "circle",   label: "Círculo",  desc: "Clássico",    preview: "rounded-full",   aspect: "aspect-square" },
+                { value: "square",   label: "Quadrado", desc: "Moderno",     preview: "rounded-lg",     aspect: "aspect-square" },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setPhotoStyle(opt.value)}
+                  className={`flex flex-col items-center gap-2 rounded-xl border-2 p-3 transition-all ${
+                    photoStyle === opt.value
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/40"
+                  }`}
+                >
+                  <div className={`${opt.preview} ${opt.aspect} bg-muted w-14 overflow-hidden`}>
+                    {(heroImageUrl || photoUrl) && (
+                      <img src={heroImageUrl || photoUrl} alt="" className="w-full h-full object-contain" />
+                    )}
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs font-semibold">{opt.label}</p>
+                    <p className="text-xs text-muted-foreground">{opt.desc}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Modo de exibição */}
+          <div className="space-y-2">
+            <Label>Modo de exibição <FieldHint text="'Completa' mostra a imagem inteira. 'Expandida' preenche todo o espaço (pode cortar as bordas)." /></Label>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { value: "contain", label: "Completa", desc: "Imagem inteira visível" },
+                { value: "cover",   label: "Expandida", desc: "Preenche o espaço" },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setPhotoFit(opt.value)}
+                  className={`flex flex-col items-center gap-1 rounded-xl border-2 p-3 transition-all ${
+                    photoFit === opt.value
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/40"
+                  }`}
+                >
+                  <p className="text-xs font-semibold">{opt.label}</p>
+                  <p className="text-xs text-muted-foreground">{opt.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Preview ao vivo */}
+          {(heroImageUrl || photoUrl) && (() => {
+            const SHAPES: Record<string, { shape: string; aspect: string }> = {
+              portrait: { shape: "rounded-[2rem]",  aspect: "aspect-[3/4]"  },
+              circle:   { shape: "rounded-full",    aspect: "aspect-square" },
+              square:   { shape: "rounded-[1rem]",  aspect: "aspect-square" },
+            };
+            const s = SHAPES[photoStyle] ?? SHAPES.portrait;
+            const fit = photoFit === "cover" ? "object-cover object-top" : "object-contain";
+            return (
+              <div className="mt-2 space-y-2">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Pré-visualização</p>
+                <div className="flex justify-center rounded-xl bg-gradient-to-br from-primary/10 to-secondary/10 p-6">
+                  <div className="relative">
+                    <div className={`absolute -inset-2 ${s.shape} bg-gradient-to-br from-primary/30 to-accent/30 blur-md`} />
+                    <img
+                      src={heroImageUrl || photoUrl}
+                      alt="Preview"
+                      className={`relative w-36 ${s.aspect} ${s.shape} ${fit} border-4 border-background shadow-xl`}
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
           <div className="space-y-2">
             <Label htmlFor="heroTitle">Título principal <FieldHint text="Frase de impacto no topo da sua página. Ex: 'Seu caminho para o equilíbrio começa aqui.'" /></Label>
             <Input id="heroTitle" value={heroTitle} onChange={(e) => setHeroTitle(e.target.value)} />

@@ -452,6 +452,7 @@ export type Database = {
           hero_title: string | null
           id: string
           logo_url: string | null
+          photo_style: string
           photo_url: string | null
           price_first_session: number | null
           price_max: number | null
@@ -486,6 +487,7 @@ export type Database = {
           hero_title?: string | null
           id?: string
           logo_url?: string | null
+          photo_style?: string
           photo_url?: string | null
           price_first_session?: number | null
           price_max?: number | null
@@ -520,6 +522,7 @@ export type Database = {
           hero_title?: string | null
           id?: string
           logo_url?: string | null
+          photo_style?: string
           photo_url?: string | null
           price_first_session?: number | null
           price_max?: number | null

@@ -10,7 +10,7 @@ interface ImageUploadProps {
   currentUrl: string | null;
   onUploaded: (url: string) => void;
   folder: string; // e.g. "logos" or "photos"
-  variant?: "logo" | "avatar";
+  variant?: "logo" | "avatar" | "wide";
   className?: string;
 }
 
@@ -55,17 +55,20 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
   };
 
   const isAvatar = variant === "avatar";
+  const isWide   = variant === "wide";
 
   return (
     <div className={cn("space-y-3", className)}>
       {preview ? (
-        <div className={cn("relative", isAvatar ? "w-fit" : "inline-block")}>
+        <div className={cn("relative", isAvatar ? "w-fit" : isWide ? "w-full" : "inline-block")}>
           <img
             src={preview}
             alt="Preview"
             className={cn(
               "object-cover object-center border",
-              isAvatar ? "h-[116px] w-[116px] rounded-full" : "h-16 max-w-[200px] rounded-md"
+              isAvatar ? "h-[116px] w-[116px] rounded-full"
+                : isWide ? "h-40 w-full rounded-xl"
+                : "h-16 max-w-[200px] rounded-md"
             )}
           />
           <button
@@ -81,7 +84,9 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
           onClick={() => inputRef.current?.click()}
           className={cn(
             "border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer hover:border-primary/50 transition-colors text-muted-foreground",
-            isAvatar ? "h-[116px] w-[116px] rounded-full" : "h-20 w-full max-w-[200px]"
+            isAvatar ? "h-[116px] w-[116px] rounded-full"
+              : isWide ? "h-40 w-full rounded-xl"
+              : "h-20 w-full max-w-[200px]"
           )}
         >
           <Upload className="h-5 w-5" />

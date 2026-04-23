@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Upload, Film } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, Film, CheckCircle2, X } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
 
@@ -114,17 +114,36 @@ export default function AdminVideos() {
               <div className="space-y-2">
                 <Label>Vídeo <FieldHint text="Faça upload de um arquivo da galeria (até 100MB) ou cole um link do YouTube." /></Label>
                 <div className="space-y-3">
-                  {form.embed_url && (
-                    <div className="text-sm text-muted-foreground truncate border rounded-md px-3 py-2 bg-muted/30">
-                      <Film className="h-3 w-3 inline mr-1" />
-                      {form.embed_url}
+                  {/* Vídeo já carregado via upload — mostra badge com nome do arquivo */}
+                  {form.embed_url && form.embed_url.includes("supabase") ? (
+                    <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
+                      <span className="flex-1 truncate min-w-0 text-xs text-green-700">
+                        {decodeURIComponent(form.embed_url.split("/").pop() || "vídeo")}
+                      </span>
+                      <Button
+                        type="button" variant="ghost" size="icon"
+                        className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => setForm({ ...form, embed_url: "" })}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
+                  ) : (
+                    <>
+                      <div className="text-xs text-muted-foreground">Cole um link do YouTube:</div>
+                      <Input
+                        value={form.embed_url}
+                        onChange={(e) => setForm({ ...form, embed_url: e.target.value })}
+                        placeholder="https://www.youtube.com/watch?v=..."
+                      />
+                    </>
                   )}
+
+                  {/* Botão de upload — sempre visível */}
                   <div className="flex gap-2">
                     <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
+                      type="button" variant="outline" size="sm"
                       disabled={uploadingVideo}
                       onClick={() => videoInputRef.current?.click()}
                     >
@@ -133,15 +152,11 @@ export default function AdminVideos() {
                     </Button>
                   </div>
                   <input
-                    ref={videoInputRef}
-                    type="file"
-                    accept="video/*"
-                    className="hidden"
+                    ref={videoInputRef} type="file" accept="video/*" className="hidden"
                     onChange={async (e) => {
                       const file = e.target.files?.[0];
                       if (!file || !user) return;
-                      const maxSize = 100 * 1024 * 1024; // 100MB
-                      if (file.size > maxSize) {
+                      if (file.size > 100 * 1024 * 1024) {
                         toast.error("Arquivo muito grande", { description: "Máximo de 100MB." });
                         return;
                       }
@@ -160,12 +175,6 @@ export default function AdminVideos() {
                       toast.success("Vídeo enviado!");
                       e.target.value = "";
                     }}
-                  />
-                  <div className="text-xs text-muted-foreground">Ou cole um link do YouTube:</div>
-                  <Input
-                    value={form.embed_url}
-                    onChange={(e) => setForm({ ...form, embed_url: e.target.value })}
-                    placeholder="https://www.youtube.com/watch?v=..."
                   />
                 </div>
               </div>

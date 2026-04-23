@@ -6,15 +6,25 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
 import {
   Film, Loader2, CheckCircle2, AlertCircle,
-  ChevronRight, ChevronLeft, Mic, Monitor, Smartphone,
+  ChevronRight, ChevronLeft, ChevronDown, Mic, Monitor, Smartphone,
   Circle, Square, RotateCcw, Sparkles, BookOpen,
   ImagePlus, X, ArrowUp, ArrowDown, Images, Wand2,
+  Instagram, Linkedin,
 } from "lucide-react";
 
 const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
+const STORAGE_KEY = "pp-criar-video";
+
+function loadSaved() {
+  try {
+    const s = localStorage.getItem(STORAGE_KEY);
+    return s ? JSON.parse(s) : null;
+  } catch { return null; }
+}
 
 const EDGE_VOICES = [
   { id: "pt-BR-FranciscaNeural", label: "Francisca", gender: "Feminina" },
@@ -24,7 +34,16 @@ const EDGE_VOICES = [
 
 type VoiceMode = "edge" | "gravacao" | "elevenlabs";
 type Legenda   = { tempo: number; texto: string };
-type Script    = { titulo: string; narracao: string; cta: string; legendas: Legenda[] };
+type Script    = {
+  titulo: string;
+  narracao: string;
+  cta: string;
+  legendas: Legenda[];
+  descricao_post?: string;
+  descricao_instagram?: string;
+  descricao_linkedin?: string;
+  legenda_tiktok?: string;
+};
 type JobStatus = {
   status: "idle" | "loading" | "editing" | "processing" | "done" | "error";
   progress?: number;
@@ -126,18 +145,38 @@ function VoiceRecorder({
 // ── Página principal ─────────────────────────────────────────
 export default function AdminCriarVideo() {
   const { data: professional } = useProfessional();
-  const [step, setStep]             = useState<1 | 2 | 3>(1);
-  const [objetivo, setObjetivo]     = useState("");
+
+  // Inicializa do localStorage para persistir entre navegações
+  const saved = useRef(loadSaved()).current;
+  const [step, setStep]             = useState<1 | 2 | 3>(saved?.step ?? 1);
+  const [objetivo, setObjetivo]     = useState<string>(saved?.objetivo ?? "");
   const [iaLoading, setIaLoading]   = useState(false);
-  const [script, setScript]         = useState<Script | null>(null);
-  const [voiceMode, setVoiceMode]   = useState<VoiceMode>("edge");
-  const [edgeVoice, setEdgeVoice]   = useState("pt-BR-FranciscaNeural");
+  const [script, setScript]         = useState<Script | null>(saved?.script ?? null);
+  const [voiceMode, setVoiceMode]   = useState<VoiceMode>(saved?.voiceMode ?? "edge");
+  const [edgeVoice, setEdgeVoice]   = useState<string>(saved?.edgeVoice ?? "pt-BR-FranciscaNeural");
   const [voiceBlob, setVoiceBlob]   = useState<Blob | null>(null);
   const [narBlob, setNarBlob]       = useState<Blob | null>(null);
-  const [imageMode, setImageMode]   = useState<"auto" | "custom">("auto");
+  const [imageMode, setImageMode]   = useState<"auto" | "custom">(saved?.imageMode ?? "auto");
   const [userImages, setUserImages] = useState<{ file: File; preview: string }[]>([]);
-  const [format, setFormat]         = useState<"portrait" | "landscape">("portrait");
-  const [jobStatus, setJobStatus]   = useState<JobStatus>({ status: "idle" });
+  const [format, setFormat]         = useState<"portrait" | "landscape" | "square">(saved?.format ?? "portrait");
+  const [jobStatus, setJobStatus]   = useState<JobStatus>(saved?.jobStatus ?? { status: "idle" });
+  const [activeJobId, setActiveJobId] = useState<string | null>(saved?.activeJobId ?? null);
+
+  // Salva estado no localStorage sempre que mudar
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        step, objetivo, script, voiceMode, edgeVoice, format, imageMode, jobStatus, activeJobId,
+      }));
+    } catch {}
+  }, [step, objetivo, script, voiceMode, edgeVoice, format, imageMode, jobStatus, activeJobId]);
+
+  // Retoma polling se voltar com um vídeo ainda em processamento
+  useEffect(() => {
+    if (activeJobId && saved?.jobStatus?.status === "processing") {
+      pollStatus(activeJobId);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSugerirObjetivo = async () => {
     if (!professional?.slug) {
@@ -282,6 +321,7 @@ export default function AdminCriarVideo() {
         }),
       });
       const data = await res.json();
+      setActiveJobId(data.job_id);
       pollStatus(data.job_id);
     } catch (e: any) {
       setJobStatus({ status: "error", message: e.message || "Erro ao conectar à API" });
@@ -311,7 +351,8 @@ export default function AdminCriarVideo() {
     setVoiceMode("edge"); setEdgeVoice("pt-BR-FranciscaNeural");
     setVoiceBlob(null); setNarBlob(null);
     setImageMode("auto"); setUserImages([]); setFormat("portrait");
-    setJobStatus({ status: "idle" });
+    setJobStatus({ status: "idle" }); setActiveJobId(null);
+    localStorage.removeItem(STORAGE_KEY);
   };
 
   const updateLegenda = (i: number, field: keyof Legenda, value: string | number) => {
@@ -457,6 +498,58 @@ export default function AdminCriarVideo() {
         <Label className="text-base font-semibold">Call to Action (slide final)</Label>
         <Input value={script.cta} onChange={(e) => setScript({ ...script, cta: e.target.value })} />
       </div>
+
+      {/* Descrições para redes sociais */}
+      {(script.descricao_instagram || script.descricao_linkedin || script.legenda_tiktok) && (
+        <Collapsible>
+          <CollapsibleTrigger asChild>
+            <Button variant="outline" className="w-full justify-between" size="sm">
+              <span className="flex items-center gap-2 font-medium">
+                <Sparkles className="h-4 w-4 text-primary" />
+                Descrições para Redes Sociais
+              </span>
+              <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform [[data-state=open]_&]:rotate-180" />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-4 pt-3">
+
+            {script.descricao_instagram && (
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium flex items-center gap-1.5">
+                  <Instagram className="h-3.5 w-3.5 text-pink-500" /> Instagram
+                </Label>
+                <Textarea rows={3} className="resize-none text-sm"
+                  value={script.descricao_instagram}
+                  onChange={(e) => setScript({ ...script, descricao_instagram: e.target.value })} />
+              </div>
+            )}
+
+            {script.descricao_linkedin && (
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium flex items-center gap-1.5">
+                  <Linkedin className="h-3.5 w-3.5 text-blue-600" /> LinkedIn
+                </Label>
+                <Textarea rows={3} className="resize-none text-sm"
+                  value={script.descricao_linkedin}
+                  onChange={(e) => setScript({ ...script, descricao_linkedin: e.target.value })} />
+              </div>
+            )}
+
+            {script.legenda_tiktok && (
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium flex items-center gap-1.5">
+                  <span className="text-xs font-bold leading-none">TK</span> TikTok / Reels
+                </Label>
+                <Input className="text-sm"
+                  value={script.legenda_tiktok}
+                  onChange={(e) => setScript({ ...script, legenda_tiktok: e.target.value })} />
+                <p className="text-xs text-muted-foreground">{script.legenda_tiktok.length} chars</p>
+              </div>
+            )}
+
+          </CollapsibleContent>
+        </Collapsible>
+      )}
 
       {/* ── Voz ── */}
       <div className="space-y-3">
@@ -627,19 +720,29 @@ export default function AdminCriarVideo() {
       {/* Formato */}
       <div className="space-y-2">
         <Label className="text-base font-semibold">Formato</Label>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <Card className={`cursor-pointer border-2 transition-all ${format === "portrait" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
             onClick={() => setFormat("portrait")}>
-            <CardContent className="p-4 flex items-center gap-3">
-              <Smartphone className="h-6 w-6 text-primary" />
-              <div><p className="font-medium text-sm">Vertical 9:16</p><p className="text-xs text-muted-foreground">Reels, Stories, TikTok</p></div>
+            <CardContent className="p-3 flex flex-col items-center gap-1.5 text-center">
+              <Smartphone className="h-5 w-5 text-primary" />
+              <p className="font-medium text-sm">Vertical</p>
+              <p className="text-xs text-muted-foreground">Reels · TikTok · Stories</p>
+            </CardContent>
+          </Card>
+          <Card className={`cursor-pointer border-2 transition-all ${format === "square" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
+            onClick={() => setFormat("square")}>
+            <CardContent className="p-3 flex flex-col items-center gap-1.5 text-center">
+              <Square className="h-5 w-5 text-primary" />
+              <p className="font-medium text-sm">Quadrado</p>
+              <p className="text-xs text-muted-foreground">Feed Instagram · LinkedIn</p>
             </CardContent>
           </Card>
           <Card className={`cursor-pointer border-2 transition-all ${format === "landscape" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
             onClick={() => setFormat("landscape")}>
-            <CardContent className="p-4 flex items-center gap-3">
-              <Monitor className="h-6 w-6 text-primary" />
-              <div><p className="font-medium text-sm">Paisagem 16:9</p><p className="text-xs text-muted-foreground">YouTube, Feed</p></div>
+            <CardContent className="p-3 flex flex-col items-center gap-1.5 text-center">
+              <Monitor className="h-5 w-5 text-primary" />
+              <p className="font-medium text-sm">Paisagem</p>
+              <p className="text-xs text-muted-foreground">YouTube · Feed</p>
             </CardContent>
           </Card>
         </div>
@@ -678,6 +781,7 @@ export default function AdminCriarVideo() {
                 style={{ width: `${jobStatus.progress || 0}%` }} />
             </div>
             <p className="text-sm text-muted-foreground">{jobStatus.progress || 0}%</p>
+            <p className="text-xs text-muted-foreground/60">Tempo estimado: 1 a 2 minutos · pode navegar e voltar</p>
           </CardContent>
         </Card>
       )}

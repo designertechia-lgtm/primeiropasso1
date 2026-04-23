@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { BookOpen, Play } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { BookOpen, Play, MessageCircle, Calendar } from "lucide-react";
 
 interface Article {
   id: string;
@@ -21,6 +22,7 @@ interface ContentSectionProps {
   articles: Article[];
   videos: Video[];
   slug?: string;
+  whatsapp?: string | null;
 }
 
 function toEmbedUrl(url: string): string {
@@ -37,7 +39,18 @@ function toEmbedUrl(url: string): string {
   return url;
 }
 
-export default function ContentSection({ articles, videos, slug }: ContentSectionProps) {
+function buildContactHref(whatsapp: string | null | undefined, slug: string | undefined): { href: string; isWa: boolean } {
+  if (whatsapp) {
+    const digits = whatsapp.replace(/\D/g, "");
+    const number = digits.startsWith("55") ? digits : `55${digits}`;
+    const msg = encodeURIComponent("Olá! Vi um vídeo seu e gostaria de saber mais sobre o seu trabalho.");
+    return { href: `https://wa.me/${number}?text=${msg}`, isWa: true };
+  }
+  return { href: `/${slug}#agendar`, isWa: false };
+}
+
+export default function ContentSection({ articles, videos, slug, whatsapp }: ContentSectionProps) {
+  const contact = buildContactHref(whatsapp, slug);
   if (articles.length === 0 && videos.length === 0) return null;
 
   return (
@@ -86,7 +99,7 @@ export default function ContentSection({ articles, videos, slug }: ContentSectio
             </h3>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {videos.map((v) => (
-                <Card key={v.id} className="overflow-hidden hover:shadow-md transition-shadow">
+                <Card key={v.id} className="overflow-hidden hover:shadow-md transition-shadow flex flex-col">
                   <div className="aspect-video">
                     <iframe
                       src={toEmbedUrl(v.embed_url)}
@@ -96,12 +109,30 @@ export default function ContentSection({ articles, videos, slug }: ContentSectio
                       allowFullScreen
                     />
                   </div>
-                  <CardHeader>
+                  <CardHeader className="pb-2">
                     <CardTitle className="font-serif text-base">{v.title}</CardTitle>
                     {v.description && (
-                      <p className="text-sm text-muted-foreground line-clamp-2">{v.description}</p>
+                      <p className="text-sm text-muted-foreground line-clamp-3">{v.description}</p>
                     )}
                   </CardHeader>
+                  <CardContent className="pt-0 mt-auto">
+                    <Button
+                      asChild
+                      className="w-full gap-2"
+                      size="sm"
+                    >
+                      <a
+                        href={contact.href}
+                        target={contact.isWa ? "_blank" : undefined}
+                        rel={contact.isWa ? "noopener noreferrer" : undefined}
+                      >
+                        {contact.isWa
+                          ? <><MessageCircle className="h-4 w-4" /> Falar pelo WhatsApp</>
+                          : <><Calendar className="h-4 w-4" /> Agendar uma conversa</>
+                        }
+                      </a>
+                    </Button>
+                  </CardContent>
                 </Card>
               ))}
             </div>

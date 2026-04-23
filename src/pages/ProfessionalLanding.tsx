@@ -209,7 +209,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         aboutImageUrl={professional.about_image_url ?? undefined}
         approaches={professional.approaches ?? undefined}
       />
-      <ContentSection articles={articles} videos={videos} slug={professional.slug} />
+      <ContentSection articles={articles} videos={videos} slug={professional.slug} whatsapp={professional.whatsapp} />
       <LeadCaptureSection slug={professional.slug} whatsapp={professional.whatsapp ?? undefined} />
       <LandingFooter professionalName={name} whatsapp={professional.whatsapp ?? undefined} />
     </div>

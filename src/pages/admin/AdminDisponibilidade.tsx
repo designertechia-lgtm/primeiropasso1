@@ -10,10 +10,13 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import { toast } from "sonner";
 import {
   Plus, Trash2, CalendarIcon, Lock, Repeat,
-  Infinity, CalendarDays, Clock, AlignLeft,
+  Infinity, CalendarDays, Clock, AlignLeft, X, ChevronDown,
+  Settings, Globe, Link2, Copy, HelpCircle, ZoomIn,
 } from "lucide-react";
 import { format, parseISO, addYears } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -46,8 +49,76 @@ export default function AdminDisponibilidade() {
   const { data: professional } = useProfessional();
   const queryClient = useQueryClient();
 
-  const [icalUrl, setIcalUrl]   = useState(() => localStorage.getItem("ical-url") || "");
-  const [syncing, setSyncing]   = useState(false);
+  const [icalUrl, setIcalUrl]       = useState(() => localStorage.getItem("ical-url") || "");
+  const [syncing, setSyncing]       = useState(false);
+  const [showForm, setShowForm]     = useState(false);
+  const [showGoogle, setShowGoogle] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const [expandedImg, setExpandedImg] = useState<string | null>(null);
+
+  const TUTORIAL_STEPS = [
+    {
+      step: 1,
+      icon: Settings,
+      title: "Abra as Configurações",
+      desc: "No Google Agenda, clique no ícone de engrenagem (⚙️) no canto superior direito e selecione \"Configurações\".",
+      tip: "Você precisa estar logado na sua conta Google.",
+      color: "bg-blue-50 border-blue-200",
+      iconColor: "text-blue-500",
+      img: "/tutorial/step-1.png",
+      imgPos: "object-top",
+      dot: { x: 71, y: 8 },
+    },
+    {
+      step: 2,
+      icon: CalendarDays,
+      title: "Selecione seu calendário",
+      desc: "No menu lateral, em \"Configurações das minhas agendas\", clique no nome do seu calendário.",
+      tip: "Geralmente é o calendário com seu nome ou e-mail.",
+      color: "bg-purple-50 border-purple-200",
+      iconColor: "text-purple-500",
+      img: "/tutorial/step-2.png",
+      imgPos: "object-bottom",
+      dot: { x: 13, y: 72 },
+    },
+    {
+      step: 3,
+      icon: Globe,
+      title: "Disponibilize ao público",
+      desc: "Clique em \"Autorizações de acesso a eventos\" e marque \"Disponibilizar ao público\".",
+      tip: "Isso é necessário para que o sistema consiga ler os eventos.",
+      color: "bg-amber-50 border-amber-200",
+      iconColor: "text-amber-500",
+      img: "/tutorial/step-3.png",
+      imgPos: "object-top",
+      dot: { x: 38, y: 22 },
+    },
+    {
+      step: 4,
+      icon: Link2,
+      title: "Acesse \"Integrar agenda\"",
+      desc: "No menu lateral, clique em \"Integrar agenda\" para ver os endereços do calendário.",
+      tip: "Esta opção fica logo abaixo de \"Outras notificações\" no menu lateral.",
+      color: "bg-green-50 border-green-200",
+      iconColor: "text-green-500",
+      img: "/tutorial/step-4.png",
+      imgPos: "object-bottom",
+      dot: { x: 10, y: 68 },
+    },
+    {
+      step: 5,
+      icon: Copy,
+      title: "Copie o endereço iCal",
+      desc: "Copie o link do campo \"Endereço público no formato iCal\" e cole no campo acima. Clique em \"Importar\".",
+      tip: "O link começa com https://calendar.google.com/calendar/ical/...",
+      color: "bg-emerald-50 border-emerald-200",
+      iconColor: "text-emerald-600",
+      img: "/tutorial/step-5.png",
+      imgPos: "object-center",
+      dot: { x: 62, y: 50 },
+    },
+  ];
 
   const handleIcalSync = async () => {
     if (!professional || !icalUrl.trim()) return;
@@ -191,6 +262,7 @@ export default function AdminDisponibilidade() {
       queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
       toast.success("Bloqueios criados com sucesso!");
       resetForm();
+      setShowForm(false);
     },
     onError: (e: any) => toast.error("Erro ao criar bloqueios", { description: e.message }),
   });
@@ -227,38 +299,148 @@ export default function AdminDisponibilidade() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <div>
-        <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">Bloqueios de Horário</h1>
-        <p className="text-muted-foreground mt-1">Impeça agendamentos em períodos específicos.</p>
+
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">Bloqueios de Horário</h1>
+          <p className="text-muted-foreground mt-1">Impeça agendamentos em períodos específicos.</p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowGoogle((v) => !v)}
+            className="flex items-center gap-2"
+          >
+            <CalendarDays className="h-4 w-4" />
+            Google Agenda
+            <ChevronDown className={cn("h-3 w-3 transition-transform", showGoogle && "rotate-180")} />
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => setShowForm((v) => !v)}
+            className="flex items-center gap-2"
+          >
+            {showForm ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+            {showForm ? "Cancelar" : "Novo Bloqueio"}
+          </Button>
+        </div>
       </div>
 
-      {/* Google Calendar */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <CalendarDays className="h-4 w-4" /> Importar do Google Agenda
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div>
-            <Label>
-              Link iCal
-              <FieldHint text="No Google Agenda: Configurações → selecione o calendário → 'Endereço secreto no formato iCal'. Torne o calendário público antes." />
-            </Label>
-            <Input
-              value={icalUrl}
-              onChange={(e) => setIcalUrl(e.target.value)}
-              placeholder="https://calendar.google.com/calendar/ical/..."
-              className="mt-1 font-mono text-xs"
-            />
-          </div>
-          <Button onClick={handleIcalSync} disabled={syncing || !icalUrl.trim()} variant="outline" className="w-full">
-            {syncing ? "Importando..." : "Importar eventos como bloqueios"}
-          </Button>
-        </CardContent>
-      </Card>
+      {/* Google Calendar — colapsável */}
+      {showGoogle && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <CalendarDays className="h-4 w-4" /> Importar do Google Agenda
+            </CardTitle>
+            <button
+              type="button"
+              onClick={() => setShowTutorial(true)}
+              className="flex items-center gap-1.5 text-xs text-primary hover:underline font-medium"
+            >
+              <HelpCircle className="h-3.5 w-3.5" />
+              Como fazer?
+            </button>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <Label>Link iCal</Label>
+              <Input
+                value={icalUrl}
+                onChange={(e) => setIcalUrl(e.target.value)}
+                placeholder="https://calendar.google.com/calendar/ical/..."
+                className="mt-1 font-mono text-xs"
+              />
+            </div>
+            <Button onClick={handleIcalSync} disabled={syncing || !icalUrl.trim()} variant="outline" className="w-full">
+              {syncing ? "Importando..." : "Importar eventos como bloqueios"}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Novo Bloqueio */}
+      {/* Modal tutorial iCal */}
+      <Dialog open={showTutorial} onOpenChange={(v) => { setShowTutorial(v); if (!v) setTutorialStep(0); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarDays className="h-5 w-5 text-primary" />
+              Como conectar o Google Agenda
+            </DialogTitle>
+          </DialogHeader>
+          {(() => {
+            const s = TUTORIAL_STEPS[tutorialStep];
+            const Icon = s.icon;
+            const total = TUTORIAL_STEPS.length;
+            return (
+              <div className="rounded-xl border overflow-hidden bg-white shadow-sm">
+                <div
+                  className="relative h-48 cursor-zoom-in group"
+                  style={{
+                    backgroundImage: `url(${s.img})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: s.imgPos === "object-top" ? "top" : s.imgPos === "object-bottom" ? "bottom" : "center",
+                  }}
+                  onClick={() => setExpandedImg(s.img)}
+                >
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                  <div className="absolute bottom-2 right-2 bg-black/50 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <ZoomIn className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="absolute flex h-5 w-5 pointer-events-none" style={{ left: `${s.dot.x}%`, top: `${s.dot.y}%`, transform: "translate(-50%,-50%)" }}>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-5 w-5 bg-red-500 border-2 border-white shadow-lg" />
+                  </span>
+                </div>
+                <div className="px-4 py-3 space-y-1.5 border-t">
+                  <div className="flex items-center gap-2">
+                    <div className={cn("h-6 w-6 rounded-full flex items-center justify-center flex-shrink-0", s.color)}>
+                      <Icon className={cn("h-3.5 w-3.5", s.iconColor)} />
+                    </div>
+                    <span className="text-[11px] text-muted-foreground font-medium">Passo {s.step}/{total}</span>
+                    <span className="font-semibold text-sm text-foreground">{s.title}</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground leading-relaxed pl-8">{s.desc}</p>
+                  <p className="text-xs text-muted-foreground/70 pl-8">💡 {s.tip}</p>
+                </div>
+                <div className="flex items-center justify-between px-4 pb-3">
+                  <Button variant="outline" size="sm" disabled={tutorialStep === 0} onClick={() => setTutorialStep(tutorialStep - 1)}>← Anterior</Button>
+                  <span className="text-xs text-muted-foreground">{tutorialStep + 1} / {total}</span>
+                  <Button variant="outline" size="sm" disabled={tutorialStep === total - 1} onClick={() => setTutorialStep(tutorialStep + 1)}>Próximo →</Button>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Lightbox — tela cheia, fora do Dialog */}
+      {expandedImg && (
+        <div
+          className="fixed inset-0 z-[200] bg-black/85 flex items-center justify-center p-6 cursor-zoom-out"
+          onClick={(e) => { e.stopPropagation(); setExpandedImg(null); }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <button
+            className="absolute top-4 right-4 text-white bg-white/10 hover:bg-white/25 rounded-full p-2 transition-colors"
+            onClick={(e) => { e.stopPropagation(); setExpandedImg(null); }}
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <img
+            src={expandedImg}
+            alt="Imagem ampliada"
+            className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+
+      {/* Formulário Novo Bloqueio — colapsável */}
+      {showForm && (
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
@@ -458,10 +640,16 @@ export default function AdminDisponibilidade() {
           </Button>
         </CardContent>
       </Card>
+      )}
 
       {/* Bloqueios existentes */}
       <div className="space-y-3">
-        <h2 className="font-serif text-xl font-semibold">Bloqueios Existentes</h2>
+        <h2 className="font-serif text-xl font-semibold">
+          Bloqueios Existentes
+          {blockGroups.length > 0 && (
+            <span className="ml-2 text-sm font-normal text-muted-foreground">({blockGroups.length})</span>
+          )}
+        </h2>
 
         {blockGroups.length === 0 ? (
           <p className="text-muted-foreground text-sm">Nenhum bloqueio cadastrado.</p>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate, useBlocker } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfessional } from "@/hooks/useProfessional";
 import { useQueryClient } from "@tanstack/react-query";
@@ -305,17 +305,6 @@ export default function AdminLandingPage() {
   }, [heroTitle, heroSubtitle, heroImageUrl, photoUrl, photoStyle, photoFit,
       bio, aboutImageUrl, approaches, primaryColor, secondaryColor, bgColor,
       painTitle, painSubtitle, painItems, solutionTitle, solutionSubtitle, solutionItems]);
-
-  // bloqueia navegação interna quando há alterações não salvas
-  const blocker = useBlocker(isDirty);
-
-  useEffect(() => {
-    if (blocker.state === "blocked") {
-      const ok = window.confirm("Você tem alterações não salvas. Deseja sair mesmo assim?");
-      if (ok) blocker.proceed();
-      else blocker.reset();
-    }
-  }, [blocker]);
 
   // alerta ao fechar/recarregar a aba
   useEffect(() => {

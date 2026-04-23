@@ -10,17 +10,11 @@ import { toast } from "sonner";
 import {
   Film, Loader2, CheckCircle2, AlertCircle,
   ChevronRight, ChevronLeft, Mic, Monitor, Smartphone,
-  Lightbulb, Circle, Square, RotateCcw, Sparkles, BookOpen,
-  ImagePlus, X, ArrowUp, ArrowDown, Images,
+  Circle, Square, RotateCcw, Sparkles, BookOpen,
+  ImagePlus, X, ArrowUp, ArrowDown, Images, Wand2,
 } from "lucide-react";
 
 const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
-
-const OBJETIVO_EXEMPLOS = [
-  "Atrair terapeutas sem presença digital que querem lotar a agenda",
-  "Mostrar como o WhatsApp automático agenda pacientes enquanto você dorme",
-  "Apresentar minha plataforma para psicólogos que perdem pacientes por demora no retorno",
-];
 
 const EDGE_VOICES = [
   { id: "pt-BR-FranciscaNeural", label: "Francisca", gender: "Feminina" },
@@ -134,6 +128,7 @@ export default function AdminCriarVideo() {
   const { data: professional } = useProfessional();
   const [step, setStep]             = useState<1 | 2 | 3>(1);
   const [objetivo, setObjetivo]     = useState("");
+  const [iaLoading, setIaLoading]   = useState(false);
   const [script, setScript]         = useState<Script | null>(null);
   const [voiceMode, setVoiceMode]   = useState<VoiceMode>("edge");
   const [edgeVoice, setEdgeVoice]   = useState("pt-BR-FranciscaNeural");
@@ -143,6 +138,48 @@ export default function AdminCriarVideo() {
   const [userImages, setUserImages] = useState<{ file: File; preview: string }[]>([]);
   const [format, setFormat]         = useState<"portrait" | "landscape">("portrait");
   const [jobStatus, setJobStatus]   = useState<JobStatus>({ status: "idle" });
+
+  const handleSugerirObjetivo = async () => {
+    if (!professional?.slug) {
+      toast.error("Perfil profissional não encontrado");
+      return;
+    }
+    setIaLoading(true);
+    const url = `${API}/sugerir-objetivo`;
+    const toastId = toast.loading("IA analisando seu perfil e documentos...", { duration: 60000 });
+    try {
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ professional_slug: professional.slug, video_type: "objetivo_livre" }),
+        });
+      } catch {
+        throw new Error(`API offline ou inacessível (${API})`);
+      }
+
+      if (res.status === 404) throw new Error(`Endpoint não encontrado — reinicie a video-api`);
+      if (res.status === 422) throw new Error(`Dados inválidos enviados para a API (422)`);
+      if (res.status === 500) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(`Erro interno na API: ${err.detail || err.message || "verifique os logs"}`);
+      }
+      if (!res.ok) {
+        throw new Error(`Erro inesperado ${res.status} em ${url}`);
+      }
+
+      const data = await res.json();
+      if (data.objetivo) {
+        setObjetivo(data.objetivo);
+        toast.success("Objetivo criado pela IA!", { id: toastId });
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Não foi possível gerar sugestão", { id: toastId, duration: 8000 });
+    } finally {
+      setIaLoading(false);
+    }
+  };
 
   const handleNextStep = async () => {
     if (!professional?.slug || !objetivo.trim()) return;
@@ -214,7 +251,17 @@ export default function AdminCriarVideo() {
         form.append("nome", professional.full_name || "Profissional");
         const res  = await fetch(`${API}/clone-voz`, { method: "POST", body: form });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || "Erro ao clonar voz");
+        if (!res.ok) {
+          const msg = data.detail || "Erro ao clonar voz";
+          const isPlano = res.status === 402 || msg.toLowerCase().includes("plano") || msg.toLowerCase().includes("subscription");
+          if (isPlano) {
+            toast.error("Plano ElevenLabs não inclui clonagem de voz. Selecione voz Automática ou grave o roteiro.", { duration: 8000 });
+            setJobStatus({ status: "idle" });
+            setStep(2);
+            return;
+          }
+          throw new Error(msg);
+        }
         voiceId = data.voice_id;
       }
 
@@ -300,26 +347,51 @@ export default function AdminCriarVideo() {
       <StepIndicator />
 
       <div className="space-y-3">
-        <Label className="text-base font-semibold">Qual o objetivo deste vídeo?</Label>
-        <Textarea
-          rows={4} value={objetivo}
-          onChange={(e) => setObjetivo(e.target.value)}
-          placeholder="Ex: quero atrair terapeutas sem presença digital e mostrar que é possível ter a agenda cheia sem esforço manual..."
-          className="resize-none text-base"
-        />
-        <p className="text-xs text-muted-foreground">Quanto mais específico, melhor o roteiro.</p>
-      </div>
+        <div className="flex items-center justify-between">
+          <Label className="text-base font-semibold">Qual o objetivo deste vídeo?</Label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-2 border-primary/40 text-primary hover:bg-primary/5 min-w-[130px]"
+            onClick={handleSugerirObjetivo}
+            disabled={iaLoading}
+          >
+            {iaLoading
+              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Criando...</>
+              : <><Wand2 className="h-3.5 w-3.5" /> Criar com IA</>}
+          </Button>
+        </div>
 
-      <div className="space-y-2">
-        <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-          <Lightbulb className="h-3.5 w-3.5" /> Exemplos
+        <div className="relative">
+          <Textarea
+            rows={4} value={objetivo}
+            onChange={(e) => setObjetivo(e.target.value)}
+            placeholder="Descreva o objetivo do vídeo ou clique em 'Criar com IA' para gerar automaticamente..."
+            className={`resize-none text-base transition-opacity ${iaLoading ? "opacity-40 pointer-events-none" : ""}`}
+          />
+          {iaLoading && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-md">
+              <div className="flex items-center gap-2 bg-background/90 border border-primary/30 rounded-xl px-4 py-2.5 shadow-sm">
+                <Wand2 className="h-4 w-4 text-primary animate-pulse" />
+                <span className="text-sm font-medium text-primary">IA analisando seu perfil...</span>
+                <span className="flex gap-0.5">
+                  {[0, 1, 2].map((i) => (
+                    <span
+                      key={i}
+                      className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce"
+                      style={{ animationDelay: `${i * 0.15}s` }}
+                    />
+                  ))}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          A IA usa seu perfil e documentos para criar um objetivo personalizado, sem repetir os dos últimos 30 dias.
         </p>
-        {OBJETIVO_EXEMPLOS.map((ex) => (
-          <button key={ex} onClick={() => setObjetivo(ex)}
-            className="w-full text-left text-sm px-3 py-2 rounded-lg border border-dashed border-muted-foreground/40 hover:border-primary hover:bg-primary/5 transition-all text-muted-foreground hover:text-foreground">
-            "{ex}"
-          </button>
-        ))}
       </div>
 
       <Button className="w-full" size="lg"

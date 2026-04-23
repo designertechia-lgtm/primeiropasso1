@@ -24,7 +24,8 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, X, User, Clock, CalendarIcon, Settings2, Pencil, CheckCircle, DollarSign, XCircle, CalendarDays } from "lucide-react";
+import { Plus, X, User, Clock, CalendarIcon, Settings2, Pencil, CheckCircle, DollarSign, XCircle, CalendarDays, HelpCircle, ZoomIn, Settings, Globe, Link2, Copy } from "lucide-react";
+import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import { fetchIcal } from "@/lib/ical";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
@@ -166,6 +167,17 @@ export default function AdminAgenda() {
   // Google Calendar import
   const [icalDialogOpen, setIcalDialogOpen] = useState(false);
   const [icalUrl, setIcalUrl] = useState(() => localStorage.getItem("ical-url") || "");
+  const [showTutorialAgenda, setShowTutorialAgenda] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const [expandedImgAgenda, setExpandedImgAgenda] = useState<string | null>(null);
+
+  const TUTORIAL_STEPS_AGENDA = [
+    { step: 1, icon: Settings,     title: "Abra as Configurações",        desc: "No Google Agenda, clique no ícone de engrenagem (⚙️) no canto superior direito e selecione \"Configurações\".", tip: "Você precisa estar logado na sua conta Google.", color: "bg-blue-50 border-blue-200",     iconColor: "text-blue-500",    img: "/tutorial/step-1.png", imgPos: "object-top",    dot: { x: 71, y: 8 } },
+    { step: 2, icon: CalendarDays, title: "Selecione seu calendário",      desc: "No menu lateral, em \"Configurações das minhas agendas\", clique no nome do seu calendário.", tip: "Geralmente é o calendário com seu nome ou e-mail.", color: "bg-purple-50 border-purple-200", iconColor: "text-purple-500",  img: "/tutorial/step-2.png", imgPos: "object-bottom", dot: { x: 13, y: 72 } },
+    { step: 3, icon: Globe,        title: "Disponibilize ao público",      desc: "Clique em \"Autorizações de acesso a eventos\" e marque \"Disponibilizar ao público\".", tip: "Isso é necessário para que o sistema consiga ler os eventos.", color: "bg-amber-50 border-amber-200",   iconColor: "text-amber-500",   img: "/tutorial/step-3.png", imgPos: "object-top",    dot: { x: 38, y: 22 } },
+    { step: 4, icon: Link2,        title: "Acesse \"Integrar agenda\"",    desc: "No menu lateral, clique em \"Integrar agenda\" para ver os endereços do calendário.", tip: "Esta opção fica logo abaixo de \"Outras notificações\" no menu lateral.", color: "bg-green-50 border-green-200",   iconColor: "text-green-500",   img: "/tutorial/step-4.png", imgPos: "object-bottom", dot: { x: 10, y: 68 } },
+    { step: 5, icon: Copy,         title: "Copie o endereço iCal",         desc: "Copie o link do campo \"Endereço público no formato iCal\" e cole no campo abaixo.", tip: "O link começa com https://calendar.google.com/calendar/ical/...", color: "bg-emerald-50 border-emerald-200", iconColor: "text-emerald-600", img: "/tutorial/step-5.png", imgPos: "object-center", dot: { x: 62, y: 50 } },
+  ];
   const [syncing, setSyncing] = useState(false);
 
   const handleIcalSync = async () => {
@@ -1043,44 +1055,72 @@ export default function AdminAgenda() {
       </Dialog>
 
       {/* Google Calendar Import Dialog */}
-      <Dialog open={icalDialogOpen} onOpenChange={setIcalDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <Dialog open={icalDialogOpen} onOpenChange={(v) => { setIcalDialogOpen(v); if (!v) setShowTutorialAgenda(false); }}>
+        <DialogContent className="max-w-lg overflow-x-hidden">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CalendarDays className="h-5 w-5" /> Importar Google Agenda
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            {/* Step-by-step instructions */}
-            <div className="rounded-lg border bg-muted/40 p-4 space-y-3">
-              <p className="text-sm font-medium">Como obter o link iCal do Google Agenda:</p>
-              <ol className="space-y-2.5 text-sm text-muted-foreground list-none">
-                <li className="flex gap-2">
-                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">1</span>
-                  <span>Acesse <strong>calendar.google.com</strong> e clique no ícone de engrenagem <strong>⚙️</strong> no canto superior direito, depois em <strong>Configurações</strong>.</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">2</span>
-                  <span>No menu esquerdo, role até <strong>"Configurações das minhas agendas"</strong> e clique no nome do seu calendário (ex: seu nome ou empresa). Um submenu será aberto abaixo dele.</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">3</span>
-                  <span>No submenu, clique em <strong>"Autorizações de acesso a eventos"</strong>. Marque a caixa <strong>"Disponibilizar ao público"</strong> e no dropdown que aparecer ao lado selecione <strong>"Mais detalhes de todos os eventos"</strong>. Confirme clicando em <strong>OK</strong> no popup.</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">4</span>
-                  <span>No menu esquerdo, clique em <strong>"Integrar agenda"</strong> (logo abaixo de "Autorizações de acesso a eventos").</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">5</span>
-                  <span>Role a página até encontrar o campo <strong>"Endereço público no formato iCal"</strong>. Clique sobre o link para selecioná-lo, copie-o e cole no campo abaixo. <em>(Não use o "Endereço secreto".)</em></span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">6</span>
-                  <span>Cole o link copiado no campo abaixo e clique em <strong>Importar eventos</strong>.</span>
-                </li>
-              </ol>
+            <div className="flex items-center justify-between">
+              <DialogTitle className="flex items-center gap-2">
+                <CalendarDays className="h-5 w-5" /> Importar Google Agenda
+              </DialogTitle>
+              <button
+                type="button"
+                onClick={() => setShowTutorialAgenda((v) => !v)}
+                className="flex items-center gap-1.5 text-xs text-primary hover:underline font-medium mr-6"
+              >
+                <HelpCircle className="h-3.5 w-3.5" />
+                {showTutorialAgenda ? "Ocultar tutorial" : "Como fazer?"}
+              </button>
             </div>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Tutorial slider manual */}
+            {showTutorialAgenda && (() => {
+              const s = TUTORIAL_STEPS_AGENDA[tutorialStep];
+              const Icon = s.icon;
+              const total = TUTORIAL_STEPS_AGENDA.length;
+              return (
+                <div className="rounded-xl border overflow-hidden bg-white shadow-sm">
+                  {/* Imagem como background — nunca vaza */}
+                  <div
+                    className="relative h-44 cursor-zoom-in group"
+                    style={{
+                      backgroundImage: `url(${s.img})`,
+                      backgroundSize: "cover",
+                      backgroundPosition: s.imgPos === "object-top" ? "top" : s.imgPos === "object-bottom" ? "bottom" : "center",
+                    }}
+                    onClick={() => setExpandedImgAgenda(s.img)}
+                  >
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                    <div className="absolute bottom-2 right-2 bg-black/50 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <ZoomIn className="h-3.5 w-3.5" />
+                    </div>
+                    <span className="absolute flex h-5 w-5 pointer-events-none" style={{ left: `${s.dot.x}%`, top: `${s.dot.y}%`, transform: "translate(-50%,-50%)" }}>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-5 w-5 bg-red-500 border-2 border-white shadow-lg" />
+                    </span>
+                  </div>
+                  {/* Info */}
+                  <div className="px-3 py-2.5 space-y-1 border-t">
+                    <div className="flex items-center gap-2">
+                      <div className={cn("h-5 w-5 rounded-full flex items-center justify-center flex-shrink-0", s.color)}>
+                        <Icon className={cn("h-3 w-3", s.iconColor)} />
+                      </div>
+                      <span className="text-[10px] text-muted-foreground font-medium">Passo {s.step}/{total}</span>
+                      <span className="font-semibold text-xs text-foreground">{s.title}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed pl-7">{s.desc}</p>
+                    <p className="text-xs text-muted-foreground/70 pl-7">💡 {s.tip}</p>
+                  </div>
+                  {/* Navegação */}
+                  <div className="flex items-center justify-between px-3 pb-2.5">
+                    <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={tutorialStep === 0} onClick={() => setTutorialStep(tutorialStep - 1)}>← Anterior</Button>
+                    <span className="text-xs text-muted-foreground">{tutorialStep + 1} / {total}</span>
+                    <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={tutorialStep === total - 1} onClick={() => setTutorialStep(tutorialStep + 1)}>Próximo →</Button>
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="space-y-2">
               <label className="text-sm font-medium">Link iCal</label>
@@ -1101,6 +1141,20 @@ export default function AdminAgenda() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Lightbox agenda */}
+      {expandedImgAgenda && (
+        <div
+          className="fixed inset-0 z-[200] bg-black/85 flex items-center justify-center p-6 cursor-zoom-out"
+          onClick={(e) => { e.stopPropagation(); setExpandedImgAgenda(null); }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <button className="absolute top-4 right-4 text-white bg-white/10 hover:bg-white/25 rounded-full p-2 transition-colors" onClick={(e) => { e.stopPropagation(); setExpandedImgAgenda(null); }}>
+            <X className="h-5 w-5" />
+          </button>
+          <img src={expandedImgAgenda} alt="Imagem ampliada" className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} />
+        </div>
+      )}
 
       {/* Availability Dialog */}
       <Dialog open={availDialogOpen} onOpenChange={setAvailDialogOpen}>

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ interface Video {
   title: string;
   description: string | null;
   embed_url: string;
+  thumbnail_url?: string | null;
 }
 
 interface ContentSectionProps {
@@ -29,14 +31,88 @@ function toEmbedUrl(url: string): string {
   try {
     const u = new URL(url);
     if (u.hostname === "youtu.be") {
-      return `https://www.youtube.com/embed${u.pathname}`;
+      return `https://www.youtube.com/embed${u.pathname}?autoplay=1`;
     }
     const videoId = u.searchParams.get("v");
     if (videoId) {
-      return `https://www.youtube.com/embed/${videoId}`;
+      return `https://www.youtube.com/embed/${videoId}?autoplay=1`;
     }
   } catch {}
   return url;
+}
+
+function getYoutubeThumbnail(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (u.hostname === "youtu.be") {
+      return `https://img.youtube.com/vi${u.pathname}/hqdefault.jpg`;
+    }
+    const videoId = u.searchParams.get("v");
+    if (videoId) {
+      return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+    }
+  } catch {}
+  return null;
+}
+
+function isSupabaseUrl(url: string): boolean {
+  return url.includes("supabase") || url.endsWith(".mp4") || url.endsWith(".webm");
+}
+
+function VideoCard({ video }: { video: Video }) {
+  const [playing, setPlaying] = useState(false);
+
+  const thumbnail =
+    video.thumbnail_url ||
+    getYoutubeThumbnail(video.embed_url);
+
+  if (playing) {
+    if (isSupabaseUrl(video.embed_url)) {
+      return (
+        <div className="aspect-video bg-black">
+          <video
+            src={video.embed_url}
+            controls
+            autoPlay
+            className="w-full h-full"
+          />
+        </div>
+      );
+    }
+    return (
+      <div className="aspect-video">
+        <iframe
+          src={toEmbedUrl(video.embed_url)}
+          title={video.title}
+          className="w-full h-full"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="aspect-video relative cursor-pointer bg-black group"
+      onClick={() => setPlaying(true)}
+    >
+      {thumbnail ? (
+        <img
+          src={thumbnail}
+          alt={video.title}
+          className="w-full h-full object-cover"
+        />
+      ) : (
+        <div className="w-full h-full bg-gradient-to-br from-primary/30 to-accent/30" />
+      )}
+      <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
+        <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+          <Play className="h-6 w-6 text-primary fill-primary ml-1" />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function buildContactHref(whatsapp: string | null | undefined, slug: string | undefined): { href: string; isWa: boolean } {
@@ -100,15 +176,7 @@ export default function ContentSection({ articles, videos, slug, whatsapp }: Con
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {videos.map((v) => (
                 <Card key={v.id} className="overflow-hidden hover:shadow-md transition-shadow flex flex-col">
-                  <div className="aspect-video">
-                    <iframe
-                      src={toEmbedUrl(v.embed_url)}
-                      title={v.title}
-                      className="w-full h-full"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                    />
-                  </div>
+                  <VideoCard video={v} />
                   <CardHeader className="pb-2">
                     <CardTitle className="font-serif text-base">{v.title}</CardTitle>
                     {v.description && (
@@ -116,11 +184,7 @@ export default function ContentSection({ articles, videos, slug, whatsapp }: Con
                     )}
                   </CardHeader>
                   <CardContent className="pt-0 mt-auto">
-                    <Button
-                      asChild
-                      className="w-full gap-2"
-                      size="sm"
-                    >
+                    <Button asChild className="w-full gap-2" size="sm">
                       <a
                         href={contact.href}
                         target={contact.isWa ? "_blank" : undefined}

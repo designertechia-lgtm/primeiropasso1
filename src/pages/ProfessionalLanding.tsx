@@ -71,7 +71,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     queryFn: async () => {
       const { data } = await supabase
         .from("videos")
-        .select("id, title, description, embed_url")
+        .select("id, title, description, embed_url, thumbnail_url")
         .eq("professional_id", professional!.id)
         .eq("published", true)
         .order("published_at", { ascending: false })

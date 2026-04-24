@@ -14,7 +14,7 @@ import {
   ChevronRight, ChevronLeft, ChevronDown, Mic, Monitor, Smartphone,
   Circle, Square, RotateCcw, Sparkles, BookOpen,
   ImagePlus, X, ArrowUp, ArrowDown, Images, Wand2,
-  Instagram, Linkedin, Zap, Crown, Star,
+  Instagram, Linkedin, Zap, Crown, Star, Layers, Minus, Triangle,
 } from "lucide-react";
 
 const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
@@ -43,7 +43,7 @@ const EDGE_VOICES = [
 
 type VoiceMode    = "edge" | "gravacao" | "elevenlabs";
 type VideoModel   = "gratuito" | "premium" | "pro";
-type VisualStyle  = "images" | "animated" | "mixed";
+type VisualStyle  = "images" | "animated" | "particles" | "lines" | "geometric" | "mixed";
 type Legenda   = { tempo: number; texto: string };
 type Script    = {
   titulo: string;
@@ -189,7 +189,7 @@ export default function AdminCriarVideo() {
         step, objetivo, script, videoModel, voiceMode, edgeVoice, format, imageMode, visualStyle, jobStatus, activeJobId,
       }));
     } catch {}
-  }, [step, objetivo, script, voiceMode, edgeVoice, format, imageMode, jobStatus, activeJobId]);
+  }, [step, objetivo, script, videoModel, voiceMode, edgeVoice, format, imageMode, visualStyle, jobStatus, activeJobId]);
 
   // Retoma polling se voltar com um vídeo ainda em processamento
   useEffect(() => {
@@ -807,8 +807,32 @@ export default function AdminCriarVideo() {
             onClick={() => setVisualStyle("animated")}>
             <CardContent className="p-3 text-center space-y-1">
               <Wand2 className="h-5 w-5 mx-auto text-muted-foreground" />
-              <p className="font-medium text-sm">Gráficos</p>
-              <p className="text-xs text-muted-foreground">Degradês animados</p>
+              <p className="font-medium text-sm">Degradê</p>
+              <p className="text-xs text-muted-foreground">Blobs animados</p>
+            </CardContent>
+          </Card>
+          <Card className={`cursor-pointer border-2 transition-all ${visualStyle === "particles" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+            onClick={() => setVisualStyle("particles")}>
+            <CardContent className="p-3 text-center space-y-1">
+              <Sparkles className="h-5 w-5 mx-auto text-muted-foreground" />
+              <p className="font-medium text-sm">Partículas</p>
+              <p className="text-xs text-muted-foreground">Pontos flutuantes</p>
+            </CardContent>
+          </Card>
+          <Card className={`cursor-pointer border-2 transition-all ${visualStyle === "lines" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+            onClick={() => setVisualStyle("lines")}>
+            <CardContent className="p-3 text-center space-y-1">
+              <Minus className="h-5 w-5 mx-auto text-muted-foreground" />
+              <p className="font-medium text-sm">Linhas</p>
+              <p className="text-xs text-muted-foreground">Linhas diagonais</p>
+            </CardContent>
+          </Card>
+          <Card className={`cursor-pointer border-2 transition-all ${visualStyle === "geometric" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+            onClick={() => setVisualStyle("geometric")}>
+            <CardContent className="p-3 text-center space-y-1">
+              <Triangle className="h-5 w-5 mx-auto text-muted-foreground" />
+              <p className="font-medium text-sm">Geométrico</p>
+              <p className="text-xs text-muted-foreground">Formas animadas</p>
             </CardContent>
           </Card>
           <Card className={`cursor-pointer border-2 transition-all ${visualStyle === "mixed" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
@@ -821,7 +845,7 @@ export default function AdminCriarVideo() {
           </Card>
         </div>
 
-        {visualStyle !== "animated" && <div className="space-y-3">
+        {!["animated","particles","lines","geometric"].includes(visualStyle) && <div className="space-y-3">
         <Label className="text-sm font-medium text-muted-foreground">Imagens de Fundo</Label>
         <div className="grid grid-cols-2 gap-3">
           <Card className={`cursor-pointer border-2 transition-all ${imageMode === "auto" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}

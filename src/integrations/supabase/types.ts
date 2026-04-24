@@ -88,10 +88,11 @@ export type Database = {
       }
       articles: {
         Row: {
+          carousel_items: Json | null
           content: string | null
+          cover_image_url: string | null
           created_at: string
           id: string
-          image_url: string | null
           professional_id: string
           published: boolean
           published_at: string | null
@@ -100,10 +101,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          carousel_items?: Json | null
           content?: string | null
+          cover_image_url?: string | null
           created_at?: string
           id?: string
-          image_url?: string | null
           professional_id: string
           published?: boolean
           published_at?: string | null
@@ -112,10 +114,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          carousel_items?: Json | null
           content?: string | null
+          cover_image_url?: string | null
           created_at?: string
           id?: string
-          image_url?: string | null
           professional_id?: string
           published?: boolean
           published_at?: string | null

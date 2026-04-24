@@ -7,7 +7,7 @@ interface Article {
   id: string;
   title: string;
   slug: string;
-  image_url: string | null;
+  cover_image_url: string | null;
   published_at: string | null;
 }
 
@@ -74,8 +74,8 @@ export default function ContentSection({ articles, videos, slug, whatsapp }: Con
               {articles.map((a) => (
                 <Link key={a.id} to={`/${slug}/artigo/${a.slug}`}>
                   <Card className="overflow-hidden hover:shadow-md transition-shadow cursor-pointer">
-                    {a.image_url && (
-                      <img src={a.image_url} alt={a.title} className="w-full h-40 object-cover" />
+                    {a.cover_image_url && (
+                      <img src={a.cover_image_url} alt={a.title} className="w-full h-40 object-cover" />
                     )}
                     <CardHeader>
                       <CardTitle className="font-serif text-lg">{a.title}</CardTitle>

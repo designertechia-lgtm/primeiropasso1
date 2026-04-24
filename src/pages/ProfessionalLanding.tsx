@@ -55,10 +55,11 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     queryFn: async () => {
       const { data } = await supabase
         .from("articles")
-        .select("id, title, slug, image_url, published_at")
+        .select("id, title, slug, cover_image_url, published_at, created_at")
         .eq("professional_id", professional!.id)
         .eq("published", true)
-        .order("published_at", { ascending: false })
+        .order("published_at", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false })
         .limit(3);
       return data ?? [];
     },

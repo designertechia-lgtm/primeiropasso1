@@ -41,8 +41,9 @@ const EDGE_VOICES = [
   { id: "pt-BR-AntonioNeural",   label: "Antônio",   gender: "Masculina" },
 ];
 
-type VoiceMode  = "edge" | "gravacao" | "elevenlabs";
-type VideoModel = "gratuito" | "premium" | "pro";
+type VoiceMode    = "edge" | "gravacao" | "elevenlabs";
+type VideoModel   = "gratuito" | "premium" | "pro";
+type VisualStyle  = "images" | "animated" | "mixed";
 type Legenda   = { tempo: number; texto: string };
 type Script    = {
   titulo: string;
@@ -170,7 +171,8 @@ export default function AdminCriarVideo() {
   const [edgeVoice, setEdgeVoice]   = useState<string>(saved?.edgeVoice ?? "pt-BR-FranciscaNeural");
   const [voiceBlob, setVoiceBlob]   = useState<Blob | null>(null);
   const [narBlob, setNarBlob]       = useState<Blob | null>(null);
-  const [imageMode, setImageMode]   = useState<"auto" | "custom">(saved?.imageMode ?? "auto");
+  const [imageMode, setImageMode]     = useState<"auto" | "custom">(saved?.imageMode ?? "auto");
+  const [visualStyle, setVisualStyle] = useState<VisualStyle>(saved?.visualStyle ?? "images");
   const [userImages, setUserImages] = useState<{ file: File; preview: string }[]>([]);
   const [format, setFormat]         = useState<"portrait" | "landscape" | "square">(saved?.format ?? "portrait");
   const [jobStatus, setJobStatus]   = useState<JobStatus>(saved?.jobStatus ?? { status: "idle" });
@@ -184,7 +186,7 @@ export default function AdminCriarVideo() {
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        step, objetivo, script, videoModel, voiceMode, edgeVoice, format, imageMode, jobStatus, activeJobId,
+        step, objetivo, script, videoModel, voiceMode, edgeVoice, format, imageMode, visualStyle, jobStatus, activeJobId,
       }));
     } catch {}
   }, [step, objetivo, script, voiceMode, edgeVoice, format, imageMode, jobStatus, activeJobId]);
@@ -364,6 +366,7 @@ export default function AdminCriarVideo() {
           custom_image_paths: customImagePaths,
           format,
           model: videoModel,
+          visual_style: visualStyle,
         }),
       });
       const data = await res.json();
@@ -439,7 +442,7 @@ export default function AdminCriarVideo() {
     setVideoModel("gratuito");
     setVoiceMode("edge"); setEdgeVoice("pt-BR-FranciscaNeural");
     setVoiceBlob(null); setNarBlob(null);
-    setImageMode("auto"); setUserImages([]); setFormat("portrait");
+    setImageMode("auto"); setVisualStyle("images"); setUserImages([]); setFormat("portrait");
     setJobStatus({ status: "idle" }); setActiveJobId(null);
     localStorage.removeItem(STORAGE_KEY);
   };
@@ -788,9 +791,38 @@ export default function AdminCriarVideo() {
       {/* ── Imagens ── (oculto em Premium/Pro — Veo gera visualmente) */}
       {videoModel === "gratuito" && <div className="space-y-3">
         <Label className="text-base font-semibold flex items-center gap-2">
-          <Images className="h-4 w-4" /> Imagens de Fundo
+          <Images className="h-4 w-4" /> Estilo Visual
         </Label>
 
+        <div className="grid grid-cols-3 gap-3">
+          <Card className={`cursor-pointer border-2 transition-all ${visualStyle === "images" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+            onClick={() => setVisualStyle("images")}>
+            <CardContent className="p-3 text-center space-y-1">
+              <Images className="h-5 w-5 mx-auto text-muted-foreground" />
+              <p className="font-medium text-sm">Imagens</p>
+              <p className="text-xs text-muted-foreground">Pexels por slide</p>
+            </CardContent>
+          </Card>
+          <Card className={`cursor-pointer border-2 transition-all ${visualStyle === "animated" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+            onClick={() => setVisualStyle("animated")}>
+            <CardContent className="p-3 text-center space-y-1">
+              <Wand2 className="h-5 w-5 mx-auto text-muted-foreground" />
+              <p className="font-medium text-sm">Gráficos</p>
+              <p className="text-xs text-muted-foreground">Degradês animados</p>
+            </CardContent>
+          </Card>
+          <Card className={`cursor-pointer border-2 transition-all ${visualStyle === "mixed" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+            onClick={() => setVisualStyle("mixed")}>
+            <CardContent className="p-3 text-center space-y-1">
+              <Film className="h-5 w-5 mx-auto text-muted-foreground" />
+              <p className="font-medium text-sm">Misto</p>
+              <p className="text-xs text-muted-foreground">Alterna imagem + gráfico</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {visualStyle !== "animated" && <div className="space-y-3">
+        <Label className="text-sm font-medium text-muted-foreground">Imagens de Fundo</Label>
         <div className="grid grid-cols-2 gap-3">
           <Card className={`cursor-pointer border-2 transition-all ${imageMode === "auto" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
             onClick={() => setImageMode("auto")}>
@@ -870,6 +902,7 @@ export default function AdminCriarVideo() {
             )}
           </div>
         )}
+        </div>}
       </div>}
 
       {/* Modelo selecionado: nota visual no Step 2 */}

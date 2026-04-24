@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfessional } from "@/hooks/useProfessional";
 import { useAuth } from "@/hooks/useAuth";
@@ -11,9 +12,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Upload, Film, CheckCircle2, X } from "lucide-react";
+import {
+  Plus, Pencil, Trash2, Upload, Film, CheckCircle2, X,
+  Scissors, Wand2, Image, Loader2, PlayCircle,
+} from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
+
+const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
 
 interface VideoForm {
   id?: string;
@@ -26,13 +32,179 @@ interface VideoForm {
 
 const emptyForm: VideoForm = { title: "", description: "", embed_url: "", thumbnail_url: "", published: false };
 
+// ── Player sob demanda ─────────────────────────────────────────
+function VideoPlayer({ url, title }: { url: string; title: string }) {
+  const isYoutube = /youtube\.com|youtu\.be/.test(url);
+
+  if (isYoutube) {
+    const videoId = url.match(/(?:v=|youtu\.be\/)([^&?/]+)/)?.[1];
+    return (
+      <div className="relative w-full" style={{ paddingBottom: "56.25%" }}>
+        <iframe
+          className="absolute inset-0 w-full h-full rounded-lg"
+          src={`https://www.youtube.com/embed/${videoId}?autoplay=1`}
+          title={title}
+          allow="autoplay; fullscreen"
+          allowFullScreen
+        />
+      </div>
+    );
+  }
+
+  return (
+    <video
+      src={url}
+      controls
+      autoPlay
+      preload="none"
+      className="w-full rounded-lg max-h-[70vh] bg-black"
+    />
+  );
+}
+
+// ── Painel de edição (trim + thumbnail) ────────────────────────
+function EditPanel({
+  video,
+  professionalSlug,
+  onClose,
+}: {
+  video: { id: string; title: string; embed_url: string; thumbnail_url: string | null };
+  professionalSlug: string;
+  onClose: () => void;
+}) {
+  const queryClient                   = useQueryClient();
+  const [trimStart, setTrimStart]     = useState(0);
+  const [trimEnd, setTrimEnd]         = useState(30);
+  const [duration, setDuration]       = useState(30);
+  const [trimming, setTrimming]       = useState(false);
+  const [trimJobId, setTrimJobId]     = useState<string | null>(null);
+  const [trimStatus, setTrimStatus]   = useState<string>("");
+  const pollRef                       = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fmt = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  };
+
+  const handleTrim = async () => {
+    setTrimming(true);
+    setTrimStatus("Enviando...");
+    try {
+      const res  = await fetch(`${API}/trim-video`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          video_id: video.id,
+          professional_slug: professionalSlug,
+          start_seconds: trimStart,
+          end_seconds: trimEnd,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail ?? "Erro ao iniciar trim");
+      setTrimJobId(data.job_id);
+      pollRef.current = setInterval(async () => {
+        const s = await fetch(`${API}/status/${data.job_id}`).then((r) => r.json());
+        setTrimStatus(s.step ?? s.status);
+        if (s.status === "done") {
+          clearInterval(pollRef.current!);
+          setTrimming(false);
+          toast.success("Vídeo cortado e atualizado!");
+          queryClient.invalidateQueries({ queryKey: ["admin-videos"] });
+          onClose();
+        } else if (s.status === "error") {
+          clearInterval(pollRef.current!);
+          setTrimming(false);
+          toast.error("Erro ao cortar: " + s.message);
+        }
+      }, 3000);
+    } catch (e: any) {
+      setTrimming(false);
+      toast.error(e.message);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Player */}
+      <video
+        src={video.embed_url}
+        controls
+        className="w-full rounded-lg max-h-48 bg-black"
+        onLoadedMetadata={(e) => {
+          const d = Math.floor((e.target as HTMLVideoElement).duration);
+          setDuration(d);
+          setTrimEnd(d);
+        }}
+      />
+
+      {/* Trim */}
+      <div className="space-y-3">
+        <Label className="font-semibold flex items-center gap-2">
+          <Scissors className="h-4 w-4" /> Cortar vídeo
+        </Label>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Início: {fmt(trimStart)}</Label>
+            <input
+              type="range" min={0} max={Math.max(0, trimEnd - 1)} step={1}
+              value={trimStart}
+              onChange={(e) => setTrimStart(Number(e.target.value))}
+              className="w-full accent-primary"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Fim: {fmt(trimEnd)}</Label>
+            <input
+              type="range" min={trimStart + 1} max={duration} step={1}
+              value={trimEnd}
+              onChange={(e) => setTrimEnd(Number(e.target.value))}
+              className="w-full accent-primary"
+            />
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Duração resultante: <strong>{fmt(trimEnd - trimStart)}</strong>
+        </p>
+        <Button onClick={handleTrim} disabled={trimming} className="w-full">
+          {trimming
+            ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{trimStatus}</>
+            : <><Scissors className="h-4 w-4 mr-2" />Aplicar corte</>}
+        </Button>
+      </div>
+
+      {/* Trocar thumbnail */}
+      <div className="space-y-2">
+        <Label className="font-semibold flex items-center gap-2">
+          <Image className="h-4 w-4" /> Trocar thumbnail
+        </Label>
+        <ImageUpload
+          currentUrl={video.thumbnail_url}
+          onUploaded={async (url) => {
+            await supabase.from("videos").update({ thumbnail_url: url }).eq("id", video.id);
+            toast.success("Thumbnail atualizada!");
+            queryClient.invalidateQueries({ queryKey: ["admin-videos"] });
+          }}
+          folder="video-thumbnails"
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── Página principal ────────────────────────────────────────────
 export default function AdminVideos() {
   const { data: professional } = useProfessional();
-  const { user } = useAuth();
-  const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<VideoForm>(emptyForm);
-  const [saving, setSaving] = useState(false);
+  const { user }               = useAuth();
+  const navigate               = useNavigate();
+  const queryClient            = useQueryClient();
+
+  const [open, setOpen]               = useState(false);
+  const [editPanelVideo, setEditPanelVideo] = useState<any>(null);
+  const [playerVideo, setPlayerVideo] = useState<any>(null);
+  const [form, setForm]               = useState<VideoForm>(emptyForm);
+  const [saving, setSaving]           = useState(false);
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
@@ -49,10 +221,13 @@ export default function AdminVideos() {
     enabled: !!professional?.id,
   });
 
-  const openNew = () => { setForm(emptyForm); setOpen(true); };
-
+  const openNew  = () => { setForm(emptyForm); setOpen(true); };
   const openEdit = (v: typeof videos[0]) => {
-    setForm({ id: v.id, title: v.title, description: v.description || "", embed_url: v.embed_url, thumbnail_url: (v as any).thumbnail_url || "", published: v.published });
+    setForm({
+      id: v.id, title: v.title, description: v.description || "",
+      embed_url: v.embed_url, thumbnail_url: (v as any).thumbnail_url || "",
+      published: v.published,
+    });
     setOpen(true);
   };
 
@@ -68,11 +243,9 @@ export default function AdminVideos() {
       published: form.published,
       published_at: form.published ? new Date().toISOString() : null,
     };
-
     const { error } = form.id
       ? await supabase.from("videos").update(payload).eq("id", form.id)
       : await supabase.from("videos").insert(payload);
-
     setSaving(false);
     if (error) toast.error("Erro ao salvar vídeo");
     else {
@@ -114,45 +287,35 @@ export default function AdminVideos() {
               <div className="space-y-2">
                 <Label>Vídeo <FieldHint text="Faça upload de um arquivo da galeria (até 100MB) ou cole um link do YouTube." /></Label>
                 <div className="space-y-3">
-                  {/* Vídeo já carregado via upload — mostra badge com nome do arquivo */}
                   {form.embed_url && form.embed_url.includes("supabase") ? (
                     <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2">
                       <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
                       <span className="flex-1 truncate min-w-0 text-xs text-green-700">
                         {decodeURIComponent(form.embed_url.split("/").pop() || "vídeo")}
                       </span>
-                      <Button
-                        type="button" variant="ghost" size="icon"
+                      <Button type="button" variant="ghost" size="icon"
                         className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
-                        onClick={() => setForm({ ...form, embed_url: "" })}
-                      >
+                        onClick={() => setForm({ ...form, embed_url: "" })}>
                         <X className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                   ) : (
                     <>
                       <div className="text-xs text-muted-foreground">Cole um link do YouTube:</div>
-                      <Input
-                        value={form.embed_url}
+                      <Input value={form.embed_url}
                         onChange={(e) => setForm({ ...form, embed_url: e.target.value })}
-                        placeholder="https://www.youtube.com/watch?v=..."
-                      />
+                        placeholder="https://www.youtube.com/watch?v=..." />
                     </>
                   )}
-
-                  {/* Botão de upload — sempre visível */}
                   <div className="flex gap-2">
-                    <Button
-                      type="button" variant="outline" size="sm"
+                    <Button type="button" variant="outline" size="sm"
                       disabled={uploadingVideo}
-                      onClick={() => videoInputRef.current?.click()}
-                    >
+                      onClick={() => videoInputRef.current?.click()}>
                       <Upload className="h-4 w-4 mr-1" />
                       {uploadingVideo ? "Enviando..." : "Upload da galeria"}
                     </Button>
                   </div>
-                  <input
-                    ref={videoInputRef} type="file" accept="video/*" className="hidden"
+                  <input ref={videoInputRef} type="file" accept="video/*" className="hidden"
                     onChange={async (e) => {
                       const file = e.target.files?.[0];
                       if (!file || !user) return;
@@ -161,7 +324,7 @@ export default function AdminVideos() {
                         return;
                       }
                       setUploadingVideo(true);
-                      const ext = file.name.split(".").pop();
+                      const ext  = file.name.split(".").pop();
                       const path = `${user.id}/videos/${Date.now()}.${ext}`;
                       const { error } = await supabase.storage.from("images").upload(path, file, { upsert: true });
                       if (error) {
@@ -174,24 +337,23 @@ export default function AdminVideos() {
                       setUploadingVideo(false);
                       toast.success("Vídeo enviado!");
                       e.target.value = "";
-                    }}
-                  />
+                    }} />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label>Thumbnail / Capa <FieldHint text="Imagem de capa exibida antes do vídeo ser reproduzido na sua página." /></Label>
-                <ImageUpload
-                  currentUrl={form.thumbnail_url || null}
+                <ImageUpload currentUrl={form.thumbnail_url || null}
                   onUploaded={(url) => setForm({ ...form, thumbnail_url: url })}
-                  folder="video-thumbnails"
-                />
+                  folder="video-thumbnails" />
               </div>
               <div className="space-y-2">
                 <Label>Descrição <FieldHint text="Texto explicativo exibido abaixo do vídeo na sua página." /></Label>
-                <Textarea rows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+                <Textarea rows={4} value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })} />
               </div>
               <div className="flex items-center gap-2">
-                <Switch checked={form.published} onCheckedChange={(v) => setForm({ ...form, published: v })} />
+                <Switch checked={form.published}
+                  onCheckedChange={(v) => setForm({ ...form, published: v })} />
                 <Label>Publicado <FieldHint text="Vídeos publicados ficam visíveis na sua página pública. Desativado = rascunho." /></Label>
               </div>
               <Button onClick={handleSave} disabled={saving} className="w-full">
@@ -203,31 +365,110 @@ export default function AdminVideos() {
       </div>
 
       {videos.length === 0 ? (
-        <p className="text-muted-foreground text-center py-12">Nenhum vídeo ainda. Clique em "Novo Vídeo" para começar.</p>
+        <p className="text-muted-foreground text-center py-12">
+          Nenhum vídeo ainda. Clique em "Novo Vídeo" para começar.
+        </p>
       ) : (
         <div className="grid gap-4">
           {videos.map((v) => (
             <Card key={v.id}>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-lg">{v.title}</CardTitle>
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="icon" onClick={() => openEdit(v)}>
-                    <Pencil className="h-4 w-4" />
+              <CardContent className="p-4 flex gap-4 items-start">
+                {/* Thumbnail com play overlay */}
+                <button
+                  className="shrink-0 relative group rounded-lg overflow-hidden w-20 h-20"
+                  onClick={() => setPlayerVideo(v)}
+                  title="Assistir vídeo"
+                >
+                  {(v as any).thumbnail_url ? (
+                    <img src={(v as any).thumbnail_url} alt=""
+                      className="w-20 h-20 object-cover transition-opacity group-hover:opacity-70" />
+                  ) : (
+                    <div className="w-20 h-20 bg-muted flex items-center justify-center">
+                      <Film className="h-7 w-7 text-muted-foreground" />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <PlayCircle className="h-9 w-9 text-white drop-shadow-lg" />
+                  </div>
+                </button>
+
+                {/* Info */}
+                <div className="flex-1 min-w-0 space-y-1">
+                  <p className="font-semibold truncate">{v.title}</p>
+                  <span className={`inline-block text-xs px-2 py-0.5 rounded-full ${v.published ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+                    {v.published ? "Publicado" : "Rascunho"}
+                  </span>
+                  {(v as any).script_json && (
+                    <p className="text-xs text-muted-foreground">Roteiro salvo ✓</p>
+                  )}
+                </div>
+
+                {/* Ações */}
+                <div className="flex flex-col gap-1.5 shrink-0">
+                  {/* Reeditar com IA */}
+                  {(v as any).script_json && (
+                    <Button size="sm" variant="outline"
+                      className="gap-1.5 text-xs"
+                      onClick={() => navigate(`/admin/criar-video?edit=${v.id}`)}>
+                      <Wand2 className="h-3.5 w-3.5" /> Reeditar
+                    </Button>
+                  )}
+
+                  {/* Editar (trim + thumbnail) */}
+                  <Dialog open={editPanelVideo?.id === v.id}
+                    onOpenChange={(o) => !o && setEditPanelVideo(null)}>
+                    <DialogTrigger asChild>
+                      <Button size="sm" variant="outline"
+                        className="gap-1.5 text-xs"
+                        onClick={() => setEditPanelVideo(v)}>
+                        <Scissors className="h-3.5 w-3.5" /> Editar
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-lg">
+                      <DialogHeader>
+                        <DialogTitle>Editar — {v.title}</DialogTitle>
+                      </DialogHeader>
+                      {editPanelVideo?.id === v.id && professional?.slug && (
+                        <EditPanel
+                          video={v as any}
+                          professionalSlug={professional.slug}
+                          onClose={() => setEditPanelVideo(null)}
+                        />
+                      )}
+                    </DialogContent>
+                  </Dialog>
+
+                  {/* Metadados */}
+                  <Button size="sm" variant="ghost"
+                    className="gap-1.5 text-xs text-muted-foreground"
+                    onClick={() => openEdit(v)}>
+                    <Pencil className="h-3.5 w-3.5" /> Detalhes
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={() => handleDelete(v.id)}>
-                    <Trash2 className="h-4 w-4 text-destructive" />
+
+                  {/* Excluir */}
+                  <Button size="sm" variant="ghost"
+                    className="gap-1.5 text-xs text-destructive hover:text-destructive"
+                    onClick={() => handleDelete(v.id)}>
+                    <Trash2 className="h-3.5 w-3.5" /> Excluir
                   </Button>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <span className={`text-xs px-2 py-1 rounded-full ${v.published ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
-                  {v.published ? "Publicado" : "Rascunho"}
-                </span>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
+
+      {/* Player modal — carrega vídeo só ao abrir */}
+      <Dialog open={!!playerVideo} onOpenChange={(o) => !o && setPlayerVideo(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="truncate pr-6">{playerVideo?.title}</DialogTitle>
+          </DialogHeader>
+          {playerVideo && (
+            <VideoPlayer url={playerVideo.embed_url} title={playerVideo.title} />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

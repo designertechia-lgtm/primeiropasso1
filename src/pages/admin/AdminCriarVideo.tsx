@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useProfessional } from "@/hooks/useProfessional";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,7 +14,7 @@ import {
   ChevronRight, ChevronLeft, ChevronDown, Mic, Monitor, Smartphone,
   Circle, Square, RotateCcw, Sparkles, BookOpen,
   ImagePlus, X, ArrowUp, ArrowDown, Images, Wand2,
-  Instagram, Linkedin,
+  Instagram, Linkedin, Zap, Crown, Star,
 } from "lucide-react";
 
 const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
@@ -22,7 +23,15 @@ const STORAGE_KEY = "pp-criar-video";
 function loadSaved() {
   try {
     const s = localStorage.getItem(STORAGE_KEY);
-    return s ? JSON.parse(s) : null;
+    if (!s) return null;
+    const parsed = JSON.parse(s);
+    // Descarta estados terminais — na próxima visita começa limpo
+    const terminalStatus = ["cancelled", "error"];
+    if (terminalStatus.includes(parsed?.jobStatus?.status)) {
+      localStorage.removeItem(STORAGE_KEY);
+      return null;
+    }
+    return parsed;
   } catch { return null; }
 }
 
@@ -32,7 +41,8 @@ const EDGE_VOICES = [
   { id: "pt-BR-AntonioNeural",   label: "Antônio",   gender: "Masculina" },
 ];
 
-type VoiceMode = "edge" | "gravacao" | "elevenlabs";
+type VoiceMode  = "edge" | "gravacao" | "elevenlabs";
+type VideoModel = "gratuito" | "premium" | "pro";
 type Legenda   = { tempo: number; texto: string };
 type Script    = {
   titulo: string;
@@ -45,12 +55,13 @@ type Script    = {
   legenda_tiktok?: string;
 };
 type JobStatus = {
-  status: "idle" | "loading" | "editing" | "processing" | "done" | "error";
+  status: "idle" | "loading" | "editing" | "processing" | "done" | "error" | "cancelled";
   progress?: number;
   step?: string;
   video_url?: string;
   titulo?: string;
   message?: string;
+  elapsed_seconds?: number;
 };
 
 // ── Gravador reutilizável ────────────────────────────────────
@@ -145,13 +156,16 @@ function VoiceRecorder({
 // ── Página principal ─────────────────────────────────────────
 export default function AdminCriarVideo() {
   const { data: professional } = useProfessional();
+  const [searchParams] = useSearchParams();
+  const editVideoId = searchParams.get("edit");
 
   // Inicializa do localStorage para persistir entre navegações
-  const saved = useRef(loadSaved()).current;
+  const saved = useRef(editVideoId ? null : loadSaved()).current;
   const [step, setStep]             = useState<1 | 2 | 3>(saved?.step ?? 1);
   const [objetivo, setObjetivo]     = useState<string>(saved?.objetivo ?? "");
   const [iaLoading, setIaLoading]   = useState(false);
   const [script, setScript]         = useState<Script | null>(saved?.script ?? null);
+  const [videoModel, setVideoModel] = useState<VideoModel>(saved?.videoModel ?? "gratuito");
   const [voiceMode, setVoiceMode]   = useState<VoiceMode>(saved?.voiceMode ?? "edge");
   const [edgeVoice, setEdgeVoice]   = useState<string>(saved?.edgeVoice ?? "pt-BR-FranciscaNeural");
   const [voiceBlob, setVoiceBlob]   = useState<Blob | null>(null);
@@ -161,12 +175,16 @@ export default function AdminCriarVideo() {
   const [format, setFormat]         = useState<"portrait" | "landscape" | "square">(saved?.format ?? "portrait");
   const [jobStatus, setJobStatus]   = useState<JobStatus>(saved?.jobStatus ?? { status: "idle" });
   const [activeJobId, setActiveJobId] = useState<string | null>(saved?.activeJobId ?? null);
+  const [avgSeconds, setAvgSeconds] = useState<number | null>(null);
+  const [localElapsed, setLocalElapsed] = useState<number>(saved?.jobStatus?.elapsed_seconds ?? 0);
+  const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Salva estado no localStorage sempre que mudar
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        step, objetivo, script, voiceMode, edgeVoice, format, imageMode, jobStatus, activeJobId,
+        step, objetivo, script, videoModel, voiceMode, edgeVoice, format, imageMode, jobStatus, activeJobId,
       }));
     } catch {}
   }, [step, objetivo, script, voiceMode, edgeVoice, format, imageMode, jobStatus, activeJobId]);
@@ -174,9 +192,32 @@ export default function AdminCriarVideo() {
   // Retoma polling se voltar com um vídeo ainda em processamento
   useEffect(() => {
     if (activeJobId && saved?.jobStatus?.status === "processing") {
+      startStopwatch(saved?.jobStatus?.elapsed_seconds ?? 0);
       pollStatus(activeJobId);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Para polling e cronômetro ao desmontar o componente
+  useEffect(() => () => { stopPolling(); stopStopwatch(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Carrega roteiro existente quando abrindo em modo de reedição
+  useEffect(() => {
+    if (!editVideoId || !professional?.slug) return;
+    fetch(`${API}/video-roteiro/${editVideoId}?professional_slug=${professional.slug}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.script_json) {
+          setScript(data.script_json);
+          setFormat(data.video_format ?? "portrait");
+          setJobStatus({ status: "editing" });
+          setStep(2);
+          toast.info("Roteiro carregado — edite e regere o vídeo.");
+        } else {
+          toast.warning("Este vídeo não tem roteiro salvo. Crie um novo.");
+        }
+      })
+      .catch(() => toast.error("Não foi possível carregar o roteiro."));
+  }, [editVideoId, professional?.slug]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSugerirObjetivo = async () => {
     if (!professional?.slug) {
@@ -211,7 +252,7 @@ export default function AdminCriarVideo() {
       const data = await res.json();
       if (data.objetivo) {
         setObjetivo(data.objetivo);
-        toast.success("Objetivo criado pela IA!", { id: toastId });
+        toast.success("Objetivo criado pela IA!", { id: toastId, duration: 2000 });
       }
     } catch (e: any) {
       toast.error(e.message || "Não foi possível gerar sugestão", { id: toastId, duration: 8000 });
@@ -255,7 +296,11 @@ export default function AdminCriarVideo() {
     }
 
     setJobStatus({ status: "processing", progress: 0, step: "Iniciando..." });
+    startStopwatch(0);
     setStep(3);
+    fetch(`${API}/perf-stats`).then((r) => r.json()).then((d) => {
+      if (d.avg > 0) setAvgSeconds(d.avg);
+    }).catch(() => {});
 
     try {
       let voiceId: string | null = null;
@@ -318,6 +363,7 @@ export default function AdminCriarVideo() {
           narration_audio_path: narrationPath,
           custom_image_paths: customImagePaths,
           format,
+          model: videoModel,
         }),
       });
       const data = await res.json();
@@ -328,26 +374,69 @@ export default function AdminCriarVideo() {
     }
   };
 
+  const stopPolling = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+
+  const stopStopwatch = () => {
+    if (elapsedRef.current) { clearInterval(elapsedRef.current); elapsedRef.current = null; }
+  };
+
+  const startStopwatch = (initialSeconds = 0) => {
+    stopStopwatch();
+    setLocalElapsed(initialSeconds);
+    elapsedRef.current = setInterval(() => setLocalElapsed((s) => s + 1), 1000);
+  };
+
   const pollStatus = (id: string) => {
-    const iv = setInterval(async () => {
+    stopPolling(); // garante que só um interval roda por vez
+    pollRef.current = setInterval(async () => {
       try {
         const data = await (await fetch(`${API}/status/${id}`)).json();
         setJobStatus(data);
-        if (data.status === "done" || data.status === "error") {
-          clearInterval(iv);
-          data.status === "done"
-            ? toast.success("Vídeo criado com sucesso!")
-            : toast.error("Erro: " + data.message);
+        if (data.status === "done" || data.status === "error" || data.status === "cancelled") {
+          stopPolling();
+          stopStopwatch();
+          if (data.status === "done") toast.success("Vídeo criado com sucesso!");
+          if (data.status === "error") toast.error("Erro: " + data.message);
         }
       } catch {
-        clearInterval(iv);
+        stopPolling();
         setJobStatus({ status: "error", message: "Erro de conexão" });
       }
     }, 3000);
   };
 
+  const handleCancel = async () => {
+    if (!activeJobId) return;
+    try {
+      await fetch(`${API}/cancelar-job/${activeJobId}`, { method: "POST" });
+      setJobStatus({ status: "cancelled" });
+      toast.info("Geração cancelada.");
+    } catch {
+      toast.error("Não foi possível cancelar.");
+    }
+  };
+
+  const handleDownload = async (url: string, titulo: string) => {
+    try {
+      const blob = await fetch(url).then((r) => r.blob());
+      const a    = document.createElement("a");
+      a.href     = URL.createObjectURL(blob);
+      a.download = `${titulo.replace(/[^a-zA-Z0-9]/g, "_")}.mp4`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch {
+      toast.error("Erro ao baixar vídeo.");
+    }
+  };
+
   const handleReset = () => {
     setStep(1); setScript(null); setObjetivo("");
+    setVideoModel("gratuito");
     setVoiceMode("edge"); setEdgeVoice("pt-BR-FranciscaNeural");
     setVoiceBlob(null); setNarBlob(null);
     setImageMode("auto"); setUserImages([]); setFormat("portrait");
@@ -435,6 +524,54 @@ export default function AdminCriarVideo() {
         </p>
       </div>
 
+      {/* Seletor de modelo */}
+      <div className="space-y-3">
+        <Label className="text-base font-semibold">Modelo de Geração</Label>
+        <div className="grid grid-cols-3 gap-3">
+          <Card
+            className={`cursor-pointer border-2 transition-all ${videoModel === "gratuito" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+            onClick={() => setVideoModel("gratuito")}
+          >
+            <CardContent className="p-3 text-center space-y-1.5">
+              <Zap className="h-5 w-5 mx-auto text-primary" />
+              <p className="font-semibold text-sm">Gratuito</p>
+              <p className="text-xs text-muted-foreground">Imagens Pexels</p>
+              <Badge variant="secondary" className="text-xs">Grátis · ~2min</Badge>
+            </CardContent>
+          </Card>
+          <Card
+            className={`cursor-pointer border-2 transition-all ${videoModel === "premium" ? "border-amber-500 bg-amber-50/50 dark:bg-amber-950/20" : "border-border hover:border-amber-400/50"}`}
+            onClick={() => setVideoModel("premium")}
+          >
+            <CardContent className="p-3 text-center space-y-1.5">
+              <Star className="h-5 w-5 mx-auto text-amber-500" />
+              <p className="font-semibold text-sm">Premium</p>
+              <p className="text-xs text-muted-foreground">Vídeo IA (Veo Fast)</p>
+              <Badge variant="outline" className="text-xs border-amber-400 text-amber-600">~R$ 3-4/vídeo</Badge>
+            </CardContent>
+          </Card>
+          <Card
+            className={`cursor-pointer border-2 transition-all ${videoModel === "pro" ? "border-purple-500 bg-purple-50/50 dark:bg-purple-950/20" : "border-border hover:border-purple-400/50"}`}
+            onClick={() => setVideoModel("pro")}
+          >
+            <CardContent className="p-3 text-center space-y-1.5">
+              <Crown className="h-5 w-5 mx-auto text-purple-500" />
+              <p className="font-semibold text-sm">Pro</p>
+              <p className="text-xs text-muted-foreground">Vídeo IA HD (Veo)</p>
+              <Badge variant="outline" className="text-xs border-purple-400 text-purple-600">~R$ 12-15/vídeo</Badge>
+            </CardContent>
+          </Card>
+        </div>
+        {videoModel !== "gratuito" && (
+          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+            {videoModel === "premium"
+              ? "Gera clipes cinematográficos com IA para cada slide · ~3-5min"
+              : "Máxima qualidade · clipes HD gerados pelo Google Veo · tempo: 8-15min"}
+          </p>
+        )}
+      </div>
+
       <Button className="w-full" size="lg"
         disabled={!objetivo.trim() || jobStatus.status === "loading"}
         onClick={handleNextStep}>
@@ -446,6 +583,24 @@ export default function AdminCriarVideo() {
   );
 
   // ── Step 2 ─────────────────────────────────────────────────
+  if (step === 2 && !script) return (
+    <div className="max-w-2xl mx-auto space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Criar Vídeo</h1>
+      </div>
+      <StepIndicator />
+      <Card>
+        <CardContent className="py-12 flex flex-col items-center gap-4">
+          <AlertCircle className="h-10 w-10 text-muted-foreground" />
+          <p className="text-muted-foreground text-sm">Roteiro não encontrado.</p>
+          <Button variant="outline" onClick={() => setStep(1)}>
+            <ChevronLeft className="mr-2 h-4 w-4" /> Voltar ao início
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   if (step === 2 && script) return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
@@ -630,8 +785,8 @@ export default function AdminCriarVideo() {
         )}
       </div>
 
-      {/* ── Imagens ── */}
-      <div className="space-y-3">
+      {/* ── Imagens ── (oculto em Premium/Pro — Veo gera visualmente) */}
+      {videoModel === "gratuito" && <div className="space-y-3">
         <Label className="text-base font-semibold flex items-center gap-2">
           <Images className="h-4 w-4" /> Imagens de Fundo
         </Label>
@@ -715,7 +870,25 @@ export default function AdminCriarVideo() {
             )}
           </div>
         )}
-      </div>
+      </div>}
+
+      {/* Modelo selecionado: nota visual no Step 2 */}
+      {videoModel !== "gratuito" && (
+        <div className="rounded-xl border border-amber-300/50 bg-amber-50/40 dark:bg-amber-950/20 px-4 py-3 flex items-start gap-2.5 text-sm">
+          {videoModel === "premium"
+            ? <Star className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+            : <Crown className="h-4 w-4 text-purple-500 mt-0.5 shrink-0" />}
+          <div>
+            <p className="font-medium">
+              {videoModel === "premium" ? "Modelo Premium ativo" : "Modelo Pro ativo"}
+            </p>
+            <p className="text-muted-foreground text-xs mt-0.5">
+              O Google Veo vai gerar clipes cinematográficos para cada slide automaticamente.
+              Imagens de fundo não são necessárias.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Formato */}
       <div className="space-y-2">
@@ -770,18 +943,42 @@ export default function AdminCriarVideo() {
 
       {jobStatus.status === "processing" && (
         <Card>
-          <CardContent className="py-12 flex flex-col items-center gap-5">
+          <CardContent className="py-10 flex flex-col items-center gap-5">
             <Loader2 className="h-14 w-14 animate-spin text-primary" />
             <div className="text-center">
               <p className="font-semibold text-lg">Gerando seu vídeo...</p>
               <p className="text-muted-foreground mt-1 text-sm">{jobStatus.step}</p>
             </div>
+
+            {/* Barra de progresso */}
             <div className="w-full bg-muted rounded-full h-2">
               <div className="bg-primary h-2 rounded-full transition-all duration-500"
                 style={{ width: `${jobStatus.progress || 0}%` }} />
             </div>
-            <p className="text-sm text-muted-foreground">{jobStatus.progress || 0}%</p>
-            <p className="text-xs text-muted-foreground/60">Tempo estimado: 1 a 2 minutos · pode navegar e voltar</p>
+
+            {/* Tempo decorrido + tempo médio */}
+            <div className="w-full grid grid-cols-2 gap-3 text-center">
+              <div className="rounded-xl bg-muted/60 px-4 py-3">
+                <p className="text-xs text-muted-foreground mb-1">Tempo decorrido</p>
+                <p className="font-mono font-bold text-xl tabular-nums">
+                  {`${String(Math.floor(localElapsed / 60)).padStart(2, "0")}:${String(localElapsed % 60).padStart(2, "0")}`}
+                </p>
+              </div>
+              <div className="rounded-xl bg-muted/60 px-4 py-3">
+                <p className="text-xs text-muted-foreground mb-1">
+                  {avgSeconds ? "Tempo médio" : "Estimativa"}
+                </p>
+                <p className="font-mono font-bold text-xl tabular-nums">
+                  {avgSeconds
+                    ? `~${String(Math.floor(avgSeconds / 60)).padStart(2, "0")}:${String(Math.round(avgSeconds % 60)).padStart(2, "0")}`
+                    : videoModel === "gratuito" ? "~02:00" : "~04:00"}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground/60 text-center">
+              Pode navegar e voltar — o vídeo continuará sendo gerado
+            </p>
           </CardContent>
         </Card>
       )}
@@ -793,15 +990,37 @@ export default function AdminCriarVideo() {
             <div className="text-center">
               <p className="font-semibold text-lg">Vídeo criado com sucesso!</p>
               <p className="text-muted-foreground mt-1 text-sm">{jobStatus.titulo}</p>
+              {avgSeconds != null && (
+                <p className="text-xs text-muted-foreground/60 mt-1">
+                  Gerado em {Math.round(avgSeconds)}s · novo tempo médio registrado
+                </p>
+              )}
             </div>
             {jobStatus.video_url && (
               <video src={jobStatus.video_url} controls className="w-full max-w-xs rounded-xl mt-2 shadow-lg" />
             )}
             <div className="flex gap-3 mt-2">
               {jobStatus.video_url && (
-                <Button asChild variant="outline"><a href={jobStatus.video_url} download>Baixar Vídeo</a></Button>
+                <Button variant="outline" onClick={() => handleDownload(jobStatus.video_url!, jobStatus.titulo || "video")}>
+                  Baixar Vídeo
+                </Button>
               )}
               <Button onClick={handleReset}>Criar Outro Vídeo</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {!["processing", "done", "error"].includes(jobStatus.status) && (
+        <Card>
+          <CardContent className="py-12 flex flex-col items-center gap-4">
+            <AlertCircle className="h-10 w-10 text-muted-foreground" />
+            <p className="text-muted-foreground text-sm">Estado inesperado. Tente novamente.</p>
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={() => setStep(2)}>
+                <ChevronLeft className="mr-2 h-4 w-4" /> Editar roteiro
+              </Button>
+              <Button variant="outline" onClick={handleReset}>Recomeçar</Button>
             </div>
           </CardContent>
         </Card>

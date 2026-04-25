@@ -1,5 +1,5 @@
 import { useParams } from "react-router-dom";
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import LandingHeader from "@/components/landing/LandingHeader";
@@ -8,7 +8,7 @@ import PainSection from "@/components/landing/PainSection";
 import SolutionSection from "@/components/landing/SolutionSection";
 import AboutSection from "@/components/landing/AboutSection";
 import ContentSection from "@/components/landing/ContentSection";
-import LeadCaptureSection from "@/components/landing/LeadCaptureSection";
+import ContactSection from "@/components/landing/ContactSection";
 import LandingFooter from "@/components/landing/LandingFooter";
 
 function hexToHSL(hex: string): string | null {
@@ -50,40 +50,75 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
   });
 
 
-  const { data: articles = [] } = useQuery({
+  const { data: rawArticles = [] } = useQuery({
     queryKey: ["articles", professional?.id],
     queryFn: async () => {
       const { data } = await supabase
         .from("articles")
-        .select("id, title, slug, cover_image_url, published_at, created_at")
+        .select("id, title, slug, cover_image_url, published_at, created_at, published")
         .eq("professional_id", professional!.id)
-        .eq("published", true)
-        .order("published_at", { ascending: false, nullsFirst: false })
-        .order("created_at", { ascending: false })
-        .limit(3);
+        .order("created_at", { ascending: false });
       return data ?? [];
     },
     enabled: !!professional?.id,
   });
 
-  const { data: videos = [] } = useQuery({
+  const articles = useMemo(() => {
+    const pub = rawArticles
+      .filter((a) => a.published)
+      .sort((a, b) => new Date(b.published_at ?? b.created_at ?? 0).getTime() - new Date(a.published_at ?? a.created_at ?? 0).getTime())
+      .slice(0, 3);
+    if (pub.length > 0) return pub;
+    return rawArticles
+      .filter((a) => !a.published)
+      .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())
+      .slice(0, 3);
+  }, [rawArticles]);
+
+  const { data: rawVideos = [] } = useQuery({
     queryKey: ["videos", professional?.id],
     queryFn: async () => {
       const { data } = await supabase
         .from("videos")
-        .select("id, title, description, embed_url, thumbnail_url")
+        .select("id, title, description, embed_url, thumbnail_url, published_at, created_at, published")
         .eq("professional_id", professional!.id)
-        .eq("published", true)
-        .order("published_at", { ascending: false })
-        .limit(3);
+        .order("created_at", { ascending: false });
       return data ?? [];
     },
     enabled: !!professional?.id,
   });
 
+  const videos = useMemo(() => {
+    const pub = rawVideos
+      .filter((v) => v.published)
+      .sort((a, b) => new Date(b.published_at ?? b.created_at ?? 0).getTime() - new Date(a.published_at ?? a.created_at ?? 0).getTime())
+      .slice(0, 3);
+    if (pub.length > 0) return pub;
+    return rawVideos
+      .filter((v) => !v.published)
+      .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())
+      .slice(0, 3);
+  }, [rawVideos]);
+
   const isDarkModeEnabled = !!(professional as any)?.dark_mode;
-  const [dark, setDark] = useState(isDarkModeEnabled);
-  const toggleDark = useCallback(() => setDark((d) => !d), []);
+  const darkKey = `dark_${slug}`;
+  const [dark, setDark] = useState(() => localStorage.getItem(`dark_${slug}`) === "1");
+  const toggleDark = useCallback(() => {
+    setDark((d) => {
+      const next = !d;
+      localStorage.setItem(darkKey, next ? "1" : "0");
+      return next;
+    });
+  }, [darkKey]);
+
+  // Quando o profissional carrega pela primeira vez e não há preferência salva, usa o padrão do banco
+  const darkInitialized = useRef(false);
+  if (professional && !darkInitialized.current) {
+    darkInitialized.current = true;
+    if (localStorage.getItem(darkKey) === null) {
+      setDark(!!(professional as any)?.dark_mode);
+    }
+  }
 
   const customStyles = useMemo(() => {
     if (!professional) return undefined;
@@ -145,6 +180,19 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
       styles["--popover-foreground"] = fgVal;
       styles["--muted-foreground"] = mutedFgVal;
     }
+    const fontMap: Record<string, string> = {
+      inter:        "Inter, system-ui, sans-serif",
+      poppins:      "'Poppins', sans-serif",
+      lato:         "'Lato', sans-serif",
+      playfair:     "'Playfair Display', serif",
+      merriweather: "'Merriweather', serif",
+    };
+    const sizeMap: Record<string, string> = { sm: "0.9", md: "1.0", lg: "1.1", xl: "1.2" };
+    const ff = prof.font_family as string | undefined;
+    const fs = prof.font_size_scale as string | undefined;
+    if (ff && fontMap[ff]) styles["font-family"] = fontMap[ff];
+    if (fs && sizeMap[fs]) styles["font-size"] = `${sizeMap[fs]}rem`;
+
     return Object.keys(styles).length > 0 ? styles : undefined;
   }, [professional, dark]);
 
@@ -186,6 +234,9 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         whatsapp={professional.whatsapp ?? undefined}
         photoUrl={professional.photo_url ?? undefined}
         heroImageUrl={professional.hero_image_url ?? undefined}
+        heroBgUrl={(professional as any).hero_bg_url ?? undefined}
+        heroBgOpacity={(professional as any).hero_bg_opacity ?? 70}
+        heroBgOverlay={(professional as any).hero_bg_overlay ?? "dark"}
         slug={professional.slug}
         professionalName={name}
         crp={professional.crp ?? undefined}
@@ -211,7 +262,14 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         approaches={professional.approaches ?? undefined}
       />
       <ContentSection articles={articles} videos={videos} slug={professional.slug} whatsapp={professional.whatsapp} />
-      <LeadCaptureSection slug={professional.slug} whatsapp={professional.whatsapp ?? undefined} />
+      <ContactSection
+        title={(professional as any).contact_title ?? undefined}
+        subtitle={(professional as any).contact_subtitle ?? undefined}
+        whatsapp={professional.whatsapp ?? undefined}
+        phone={(professional as any).phone ?? undefined}
+        email={(professional as any).email ?? undefined}
+        instagram={(professional as any).instagram ?? undefined}
+      />
       <LandingFooter professionalName={name} whatsapp={professional.whatsapp ?? undefined} />
     </div>
   );

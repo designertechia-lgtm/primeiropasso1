@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// deno-lint-ignore-file no-explicit-any
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,6 +11,9 @@ interface Context {
   specialty?: string;
   title?: string;
   topic?: string;
+  existing_titles?: string[];
+  existing_cover_urls?: string[];
+  existing_carousel_urls?: string[];
 }
 
 const PROMPTS: Record<string, (ctx: Context) => string> = {
@@ -71,25 +74,46 @@ Cada card tem um título curto (2-4 palavras) e uma descrição (1-2 frases, má
 Responda APENAS um JSON válido: [{"title":"...","desc":"..."},{"title":"...","desc":"..."},{"title":"...","desc":"..."},{"title":"...","desc":"..."}]
 Sem comentários, sem markdown, apenas o JSON.`,
 
-  article_with_carousel: (ctx) =>
-    `Você é um redator especialista em saúde mental e criação de conteúdo digital.
-Crie um rascunho de artigo para ${ctx.name}${ctx.specialty ? `, especialista em ${ctx.specialty}` : ""}.
-${ctx.title ? `O título ou tema sugerido é: "${ctx.title}"` : "Crie um tema relevante para o público do profissional."}
+  article_with_carousel: (ctx) => {
+    const today = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+    const existingList = ctx.existing_titles?.length
+      ? `\nARTIGOS JÁ EXISTENTES — NÃO repita estes temas nem títulos parecidos:\n${ctx.existing_titles.map(t => `- ${t}`).join("\n")}\n`
+      : "";
+    const topicHint = (ctx as any).topic
+      ? `\nSUGESTÃO DO PROFISSIONAL (priorize este tema e tom):\n"${(ctx as any).topic}"\n`
+      : "";
+    return `Você é um redator especialista em saúde mental e criação de conteúdo para Instagram.
+Data de hoje: ${today}
+Profissional: ${ctx.name}${ctx.specialty ? `, especialista em ${ctx.specialty}` : ""}.
+${ctx.title ? `Título sugerido: "${ctx.title}"` : ""}
+${topicHint}
+${existingList}
+Crie um carrossel ORIGINAL para Instagram com tema DIFERENTE de todos os já existentes acima.
+${ (ctx as any).topic ? "Use o tema sugerido pelo profissional como base principal." : "Escolha UM dos seguintes ângulos (varie sempre, nunca repita o mesmo ângulo):"}
+- Autoconhecimento e emoções
+- Relacionamentos e vínculos afetivos
+- Ansiedade, estresse e burnout
+- Sono, energia e rotina saudável
+- Limites pessoais e assertividade
+- Traumas e processo de cura
+- Autoestima e autocuidado
+- Comunicação não violenta
+- Mindfulness e presença
+- Parentalidade e vínculos familiares
 
-O artigo deve ter:
-- Um título chamativo e otimizado para SEO (máximo 15 palavras).
-- Um parágrafo de introdução (3-4 frases).
-- Um parágrafo de desenvolvimento (5-7 frases).
-- Um parágrafo de conclusão (2-3 frases).
-- Uma sugestão de imagem de capa (palavras-chave em INGLÊS para busca em bancos de imagens).
-- Um carrossel com 3 a 5 imagens com legendas curtas e uma sugestão de imagem (palavras-chave em INGLÊS) para cada uma.
+Regras obrigatórias:
+- Título: máximo 12 palavras, impactante, SEM mencionar ano
+- Legenda Instagram: 3-4 parágrafos curtos, 150-200 palavras no total, termina com chamada para ação
+- Carrossel: 5 a 7 slides, cada legenda com no máximo 15 palavras, direto e impactante
+- Sugestões de imagem sempre em INGLÊS (palavras-chave para banco de imagens)
 
-Responda APENAS com um JSON válido no formato:
-{"title": "...", "content": "...", "cover_image_suggestion": "palavras-chave em inglês", "carousel_items": [{"image_suggestion": "palavras-chave em inglês", "caption": "..."}, {"image_suggestion": "...", "caption": "..."}]}
-Sem comentários, sem markdown, apenas o JSON.`,
+Responda APENAS com JSON válido no formato:
+{"title":"...","content":"...","cover_image_suggestion":"...","carousel_items":[{"image_suggestion":"...","caption":"..."}]}
+Sem comentários, sem markdown, apenas o JSON.`;
+  },
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
@@ -214,26 +238,59 @@ serve(async (req) => {
         // Automação de imagens para artigos
         if (field === "article_with_carousel" && parsed.carousel_items) {
           const pexelsKey = Deno.env.get("PEXELS_API_KEY");
-          
-          const searchImage = async (query: string) => {
+
+          // Extrai IDs do Pexels de URLs já usadas em outros artigos (formato: /photos/1234567/)
+          const extractPexelsId = (url: string): number | null => {
+            const m = url.match(/\/photos\/(\d+)\//);
+            return m ? parseInt(m[1]) : null;
+          };
+
+          // Coleta todas as URLs usadas (capas + carrossel de artigos existentes)
+          const allExistingUrls = new Set<string>(context.existing_cover_urls ?? []);
+          for (const u of context.existing_carousel_urls ?? []) allExistingUrls.add(u);
+
+          const usedImageIds = new Set<number>();
+          for (const url of allExistingUrls) {
+            const id = extractPexelsId(url);
+            if (id) usedImageIds.add(id);
+          }
+
+          // Seeds usados nesta geração para o fallback picsum
+          const usedPicsumSeeds = new Set<number>();
+
+          const searchImage = async (query: string, fallbackSeed?: number): Promise<string> => {
             if (pexelsKey) {
               try {
                 console.log(`Buscando no Pexels: ${query}`);
-                const res = await fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=1`, {
-                  headers: { Authorization: pexelsKey }
-                });
-                const data = await res.json();
-                if (data.photos?.[0]?.src?.large) return data.photos[0].src.large;
+                // Tenta até 5 páginas (range 1-20) para encontrar foto não usada
+                for (let attempt = 0; attempt < 5; attempt++) {
+                  const page = Math.floor(Math.random() * 20) + 1;
+                  const res = await fetch(
+                    `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=30&page=${page}`,
+                    { headers: { Authorization: pexelsKey } }
+                  );
+                  if (!res.ok) break;
+                  const data = await res.json();
+                  const photos = (data.photos ?? []).filter(
+                    (p: any) => !usedImageIds.has(p.id) && !allExistingUrls.has(p.src.large2x ?? p.src.large)
+                  );
+                  if (photos.length > 0) {
+                    const pick = photos[Math.floor(Math.random() * photos.length)];
+                    usedImageIds.add(pick.id);
+                    allExistingUrls.add(pick.src.large2x ?? pick.src.large);
+                    return pick.src.large2x ?? pick.src.large;
+                  }
+                }
               } catch (e) {
                 console.error("Pexels error:", e);
               }
             }
-            // Fallback para Unsplash Source / LoremFlickr
-            const fallbacks = [
-              `https://source.unsplash.com/featured/1080x1080/?${query.replace(/ /g, ",")}`,
-              `https://loremflickr.com/1080/1080/${query.replace(/ /g, ",")}`
-            ];
-            return fallbacks[Math.floor(Math.random() * fallbacks.length)];
+            // Fallback: picsum.photos com seed único — sem loremflickr
+            let seed = fallbackSeed ?? Math.floor(Math.random() * 99999);
+            while (usedPicsumSeeds.has(seed)) seed = Math.floor(Math.random() * 99999);
+            usedPicsumSeeds.add(seed);
+            console.log(`Usando picsum fallback: seed=${seed} query=${query}`);
+            return `https://picsum.photos/seed/${seed}/1080/1080`;
           };
 
           if (parsed.cover_image_suggestion) {

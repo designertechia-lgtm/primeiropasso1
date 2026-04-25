@@ -9,14 +9,16 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert } from "lucide-react";
+import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, MessageCircle, Type } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
+import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import HeroSection from "@/components/landing/HeroSection";
 import AboutSection from "@/components/landing/AboutSection";
 import SolutionSection from "@/components/landing/SolutionSection";
 import PainSection from "@/components/landing/PainSection";
+import ContactSection from "@/components/landing/ContactSection";
 
 // ── AI helper ─────────────────────────────────────────────
 async function callGenerateText(field: string, context: { name: string; crp?: string; specialty?: string }) {
@@ -92,7 +94,7 @@ function deriveColors(hex: string) {
   };
 }
 
-function buildPreviewVars(primary: string, secondary: string, bg: string): Record<string, string> {
+function buildPreviewVars(primary: string, secondary: string, bg: string, fontFamily?: string, fontSizeScale?: string): Record<string, string> {
   const p = hexToHsl(primary);
   const b = hexToHsl(bg);
   const primaryHSL = `${p.h} ${p.s}% ${p.l}%`;
@@ -105,6 +107,8 @@ function buildPreviewVars(primary: string, secondary: string, bg: string): Recor
   const mutedFgHSL = b.l < 50 ? `${b.h} ${Math.max(b.s - 15, 0)}% 60%` : `${b.h} ${Math.max(b.s - 5, 0)}% 45%`;
   const sec = hexToHsl(secondary);
   const secHSL = `${sec.h} ${sec.s}% ${sec.l}%`;
+  const fontDef = FONTS.find((f) => f.value === fontFamily) ?? FONTS[0];
+  const sizeDef = FONT_SIZES.find((s) => s.value === fontSizeScale) ?? FONT_SIZES[1];
   return {
     "--primary": primaryHSL,
     "--primary-foreground": contrastFg,
@@ -123,8 +127,28 @@ function buildPreviewVars(primary: string, secondary: string, bg: string): Recor
     "--card-foreground": fgHSL,
     "--popover-foreground": fgHSL,
     "--muted-foreground": mutedFgHSL,
+    "font-family": fontDef.style.fontFamily,
+    "font-size": `${sizeDef.scale}rem`,
   };
 }
+
+const FONTS = [
+  { value: "inter",       label: "Inter",            desc: "Moderno e neutro",      style: { fontFamily: "Inter, system-ui, sans-serif" } },
+  { value: "poppins",     label: "Poppins",          desc: "Geométrico e amigável", style: { fontFamily: "'Poppins', sans-serif" } },
+  { value: "lato",        label: "Lato",             desc: "Limpo e profissional",  style: { fontFamily: "'Lato', sans-serif" } },
+  { value: "playfair",    label: "Playfair Display", desc: "Elegante e clássico",   style: { fontFamily: "'Playfair Display', serif" } },
+  { value: "merriweather",label: "Merriweather",     desc: "Legível e confiável",   style: { fontFamily: "'Merriweather', serif" } },
+];
+
+const FONT_SIZES = [
+  { value: "sm", label: "Pequeno", scale: "0.9" },
+  { value: "md", label: "Normal",  scale: "1.0" },
+  { value: "lg", label: "Grande",  scale: "1.1" },
+  { value: "xl", label: "Maior",   scale: "1.2" },
+];
+
+const GOOGLE_FONTS_URL =
+  "https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Lato:wght@400;700&family=Playfair+Display:wght@400;600;700&family=Merriweather:wght@400;700&display=swap";
 
 const PALETTES = [
   { name: "Sálvia",      primary: "#87A96B" },
@@ -169,7 +193,7 @@ function SectionBlock({
   );
 }
 
-type Section = "hero" | "dores" | "solucao" | "sobre" | "cores";
+type Section = "hero" | "dores" | "solucao" | "sobre" | "cores" | "contatos";
 
 export default function AdminLandingPage() {
   const { data: professional, isLoading } = useProfessional();
@@ -179,6 +203,9 @@ export default function AdminLandingPage() {
   const [heroTitle, setHeroTitle] = useState("");
   const [heroSubtitle, setHeroSubtitle] = useState("");
   const [heroImageUrl, setHeroImageUrl] = useState("");
+  const [heroBgUrl, setHeroBgUrl] = useState("");
+  const [heroBgOpacity, setHeroBgOpacity] = useState(70);
+  const [heroBgOverlay, setHeroBgOverlay] = useState("dark");
   const [photoUrl, setPhotoUrl] = useState("");
   const [photoStyle, setPhotoStyle] = useState("portrait");
   const [photoFit, setPhotoFit] = useState("contain");
@@ -204,6 +231,18 @@ export default function AdminLandingPage() {
   const [primaryColor, setPrimaryColor] = useState("#87A96B");
   const [secondaryColor, setSecondaryColor] = useState(() => deriveColors("#87A96B").secondary);
   const [bgColor, setBgColor] = useState(() => deriveColors("#87A96B").background);
+
+  // tipografia
+  const [fontFamily, setFontFamily] = useState("inter");
+  const [fontSizeScale, setFontSizeScale] = useState("md");
+
+  // contatos
+  const [contactTitle, setContactTitle] = useState("");
+  const [contactSubtitle, setContactSubtitle] = useState("");
+  const [contactWhatsapp, setContactWhatsapp] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactInstagram, setContactInstagram] = useState("");
 
   const [activeSection, setActiveSection] = useState<Section>("hero");
   const [saving, setSaving] = useState(false);
@@ -278,6 +317,9 @@ export default function AdminLandingPage() {
     setHeroTitle(professional.hero_title || "");
     setHeroSubtitle(professional.hero_subtitle || "");
     setHeroImageUrl((professional as any).hero_image_url || "");
+    setHeroBgUrl((professional as any).hero_bg_url || "");
+    setHeroBgOpacity((professional as any).hero_bg_opacity ?? 70);
+    setHeroBgOverlay((professional as any).hero_bg_overlay || "dark");
     setPhotoUrl(professional.photo_url || "");
     setPhotoStyle((professional as any).photo_style || "portrait");
     setPhotoFit((professional as any).photo_fit || "contain");
@@ -295,6 +337,14 @@ export default function AdminLandingPage() {
     setSolutionTitle((professional as any).solution_title || "");
     setSolutionSubtitle((professional as any).solution_subtitle || "");
     setSolutionItems((professional as any).solution_items || []);
+    setFontFamily((professional as any).font_family || "inter");
+    setFontSizeScale((professional as any).font_size_scale || "md");
+    setContactTitle((professional as any).contact_title || "");
+    setContactSubtitle((professional as any).contact_subtitle || "");
+    setContactWhatsapp((professional as any).whatsapp || "");
+    setContactPhone((professional as any).phone || "");
+    setContactEmail((professional as any).email || "");
+    setContactInstagram((professional as any).instagram || "");
     setIsDirty(false);
     requestAnimationFrame(() => { hasLoaded.current = true; });
   }, [professional]);
@@ -302,9 +352,10 @@ export default function AdminLandingPage() {
   useEffect(() => {
     if (!hasLoaded.current) return;
     setIsDirty(true);
-  }, [heroTitle, heroSubtitle, heroImageUrl, photoUrl, photoStyle, photoFit,
+  }, [heroTitle, heroSubtitle, heroImageUrl, heroBgUrl, heroBgOpacity, heroBgOverlay, photoUrl, photoStyle, photoFit,
       bio, aboutImageUrl, approaches, primaryColor, secondaryColor, bgColor,
-      painTitle, painSubtitle, painItems, solutionTitle, solutionSubtitle, solutionItems]);
+      painTitle, painSubtitle, painItems, solutionTitle, solutionSubtitle, solutionItems,
+      fontFamily, fontSizeScale, contactTitle, contactSubtitle, contactWhatsapp, contactPhone, contactEmail, contactInstagram]);
 
   // alerta ao fechar/recarregar a aba
   useEffect(() => {
@@ -323,6 +374,9 @@ export default function AdminLandingPage() {
       hero_title: heroTitle,
       hero_subtitle: heroSubtitle,
       hero_image_url: heroImageUrl || null,
+      hero_bg_url: heroBgUrl || null,
+      hero_bg_opacity: heroBgOpacity,
+      hero_bg_overlay: heroBgOverlay,
       photo_style: photoStyle,
       photo_fit: photoFit,
     } as any).eq("id", professional.id);
@@ -377,10 +431,28 @@ export default function AdminLandingPage() {
       primary_color: primaryColor,
       secondary_color: secondaryColor,
       background_color: bgColor,
+      font_family: fontFamily,
+      font_size_scale: fontSizeScale,
     } as any).eq("id", professional.id);
     setSaving(false);
     if (error) toast.error("Erro ao salvar");
-    else { toast.success("Cores salvas!"); setIsDirty(false); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+    else { toast.success("Cores & tipografia salvas!"); setIsDirty(false); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+  };
+
+  const saveContatos = async () => {
+    if (!professional) return;
+    setSaving(true);
+    const { error } = await supabase.from("professionals").update({
+      contact_title: contactTitle || null,
+      contact_subtitle: contactSubtitle || null,
+      whatsapp: contactWhatsapp || null,
+      phone: contactPhone || null,
+      email: contactEmail || null,
+      instagram: contactInstagram || null,
+    } as any).eq("id", professional.id);
+    setSaving(false);
+    if (error) toast.error("Erro ao salvar");
+    else { toast.success("Contatos salvos!"); setIsDirty(false); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
   };
 
   const addApproach = () => {
@@ -440,8 +512,11 @@ export default function AdminLandingPage() {
           )}
         </div>
 
+        {/* Google Fonts */}
+        <link rel="stylesheet" href={GOOGLE_FONTS_URL} />
+
         {/* scale wrapper */}
-        <div style={{ transform: "scale(0.58)", transformOrigin: "top left", width: "172.4%", pointerEvents: "none", ...buildPreviewVars(primaryColor, secondaryColor, bgColor) } as React.CSSProperties}>
+        <div style={{ transform: "scale(0.58)", transformOrigin: "top left", width: "172.4%", pointerEvents: "none", ...buildPreviewVars(primaryColor, secondaryColor, bgColor, fontFamily, fontSizeScale) } as React.CSSProperties}>
           <div style={{ pointerEvents: "auto" }}>
 
             <SectionBlock label="Hero" icon={Layout} active={activeSection === "hero"} onClick={() => setActiveSection("hero")}>
@@ -450,6 +525,9 @@ export default function AdminLandingPage() {
                 subtitle={heroSubtitle}
                 photoUrl={photoUrl}
                 heroImageUrl={heroImageUrl}
+                heroBgUrl={heroBgUrl}
+                heroBgOpacity={heroBgOpacity}
+                heroBgOverlay={heroBgOverlay}
                 professionalName={name}
                 crp={crp}
                 photoStyle={photoStyle}
@@ -504,7 +582,22 @@ export default function AdminLandingPage() {
                   <div className="rounded-xl px-5 py-2.5 text-sm font-medium shadow-sm" style={{ background: primaryColor, color: "#fff" }}>Botão primário</div>
                   <div className="rounded-xl px-5 py-2.5 text-sm font-medium border shadow-sm" style={{ background: bgColor, borderColor: primaryColor, color: primaryColor }}>Botão outline</div>
                 </div>
+                <p className="text-sm text-muted-foreground" style={{ fontFamily: (FONTS.find(f => f.value === fontFamily) ?? FONTS[0]).style.fontFamily }}>
+                  Fonte: <strong>{(FONTS.find(f => f.value === fontFamily) ?? FONTS[0]).label}</strong>
+                  {" · "}Tamanho: <strong>{(FONT_SIZES.find(s => s.value === fontSizeScale) ?? FONT_SIZES[1]).label}</strong>
+                </p>
               </div>
+            </SectionBlock>
+
+            <SectionBlock label="Contatos" icon={MessageCircle} active={activeSection === "contatos"} onClick={() => setActiveSection("contatos")}>
+              <ContactSection
+                title={contactTitle || undefined}
+                subtitle={contactSubtitle || undefined}
+                whatsapp={contactWhatsapp || undefined}
+                phone={contactPhone || undefined}
+                email={contactEmail || undefined}
+                instagram={contactInstagram || undefined}
+              />
             </SectionBlock>
 
           </div>
@@ -555,11 +648,12 @@ export default function AdminLandingPage() {
         {/* section tabs */}
         <div className="flex flex-wrap border-b sticky top-0 bg-background z-10">
           {([
-            { id: "hero",    label: "Hero",    icon: Layout       },
-            { id: "dores",   label: "Dores",   icon: AlertCircle  },
-            { id: "solucao", label: "Solução", icon: Lightbulb    },
-            { id: "sobre",   label: "Sobre",   icon: BookOpen     },
-            { id: "cores",   label: "Cores",   icon: Palette      },
+            { id: "hero",     label: "Hero",     icon: Layout        },
+            { id: "dores",    label: "Dores",    icon: AlertCircle   },
+            { id: "solucao",  label: "Solução",  icon: Lightbulb     },
+            { id: "sobre",    label: "Sobre",    icon: BookOpen      },
+            { id: "cores",    label: "Cores",    icon: Palette       },
+            { id: "contatos", label: "Contatos", icon: MessageCircle },
           ] as { id: Section; label: string; icon: React.ElementType }[]).map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -634,6 +728,68 @@ export default function AdminLandingPage() {
                   ))}
                 </div>
               </div>
+
+              <div className="space-y-2">
+                <Label>Imagem de fundo do Hero <FieldHint text="Aparece atrás do conteúdo. Use fotos de ambiente, textura ou paisagem." /></Label>
+                <ImageUpload currentUrl={heroBgUrl || null} onUploaded={setHeroBgUrl} folder="hero-bg" variant="logo" />
+                {heroBgUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setHeroBgUrl("")}
+                    className="text-xs text-destructive hover:underline"
+                  >
+                    Remover imagem de fundo
+                  </button>
+                )}
+              </div>
+
+              {heroBgUrl && (
+                <>
+                  <div className="space-y-3">
+                    <Label>Cor do overlay</Label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[
+                        { value: "dark",    label: "Escuro",      bg: "bg-black"          },
+                        { value: "light",   label: "Claro",       bg: "bg-white border"   },
+                        { value: "primary", label: "Primária",    bg: "bg-primary"        },
+                        { value: "none",    label: "Nenhum",      bg: "bg-gradient-to-br from-muted to-muted/50" },
+                      ].map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setHeroBgOverlay(opt.value)}
+                          className={`flex flex-col items-center gap-2 rounded-xl border-2 p-3 transition-all ${
+                            heroBgOverlay === opt.value ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
+                          }`}
+                        >
+                          <div className={`w-8 h-8 rounded-lg ${opt.bg}`} />
+                          <span className="text-[11px] font-medium">{opt.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {heroBgOverlay !== "none" && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label>Opacidade do overlay</Label>
+                        <span className="text-sm font-semibold tabular-nums text-primary">{heroBgOpacity}%</span>
+                      </div>
+                      <Slider
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={[heroBgOpacity]}
+                        onValueChange={([v]) => setHeroBgOpacity(v)}
+                      />
+                      <div className="flex justify-between text-[10px] text-muted-foreground">
+                        <span>Transparente</span>
+                        <span>Sólido</span>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -898,8 +1054,92 @@ export default function AdminLandingPage() {
                 ))}
               </div>
 
+              <div className="space-y-3 pt-2 border-t">
+                <Label className="flex items-center gap-2"><Type className="h-4 w-4" />Família de fonte</Label>
+                <div className="grid grid-cols-1 gap-2">
+                  {FONTS.map((f) => (
+                    <button
+                      key={f.value}
+                      type="button"
+                      onClick={() => setFontFamily(f.value)}
+                      className={`flex items-center justify-between rounded-xl border-2 px-4 py-3 text-left transition-all ${
+                        fontFamily === f.value ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
+                      }`}
+                    >
+                      <div>
+                        <p className="text-sm font-semibold" style={f.style}>{f.label}</p>
+                        <p className="text-xs text-muted-foreground">{f.desc}</p>
+                      </div>
+                      <span className="text-xs text-muted-foreground" style={f.style}>Aa Bb Cc</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <Label>Tamanho do texto</Label>
+                <div className="grid grid-cols-4 gap-2">
+                  {FONT_SIZES.map((s) => (
+                    <button
+                      key={s.value}
+                      type="button"
+                      onClick={() => setFontSizeScale(s.value)}
+                      className={`flex flex-col items-center gap-1 rounded-xl border-2 py-3 transition-all ${
+                        fontSizeScale === s.value ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
+                      }`}
+                    >
+                      <span style={{ fontSize: `${Number(s.scale) * 18}px`, lineHeight: 1 }}>A</span>
+                      <span className="text-[10px] text-muted-foreground">{s.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <Button onClick={saveCores} disabled={saving} className="w-full">
-                {saving ? "Salvando..." : "Salvar Cores"}
+                {saving ? "Salvando..." : "Salvar Cores & Tipografia"}
+              </Button>
+            </>
+          )}
+
+          {/* ── CONTATOS ── */}
+          {activeSection === "contatos" && (
+            <>
+              <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
+                Esta seção é a <strong>última e fixa</strong> da sua página. Pré-preenchida com seus dados de contato — edite aqui ou em <em>Meu Perfil</em>.
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="contactTitle">Título da seção</Label>
+                <Input id="contactTitle" value={contactTitle} onChange={(e) => setContactTitle(e.target.value)} placeholder="Agende Sua Primeira Consulta" />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="contactSubtitle">Subtítulo</Label>
+                <Textarea id="contactSubtitle" rows={3} value={contactSubtitle} onChange={(e) => setContactSubtitle(e.target.value)} placeholder="Dê o primeiro passo para o seu bem-estar..." />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="contactWhatsapp" className="flex items-center gap-2"><MessageCircle className="h-4 w-4 text-green-500" />WhatsApp</Label>
+                <Input id="contactWhatsapp" value={contactWhatsapp} onChange={(e) => setContactWhatsapp(e.target.value)} placeholder="11 99999-9999" />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="contactPhone" className="flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground" />Telefone</Label>
+                <Input id="contactPhone" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="11 3333-4444" />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="contactEmail" className="flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground" />E-mail</Label>
+                <Input id="contactEmail" type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="seu@email.com" />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="contactInstagram" className="flex items-center gap-2"><Instagram className="h-4 w-4 text-pink-500" />Instagram</Label>
+                <Input id="contactInstagram" value={contactInstagram} onChange={(e) => setContactInstagram(e.target.value)} placeholder="@seuperfil" />
+              </div>
+
+              <Button onClick={saveContatos} disabled={saving} className="w-full">
+                {saving ? "Salvando..." : "Salvar Contatos"}
               </Button>
             </>
           )}

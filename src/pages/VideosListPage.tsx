@@ -71,10 +71,10 @@ function VideoCard({ video, whatsapp, slug, isDraft }: { video: Video; whatsapp?
   const isWa = !!whatsapp;
 
   return (
-    <div className={`rounded-2xl overflow-hidden border bg-card transition-all duration-300 flex flex-col ${isDraft ? "opacity-70" : "hover:shadow-lg hover:-translate-y-0.5"}`}>
+    <div className={`rounded-2xl overflow-hidden border bg-card transition-all duration-300 flex flex-col hover:shadow-lg hover:-translate-y-0.5`}>
       {/* Player */}
       <div className="aspect-video relative group bg-black overflow-hidden">
-        {!isDraft && playing ? (
+        {playing ? (
           isSupabaseUrl(video.embed_url) ? (
             <video src={video.embed_url} controls autoPlay className="w-full h-full" />
           ) : (
@@ -88,25 +88,23 @@ function VideoCard({ video, whatsapp, slug, isDraft }: { video: Video; whatsapp?
           )
         ) : (
           <div
-            className={`w-full h-full ${!isDraft ? "cursor-pointer" : "cursor-default"}`}
-            onClick={!isDraft ? () => setPlaying(true) : undefined}
+            className="w-full h-full cursor-pointer"
+            onClick={() => setPlaying(true)}
           >
             {thumbnail ? (
               <img
                 src={thumbnail}
                 alt={video.title}
-                className={`w-full h-full object-cover ${!isDraft ? "group-hover:scale-105 transition-transform duration-500" : "grayscale"}`}
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
               />
             ) : (
               <div className="w-full h-full bg-gradient-to-br from-primary/30 to-accent/30" />
             )}
-            {!isDraft && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
-                <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-                  <Play className="h-6 w-6 text-primary fill-primary ml-1" />
-                </div>
+            <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
+              <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                <Play className="h-6 w-6 text-primary fill-primary ml-1" />
               </div>
-            )}
+            </div>
             {isDraft && (
               <div className="absolute top-3 left-3 flex items-center gap-1 bg-black/60 text-white text-[10px] font-semibold px-2 py-1 rounded-full backdrop-blur-sm">
                 <Lock className="h-2.5 w-2.5" /> Rascunho
@@ -134,16 +132,14 @@ function VideoCard({ video, whatsapp, slug, isDraft }: { video: Video; whatsapp?
             {video.description}
           </p>
         )}
-        {!isDraft && (
-          <Button asChild className="w-full gap-2 mt-4" size="sm">
-            <a href={waLink} target={isWa ? "_blank" : undefined} rel={isWa ? "noopener noreferrer" : undefined}>
-              {isWa
-                ? <><MessageCircle className="h-4 w-4" /> Falar pelo WhatsApp</>
-                : <><Calendar className="h-4 w-4" /> Agendar uma conversa</>
-              }
-            </a>
-          </Button>
-        )}
+        <Button asChild className="w-full gap-2 mt-4" size="sm" variant={isDraft ? "outline" : "default"}>
+          <a href={waLink} target={isWa ? "_blank" : undefined} rel={isWa ? "noopener noreferrer" : undefined}>
+            {isWa
+              ? <><MessageCircle className="h-4 w-4" /> Falar pelo WhatsApp</>
+              : <><Calendar className="h-4 w-4" /> Agendar uma conversa</>
+            }
+          </a>
+        </Button>
       </div>
     </div>
   );
@@ -192,7 +188,6 @@ export default function VideosListPage() {
       .filter((v) => !v.published)
       .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime());
 
-    if (published.length === 0) return drafts.slice(0, 3);
     return [...published, ...drafts];
   }, [allVideos]);
 
@@ -253,7 +248,7 @@ export default function VideosListPage() {
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <Link
-            to={`/${slug}`}
+            to={`/${slug}#videos`}
             className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -316,7 +311,7 @@ export default function VideosListPage() {
       {/* Footer */}
       <footer className="border-t mt-8">
         <div className="container mx-auto px-4 py-6 text-center text-xs text-muted-foreground">
-          <Link to={`/${slug}`} className="hover:text-primary transition-colors">
+          <Link to={`/${slug}#videos`} className="hover:text-primary transition-colors">
             ← Voltar para o site de {name}
           </Link>
         </div>

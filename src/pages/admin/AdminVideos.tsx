@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { toast } from "sonner";
 import {
   Plus, Pencil, Trash2, Upload, Film, CheckCircle2, X,
-  Scissors, Wand2, Image, Loader2, PlayCircle,
+  Scissors, Wand2, Image, Loader2, PlayCircle, Share2, Download, Copy,
 } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
@@ -203,6 +203,7 @@ export default function AdminVideos() {
   const [open, setOpen]               = useState(false);
   const [editPanelVideo, setEditPanelVideo] = useState<any>(null);
   const [playerVideo, setPlayerVideo] = useState<any>(null);
+  const [shareVideo, setShareVideo]   = useState<any>(null);
   const [form, setForm]               = useState<VideoForm>(emptyForm);
   const [saving, setSaving]           = useState(false);
   const [uploadingVideo, setUploadingVideo] = useState(false);
@@ -445,6 +446,13 @@ export default function AdminVideos() {
                     <Pencil className="h-3.5 w-3.5" /> Detalhes
                   </Button>
 
+                  {/* Compartilhar */}
+                  <Button size="sm" variant="ghost"
+                    className="gap-1.5 text-xs text-muted-foreground"
+                    onClick={() => setShareVideo(v)}>
+                    <Share2 className="h-3.5 w-3.5" /> Compartilhar
+                  </Button>
+
                   {/* Excluir */}
                   <Button size="sm" variant="ghost"
                     className="gap-1.5 text-xs text-destructive hover:text-destructive"
@@ -466,6 +474,80 @@ export default function AdminVideos() {
           </DialogHeader>
           {playerVideo && (
             <VideoPlayer url={playerVideo.embed_url} title={playerVideo.title} />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Compartilhar modal */}
+      <Dialog open={!!shareVideo} onOpenChange={(o) => !o && setShareVideo(null)}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 pr-6">
+              <Share2 className="h-4 w-4 shrink-0" />
+              <span className="truncate">{shareVideo?.title}</span>
+            </DialogTitle>
+          </DialogHeader>
+          {shareVideo && (
+            <div className="space-y-4 mt-1">
+              {/* Baixar vídeo */}
+              {shareVideo.embed_url && !/youtube|youtu\.be/.test(shareVideo.embed_url) && (
+                <a
+                  href={shareVideo.embed_url}
+                  download
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-center gap-2 w-full rounded-lg border border-border py-2.5 text-sm font-medium hover:bg-muted transition-colors"
+                >
+                  <Download className="h-4 w-4" />
+                  Baixar vídeo para publicar
+                </a>
+              )}
+
+              {/* Legendas por plataforma */}
+              {shareVideo.script_json ? (
+                <div className="space-y-3">
+                  {[
+                    { label: "Instagram / Reels", key: "descricao_instagram", fallback: "descricao_post" },
+                    { label: "LinkedIn",          key: "descricao_linkedin",   fallback: "descricao_post" },
+                    { label: "TikTok",            key: "legenda_tiktok",       fallback: "descricao_post" },
+                  ].map(({ label, key, fallback }) => {
+                    const text: string = (shareVideo.script_json as any)[key] || (shareVideo.script_json as any)[fallback] || "";
+                    if (!text) return null;
+                    return (
+                      <div key={label} className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-medium">{label}</p>
+                          <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs"
+                            onClick={() => { navigator.clipboard.writeText(text); toast.success(`Legenda para ${label} copiada!`); }}>
+                            <Copy className="h-3 w-3" /> Copiar
+                          </Button>
+                        </div>
+                        <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground whitespace-pre-wrap max-h-28 overflow-y-auto">
+                          {text}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : shareVideo.description ? (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">Descrição</p>
+                    <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs"
+                      onClick={() => { navigator.clipboard.writeText(shareVideo.description); toast.success("Descrição copiada!"); }}>
+                      <Copy className="h-3 w-3" /> Copiar
+                    </Button>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground whitespace-pre-wrap max-h-28 overflow-y-auto">
+                    {shareVideo.description}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Gere este vídeo com IA para ter legendas prontas por plataforma.
+                </p>
+              )}
+            </div>
           )}
         </DialogContent>
       </Dialog>

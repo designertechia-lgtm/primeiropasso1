@@ -131,7 +131,7 @@ export default function ArticlesListPage() {
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <Link
-            to={`/${slug}`}
+            to={`/${slug}#artigos`}
             className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -251,7 +251,7 @@ export default function ArticlesListPage() {
       {/* Footer */}
       <footer className="border-t mt-8">
         <div className="container mx-auto px-4 py-6 text-center text-xs text-muted-foreground">
-          <Link to={`/${slug}`} className="hover:text-primary transition-colors">
+          <Link to={`/${slug}#artigos`} className="hover:text-primary transition-colors">
             ← Voltar para o site de {name}
           </Link>
         </div>

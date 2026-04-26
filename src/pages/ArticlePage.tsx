@@ -63,7 +63,7 @@ export default function ArticlePage() {
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center space-y-4">
           <h1 className="font-serif text-2xl font-bold text-foreground">Artigo não encontrado</h1>
-          <Link to={`/${slug}`}>
+          <Link to={`/${slug}#artigos`}>
             <Button variant="outline"><ArrowLeft className="h-4 w-4 mr-2" />Voltar</Button>
           </Link>
         </div>
@@ -124,7 +124,7 @@ export default function ArticlePage() {
   return (
     <div className={`min-h-screen bg-background${dark ? " dark" : ""}`}>
       <div className="container mx-auto px-4 py-8 max-w-3xl">
-        <Link to={`/${slug}`} className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-8">
+        <Link to={`/${slug}#artigos`} className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-8">
           <ArrowLeft className="h-4 w-4 mr-1" />
           Voltar
         </Link>

@@ -144,7 +144,7 @@ export default function ContentSection({ articles, videos, slug, whatsapp }: Con
         </div>
 
         {articles.length > 0 && (
-          <div className="mb-12">
+          <div id="artigos" className="mb-12">
             <div className="flex items-center justify-between mb-6">
               <h3 className="font-serif text-xl font-semibold text-foreground flex items-center gap-2">
                 <BookOpen className="h-5 w-5 text-primary" /> Artigos
@@ -188,7 +188,7 @@ export default function ContentSection({ articles, videos, slug, whatsapp }: Con
         )}
 
         {videos.length > 0 && (
-          <div>
+          <div id="videos">
             <div className="flex items-center justify-between mb-6">
               <h3 className="font-serif text-xl font-semibold text-foreground flex items-center gap-2">
                 <Play className="h-5 w-5 text-primary" /> Vídeos

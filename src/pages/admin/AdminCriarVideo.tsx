@@ -15,6 +15,7 @@ import {
   Circle, Square, RotateCcw, Sparkles, BookOpen,
   ImagePlus, X, ArrowUp, ArrowDown, Images, Wand2,
   Instagram, Linkedin, Zap, Crown, Star, Layers, Minus, Triangle,
+  Heart, BookOpenCheck, Flame, TrendingUp, Globe,
 } from "lucide-react";
 
 const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
@@ -44,12 +45,23 @@ const EDGE_VOICES = [
 type VoiceMode    = "edge" | "gravacao" | "elevenlabs";
 type VideoModel   = "gratuito" | "premium" | "pro";
 type VisualStyle  = "images" | "animated" | "particles" | "lines" | "geometric" | "mixed";
+type Tom          = "acolhedor" | "educativo" | "provocador" | "motivacional";
+type Plataforma   = "instagram" | "linkedin" | "tiktok" | "geral";
 type Legenda   = { tempo: number; texto: string };
+type Slide     = {
+  indice: number;
+  texto_legenda: string;
+  narracao_slide: string;
+  visual_prompt: string;
+  duracao_s: number;
+};
 type Script    = {
   titulo: string;
   narracao: string;
+  narracao_completa?: string;
   cta: string;
   legendas: Legenda[];
+  slides?: Slide[];
   descricao_post?: string;
   descricao_instagram?: string;
   descricao_linkedin?: string;
@@ -164,6 +176,8 @@ export default function AdminCriarVideo() {
   const saved = useRef(editVideoId ? null : loadSaved()).current;
   const [step, setStep]             = useState<1 | 2 | 3>(saved?.step ?? 1);
   const [objetivo, setObjetivo]     = useState<string>(saved?.objetivo ?? "");
+  const [tom, setTom]               = useState<Tom>(saved?.tom ?? "acolhedor");
+  const [plataforma, setPlataforma] = useState<Plataforma>(saved?.plataforma ?? "instagram");
   const [iaLoading, setIaLoading]   = useState(false);
   const [script, setScript]         = useState<Script | null>(saved?.script ?? null);
   const [videoModel, setVideoModel] = useState<VideoModel>(saved?.videoModel ?? "gratuito");
@@ -186,10 +200,10 @@ export default function AdminCriarVideo() {
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        step, objetivo, script, videoModel, voiceMode, edgeVoice, format, imageMode, visualStyle, jobStatus, activeJobId,
+        step, objetivo, tom, plataforma, script, videoModel, voiceMode, edgeVoice, format, imageMode, visualStyle, jobStatus, activeJobId,
       }));
     } catch {}
-  }, [step, objetivo, script, videoModel, voiceMode, edgeVoice, format, imageMode, visualStyle, jobStatus, activeJobId]);
+  }, [step, objetivo, tom, plataforma, script, videoModel, voiceMode, edgeVoice, format, imageMode, visualStyle, jobStatus, activeJobId]);
 
   // Retoma polling se voltar com um vídeo ainda em processamento
   useEffect(() => {
@@ -267,21 +281,26 @@ export default function AdminCriarVideo() {
     if (!professional?.slug || !objetivo.trim()) return;
     setJobStatus({ status: "loading" });
     try {
-      const res = await fetch(`${API}/preview-roteiro`, {
+      const res = await fetch(`${API}/gerar-roteiro`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           professional_slug: professional.slug,
-          video_type: "objetivo_livre",
-          objetivo: objetivo.trim(),
+          tema_sugerido: objetivo.trim(),
+          tom,
+          plataforma,
         }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Erro ${res.status}`);
+      }
       setScript(await res.json());
       setJobStatus({ status: "editing" });
       setStep(2);
-    } catch {
+    } catch (e: any) {
       setJobStatus({ status: "idle" });
-      toast.error("Não foi possível carregar o roteiro");
+      toast.error(e.message || "Não foi possível gerar o roteiro");
     }
   };
 
@@ -439,6 +458,7 @@ export default function AdminCriarVideo() {
 
   const handleReset = () => {
     setStep(1); setScript(null); setObjetivo("");
+    setTom("acolhedor"); setPlataforma("instagram");
     setVideoModel("gratuito");
     setVoiceMode("edge"); setEdgeVoice("pt-BR-FranciscaNeural");
     setVoiceBlob(null); setNarBlob(null);
@@ -452,6 +472,17 @@ export default function AdminCriarVideo() {
     const legendas = [...script.legendas];
     legendas[i] = { ...legendas[i], [field]: field === "tempo" ? Number(value) : value };
     setScript({ ...script, legendas });
+  };
+
+  const updateSlide = (i: number, field: keyof Slide, value: string | number) => {
+    if (!script?.slides) return;
+    const slides = [...script.slides];
+    slides[i] = { ...slides[i], [field]: value };
+    const legendas = [...script.legendas];
+    if (field === "texto_legenda" && legendas[i]) {
+      legendas[i] = { ...legendas[i], texto: value as string };
+    }
+    setScript({ ...script, slides, legendas });
   };
 
   const StepIndicator = () => (
@@ -481,7 +512,7 @@ export default function AdminCriarVideo() {
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <Label className="text-base font-semibold">Qual o objetivo deste vídeo?</Label>
+          <Label className="text-base font-semibold">Sobre o que será este vídeo?</Label>
           <Button
             type="button"
             variant="outline"
@@ -527,6 +558,56 @@ export default function AdminCriarVideo() {
         </p>
       </div>
 
+      {/* Seletor de tom */}
+      <div className="space-y-3">
+        <Label className="text-base font-semibold">Tom da Narração</Label>
+        <div className="grid grid-cols-2 gap-3">
+          {([
+            { value: "acolhedor",    label: "Acolhedor",    desc: "Empático e seguro",     Icon: Heart },
+            { value: "educativo",    label: "Educativo",    desc: "Claro e informativo",   Icon: BookOpenCheck },
+            { value: "provocador",   label: "Provocador",   desc: "Questiona e desafia",   Icon: Flame },
+            { value: "motivacional", label: "Motivacional", desc: "Energia e ação",        Icon: TrendingUp },
+          ] as const).map(({ value, label, desc, Icon }) => (
+            <Card key={value}
+              className={`cursor-pointer border-2 transition-all ${tom === value ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+              onClick={() => setTom(value)}>
+              <CardContent className="p-3 flex items-center gap-3">
+                <Icon className={`h-5 w-5 shrink-0 ${tom === value ? "text-primary" : "text-muted-foreground"}`} />
+                <div>
+                  <p className="font-medium text-sm">{label}</p>
+                  <p className="text-xs text-muted-foreground">{desc}</p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* Seletor de plataforma */}
+      <div className="space-y-3">
+        <Label className="text-base font-semibold">Plataforma Principal</Label>
+        <div className="grid grid-cols-2 gap-3">
+          {([
+            { value: "instagram", label: "Instagram", desc: "Reels · 30-45s",        Icon: Instagram },
+            { value: "linkedin",  label: "LinkedIn",  desc: "Profissional · 45-60s", Icon: Linkedin },
+            { value: "tiktok",    label: "TikTok",    desc: "Ultra-rápido · 15-30s", Icon: Zap },
+            { value: "geral",     label: "Geral",     desc: "Todos os canais",       Icon: Globe },
+          ] as const).map(({ value, label, desc, Icon }) => (
+            <Card key={value}
+              className={`cursor-pointer border-2 transition-all ${plataforma === value ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+              onClick={() => setPlataforma(value)}>
+              <CardContent className="p-3 flex items-center gap-3">
+                <Icon className={`h-5 w-5 shrink-0 ${plataforma === value ? "text-primary" : "text-muted-foreground"}`} />
+                <div>
+                  <p className="font-medium text-sm">{label}</p>
+                  <p className="text-xs text-muted-foreground">{desc}</p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+
       {/* Seletor de modelo */}
       <div className="space-y-3">
         <Label className="text-base font-semibold">Modelo de Geração</Label>
@@ -549,8 +630,8 @@ export default function AdminCriarVideo() {
             <CardContent className="p-3 text-center space-y-1.5">
               <Star className="h-5 w-5 mx-auto text-amber-500" />
               <p className="font-semibold text-sm">Premium</p>
-              <p className="text-xs text-muted-foreground">Vídeo IA (Veo Fast)</p>
-              <Badge variant="outline" className="text-xs border-amber-400 text-amber-600">~R$ 3-4/vídeo</Badge>
+              <p className="text-xs text-muted-foreground">Vídeo IA (Kling AI)</p>
+              <Badge variant="outline" className="text-xs border-amber-400 text-amber-600">~R$ 4,50/vídeo</Badge>
             </CardContent>
           </Card>
           <Card
@@ -560,8 +641,8 @@ export default function AdminCriarVideo() {
             <CardContent className="p-3 text-center space-y-1.5">
               <Crown className="h-5 w-5 mx-auto text-purple-500" />
               <p className="font-semibold text-sm">Pro</p>
-              <p className="text-xs text-muted-foreground">Vídeo IA HD (Veo)</p>
-              <Badge variant="outline" className="text-xs border-purple-400 text-purple-600">~R$ 12-15/vídeo</Badge>
+              <p className="text-xs text-muted-foreground">Vídeo IA HD (Google Veo)</p>
+              <Badge variant="outline" className="text-xs border-purple-400 text-purple-600">~R$ 18/vídeo</Badge>
             </CardContent>
           </Card>
         </div>
@@ -569,8 +650,8 @@ export default function AdminCriarVideo() {
           <p className="text-xs text-muted-foreground flex items-center gap-1.5">
             <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
             {videoModel === "premium"
-              ? "Gera clipes cinematográficos com IA para cada slide · ~3-5min"
-              : "Máxima qualidade · clipes HD gerados pelo Google Veo · tempo: 8-15min"}
+              ? "Gera clipes cinematográficos com Kling AI para cada slide · ~4-6min"
+              : "Máxima qualidade · clipes HD gerados pelo Google Veo · ~8-15min"}
           </p>
         )}
       </div>
@@ -624,32 +705,77 @@ export default function AdminCriarVideo() {
       </div>
 
       {/* Slides */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label className="text-base font-semibold">Slides</Label>
-          <Button variant="outline" size="sm" onClick={() => {
-            const last = script.legendas[script.legendas.length - 1];
-            setScript({ ...script, legendas: [...script.legendas, { tempo: (last?.tempo ?? 0) + 4, texto: "" }] });
-          }}>+ Slide</Button>
-        </div>
+      {script.slides && script.slides.length > 0 ? (
         <div className="space-y-2">
-          {script.legendas.map((leg, i) => (
-            <div key={i} className="flex gap-2 items-center">
-              <div className="w-16 flex-shrink-0">
-                <Input type="number" min={0} value={leg.tempo}
-                  onChange={(e) => updateLegenda(i, "tempo", e.target.value)}
-                  className="text-center text-sm" />
-                <p className="text-xs text-center text-muted-foreground mt-0.5">seg</p>
+          <Label className="text-base font-semibold">Slides ({script.slides.length})</Label>
+          <div className="space-y-3">
+            {script.slides.map((slide, i) => (
+              <div key={i} className="rounded-xl border bg-card p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center shrink-0">{slide.indice}</span>
+                  <Input
+                    value={slide.texto_legenda}
+                    onChange={(e) => updateSlide(i, "texto_legenda", e.target.value)}
+                    placeholder="Legenda do slide..."
+                    className="flex-1 font-medium text-sm"
+                  />
+                  <span className="text-xs text-muted-foreground shrink-0">{slide.duracao_s}s</span>
+                </div>
+                <Textarea
+                  rows={2}
+                  value={slide.narracao_slide}
+                  onChange={(e) => updateSlide(i, "narracao_slide", e.target.value)}
+                  placeholder="Narração deste slide..."
+                  className="resize-none text-sm text-muted-foreground"
+                />
+                <Collapsible>
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground gap-1">
+                      <Wand2 className="h-3 w-3" /> Prompt visual
+                      <ChevronDown className="h-3 w-3 transition-transform [[data-state=open]_&]:rotate-180" />
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pt-1">
+                    <Textarea
+                      rows={2}
+                      value={slide.visual_prompt}
+                      onChange={(e) => updateSlide(i, "visual_prompt", e.target.value)}
+                      className="resize-none text-xs font-mono text-muted-foreground"
+                    />
+                  </CollapsibleContent>
+                </Collapsible>
               </div>
-              <Input value={leg.texto} onChange={(e) => updateLegenda(i, "texto", e.target.value)}
-                placeholder="Texto do slide..." className="flex-1" />
-              <Button variant="ghost" size="sm" className="text-destructive px-2"
-                onClick={() => script.legendas.length > 1 && setScript({ ...script, legendas: script.legendas.filter((_, j) => j !== i) })}
-                disabled={script.legendas.length <= 1}>✕</Button>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-base font-semibold">Slides</Label>
+            <Button variant="outline" size="sm" onClick={() => {
+              const last = script.legendas[script.legendas.length - 1];
+              setScript({ ...script, legendas: [...script.legendas, { tempo: (last?.tempo ?? 0) + 4, texto: "" }] });
+            }}>+ Slide</Button>
+          </div>
+          <div className="space-y-2">
+            {script.legendas.map((leg, i) => (
+              <div key={i} className="flex gap-2 items-center">
+                <div className="w-16 flex-shrink-0">
+                  <Input type="number" min={0} value={leg.tempo}
+                    onChange={(e) => updateLegenda(i, "tempo", e.target.value)}
+                    className="text-center text-sm" />
+                  <p className="text-xs text-center text-muted-foreground mt-0.5">seg</p>
+                </div>
+                <Input value={leg.texto} onChange={(e) => updateLegenda(i, "texto", e.target.value)}
+                  placeholder="Texto do slide..." className="flex-1" />
+                <Button variant="ghost" size="sm" className="text-destructive px-2"
+                  onClick={() => script.legendas.length > 1 && setScript({ ...script, legendas: script.legendas.filter((_, j) => j !== i) })}
+                  disabled={script.legendas.length <= 1}>✕</Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* CTA */}
       <div className="space-y-2">
@@ -940,7 +1066,7 @@ export default function AdminCriarVideo() {
               {videoModel === "premium" ? "Modelo Premium ativo" : "Modelo Pro ativo"}
             </p>
             <p className="text-muted-foreground text-xs mt-0.5">
-              O Google Veo vai gerar clipes cinematográficos para cada slide automaticamente.
+              {videoModel === "premium" ? "Kling AI" : "Google Veo"} vai gerar clipes cinematográficos para cada slide automaticamente.
               Imagens de fundo não são necessárias.
             </p>
           </div>

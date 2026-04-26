@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Sparkles, X, ExternalLink, Eye, Type, MessageCircle, Lightbulb } from "lucide-react";
+import { Plus, Pencil, Trash2, Sparkles, X, ExternalLink, Eye, Type, MessageCircle, Lightbulb, Share2, Copy } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
 
@@ -115,6 +115,7 @@ export default function AdminArtigos() {
   const [form, setForm] = useState<ArticleForm>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [shareArticle, setShareArticle] = useState<any>(null);
 
   const { data: articles = [], isLoading } = useQuery({
     queryKey: ["admin-articles", professional?.id],
@@ -592,6 +593,9 @@ export default function AdminArtigos() {
                       </a>
                     </Button>
                   )}
+                  <Button variant="ghost" size="icon" title="Compartilhar" onClick={() => setShareArticle(a)}>
+                    <Share2 className="h-4 w-4 text-muted-foreground" />
+                  </Button>
                   <Button variant="ghost" size="icon" onClick={() => openEdit(a)}>
                     <Pencil className="h-4 w-4" />
                   </Button>
@@ -613,6 +617,73 @@ export default function AdminArtigos() {
           ))}
         </div>
       )}
+
+      {/* Compartilhar artigo */}
+      <Dialog open={!!shareArticle} onOpenChange={(o) => !o && setShareArticle(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 pr-6">
+              <Share2 className="h-4 w-4 shrink-0" />
+              <span className="truncate">{shareArticle?.title}</span>
+            </DialogTitle>
+          </DialogHeader>
+          {shareArticle && (
+            <div className="space-y-4 mt-1">
+              {professional?.slug && shareArticle.published ? (
+                <div className="space-y-1.5">
+                  <p className="text-sm font-medium">Link do artigo</p>
+                  <div className="flex gap-2">
+                    <div className="flex-1 bg-muted/50 rounded-lg px-3 py-2 text-xs text-muted-foreground truncate">
+                      {window.location.origin}/{professional.slug}/artigo/{shareArticle.slug}
+                    </div>
+                    <Button size="sm" variant="outline"
+                      onClick={() => {
+                        navigator.clipboard.writeText(`${window.location.origin}/${professional.slug}/artigo/${shareArticle.slug}`);
+                        toast.success("Link copiado!");
+                      }}>
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-2">
+                  Publique o artigo para gerar o link de compartilhamento.
+                </p>
+              )}
+
+              {/* Conteúdo do carrossel */}
+              {Array.isArray(shareArticle.carousel_items) && shareArticle.carousel_items.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">
+                      Carrossel ({shareArticle.carousel_items.length} slides)
+                    </p>
+                    <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs"
+                      onClick={() => {
+                        const text = shareArticle.carousel_items
+                          .map((s: any, i: number) => `Slide ${i + 1}\n${s.caption || s.text || ""}`)
+                          .filter((s: string) => s.trim())
+                          .join("\n\n");
+                        navigator.clipboard.writeText(shareArticle.title + "\n\n" + text);
+                        toast.success("Conteúdo do carrossel copiado!");
+                      }}>
+                      <Copy className="h-3 w-3" /> Copiar legendas
+                    </Button>
+                  </div>
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {shareArticle.carousel_items.map((s: any, i: number) => (
+                      <div key={i} className="bg-muted/50 rounded-lg p-2.5 text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground/60">Slide {i + 1} — </span>
+                        {s.caption || s.text || <em className="opacity-50">sem legenda</em>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

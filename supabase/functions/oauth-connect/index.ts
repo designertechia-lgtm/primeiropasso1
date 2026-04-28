@@ -56,14 +56,16 @@ Deno.serve(async (req) => {
         status: 500, headers: { ...cors, "Content-Type": "application/json" },
       });
     }
+    // Nova Instagram API (Instagram Login) — scopes atualizados
     const params = new URLSearchParams({
+      force_reauth:  "true",
       client_id:     META_APP_ID,
       redirect_uri:  `${REDIRECT_BASE}/oauth-meta-callback`,
-      scope:         "instagram_basic,instagram_content_publish,pages_manage_posts,pages_read_engagement",
-      state:         professional_id,
       response_type: "code",
+      scope:         "instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish,instagram_business_manage_insights",
+      state:         professional_id,
     });
-    url = `https://www.facebook.com/v21.0/dialog/oauth?${params}`;
+    url = `https://www.instagram.com/oauth/authorize?${params}`;
 
   } else if (platform === "linkedin") {
     if (!LINKEDIN_CLIENT_ID) {

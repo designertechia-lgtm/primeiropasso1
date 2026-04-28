@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   Instagram, Linkedin, Film, Calendar, Clock,
-  Plus, Trash2, CheckCircle2, XCircle, Loader2, Share2,
+  Plus, Trash2, CheckCircle2, XCircle, Loader2, Share2, Send,
 } from "lucide-react";
 
 // TikTok icon (lucide não tem, usamos SVG inline)
@@ -78,6 +78,7 @@ export default function AdminRedesSociais() {
   const [scheduledAt, setScheduledAt]   = useState("");
   const [description, setDescription]   = useState("");
   const [saving, setSaving]             = useState(false);
+  const [publishing, setPublishing]     = useState(false);
 
   const { data: videos = [], isLoading: loadingVideos } = useQuery<Video[]>({
     queryKey: ["videos-for-social", professional?.id],
@@ -152,6 +153,23 @@ export default function AdminRedesSociais() {
     }
   };
 
+  const handlePublishNow = async () => {
+    setPublishing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("publish-social-posts");
+      if (error) throw error;
+      const { published, failed } = data as { published: number; failed: number };
+      if (published > 0) toast.success(`${published} post(s) publicado(s) com sucesso!`);
+      if (failed > 0) toast.error(`${failed} post(s) falharam — veja o status na lista.`);
+      if (published === 0 && failed === 0) toast.info("Nenhum post pendente para publicar agora.");
+      queryClient.invalidateQueries({ queryKey: ["social-posts"] });
+    } catch (e: any) {
+      toast.error("Erro ao publicar", { description: e?.message });
+    } finally {
+      setPublishing(false);
+    }
+  };
+
   const videoMap = Object.fromEntries(videos.map((v) => [v.id, v]));
 
   if (loadingVideos || loadingPosts) {
@@ -160,9 +178,17 @@ export default function AdminRedesSociais() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">Redes Sociais</h1>
-        <p className="text-muted-foreground mt-1 text-sm">Agende a publicação dos seus vídeos nas plataformas.</p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">Redes Sociais</h1>
+          <p className="text-muted-foreground mt-1 text-sm">Agende a publicação dos seus vídeos nas plataformas.</p>
+        </div>
+        <Button onClick={handlePublishNow} disabled={publishing} variant="default" size="sm">
+          {publishing
+            ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Publicando...</>
+            : <><Send className="h-3.5 w-3.5 mr-1.5" />Publicar pendentes</>
+          }
+        </Button>
       </div>
 
       {/* Vídeos disponíveis para agendar */}

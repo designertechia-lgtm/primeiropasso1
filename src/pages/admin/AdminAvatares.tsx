@@ -107,7 +107,12 @@ export default function AdminAvatares() {
   const { data: avatars = [], isLoading, isError, error, refetch } = useQuery<Avatar[]>({
     queryKey: ["avatares", slug],
     queryFn: async () => {
-      const res = await fetch(`${API}/avatares/${slug}`);
+      let res: Response;
+      try {
+        res = await fetch(`${API}/avatares/${slug}`);
+      } catch (e) {
+        throw new Error(await parseError(e));
+      }
       if (!res.ok) throw new Error(await parseError(null, res));
       const data = await res.json();
       return data.avatars ?? [];

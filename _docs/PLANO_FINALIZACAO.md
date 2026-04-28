@@ -16,7 +16,7 @@ Isso muda a visão do Kanban: ele não é só gestão de leads estáticos — é
 
 ## Item 1 — Bug: Card de vídeo 16:9 estourando
 
-**Status:** Pendente
+**Status:** ✅ Concluído
 
 **Causa:** Em `src/components/landing/ContentSection.tsx:72`, quando `playing=true` e é vídeo nativo (`.mp4`), o componente retorna um `<div className="aspect-video">` com `<video>` dentro — mas o wrapper `<Card>` de cima não tem `overflow-hidden` aplicado consistentemente. Em `src/pages/VideosListPage.tsx:84` o problema é que o `div.aspect-video` é o contêiner estático, mas quando `playing=true` o conteúdo retornado sai desse contêiner — a altura quebra.
 
@@ -32,7 +32,20 @@ Isso muda a visão do Kanban: ele não é só gestão de leads estáticos — é
 
 ## Item 2 — Autenticação de redes sociais em Configurações
 
-**Status:** Pendente
+**Status:** ✅ Concluído (28/04/2026)
+
+**O que foi entregue:**
+- Migration `20260428000000_add_social_accounts.sql` — tabela `social_accounts` com RLS
+- Supabase Function `oauth-connect` — gera a URL OAuth autenticando o usuário via JWT
+- Supabase Function `oauth-meta-callback` — troca code → token Meta, resolve conta Instagram Business, faz upsert
+- Supabase Function `oauth-linkedin-callback` — troca code → token LinkedIn, busca perfil, faz upsert
+- `AdminConfiguracoes.tsx` — seção "Contas Conectadas" com cards Instagram/LinkedIn, status, botão Conectar/Desconectar, alerta de token expirando
+
+**Variáveis de ambiente necessárias no Supabase (Settings → Edge Functions → Secrets):**
+- `META_APP_ID` e `META_APP_SECRET` — app do Meta for Developers
+- `LINKEDIN_CLIENT_ID` e `LINKEDIN_CLIENT_SECRET` — app do LinkedIn Developers
+
+**Item 2e (worker Python de publicação)** será implementado junto com o Item 3b (Worker Python VPS).
 
 **Onde:** Adicionar seção **"Contas Conectadas"** em `src/pages/admin/AdminConfiguracoes.tsx` — não criar página nova.
 

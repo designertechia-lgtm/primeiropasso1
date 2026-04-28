@@ -21,6 +21,7 @@ interface Props {
   videoTitle: string;
   videoDescription?: string | null;
   videoUrl?: string | null;
+  defaultPostType?: "reels" | "feed";
   onDismiss?: () => void;
 }
 
@@ -31,12 +32,12 @@ interface SocialAccount {
   expires_at: string | null;
 }
 
-export default function PublishPanel({ videoId, videoTitle, videoDescription, videoUrl, onDismiss }: Props) {
+export default function PublishPanel({ videoId, videoTitle, videoDescription, videoUrl, defaultPostType, onDismiss }: Props) {
   const { data: professional } = useProfessional();
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  const [postType, setPostType]   = useState<"reels" | "feed">("reels");
+  const [postType, setPostType]   = useState<"reels" | "feed">(defaultPostType ?? "reels");
   const [postMode, setPostMode]   = useState<"now" | "schedule">("now");
   const [description, setDescription] = useState(videoDescription ?? `Confira: ${videoTitle}`);
   const [scheduledAt, setScheduledAt] = useState(() => {

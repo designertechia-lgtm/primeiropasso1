@@ -234,7 +234,8 @@ export default function AdminCriarVideo() {
   const [localElapsed, setLocalElapsed] = useState<number>(saved?.jobStatus?.elapsed_seconds ?? 0);
   const [draftId, setDraftId]       = useState<string | null>(saved?.draftId ?? null);
   const [draftSaved, setDraftSaved] = useState<"idle" | "saving" | "saved">("idle");
-  const [showPublish, setShowPublish] = useState(true);
+  const [showPublish, setShowPublish] = useState(false);
+  const [publishTrimData, setPublishTrimData] = useState<{ postType: "reels" | "feed"; videoUrl: string; description: string } | null>(null);
   const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null);
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -583,6 +584,7 @@ export default function AdminCriarVideo() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          professional_slug: professional?.slug,
           video_id: jobStatus.video_id,
           start_time: 0,
           end_time: end,
@@ -1369,7 +1371,7 @@ export default function AdminCriarVideo() {
                 <video
                   src={jobStatus.video_url}
                   controls
-                  className="w-full rounded-xl shadow"
+                  className="w-1/2 mx-auto block rounded-xl shadow"
                   onLoadedMetadata={(e) => setVideoDuration(e.currentTarget.duration)}
                 />
               )}
@@ -1380,6 +1382,11 @@ export default function AdminCriarVideo() {
                     <Download className="h-4 w-4" /> Baixar Original
                   </Button>
                 )}
+                <Button
+                  className="flex-1 gap-2 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white border-0"
+                  onClick={() => setShowPublish(true)}>
+                  <Instagram className="h-4 w-4" /> Publicar no Instagram
+                </Button>
                 <Button variant="outline" className="flex-1 gap-2" onClick={handleReset}>
                   <RotateCcw className="h-4 w-4" /> Novo Vídeo
                 </Button>
@@ -1449,7 +1456,7 @@ export default function AdminCriarVideo() {
 
                       {isActive && trimState?.resultUrl && (
                         <div className="space-y-2">
-                          <video src={trimState.resultUrl} controls className="w-full rounded-lg" />
+                          <video src={trimState.resultUrl} controls className="w-1/2 mx-auto block rounded-lg" />
                           <div className="flex gap-2">
                             <Button size="sm" variant="outline" className="flex-1 gap-1.5"
                               onClick={() => handleDownload(trimState.resultUrl!, `${platform.label}_corte`)}>
@@ -1460,6 +1467,19 @@ export default function AdminCriarVideo() {
                               <Share2 className="h-3.5 w-3.5" /> Copiar Link
                             </Button>
                           </div>
+                          {(platform.id === "reels" || platform.id === "stories_instagram" || platform.id === "feed_instagram") && (
+                            <Button
+                              size="sm"
+                              className="w-full gap-2 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white border-0"
+                              onClick={() => setPublishTrimData({
+                                postType: platform.id === "feed_instagram" ? "feed" : "reels",
+                                videoUrl: trimState.resultUrl!,
+                                description: caption ?? `${script?.titulo ?? jobStatus.titulo ?? ""}`,
+                              })}>
+                              <Instagram className="h-3.5 w-3.5" />
+                              {platform.id === "feed_instagram" ? "Publicar no Feed" : platform.id === "stories_instagram" ? "Publicar no Stories" : "Publicar no Reels"}
+                            </Button>
+                          )}
                         </div>
                       )}
 
@@ -1481,6 +1501,18 @@ export default function AdminCriarVideo() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* PublishPanel para vídeo cortado */}
+      {publishTrimData && jobStatus.video_id && (
+        <PublishPanel
+          videoId={jobStatus.video_id}
+          videoTitle={jobStatus.titulo ?? script?.titulo ?? ""}
+          videoDescription={publishTrimData.description}
+          videoUrl={publishTrimData.videoUrl}
+          defaultPostType={publishTrimData.postType}
+          onDismiss={() => setPublishTrimData(null)}
+        />
       )}
 
       {!["processing", "done", "error"].includes(jobStatus.status) && (

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useProfessional } from "@/hooks/useProfessional";
+import PublishPanel from "@/components/dashboard/PublishPanel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -212,6 +213,7 @@ export default function AdminCriarVideo() {
   const [localElapsed, setLocalElapsed] = useState<number>(saved?.jobStatus?.elapsed_seconds ?? 0);
   const [draftId, setDraftId]       = useState<string | null>(saved?.draftId ?? null);
   const [draftSaved, setDraftSaved] = useState<"idle" | "saving" | "saved">("idle");
+  const [showPublish, setShowPublish] = useState(true);
   const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null);
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1363,6 +1365,17 @@ export default function AdminCriarVideo() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Publicar no Instagram */}
+          {showPublish && jobStatus.video_id && (
+            <PublishPanel
+              videoId={jobStatus.video_id}
+              videoTitle={jobStatus.titulo ?? script?.titulo ?? ""}
+              videoDescription={script?.descricao_instagram ?? script?.descricao_post ?? null}
+              videoUrl={jobStatus.video_url ?? null}
+              onDismiss={() => setShowPublish(false)}
+            />
+          )}
 
           {/* Distribuição por plataformas */}
           <div className="space-y-3">

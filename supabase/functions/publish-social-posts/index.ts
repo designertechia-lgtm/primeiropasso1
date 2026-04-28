@@ -1,5 +1,5 @@
 // Publica os social_posts com status='pending' e scheduled_at <= agora.
-// Suporta Instagram Reels (MP4 via Supabase Storage).
+// Suporta Instagram Reels (MP4 via Supabase Storage) e Feed (IMAGE).
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -39,9 +39,9 @@ async function publishInstagramReel(
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
-        media_type:  "REELS",
-        video_url:   videoUrl,
-        caption:     caption,
+        media_type:   "REELS",
+        video_url:    videoUrl,
+        caption:      caption,
         access_token: accessToken,
       }),
     }
@@ -89,6 +89,64 @@ async function publishInstagramReel(
   }
 }
 
+async function publishInstagramImage(
+  igUserId: string,
+  accessToken: string,
+  imageUrl: string,
+  caption: string,
+): Promise<void> {
+  // 1. Criar container IMAGE
+  const createRes = await fetch(
+    `https://graph.instagram.com/v21.0/${igUserId}/media`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        media_type:   "IMAGE",
+        image_url:    imageUrl,
+        caption:      caption,
+        access_token: accessToken,
+      }),
+    }
+  );
+  const createData = await createRes.json();
+  if (!createData.id) {
+    throw new Error(createData.error?.message ?? `Container creation failed: ${JSON.stringify(createData)}`);
+  }
+  const creationId = createData.id as string;
+
+  // 2. Poll curto para imagens (processamento rápido, até 30s)
+  for (let i = 0; i < 6; i++) {
+    await new Promise((r) => setTimeout(r, 3000));
+    const statusRes = await fetch(
+      `https://graph.instagram.com/v21.0/${creationId}?fields=status_code,status&access_token=${accessToken}`
+    );
+    const statusData = await statusRes.json();
+    const statusCode = statusData.status_code ?? "FINISHED";
+    if (statusCode === "FINISHED") break;
+    if (statusCode === "ERROR" || statusCode === "EXPIRED") {
+      throw new Error(`Processamento falhou: ${statusData.status ?? statusCode}`);
+    }
+  }
+
+  // 3. Publicar
+  const publishRes = await fetch(
+    `https://graph.instagram.com/v21.0/${igUserId}/media_publish`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        creation_id:  creationId,
+        access_token: accessToken,
+      }),
+    }
+  );
+  const publishData = await publishRes.json();
+  if (!publishData.id) {
+    throw new Error(publishData.error?.message ?? `Publish failed: ${JSON.stringify(publishData)}`);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
@@ -109,14 +167,7 @@ Deno.serve(async (req) => {
     const results: Array<{ id: string; status: string; error?: string }> = [];
 
     for (const post of posts) {
-      const videoUrl: string = post.videos?.embed_url ?? "";
-
-      // Só suporta MP4 direto (não YouTube)
-      if (!videoUrl || /youtube|youtu\.be/i.test(videoUrl)) {
-        await updatePost(post.id, "failed", "URL do vídeo inválida ou YouTube (não suportado para publicação automática)");
-        results.push({ id: post.id, status: "failed", error: "YouTube URL" });
-        continue;
-      }
+      const postType: string = post.post_type ?? "reels";
 
       // 2. Buscar conta social do profissional para esta plataforma
       const accountRes = await db(
@@ -140,12 +191,34 @@ Deno.serve(async (req) => {
 
       try {
         if (post.platform === "instagram") {
-          await publishInstagramReel(
-            account.account_id,
-            account.access_token,
-            videoUrl,
-            post.description ?? post.videos?.title ?? "",
-          );
+          if (postType === "feed") {
+            const imageUrl: string = post.image_url ?? "";
+            if (!imageUrl) {
+              await updatePost(post.id, "failed", "URL da imagem não encontrada para post de Feed.");
+              results.push({ id: post.id, status: "failed", error: "Sem image_url" });
+              continue;
+            }
+            await publishInstagramImage(
+              account.account_id,
+              account.access_token,
+              imageUrl,
+              post.description ?? post.videos?.title ?? "",
+            );
+          } else {
+            // Reels: post de vídeo
+            const videoUrl: string = post.videos?.embed_url ?? "";
+            if (!videoUrl || /youtube|youtu\.be/i.test(videoUrl)) {
+              await updatePost(post.id, "failed", "URL do vídeo inválida ou YouTube (não suportado para publicação automática)");
+              results.push({ id: post.id, status: "failed", error: "YouTube URL" });
+              continue;
+            }
+            await publishInstagramReel(
+              account.account_id,
+              account.access_token,
+              videoUrl,
+              post.description ?? post.videos?.title ?? "",
+            );
+          }
         } else {
           await updatePost(post.id, "failed", `Plataforma ${post.platform} ainda não suportada`);
           results.push({ id: post.id, status: "failed", error: "Plataforma não suportada" });

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useProfessional } from "@/hooks/useProfessional";
+import PublishPanel from "@/components/dashboard/PublishPanel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -66,6 +67,7 @@ type JobStatus = {
   progress?: number;
   step?: string;
   video_url?: string;
+  video_id?: string;
   titulo?: string;
   message?: string;
   fallback_used?: boolean;
@@ -202,6 +204,7 @@ export default function AdminCriarVideoPro() {
   const [localElapsed, setLocalElapsed] = useState<number>(saved?.jobStatus?.elapsed_seconds ?? 0);
   const [draftId, setDraftId]       = useState<string | null>(saved?.draftId ?? null);
   const [draftSaved, setDraftSaved] = useState<"idle" | "saving" | "saved">("idle");
+  const [showPublish, setShowPublish] = useState(true);
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Arquivos não persistem (blobs/File não são serializáveis)
@@ -951,6 +954,7 @@ export default function AdminCriarVideoPro() {
 
       {/* Done */}
       {isDone && (
+        <>
         <Card className="border-green-200">
           <CardContent className="py-8 flex flex-col items-center gap-4">
             <CheckCircle2 className="h-14 w-14 text-green-500" />
@@ -979,6 +983,17 @@ export default function AdminCriarVideoPro() {
             </div>
           </CardContent>
         </Card>
+
+        {showPublish && jobStatus.video_id && (
+          <PublishPanel
+            videoId={jobStatus.video_id}
+            videoTitle={jobStatus.titulo ?? roteiro?.titulo ?? ""}
+            videoDescription={null}
+            videoUrl={jobStatus.video_url ?? null}
+            onDismiss={() => setShowPublish(false)}
+          />
+        )}
+        </>
       )}
 
       {/* Error */}

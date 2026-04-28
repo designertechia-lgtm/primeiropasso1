@@ -2,7 +2,7 @@ import { useParams, Link } from "react-router-dom";
 import { useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, Download, Loader2 } from "lucide-react";
+import { ArrowLeft, Download, Loader2, Share2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Carousel,
@@ -18,6 +18,7 @@ export default function ArticlePage() {
   const dark = slug ? localStorage.getItem(`dark_${slug}`) === "1" : false;
   const [imageErrors, setImageErrors] = useState<Record<number, boolean>>({});
   const [downloading, setDownloading] = useState(false);
+  const [copied, setCopied] = useState(false);
   const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const { data: professional } = useQuery({
@@ -42,7 +43,6 @@ export default function ArticlePage() {
         .select("*")
         .eq("professional_id", professional!.id)
         .eq("slug", articleSlug!)
-        .eq("published", true)
         .single();
       if (error) throw error;
       return data;
@@ -121,13 +121,27 @@ export default function ArticlePage() {
 
   const contactSlideTitle = (professional as any)?.contact_title || "Dê o primeiro passo.\nAgende sua conversa.";
 
+  const handleShare = () => {
+    navigator.clipboard.writeText(window.location.href);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div className={`min-h-screen bg-background${dark ? " dark" : ""}`}>
       <div className="container mx-auto px-4 py-8 max-w-3xl">
-        <Link to={`/${slug}#artigos`} className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-8">
-          <ArrowLeft className="h-4 w-4 mr-1" />
-          Voltar
-        </Link>
+        <div className="flex items-center justify-between mb-8">
+          <Link to={`/${slug}#artigos`} className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Voltar
+          </Link>
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleShare}>
+            {copied
+              ? <><Check className="h-3.5 w-3.5 text-green-500" /> Link copiado!</>
+              : <><Share2 className="h-3.5 w-3.5" /> Compartilhar</>
+            }
+          </Button>
+        </div>
 
         {carouselItems.length > 0 ? (
           <div className="mb-8 relative group">

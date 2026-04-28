@@ -1,8 +1,9 @@
 import { useParams, Link } from "react-router-dom";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, BookOpen, Calendar, Lock } from "lucide-react";
+import { ArrowLeft, BookOpen, Calendar, Lock, Share2, Check } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 function hexToHSL(hex: string): string | null {
   const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -23,6 +24,28 @@ function hexToHSL(hex: string): string | null {
     }
   }
   return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
+}
+
+function ShareArticleButton({ slug, articleSlug }: { slug: string; articleSlug: string }) {
+  const [copied, setCopied] = useState(false);
+  const url = `${window.location.origin}/${slug}/artigo/${articleSlug}`;
+  const handleShare = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <Button
+      size="sm" variant="ghost"
+      className="h-6 gap-1 text-xs text-muted-foreground hover:text-foreground px-2 shrink-0"
+      onClick={handleShare}
+    >
+      {copied ? <Check className="h-3 w-3 text-green-500" /> : <Share2 className="h-3 w-3" />}
+      {copied ? "Copiado" : "Compartilhar"}
+    </Button>
+  );
 }
 
 export default function ArticlesListPage() {
@@ -99,7 +122,7 @@ export default function ArticlesListPage() {
         styles["--card"] = `${h} ${Math.max(s - 5, 0)}% ${Math.min(l + 2, 100)}%`;
         styles["--foreground"] = l < 50 ? `${h} ${Math.max(s - 15, 0)}% 90%` : `${h} ${Math.min(s + 10, 100)}% 15%`;
         styles["--muted-foreground"] = `${h} ${Math.max(s - 5, 0)}% 45%`;
-        styles["--border"] = `${h} ${Math.max(s - 10, 0)}% ${Math.max(l - 10, 0)}%`;
+        styles["--border"] = `${h} ${Math.max(s - 10, 0)}% ${l < 50 ? Math.min(l + 22, 55) : Math.max(l - 10, 0)}%`;
       }
     }
     return Object.keys(styles).length > 0 ? styles : undefined;
@@ -179,45 +202,44 @@ export default function ArticlesListPage() {
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {articles.map((article) => {
                 const isDraft = !article.published;
-                const CardWrapper = isDraft
-                  ? ({ children }: { children: React.ReactNode }) => (
-                      <div className="group block rounded-2xl overflow-hidden border bg-card opacity-70">
-                        {children}
-                      </div>
-                    )
-                  : ({ children }: { children: React.ReactNode }) => (
-                      <Link
-                        to={`/${slug}/artigo/${article.slug}`}
-                        className="group block rounded-2xl overflow-hidden border bg-card hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5"
-                      >
-                        {children}
-                      </Link>
-                    );
+                const articleUrl = `/${slug}/artigo/${article.slug}`;
 
                 return (
-                  <CardWrapper key={article.id}>
-                    {/* Imagem */}
-                    <div className="aspect-[4/3] overflow-hidden bg-muted relative">
-                      {article.cover_image_url ? (
-                        <img
-                          src={article.cover_image_url}
-                          alt={article.title}
-                          className={`w-full h-full object-cover ${!isDraft ? "group-hover:scale-105 transition-transform duration-500" : "grayscale"}`}
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-primary/5">
-                          <BookOpen className="h-10 w-10 text-primary/20" />
-                        </div>
-                      )}
-                      {isDraft && (
+                  // Card nunca é um Link inteiro — evita conflito com botão compartilhar
+                  <div
+                    key={article.id}
+                    className={`group rounded-2xl overflow-hidden border bg-card transition-all duration-300 flex flex-col ${
+                      isDraft ? "opacity-70" : "hover:shadow-lg hover:-translate-y-0.5"
+                    }`}
+                  >
+                    {/* Imagem clicável */}
+                    {isDraft ? (
+                      <div className="aspect-[4/3] overflow-hidden bg-muted relative">
+                        {article.cover_image_url ? (
+                          <img src={article.cover_image_url} alt={article.title} className="w-full h-full object-cover grayscale" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-primary/5">
+                            <BookOpen className="h-10 w-10 text-primary/20" />
+                          </div>
+                        )}
                         <div className="absolute top-3 left-3 flex items-center gap-1 bg-black/60 text-white text-[10px] font-semibold px-2 py-1 rounded-full backdrop-blur-sm">
                           <Lock className="h-2.5 w-2.5" /> Rascunho
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    ) : (
+                      <Link to={articleUrl} className="block aspect-[4/3] overflow-hidden bg-muted relative">
+                        {article.cover_image_url ? (
+                          <img src={article.cover_image_url} alt={article.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-primary/5">
+                            <BookOpen className="h-10 w-10 text-primary/20" />
+                          </div>
+                        )}
+                      </Link>
+                    )}
 
                     {/* Conteúdo */}
-                    <div className="p-5">
+                    <div className="p-5 flex flex-col flex-1">
                       {article.published_at && (
                         <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
                           <Calendar className="h-3 w-3" />
@@ -226,21 +248,32 @@ export default function ArticlesListPage() {
                           })}
                         </div>
                       )}
-                      <h2 className={`font-serif text-lg font-semibold text-foreground leading-snug mb-2 line-clamp-2 ${!isDraft ? "group-hover:text-primary transition-colors" : ""}`}>
-                        {article.title}
-                      </h2>
+                      {isDraft ? (
+                        <h2 className="font-serif text-lg font-semibold text-foreground leading-snug mb-2 line-clamp-2">
+                          {article.title}
+                        </h2>
+                      ) : (
+                        <Link to={articleUrl}>
+                          <h2 className="font-serif text-lg font-semibold text-foreground leading-snug mb-2 line-clamp-2 hover:text-primary transition-colors">
+                            {article.title}
+                          </h2>
+                        </Link>
+                      )}
                       {article.content && (
-                        <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
+                        <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed flex-1">
                           {article.content}
                         </p>
                       )}
                       {!isDraft && (
-                        <span className="inline-block mt-4 text-xs font-medium text-primary group-hover:underline">
-                          Ler artigo →
-                        </span>
+                        <div className="flex items-center justify-between mt-4">
+                          <Link to={articleUrl} className="text-xs font-medium text-primary hover:underline">
+                            Ler artigo →
+                          </Link>
+                          <ShareArticleButton slug={slug!} articleSlug={article.slug} />
+                        </div>
                       )}
                     </div>
-                  </CardWrapper>
+                  </div>
                 );
               })}
             </div>

@@ -15,9 +15,9 @@ export default function AboutSection({ name, bio, crp, photoUrl, aboutImageUrl, 
         <div className="grid md:grid-cols-2 gap-12 items-center max-w-5xl mx-auto">
           <div className="flex justify-center">
             {displayImage ? (
-              <img src={displayImage} alt={name} className="rounded-2xl shadow-lg max-h-[400px] object-cover" />
+              <img src={displayImage} alt={name} className="rounded-2xl shadow-lg w-full h-auto object-cover" />
             ) : (
-              <div className="w-full max-w-xs aspect-square rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
+              <div className="w-full aspect-square rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
                 <span className="text-muted-foreground text-sm">Foto</span>
               </div>
             )}

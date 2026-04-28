@@ -31,17 +31,17 @@ export default function AdminPerfil() {
 
   useEffect(() => {
     if (!professional) return;
-    setFullName((professional as any).full_name || profile?.full_name || "");
+    setFullName(professional.full_name || profile?.full_name || "");
     setCrp(professional.crp || "");
-    setPhone((professional as any).phone || "");
-    setEmail((professional as any).email || profile?.email || "");
-    setAddress((professional as any).address || "");
-    setInstagram((professional as any).instagram || "");
-    setLinkedin((professional as any).linkedin || "");
+    setPhone(professional.phone || "");
+    setEmail(professional.email || profile?.email || "");
+    setAddress(professional.address || "");
+    setInstagram(professional.instagram || "");
+    setLinkedin(professional.linkedin || "");
     setPhotoUrl(professional.photo_url || "");
-    setPriceMin((professional as any).price_min?.toString() || "");
-    setPriceMax((professional as any).price_max?.toString() || "");
-    setPriceFirstSession((professional as any).price_first_session?.toString() || "");
+    setPriceMin(professional.price_min?.toString() || "");
+    setPriceMax(professional.price_max?.toString() || "");
+    setPriceFirstSession(professional.price_first_session?.toString() || "");
   }, [professional, profile]);
 
   const handleSave = async () => {
@@ -62,7 +62,7 @@ export default function AdminPerfil() {
         price_min: priceMin ? parseFloat(priceMin) : null,
         price_max: priceMax ? parseFloat(priceMax) : null,
         price_first_session: priceFirstSession ? parseFloat(priceFirstSession) : null,
-      } as any).eq("id", professional.id),
+      }).eq("id", professional.id),
     ]);
 
     setSaving(false);

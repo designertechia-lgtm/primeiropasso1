@@ -14,6 +14,7 @@ import {
   Clapperboard,
   Monitor,
   Share2,
+  Drama,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -40,6 +41,7 @@ const items = [
   { title: "Artigos", url: "/admin/artigos", icon: FileText },
   { title: "Vídeos", url: "/admin/videos", icon: Video },
   { title: "Criar Vídeo",     url: "/admin/criar-video",    icon: Clapperboard },
+  { title: "Personagens",     url: "/admin/avatares",        icon: Drama        },
   { title: "Redes Sociais",   url: "/admin/redes-sociais",  icon: Share2       },
   { title: "Documentos", url: "/admin/documentos", icon: FileUp },
   { title: "Configurações", url: "/admin/configuracoes", icon: Settings },

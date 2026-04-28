@@ -256,14 +256,29 @@ export default function AdminVideos() {
     }
   };
 
+  const deleteStorageFile = async (url: string) => {
+    try {
+      const withoutQuery = url.split("?")[0];
+      const match = withoutQuery.split("/object/public/images/")[1];
+      if (match) await supabase.storage.from("images").remove([decodeURIComponent(match)]);
+    } catch {}
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm("Excluir este vídeo?")) return;
+    // Busca embed_url e thumbnail antes de deletar o registro
+    const video = videos.find((v: any) => v.id === id);
     const { error } = await supabase.from("videos").delete().eq("id", id);
-    if (error) toast.error("Erro ao excluir");
-    else {
-      toast.success("Vídeo excluído");
-      queryClient.invalidateQueries({ queryKey: ["admin-videos"] });
+    if (error) { toast.error("Erro ao excluir"); return; }
+    // Deleta arquivos do storage (só se forem URLs do Supabase)
+    if (video?.embed_url && (video.embed_url.includes("supabase") || /\.(mp4|webm|mov)$/i.test(video.embed_url))) {
+      await deleteStorageFile(video.embed_url);
     }
+    if (video?.thumbnail_url && video.thumbnail_url.includes("supabase")) {
+      await deleteStorageFile(video.thumbnail_url);
+    }
+    toast.success("Vídeo excluído");
+    queryClient.invalidateQueries({ queryKey: ["admin-videos"] });
   };
 
   if (isLoading) return <div className="animate-pulse text-muted-foreground">Carregando...</div>;
@@ -325,6 +340,7 @@ export default function AdminVideos() {
                         return;
                       }
                       setUploadingVideo(true);
+                      const oldUrl = form.embed_url;
                       const ext  = file.name.split(".").pop();
                       const path = `${user.id}/videos/${Date.now()}.${ext}`;
                       const { error } = await supabase.storage.from("images").upload(path, file, { upsert: true });
@@ -332,6 +348,13 @@ export default function AdminVideos() {
                         toast.error("Erro no upload", { description: error.message });
                         setUploadingVideo(false);
                         return;
+                      }
+                      // Deleta vídeo antigo do storage após upload bem-sucedido
+                      if (oldUrl && (oldUrl.includes("supabase") || oldUrl.endsWith(".mp4") || oldUrl.endsWith(".webm"))) {
+                        try {
+                          const match = oldUrl.split("?")[0].split("/object/public/images/")[1];
+                          if (match) await supabase.storage.from("images").remove([decodeURIComponent(match)]);
+                        } catch {}
                       }
                       const { data: urlData } = supabase.storage.from("images").getPublicUrl(path);
                       setForm((prev) => ({ ...prev, embed_url: urlData.publicUrl }));
@@ -489,6 +512,30 @@ export default function AdminVideos() {
           </DialogHeader>
           {shareVideo && (
             <div className="space-y-4 mt-1">
+              {/* Link público */}
+              {professional?.slug && shareVideo.published && (
+                <div className="space-y-1.5">
+                  <p className="text-sm font-medium">Link público do vídeo</p>
+                  <div className="flex gap-2">
+                    <div className="flex-1 bg-muted/50 rounded-lg px-3 py-2 text-xs text-muted-foreground truncate">
+                      {window.location.origin}/{professional.slug}/video/{shareVideo.id}
+                    </div>
+                    <Button size="sm" variant="outline"
+                      onClick={() => {
+                        navigator.clipboard.writeText(`${window.location.origin}/${professional.slug}/video/${shareVideo.id}`);
+                        toast.success("Link copiado!");
+                      }}>
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {(!shareVideo.published) && (
+                <p className="text-xs text-muted-foreground bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Publique o vídeo para gerar o link de compartilhamento.
+                </p>
+              )}
+
               {/* Baixar vídeo */}
               {shareVideo.embed_url && !/youtube|youtu\.be/.test(shareVideo.embed_url) && (
                 <a

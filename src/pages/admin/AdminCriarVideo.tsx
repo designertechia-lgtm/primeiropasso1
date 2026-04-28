@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useProfessional } from "@/hooks/useProfessional";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,8 +14,9 @@ import {
   ChevronRight, ChevronLeft, ChevronDown, Mic, Monitor, Smartphone,
   Circle, Square, RotateCcw, Sparkles, BookOpen,
   ImagePlus, X, ArrowUp, ArrowDown, Images, Wand2,
-  Instagram, Linkedin, Zap, Crown, Star, Layers, Minus, Triangle,
-  Heart, BookOpenCheck, Flame, TrendingUp, Globe,
+  Zap, Crown, Star, Minus, Triangle,
+  Heart, BookOpenCheck, Flame, TrendingUp,
+  Copy, Scissors, Download, Share2,
 } from "lucide-react";
 
 const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
@@ -26,9 +27,9 @@ function loadSaved() {
     const s = localStorage.getItem(STORAGE_KEY);
     if (!s) return null;
     const parsed = JSON.parse(s);
-    // Descarta estados terminais — na próxima visita começa limpo
-    const terminalStatus = ["cancelled", "error"];
-    if (terminalStatus.includes(parsed?.jobStatus?.status)) {
+    const status = parsed?.jobStatus?.status;
+    // Descarta estados terminais ou transitórios travados
+    if (["cancelled", "error", "loading"].includes(status)) {
       localStorage.removeItem(STORAGE_KEY);
       return null;
     }
@@ -44,9 +45,9 @@ const EDGE_VOICES = [
 
 type VoiceMode    = "edge" | "gravacao" | "elevenlabs";
 type VideoModel   = "gratuito" | "premium" | "pro";
+type EstiloIA     = "cinematico" | "realista" | "animacao" | "pixar" | "paisagem" | "neon" | "minimalista" | "vintage" | "motion_graphics" | "dramatico" | "aquarela" | "espaco";
 type VisualStyle  = "images" | "animated" | "particles" | "lines" | "geometric" | "mixed";
 type Tom          = "acolhedor" | "educativo" | "provocador" | "motivacional";
-type Plataforma   = "instagram" | "linkedin" | "tiktok" | "geral";
 type Legenda   = { tempo: number; texto: string };
 type Slide     = {
   indice: number;
@@ -72,10 +73,23 @@ type JobStatus = {
   progress?: number;
   step?: string;
   video_url?: string;
+  video_id?: string;
   titulo?: string;
   message?: string;
   elapsed_seconds?: number;
 };
+
+const PLATFORMS = [
+  { id: "tiktok",         label: "TikTok",          icon: "🎵", format: "9:16", maxS: 60,   idealS: 30,  desc: "Vertical curto · até 60s" },
+  { id: "reels",          label: "Instagram Reels",  icon: "📸", format: "9:16", maxS: 90,   idealS: 30,  desc: "Vertical · até 90s" },
+  { id: "shorts",         label: "YouTube Shorts",   icon: "▶️", format: "9:16", maxS: 60,   idealS: 45,  desc: "Vertical curto · até 60s" },
+  { id: "feed_instagram", label: "Feed Instagram",   icon: "🟥", format: "1:1",  maxS: 60,   idealS: 30,  desc: "Quadrado · até 60s" },
+  { id: "linkedin",       label: "LinkedIn",         icon: "💼", format: "1:1",  maxS: 600,  idealS: 60,  desc: "Quadrado · 1-2min profissional" },
+  { id: "facebook",       label: "Facebook",         icon: "👥", format: "9:16", maxS: 240,  idealS: 60,  desc: "Vertical · até 4min" },
+  { id: "youtube",        label: "YouTube",          icon: "🎬", format: "16:9", maxS: null, idealS: 120, desc: "Paisagem · sem limite" },
+] as const;
+type PlatformId = typeof PLATFORMS[number]["id"];
+type TrimState  = { platformId: PlatformId; loading: boolean; resultUrl: string | null };
 
 // ── Gravador reutilizável ────────────────────────────────────
 function VoiceRecorder({
@@ -170,6 +184,7 @@ function VoiceRecorder({
 export default function AdminCriarVideo() {
   const { data: professional } = useProfessional();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const editVideoId = searchParams.get("edit");
 
   // Inicializa do localStorage para persistir entre navegações
@@ -177,10 +192,10 @@ export default function AdminCriarVideo() {
   const [step, setStep]             = useState<1 | 2 | 3>(saved?.step ?? 1);
   const [objetivo, setObjetivo]     = useState<string>(saved?.objetivo ?? "");
   const [tom, setTom]               = useState<Tom>(saved?.tom ?? "acolhedor");
-  const [plataforma, setPlataforma] = useState<Plataforma>(saved?.plataforma ?? "instagram");
   const [iaLoading, setIaLoading]   = useState(false);
   const [script, setScript]         = useState<Script | null>(saved?.script ?? null);
   const [videoModel, setVideoModel] = useState<VideoModel>(saved?.videoModel ?? "gratuito");
+  const [estiloIA, setEstiloIA]     = useState<EstiloIA>(saved?.estiloIA ?? "cinematico");
   const [voiceMode, setVoiceMode]   = useState<VoiceMode>(saved?.voiceMode ?? "edge");
   const [edgeVoice, setEdgeVoice]   = useState<string>(saved?.edgeVoice ?? "pt-BR-FranciscaNeural");
   const [voiceBlob, setVoiceBlob]   = useState<Blob | null>(null);
@@ -191,19 +206,27 @@ export default function AdminCriarVideo() {
   const [format, setFormat]         = useState<"portrait" | "landscape" | "square">(saved?.format ?? "portrait");
   const [jobStatus, setJobStatus]   = useState<JobStatus>(saved?.jobStatus ?? { status: "idle" });
   const [activeJobId, setActiveJobId] = useState<string | null>(saved?.activeJobId ?? null);
+  const [videoDuration, setVideoDuration] = useState<number>(0);
+  const [trimState, setTrimState]   = useState<TrimState | null>(null);
   const [avgSeconds, setAvgSeconds] = useState<number | null>(null);
   const [localElapsed, setLocalElapsed] = useState<number>(saved?.jobStatus?.elapsed_seconds ?? 0);
+  const [draftId, setDraftId]       = useState<string | null>(saved?.draftId ?? null);
+  const [draftSaved, setDraftSaved] = useState<"idle" | "saving" | "saved">("idle");
   const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null);
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Salva estado no localStorage sempre que mudar
+  // Salva estado no localStorage sempre que mudar.
+  // "loading" é transitório — nunca persiste para não travar o botão no próximo acesso.
   useEffect(() => {
     try {
+      const persistedJobStatus = jobStatus.status === "loading" ? { status: "idle" } : jobStatus;
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        step, objetivo, tom, plataforma, script, videoModel, voiceMode, edgeVoice, format, imageMode, visualStyle, jobStatus, activeJobId,
+        step, objetivo, tom, script, videoModel, estiloIA, voiceMode, edgeVoice, format, imageMode, visualStyle,
+        jobStatus: persistedJobStatus, activeJobId, draftId,
       }));
     } catch {}
-  }, [step, objetivo, tom, plataforma, script, videoModel, voiceMode, edgeVoice, format, imageMode, visualStyle, jobStatus, activeJobId]);
+  }, [step, objetivo, tom, script, videoModel, estiloIA, voiceMode, edgeVoice, format, imageMode, visualStyle, jobStatus, activeJobId]);
 
   // Retoma polling se voltar com um vídeo ainda em processamento
   useEffect(() => {
@@ -215,6 +238,38 @@ export default function AdminCriarVideo() {
 
   // Para polling e cronômetro ao desmontar o componente
   useEffect(() => () => { stopPolling(); stopStopwatch(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-save do roteiro editado no Supabase (debounce 1.5s)
+  useEffect(() => {
+    if (!script || !professional?.slug || step !== 2) return;
+    setDraftSaved("saving");
+    if (draftTimer.current) clearTimeout(draftTimer.current);
+    draftTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API}/salvar-rascunho`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            professional_slug: professional.slug,
+            roteiro: script,
+            format,
+            draft_id: draftId ?? undefined,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.draft_id) setDraftId(data.draft_id);
+          setDraftSaved("saved");
+          setTimeout(() => setDraftSaved("idle"), 2500);
+        } else {
+          setDraftSaved("idle");
+        }
+      } catch {
+        setDraftSaved("idle");
+      }
+    }, 1500);
+    return () => { if (draftTimer.current) clearTimeout(draftTimer.current); };
+  }, [script]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Carrega roteiro existente quando abrindo em modo de reedição
   useEffect(() => {
@@ -277,6 +332,36 @@ export default function AdminCriarVideo() {
     }
   };
 
+  const buildDefaultCta = () => {
+    const slug = professional?.slug;
+    const link = slug ? `primeiropasso.online/${slug}` : "primeiropasso.online";
+    return `Dê o Primeiro Passo. Agende seu horário. 👉 ${link}`;
+  };
+
+  const handleManualRoteiro = () => {
+    if (!objetivo.trim()) return;
+    const cta = buildDefaultCta();
+    if (videoModel === "pro") {
+      localStorage.removeItem("pp-criar-video-pro");
+      navigate("/admin/criar-video-pro", {
+        state: {
+          roteiro: { titulo: objetivo.trim(), narracao: "", cta, slides: [] },
+          objetivo: objetivo.trim(),
+          tom,
+          plataforma: "geral",
+        },
+      });
+      return;
+    }
+    setScript({
+      titulo: objetivo.trim(),
+      narracao: "",
+      cta,
+      legendas: [{ tempo: 0, texto: "" }],
+    });
+    setStep(2);
+  };
+
   const handleNextStep = async () => {
     if (!professional?.slug || !objetivo.trim()) return;
     setJobStatus({ status: "loading" });
@@ -288,14 +373,23 @@ export default function AdminCriarVideo() {
           professional_slug: professional.slug,
           tema_sugerido: objetivo.trim(),
           tom,
-          plataforma,
+          plataforma: "geral",
         }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || `Erro ${res.status}`);
       }
-      setScript(await res.json());
+      const data = await res.json();
+      if (!data.cta) data.cta = buildDefaultCta();
+      if (videoModel === "pro") {
+        localStorage.removeItem("pp-criar-video-pro");
+        navigate("/admin/criar-video-pro", {
+          state: { roteiro: data, objetivo: objetivo.trim(), tom, plataforma: "geral" },
+        });
+        return;
+      }
+      setScript(data);
       setJobStatus({ status: "editing" });
       setStep(2);
     } catch (e: any) {
@@ -386,6 +480,7 @@ export default function AdminCriarVideo() {
           format,
           model: videoModel,
           visual_style: visualStyle,
+          estilo_visual: estiloIA,
         }),
       });
       const data = await res.json();
@@ -456,14 +551,55 @@ export default function AdminCriarVideo() {
     }
   };
 
+  const handleTrim = async (platform: typeof PLATFORMS[number]) => {
+    if (!jobStatus.video_id) return;
+    const end = videoDuration > 0 ? Math.min(videoDuration, platform.idealS) : platform.idealS;
+    setTrimState({ platformId: platform.id, loading: true, resultUrl: null });
+    try {
+      const res = await fetch(`${API}/trim-video`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          video_id: jobStatus.video_id,
+          start_time: 0,
+          end_time: end,
+          aspect_ratio: platform.format,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Erro ao cortar vídeo");
+      const trimJobId: string = data.job_id;
+      await new Promise<void>((resolve, reject) => {
+        const iv = setInterval(async () => {
+          try {
+            const s = await (await fetch(`${API}/status/${trimJobId}`)).json();
+            if (s.status === "done") {
+              setTrimState({ platformId: platform.id, loading: false, resultUrl: s.video_url });
+              clearInterval(iv);
+              resolve();
+            } else if (s.status === "error" || s.status === "cancelled") {
+              clearInterval(iv);
+              reject(new Error(s.message || "Erro no corte"));
+            }
+          } catch (e) { clearInterval(iv); reject(e); }
+        }, 3000);
+      });
+    } catch (e: any) {
+      setTrimState({ platformId: platform.id, loading: false, resultUrl: null });
+      toast.error(e.message || "Erro ao cortar vídeo");
+    }
+  };
+
   const handleReset = () => {
     setStep(1); setScript(null); setObjetivo("");
-    setTom("acolhedor"); setPlataforma("instagram");
+    setTom("acolhedor");
     setVideoModel("gratuito");
+    setEstiloIA("cinematico");
     setVoiceMode("edge"); setEdgeVoice("pt-BR-FranciscaNeural");
     setVoiceBlob(null); setNarBlob(null);
     setImageMode("auto"); setVisualStyle("images"); setUserImages([]); setFormat("portrait");
     setJobStatus({ status: "idle" }); setActiveJobId(null);
+    setTrimState(null); setVideoDuration(0);
     localStorage.removeItem(STORAGE_KEY);
   };
 
@@ -583,31 +719,6 @@ export default function AdminCriarVideo() {
         </div>
       </div>
 
-      {/* Seletor de plataforma */}
-      <div className="space-y-3">
-        <Label className="text-base font-semibold">Plataforma Principal</Label>
-        <div className="grid grid-cols-2 gap-3">
-          {([
-            { value: "instagram", label: "Instagram", desc: "Reels · 30-45s",        Icon: Instagram },
-            { value: "linkedin",  label: "LinkedIn",  desc: "Profissional · 45-60s", Icon: Linkedin },
-            { value: "tiktok",    label: "TikTok",    desc: "Ultra-rápido · 15-30s", Icon: Zap },
-            { value: "geral",     label: "Geral",     desc: "Todos os canais",       Icon: Globe },
-          ] as const).map(({ value, label, desc, Icon }) => (
-            <Card key={value}
-              className={`cursor-pointer border-2 transition-all ${plataforma === value ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
-              onClick={() => setPlataforma(value)}>
-              <CardContent className="p-3 flex items-center gap-3">
-                <Icon className={`h-5 w-5 shrink-0 ${plataforma === value ? "text-primary" : "text-muted-foreground"}`} />
-                <div>
-                  <p className="font-medium text-sm">{label}</p>
-                  <p className="text-xs text-muted-foreground">{desc}</p>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-
       {/* Seletor de modelo */}
       <div className="space-y-3">
         <Label className="text-base font-semibold">Modelo de Geração</Label>
@@ -656,12 +767,21 @@ export default function AdminCriarVideo() {
         )}
       </div>
 
+      <Button
+        variant="outline"
+        className="w-full gap-2 border-primary/40 text-primary hover:bg-primary/5"
+        size="lg"
+        disabled={!objetivo.trim()}
+        onClick={handleManualRoteiro}>
+        <BookOpen className="h-4 w-4" /> Vou criar meu próprio roteiro
+      </Button>
+
       <Button className="w-full" size="lg"
         disabled={!objetivo.trim() || jobStatus.status === "loading"}
         onClick={handleNextStep}>
         {jobStatus.status === "loading"
           ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Gerando roteiro...</>
-          : <><ChevronRight className="mr-2 h-4 w-4" /> Gerar Roteiro</>}
+          : <><ChevronRight className="mr-2 h-4 w-4" /> Gerar Roteiro com IA</>}
       </Button>
     </div>
   );
@@ -687,9 +807,19 @@ export default function AdminCriarVideo() {
 
   if (step === 2 && script) return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Revisar Roteiro</h1>
-        <p className="text-muted-foreground mt-1">Edite o conteúdo, escolha a voz e o formato.</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Revisar Roteiro</h1>
+          <p className="text-muted-foreground mt-1">Edite o conteúdo, escolha a voz e o formato.</p>
+        </div>
+        <div className="flex items-center gap-1.5 text-xs shrink-0">
+          {draftSaved === "saving" && (
+            <><Loader2 className="h-3 w-3 animate-spin text-muted-foreground" /><span className="text-muted-foreground">Salvando...</span></>
+          )}
+          {draftSaved === "saved" && (
+            <><CheckCircle2 className="h-3 w-3 text-green-500" /><span className="text-green-600">Salvo</span></>
+          )}
+        </div>
       </div>
       <StepIndicator />
 
@@ -800,7 +930,7 @@ export default function AdminCriarVideo() {
             {script.descricao_instagram && (
               <div className="space-y-1.5">
                 <Label className="text-sm font-medium flex items-center gap-1.5">
-                  <Instagram className="h-3.5 w-3.5 text-pink-500" /> Instagram
+                  <span className="text-pink-500 text-base leading-none">📸</span> Instagram
                 </Label>
                 <Textarea rows={3} className="resize-none text-sm"
                   value={script.descricao_instagram}
@@ -811,7 +941,7 @@ export default function AdminCriarVideo() {
             {script.descricao_linkedin && (
               <div className="space-y-1.5">
                 <Label className="text-sm font-medium flex items-center gap-1.5">
-                  <Linkedin className="h-3.5 w-3.5 text-blue-600" /> LinkedIn
+                  <span className="text-blue-600 text-base leading-none">💼</span> LinkedIn
                 </Label>
                 <Textarea rows={3} className="resize-none text-sm"
                   value={script.descricao_linkedin}
@@ -1073,6 +1203,35 @@ export default function AdminCriarVideo() {
         </div>
       )}
 
+      {/* Estilo Visual — visível apenas para Premium */}
+      {videoModel === "premium" && (
+        <div className="space-y-3">
+          <Label className="text-base font-semibold flex items-center gap-2">
+            <Sparkles className="h-4 w-4" /> Estilo Visual
+          </Label>
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              { value: "cinematico",  icon: "🎬", label: "Cinemático",   desc: "Luz dramática, bokeh" },
+              { value: "realista",    icon: "📸", label: "Realista",      desc: "8K, natural" },
+              { value: "animacao",    icon: "🎨", label: "Animação",      desc: "Cartoon 2D" },
+              { value: "pixar",       icon: "✨", label: "Pixar",         desc: "3D animado" },
+              { value: "paisagem",    icon: "🌿", label: "Paisagens",     desc: "Natureza, épico" },
+              { value: "neon",        icon: "🌃", label: "Neon",          desc: "Cyberpunk, néon" },
+            ] as const).map(({ value, icon, label, desc }) => (
+              <Card key={value}
+                className={`cursor-pointer border-2 transition-all ${estiloIA === value ? "border-amber-500 bg-amber-50/50 dark:bg-amber-950/20" : "border-border hover:border-amber-400/50"}`}
+                onClick={() => setEstiloIA(value)}>
+                <CardContent className="p-2.5 text-center space-y-0.5">
+                  <p className="text-lg leading-none">{icon}</p>
+                  <p className="font-medium text-xs">{label}</p>
+                  <p className="text-[10px] text-muted-foreground leading-tight">{desc}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Formato */}
       <div className="space-y-2">
         <Label className="text-base font-semibold">Formato</Label>
@@ -1167,31 +1326,125 @@ export default function AdminCriarVideo() {
       )}
 
       {jobStatus.status === "done" && (
-        <Card>
-          <CardContent className="py-8 flex flex-col items-center gap-4">
-            <CheckCircle2 className="h-14 w-14 text-green-500" />
-            <div className="text-center">
-              <p className="font-semibold text-lg">Vídeo criado com sucesso!</p>
-              <p className="text-muted-foreground mt-1 text-sm">{jobStatus.titulo}</p>
-              {avgSeconds != null && (
-                <p className="text-xs text-muted-foreground/60 mt-1">
-                  Gerado em {Math.round(avgSeconds)}s · novo tempo médio registrado
-                </p>
-              )}
-            </div>
-            {jobStatus.video_url && (
-              <video src={jobStatus.video_url} controls className="w-full max-w-xs rounded-xl mt-2 shadow-lg" />
-            )}
-            <div className="flex gap-3 mt-2">
+        <div className="space-y-6">
+          {/* Preview + ações principais */}
+          <Card>
+            <CardContent className="pt-6 pb-4 space-y-4">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className="h-8 w-8 text-green-500 shrink-0" />
+                <div>
+                  <p className="font-semibold text-lg">Vídeo criado!</p>
+                  <p className="text-muted-foreground text-sm">{jobStatus.titulo}</p>
+                  {avgSeconds != null && (
+                    <p className="text-xs text-muted-foreground/60 mt-0.5">
+                      Gerado em {Math.round(avgSeconds)}s
+                    </p>
+                  )}
+                </div>
+              </div>
               {jobStatus.video_url && (
-                <Button variant="outline" onClick={() => handleDownload(jobStatus.video_url!, jobStatus.titulo || "video")}>
-                  Baixar Vídeo
-                </Button>
+                <video
+                  src={jobStatus.video_url}
+                  controls
+                  className="w-full rounded-xl shadow"
+                  onLoadedMetadata={(e) => setVideoDuration(e.currentTarget.duration)}
+                />
               )}
-              <Button onClick={handleReset}>Criar Outro Vídeo</Button>
+              <div className="flex gap-2">
+                {jobStatus.video_url && (
+                  <Button variant="outline" className="flex-1 gap-2"
+                    onClick={() => handleDownload(jobStatus.video_url!, jobStatus.titulo || "video")}>
+                    <Download className="h-4 w-4" /> Baixar Original
+                  </Button>
+                )}
+                <Button variant="outline" className="flex-1 gap-2" onClick={handleReset}>
+                  <RotateCcw className="h-4 w-4" /> Novo Vídeo
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Distribuição por plataformas */}
+          <div className="space-y-3">
+            <div>
+              <h2 className="font-semibold text-base">Distribuir nas Plataformas</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Gere cortes otimizados para cada rede social com um clique.
+              </p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="space-y-3">
+              {PLATFORMS.map((platform) => {
+                const isActive = trimState?.platformId === platform.id;
+                const captionMap: Record<string, string | undefined> = {
+                  reels:          script?.descricao_instagram,
+                  feed_instagram: script?.descricao_instagram,
+                  linkedin:       script?.descricao_linkedin,
+                  tiktok:         script?.legenda_tiktok,
+                };
+                const caption = captionMap[platform.id] || script?.descricao_post;
+                return (
+                  <Card key={platform.id} className={isActive ? "border-primary/50 bg-primary/5" : ""}>
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl leading-none">{platform.icon}</span>
+                          <div>
+                            <p className="font-medium text-sm">{platform.label}</p>
+                            <p className="text-xs text-muted-foreground">{platform.desc}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Badge variant="outline" className="text-xs font-mono">{platform.format}</Badge>
+                          <Badge variant="secondary" className="text-xs">{platform.idealS}s ideal</Badge>
+                        </div>
+                      </div>
+
+                      {caption && (
+                        <div className="relative rounded-lg bg-muted/60 px-3 py-2 pr-8 text-xs text-muted-foreground leading-relaxed">
+                          <p className="line-clamp-2">{caption}</p>
+                          <Button
+                            size="icon" variant="ghost"
+                            className="absolute top-1 right-1 h-6 w-6"
+                            onClick={() => { navigator.clipboard.writeText(caption); toast.success("Legenda copiada!"); }}>
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      )}
+
+                      {isActive && trimState?.resultUrl && (
+                        <div className="space-y-2">
+                          <video src={trimState.resultUrl} controls className="w-full rounded-lg" />
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" className="flex-1 gap-1.5"
+                              onClick={() => handleDownload(trimState.resultUrl!, `${platform.label}_corte`)}>
+                              <Download className="h-3.5 w-3.5" /> Baixar
+                            </Button>
+                            <Button size="sm" variant="outline" className="flex-1 gap-1.5"
+                              onClick={() => { navigator.clipboard.writeText(trimState.resultUrl!); toast.success("Link copiado!"); }}>
+                              <Share2 className="h-3.5 w-3.5" /> Copiar Link
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {!(isActive && trimState?.resultUrl) && (
+                        <Button
+                          size="sm" className="w-full gap-2"
+                          variant={isActive ? "secondary" : "outline"}
+                          disabled={isActive && !!trimState?.loading}
+                          onClick={() => handleTrim(platform)}>
+                          {isActive && trimState?.loading
+                            ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Cortando...</>
+                            : <><Scissors className="h-3.5 w-3.5" /> Gerar Corte para {platform.label}</>}
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       )}
 
       {!["processing", "done", "error"].includes(jobStatus.status) && (

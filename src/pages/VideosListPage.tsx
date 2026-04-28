@@ -2,7 +2,7 @@ import { useParams, Link } from "react-router-dom";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, Play, MessageCircle, Calendar, Lock } from "lucide-react";
+import { ArrowLeft, Play, MessageCircle, Calendar, Lock, Share2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 function hexToHSL(hex: string): string | null {
@@ -62,6 +62,7 @@ interface Video {
 
 function VideoCard({ video, whatsapp, slug, isDraft }: { video: Video; whatsapp?: string | null; slug?: string; isDraft?: boolean }) {
   const [playing, setPlaying] = useState(false);
+  const [copied, setCopied]   = useState(false);
 
   const thumbnail = video.thumbnail_url || getYoutubeThumbnail(video.embed_url);
 
@@ -69,6 +70,13 @@ function VideoCard({ video, whatsapp, slug, isDraft }: { video: Video; whatsapp?
     ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent("Olá! Vi um vídeo seu e gostaria de saber mais sobre o seu trabalho.")}`
     : `/${slug}#agendar`;
   const isWa = !!whatsapp;
+  const videoPageUrl = `${window.location.origin}/${slug}/video/${video.id}`;
+
+  const handleShare = () => {
+    navigator.clipboard.writeText(videoPageUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div className={`rounded-2xl overflow-hidden border bg-card transition-all duration-300 flex flex-col hover:shadow-lg hover:-translate-y-0.5`}>
@@ -124,22 +132,34 @@ function VideoCard({ video, whatsapp, slug, isDraft }: { video: Video; whatsapp?
             })}
           </div>
         )}
-        <h2 className="font-serif text-lg font-semibold text-foreground leading-snug mb-2 line-clamp-2">
-          {video.title}
-        </h2>
+        <Link to={`/${slug}/video/${video.id}`} className="hover:text-primary transition-colors">
+          <h2 className="font-serif text-lg font-semibold text-foreground leading-snug mb-2 line-clamp-2">
+            {video.title}
+          </h2>
+        </Link>
         {video.description && (
           <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed flex-1">
             {video.description}
           </p>
         )}
-        <Button asChild className="w-full gap-2 mt-4" size="sm" variant={isDraft ? "outline" : "default"}>
-          <a href={waLink} target={isWa ? "_blank" : undefined} rel={isWa ? "noopener noreferrer" : undefined}>
-            {isWa
-              ? <><MessageCircle className="h-4 w-4" /> Falar pelo WhatsApp</>
-              : <><Calendar className="h-4 w-4" /> Agendar uma conversa</>
-            }
-          </a>
-        </Button>
+        <div className="flex gap-2 mt-4">
+          <Button asChild className="flex-1 gap-2" size="sm" variant={isDraft ? "outline" : "default"}>
+            <a href={waLink} target={isWa ? "_blank" : undefined} rel={isWa ? "noopener noreferrer" : undefined}>
+              {isWa
+                ? <><MessageCircle className="h-4 w-4" /> WhatsApp</>
+                : <><Calendar className="h-4 w-4" /> Agendar</>
+              }
+            </a>
+          </Button>
+          {!isDraft && (
+            <Button size="sm" variant="outline" className="gap-1.5 shrink-0" onClick={handleShare}>
+              {copied
+                ? <><Check className="h-3.5 w-3.5 text-green-500" /> Copiado</>
+                : <><Share2 className="h-3.5 w-3.5" /> Compartilhar</>
+              }
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

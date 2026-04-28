@@ -261,14 +261,33 @@ export default function AdminArtigos() {
     setForm((prev) => ({ ...prev, carousel_items: items }));
   };
 
+  const deleteStorageFile = async (url: string) => {
+    try {
+      const withoutQuery = url.split("?")[0];
+      const match = withoutQuery.split("/object/public/images/")[1];
+      if (match) await supabase.storage.from("images").remove([decodeURIComponent(match)]);
+    } catch {}
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm("Excluir este artigo?")) return;
+    const article = articles.find((a: any) => a.id === id);
     const { error } = await supabase.from("articles").delete().eq("id", id);
-    if (error) toast.error("Erro ao excluir");
-    else {
-      toast.success("Artigo excluído");
-      queryClient.invalidateQueries({ queryKey: ["admin-articles"] });
+    if (error) { toast.error("Erro ao excluir"); return; }
+    // Deleta imagem de capa do storage se for do Supabase
+    if (article?.cover_image_url && article.cover_image_url.includes("supabase")) {
+      await deleteStorageFile(article.cover_image_url);
     }
+    // Deleta imagens do carrossel do storage
+    if (Array.isArray(article?.carousel_items)) {
+      for (const item of article.carousel_items) {
+        if (item?.image_url && item.image_url.includes("supabase")) {
+          await deleteStorageFile(item.image_url);
+        }
+      }
+    }
+    toast.success("Artigo excluído");
+    queryClient.invalidateQueries({ queryKey: ["admin-articles"] });
   };
 
   if (isLoading) return <div className="animate-pulse text-muted-foreground">Carregando...</div>;

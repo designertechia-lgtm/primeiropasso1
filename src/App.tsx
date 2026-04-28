@@ -12,6 +12,7 @@ import ProfessionalLanding from "./pages/ProfessionalLanding.tsx";
 import ArticlePage from "./pages/ArticlePage.tsx";
 import ArticlesListPage from "./pages/ArticlesListPage.tsx";
 import VideosListPage from "./pages/VideosListPage.tsx";
+import VideoPage from "./pages/VideoPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import DashboardLayout from "./components/dashboard/DashboardLayout.tsx";
 import PatientLayout from "./components/dashboard/PatientLayout.tsx";
@@ -26,8 +27,10 @@ import AdminAgendamentos from "./pages/admin/AdminAgendamentos.tsx";
 import AdminAgenda from "./pages/admin/AdminAgenda.tsx";
 import AdminDocumentos from "./pages/admin/AdminDocumentos.tsx";
 import AdminCriarVideo from "./pages/admin/AdminCriarVideo.tsx";
+import AdminCriarVideoPro from "./pages/admin/AdminCriarVideoPro.tsx";
 import AdminLandingPage from "./pages/admin/AdminLandingPage.tsx";
 import AdminRedesSociais from "./pages/admin/AdminRedesSociais.tsx";
+import AdminAvatares from "./pages/admin/AdminAvatares.tsx";
 
 import PatientBuscar from "./pages/paciente/PatientBuscar.tsx";
 import PatientAgendamentos from "./pages/paciente/PatientAgendamentos.tsx";
@@ -78,14 +81,17 @@ const App = () => (
             <Route path="/admin/agenda" element={<AdminRoute><AdminAgenda /></AdminRoute>} />
             <Route path="/admin/documentos" element={<AdminRoute><AdminDocumentos /></AdminRoute>} />
             <Route path="/admin/criar-video" element={<AdminRoute><AdminCriarVideo /></AdminRoute>} />
+            <Route path="/admin/criar-video-pro" element={<AdminRoute><AdminCriarVideoPro /></AdminRoute>} />
             <Route path="/admin/landing" element={<AdminRoute><AdminLandingPage /></AdminRoute>} />
             <Route path="/admin/redes-sociais" element={<AdminRoute><AdminRedesSociais /></AdminRoute>} />
+            <Route path="/admin/avatares" element={<AdminRoute><AdminAvatares /></AdminRoute>} />
             
             {/* Dynamic professional landing page - MUST be last before catch-all */}
             <Route path="/:slug" element={<ProfessionalLanding />} />
             <Route path="/:slug/artigos" element={<ArticlesListPage />} />
             <Route path="/:slug/artigo/:articleSlug" element={<ArticlePage />} />
             <Route path="/:slug/videos" element={<VideosListPage />} />
+            <Route path="/:slug/video/:videoId" element={<VideoPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

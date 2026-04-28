@@ -1,3 +1,4 @@
+Initialising login role...
 export type Json =
   | string
   | number
@@ -11,6 +12,31 @@ export type Database = {
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.5"
+  }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -92,6 +118,8 @@ export type Database = {
           content: string | null
           cover_image_url: string | null
           created_at: string
+          font_size: string | null
+          font_style: string | null
           id: string
           professional_id: string
           published: boolean
@@ -105,6 +133,8 @@ export type Database = {
           content?: string | null
           cover_image_url?: string | null
           created_at?: string
+          font_size?: string | null
+          font_style?: string | null
           id?: string
           professional_id: string
           published?: boolean
@@ -118,6 +148,8 @@ export type Database = {
           content?: string | null
           cover_image_url?: string | null
           created_at?: string
+          font_size?: string | null
+          font_style?: string | null
           id?: string
           professional_id?: string
           published?: boolean
@@ -434,6 +466,7 @@ export type Database = {
       professionals: {
         Row: {
           about_image_url: string | null
+          address: string | null
           approaches: string[] | null
           background_color: string | null
           bio: string | null
@@ -443,18 +476,33 @@ export type Database = {
           color_status_completed: string | null
           color_status_confirmed: string | null
           color_status_pending: string | null
+          contact_subtitle: string | null
+          contact_title: string | null
           created_at: string
           crp: string | null
           dark_background_color: string | null
           dark_mode: boolean | null
           dark_primary_color: string | null
           dark_secondary_color: string | null
+          email: string | null
+          font_family: string | null
+          font_size_scale: string | null
           full_name: string | null
+          hero_bg_opacity: number | null
+          hero_bg_overlay: string | null
+          hero_bg_url: string | null
           hero_image_url: string | null
           hero_subtitle: string | null
           hero_title: string | null
           id: string
+          instagram: string | null
+          linkedin: string | null
           logo_url: string | null
+          pain_items: Json | null
+          pain_subtitle: string | null
+          pain_title: string | null
+          phone: string | null
+          photo_fit: string
           photo_style: string
           photo_url: string | null
           price_first_session: number | null
@@ -463,12 +511,16 @@ export type Database = {
           primary_color: string | null
           secondary_color: string | null
           slug: string
+          solution_items: Json | null
+          solution_subtitle: string | null
+          solution_title: string | null
           updated_at: string
           user_id: string
           whatsapp: string | null
         }
         Insert: {
           about_image_url?: string | null
+          address?: string | null
           approaches?: string[] | null
           background_color?: string | null
           bio?: string | null
@@ -478,18 +530,33 @@ export type Database = {
           color_status_completed?: string | null
           color_status_confirmed?: string | null
           color_status_pending?: string | null
+          contact_subtitle?: string | null
+          contact_title?: string | null
           created_at?: string
           crp?: string | null
           dark_background_color?: string | null
           dark_mode?: boolean | null
           dark_primary_color?: string | null
           dark_secondary_color?: string | null
+          email?: string | null
+          font_family?: string | null
+          font_size_scale?: string | null
           full_name?: string | null
+          hero_bg_opacity?: number | null
+          hero_bg_overlay?: string | null
+          hero_bg_url?: string | null
           hero_image_url?: string | null
           hero_subtitle?: string | null
           hero_title?: string | null
           id?: string
+          instagram?: string | null
+          linkedin?: string | null
           logo_url?: string | null
+          pain_items?: Json | null
+          pain_subtitle?: string | null
+          pain_title?: string | null
+          phone?: string | null
+          photo_fit?: string
           photo_style?: string
           photo_url?: string | null
           price_first_session?: number | null
@@ -498,12 +565,16 @@ export type Database = {
           primary_color?: string | null
           secondary_color?: string | null
           slug: string
+          solution_items?: Json | null
+          solution_subtitle?: string | null
+          solution_title?: string | null
           updated_at?: string
           user_id: string
           whatsapp?: string | null
         }
         Update: {
           about_image_url?: string | null
+          address?: string | null
           approaches?: string[] | null
           background_color?: string | null
           bio?: string | null
@@ -513,18 +584,33 @@ export type Database = {
           color_status_completed?: string | null
           color_status_confirmed?: string | null
           color_status_pending?: string | null
+          contact_subtitle?: string | null
+          contact_title?: string | null
           created_at?: string
           crp?: string | null
           dark_background_color?: string | null
           dark_mode?: boolean | null
           dark_primary_color?: string | null
           dark_secondary_color?: string | null
+          email?: string | null
+          font_family?: string | null
+          font_size_scale?: string | null
           full_name?: string | null
+          hero_bg_opacity?: number | null
+          hero_bg_overlay?: string | null
+          hero_bg_url?: string | null
           hero_image_url?: string | null
           hero_subtitle?: string | null
           hero_title?: string | null
           id?: string
+          instagram?: string | null
+          linkedin?: string | null
           logo_url?: string | null
+          pain_items?: Json | null
+          pain_subtitle?: string | null
+          pain_title?: string | null
+          phone?: string | null
+          photo_fit?: string
           photo_style?: string
           photo_url?: string | null
           price_first_session?: number | null
@@ -533,6 +619,9 @@ export type Database = {
           primary_color?: string | null
           secondary_color?: string | null
           slug?: string
+          solution_items?: Json | null
+          solution_subtitle?: string | null
+          solution_title?: string | null
           updated_at?: string
           user_id?: string
           whatsapp?: string | null
@@ -596,9 +685,13 @@ export type Database = {
           professional_id: string
           published: boolean
           published_at: string | null
+          script_json: Json | null
           thumbnail_url: string | null
           title: string
+          trim_end: number | null
+          trim_start: number | null
           updated_at: string
+          video_format: string | null
         }
         Insert: {
           created_at?: string
@@ -608,9 +701,13 @@ export type Database = {
           professional_id: string
           published?: boolean
           published_at?: string | null
+          script_json?: Json | null
           thumbnail_url?: string | null
           title: string
+          trim_end?: number | null
+          trim_start?: number | null
           updated_at?: string
+          video_format?: string | null
         }
         Update: {
           created_at?: string
@@ -620,9 +717,13 @@ export type Database = {
           professional_id?: string
           published?: boolean
           published_at?: string | null
+          script_json?: Json | null
           thumbnail_url?: string | null
           title?: string
+          trim_end?: number | null
+          trim_start?: number | null
           updated_at?: string
+          video_format?: string | null
         }
         Relationships: [
           {
@@ -660,6 +761,17 @@ export type Database = {
           id: number
           rank: number
           score: number
+        }[]
+      }
+      match_documents_for_professional: {
+        Args: {
+          match_count?: number
+          p_professional_id: string
+          query_embedding: string
+        }
+        Returns: {
+          content: string
+          similarity: number
         }[]
       }
     }
@@ -792,6 +904,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       app_role: ["professional", "patient", "admin"],

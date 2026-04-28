@@ -65,53 +65,49 @@ function VideoCard({ video, isDraft }: { video: Video; isDraft?: boolean }) {
   const [playing, setPlaying] = useState(false);
 
   const thumbnail = video.thumbnail_url || getYoutubeThumbnail(video.embed_url);
-
-  if (!isDraft && playing) {
-    if (isSupabaseUrl(video.embed_url)) {
-      return (
-        <div className="aspect-video bg-black">
-          <video src={video.embed_url} controls autoPlay className="w-full h-full" />
-        </div>
-      );
-    }
-    return (
-      <div className="aspect-video">
-        <iframe
-          src={toEmbedUrl(video.embed_url)}
-          title={video.title}
-          className="w-full h-full"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-        />
-      </div>
-    );
-  }
+  const canPlay = !isDraft && playing;
 
   return (
     <div
-      className={`aspect-video relative bg-black group ${!isDraft ? "cursor-pointer" : "cursor-default"}`}
-      onClick={!isDraft ? () => setPlaying(true) : undefined}
+      className={`aspect-video relative bg-black overflow-hidden group ${!isDraft && !playing ? "cursor-pointer" : "cursor-default"}`}
+      onClick={!isDraft && !playing ? () => setPlaying(true) : undefined}
     >
-      {thumbnail ? (
-        <img
-          src={thumbnail}
-          alt={video.title}
-          className={`w-full h-full object-cover ${isDraft ? "grayscale" : ""}`}
-        />
+      {canPlay ? (
+        isSupabaseUrl(video.embed_url) ? (
+          <video src={video.embed_url} controls autoPlay className="absolute inset-0 w-full h-full" />
+        ) : (
+          <iframe
+            src={toEmbedUrl(video.embed_url)}
+            title={video.title}
+            className="absolute inset-0 w-full h-full"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        )
       ) : (
-        <div className="w-full h-full bg-gradient-to-br from-primary/30 to-accent/30" />
-      )}
-      {!isDraft && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
-          <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-            <Play className="h-6 w-6 text-primary fill-primary ml-1" />
-          </div>
-        </div>
-      )}
-      {isDraft && (
-        <div className="absolute top-3 left-3 flex items-center gap-1 bg-black/60 text-white text-[10px] font-semibold px-2 py-1 rounded-full backdrop-blur-sm">
-          <Lock className="h-2.5 w-2.5" /> Rascunho
-        </div>
+        <>
+          {thumbnail ? (
+            <img
+              src={thumbnail}
+              alt={video.title}
+              className={`w-full h-full object-cover ${isDraft ? "grayscale" : ""}`}
+            />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-br from-primary/30 to-accent/30" />
+          )}
+          {!isDraft && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
+              <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                <Play className="h-6 w-6 text-primary fill-primary ml-1" />
+              </div>
+            </div>
+          )}
+          {isDraft && (
+            <div className="absolute top-3 left-3 flex items-center gap-1 bg-black/60 text-white text-[10px] font-semibold px-2 py-1 rounded-full backdrop-blur-sm">
+              <Lock className="h-2.5 w-2.5" /> Rascunho
+            </div>
+          )}
+        </>
       )}
     </div>
   );

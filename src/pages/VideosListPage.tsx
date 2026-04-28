@@ -84,12 +84,12 @@ function VideoCard({ video, whatsapp, slug, isDraft }: { video: Video; whatsapp?
       <div className="aspect-video relative group bg-black overflow-hidden">
         {playing ? (
           isSupabaseUrl(video.embed_url) ? (
-            <video src={video.embed_url} controls autoPlay className="w-full h-full" />
+            <video src={video.embed_url} controls autoPlay className="absolute inset-0 w-full h-full" />
           ) : (
             <iframe
               src={toEmbedUrl(video.embed_url)}
               title={video.title}
-              className="w-full h-full"
+              className="absolute inset-0 w-full h-full"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
             />

@@ -52,13 +52,15 @@ function VideoPlayer({ url, title }: { url: string; title: string }) {
   }
 
   return (
-    <video
-      src={url}
-      controls
-      autoPlay
-      preload="none"
-      className="w-full rounded-lg max-h-[70vh] bg-black"
-    />
+    <div className="flex justify-center bg-black rounded-lg overflow-hidden">
+      <video
+        src={url}
+        controls
+        autoPlay
+        preload="none"
+        className="max-h-[70vh] max-w-full w-auto block"
+      />
+    </div>
   );
 }
 
@@ -491,9 +493,9 @@ export default function AdminVideos() {
 
       {/* Player modal — carrega vídeo só ao abrir */}
       <Dialog open={!!playerVideo} onOpenChange={(o) => !o && setPlayerVideo(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="truncate pr-6">{playerVideo?.title}</DialogTitle>
+        <DialogContent className="max-w-2xl overflow-hidden">
+          <DialogHeader className="min-w-0">
+            <DialogTitle className="truncate pr-6 min-w-0">{playerVideo?.title}</DialogTitle>
           </DialogHeader>
           {playerVideo && (
             <VideoPlayer url={playerVideo.embed_url} title={playerVideo.title} />

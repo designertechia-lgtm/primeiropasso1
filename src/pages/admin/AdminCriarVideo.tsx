@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type ComponentType } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useProfessional } from "@/hooks/useProfessional";
 import PublishPanel from "@/components/dashboard/PublishPanel";
@@ -18,7 +18,16 @@ import {
   Zap, Crown, Star, Minus, Triangle,
   Heart, BookOpenCheck, Flame, TrendingUp,
   Copy, Scissors, Download, Share2,
+  Instagram, Youtube, Linkedin, Facebook,
 } from "lucide-react";
+
+function TikTokIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.32 6.32 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.16 8.16 0 0 0 4.77 1.52V6.77a4.85 4.85 0 0 1-1-.08z"/>
+    </svg>
+  );
+}
 
 const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
 const STORAGE_KEY = "pp-criar-video";
@@ -80,17 +89,29 @@ type JobStatus = {
   elapsed_seconds?: number;
 };
 
-const PLATFORMS = [
-  { id: "tiktok",         label: "TikTok",          icon: "🎵", format: "9:16", maxS: 60,   idealS: 30,  desc: "Vertical curto · até 60s" },
-  { id: "reels",          label: "Instagram Reels",  icon: "📸", format: "9:16", maxS: 90,   idealS: 30,  desc: "Vertical · até 90s" },
-  { id: "shorts",         label: "YouTube Shorts",   icon: "▶️", format: "9:16", maxS: 60,   idealS: 45,  desc: "Vertical curto · até 60s" },
-  { id: "feed_instagram", label: "Feed Instagram",   icon: "🟥", format: "1:1",  maxS: 60,   idealS: 30,  desc: "Quadrado · até 60s" },
-  { id: "linkedin",       label: "LinkedIn",         icon: "💼", format: "1:1",  maxS: 600,  idealS: 60,  desc: "Quadrado · 1-2min profissional" },
-  { id: "facebook",       label: "Facebook",         icon: "👥", format: "9:16", maxS: 240,  idealS: 60,  desc: "Vertical · até 4min" },
-  { id: "youtube",        label: "YouTube",          icon: "🎬", format: "16:9", maxS: null, idealS: 120, desc: "Paisagem · sem limite" },
-] as const;
-type PlatformId = typeof PLATFORMS[number]["id"];
-type TrimState  = { platformId: PlatformId; loading: boolean; resultUrl: string | null };
+type PlatformId = "tiktok" | "reels" | "stories_instagram" | "shorts" | "feed_instagram" | "linkedin" | "facebook" | "youtube";
+
+const PLATFORMS: readonly {
+  id: PlatformId;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+  color: string;
+  format: string;
+  maxS: number | null;
+  idealS: number;
+  desc: string;
+}[] = [
+  { id: "tiktok",            label: "TikTok",             icon: TikTokIcon, color: "text-gray-900 dark:text-white", format: "9:16", maxS: 60,   idealS: 30,  desc: "Vertical curto · até 60s"     },
+  { id: "reels",             label: "Instagram Reels",    icon: Instagram,  color: "text-pink-500",                 format: "9:16", maxS: 90,   idealS: 30,  desc: "Vertical · até 90s"           },
+  { id: "stories_instagram", label: "Instagram Stories",  icon: Instagram,  color: "text-pink-500",                 format: "9:16", maxS: 60,   idealS: 15,  desc: "Vertical · 15s · efêmero"     },
+  { id: "shorts",            label: "YouTube Shorts",     icon: Youtube,    color: "text-red-500",                  format: "9:16", maxS: 60,   idealS: 45,  desc: "Vertical curto · até 60s"     },
+  { id: "feed_instagram",    label: "Feed Instagram",     icon: Instagram,  color: "text-pink-500",                 format: "1:1",  maxS: 60,   idealS: 30,  desc: "Quadrado · até 60s"           },
+  { id: "linkedin",          label: "LinkedIn",           icon: Linkedin,   color: "text-blue-600",                 format: "1:1",  maxS: 600,  idealS: 60,  desc: "Quadrado · 1-2min profissional"},
+  { id: "facebook",          label: "Facebook",           icon: Facebook,   color: "text-blue-700",                 format: "9:16", maxS: 240,  idealS: 60,  desc: "Vertical · até 4min"          },
+  { id: "youtube",           label: "YouTube",            icon: Youtube,    color: "text-red-500",                  format: "16:9", maxS: null, idealS: 120, desc: "Paisagem · sem limite"         },
+];
+
+type TrimState = { platformId: PlatformId; loading: boolean; resultUrl: string | null };
 
 // ── Gravador reutilizável ────────────────────────────────────
 function VoiceRecorder({
@@ -1389,18 +1410,20 @@ export default function AdminCriarVideo() {
               {PLATFORMS.map((platform) => {
                 const isActive = trimState?.platformId === platform.id;
                 const captionMap: Record<string, string | undefined> = {
-                  reels:          script?.descricao_instagram,
-                  feed_instagram: script?.descricao_instagram,
-                  linkedin:       script?.descricao_linkedin,
-                  tiktok:         script?.legenda_tiktok,
+                  reels:              script?.descricao_instagram,
+                  feed_instagram:     script?.descricao_instagram,
+                  stories_instagram:  script?.descricao_instagram,
+                  linkedin:           script?.descricao_linkedin,
+                  tiktok:             script?.legenda_tiktok,
                 };
                 const caption = captionMap[platform.id] || script?.descricao_post;
+                const Icon = platform.icon;
                 return (
                   <Card key={platform.id} className={isActive ? "border-primary/50 bg-primary/5" : ""}>
                     <CardContent className="p-4 space-y-3">
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
-                          <span className="text-2xl leading-none">{platform.icon}</span>
+                          <Icon className={`h-6 w-6 shrink-0 ${platform.color}`} />
                           <div>
                             <p className="font-medium text-sm">{platform.label}</p>
                             <p className="text-xs text-muted-foreground">{platform.desc}</p>

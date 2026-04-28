@@ -235,7 +235,7 @@ export default function AdminCriarVideo() {
   const [draftId, setDraftId]       = useState<string | null>(saved?.draftId ?? null);
   const [draftSaved, setDraftSaved] = useState<"idle" | "saving" | "saved">("idle");
   const [showPublish, setShowPublish] = useState(false);
-  const [publishTrimData, setPublishTrimData] = useState<{ postType: "reels" | "feed"; videoUrl: string; description: string } | null>(null);
+  const [publishTrimData, setPublishTrimData] = useState<{ postType: "reels" | "feed"; videoUrl: string; description: string; videoId: string } | null>(null);
   const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null);
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1475,6 +1475,7 @@ export default function AdminCriarVideo() {
                                 postType: platform.id === "feed_instagram" ? "feed" : "reels",
                                 videoUrl: trimState.resultUrl!,
                                 description: caption ?? `${script?.titulo ?? jobStatus.titulo ?? ""}`,
+                                videoId: jobStatus.video_id ?? "",
                               })}>
                               <Instagram className="h-3.5 w-3.5" />
                               {platform.id === "feed_instagram" ? "Publicar no Feed" : platform.id === "stories_instagram" ? "Publicar no Stories" : "Publicar no Reels"}
@@ -1504,9 +1505,9 @@ export default function AdminCriarVideo() {
       )}
 
       {/* PublishPanel para vídeo cortado */}
-      {publishTrimData && jobStatus.video_id && (
+      {publishTrimData && (
         <PublishPanel
-          videoId={jobStatus.video_id}
+          videoId={publishTrimData.videoId}
           videoTitle={jobStatus.titulo ?? script?.titulo ?? ""}
           videoDescription={publishTrimData.description}
           videoUrl={publishTrimData.videoUrl}

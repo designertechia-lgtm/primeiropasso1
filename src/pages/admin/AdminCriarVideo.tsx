@@ -236,9 +236,16 @@ export default function AdminCriarVideo() {
   const [draftSaved, setDraftSaved] = useState<"idle" | "saving" | "saved">("idle");
   const [showPublish, setShowPublish] = useState(false);
   const [publishTrimData, setPublishTrimData] = useState<{ postType: "reels" | "feed"; videoUrl: string; description: string; videoId: string } | null>(null);
-  const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null);
-  const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollRef         = useRef<ReturnType<typeof setInterval> | null>(null);
+  const elapsedRef      = useRef<ReturnType<typeof setInterval> | null>(null);
+  const draftTimer      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const publishTrimRef  = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (publishTrimData) {
+      setTimeout(() => publishTrimRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+    }
+  }, [publishTrimData]);
 
   // Salva estado no localStorage sempre que mudar.
   // "loading" é transitório — nunca persiste para não travar o botão no próximo acesso.
@@ -1394,7 +1401,7 @@ export default function AdminCriarVideo() {
             </CardContent>
           </Card>
 
-          {/* Publicar no Instagram */}
+          {/* Publicar no Instagram — vídeo principal */}
           {showPublish && jobStatus.video_id && (
             <PublishPanel
               videoId={jobStatus.video_id}
@@ -1403,6 +1410,20 @@ export default function AdminCriarVideo() {
               videoUrl={jobStatus.video_url ?? null}
               onDismiss={() => setShowPublish(false)}
             />
+          )}
+
+          {/* Publicar no Instagram — vídeo cortado */}
+          {publishTrimData && (
+            <div ref={publishTrimRef}>
+              <PublishPanel
+                videoId={publishTrimData.videoId}
+                videoTitle={jobStatus.titulo ?? script?.titulo ?? ""}
+                videoDescription={publishTrimData.description}
+                videoUrl={publishTrimData.videoUrl}
+                defaultPostType={publishTrimData.postType}
+                onDismiss={() => setPublishTrimData(null)}
+              />
+            </div>
           )}
 
           {/* Distribuição por plataformas */}
@@ -1504,17 +1525,6 @@ export default function AdminCriarVideo() {
         </div>
       )}
 
-      {/* PublishPanel para vídeo cortado */}
-      {publishTrimData && (
-        <PublishPanel
-          videoId={publishTrimData.videoId}
-          videoTitle={jobStatus.titulo ?? script?.titulo ?? ""}
-          videoDescription={publishTrimData.description}
-          videoUrl={publishTrimData.videoUrl}
-          defaultPostType={publishTrimData.postType}
-          onDismiss={() => setPublishTrimData(null)}
-        />
-      )}
 
       {!["processing", "done", "error"].includes(jobStatus.status) && (
         <Card>

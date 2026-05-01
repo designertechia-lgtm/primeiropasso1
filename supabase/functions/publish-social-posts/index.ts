@@ -34,7 +34,7 @@ async function publishInstagramReel(
 ): Promise<void> {
   // 1. Criar container Reels
   const createRes = await fetch(
-    `https://graph.instagram.com/v21.0/${igUserId}/media`,
+    `https://graph.instagram.com/v21.0/me/media`,
     {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -73,7 +73,95 @@ async function publishInstagramReel(
 
   // 3. Publicar
   const publishRes = await fetch(
-    `https://graph.instagram.com/v21.0/${igUserId}/media_publish`,
+    `https://graph.instagram.com/v21.0/me/media_publish`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        creation_id:  creationId,
+        access_token: accessToken,
+      }),
+    }
+  );
+  const publishData = await publishRes.json();
+  if (!publishData.id) {
+    throw new Error(publishData.error?.message ?? `Publish failed: ${JSON.stringify(publishData)}`);
+  }
+}
+
+async function publishInstagramCarousel(
+  igUserId: string,
+  accessToken: string,
+  imageUrls: string[],
+  caption: string,
+): Promise<void> {
+  if (imageUrls.length < 2 || imageUrls.length > 10) {
+    throw new Error(`Carrossel precisa de 2 a 10 imagens (recebido: ${imageUrls.length})`);
+  }
+
+  // 1. Criar container filho (IS_CAROUSEL_ITEM) para cada imagem
+  const childIds: string[] = [];
+  for (const imageUrl of imageUrls) {
+    const childRes = await fetch(
+      `https://graph.instagram.com/v21.0/me/media`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          image_url:         imageUrl,
+          is_carousel_item:  "true",
+          access_token:      accessToken,
+        }),
+      }
+    );
+    const childData = await childRes.json();
+    if (!childData.id) {
+      throw new Error(childData.error?.message ?? `Falha ao criar slide do carrossel: ${JSON.stringify(childData)}`);
+    }
+    childIds.push(childData.id as string);
+  }
+
+  // 2. Aguardar todos os filhos ficarem prontos (até 60s)
+  for (let i = 0; i < 12; i++) {
+    await new Promise((r) => setTimeout(r, 5000));
+    let allReady = true;
+    for (const childId of childIds) {
+      const statusRes = await fetch(
+        `https://graph.instagram.com/v21.0/${childId}?fields=status_code&access_token=${accessToken}`
+      );
+      const statusData = await statusRes.json();
+      const code = statusData.status_code ?? "FINISHED";
+      if (code === "ERROR" || code === "EXPIRED") {
+        throw new Error(`Slide falhou: ${code}`);
+      }
+      if (code !== "FINISHED") { allReady = false; break; }
+    }
+    if (allReady) break;
+  }
+
+  // 3. Criar container do carrossel pai
+  const parentRes = await fetch(
+    `https://graph.instagram.com/v21.0/me/media`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        media_type:   "CAROUSEL",
+        children:     childIds.join(","),
+        caption:      caption,
+        access_token: accessToken,
+      }),
+    }
+  );
+  const parentData = await parentRes.json();
+  if (!parentData.id) {
+    throw new Error(parentData.error?.message ?? `Falha ao criar carrossel: ${JSON.stringify(parentData)}`);
+  }
+  const creationId = parentData.id as string;
+
+  // 4. Publicar
+  const publishRes = await fetch(
+    `https://graph.instagram.com/v21.0/me/media_publish`,
     {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -97,7 +185,7 @@ async function publishInstagramImage(
 ): Promise<void> {
   // 1. Criar container IMAGE
   const createRes = await fetch(
-    `https://graph.instagram.com/v21.0/${igUserId}/media`,
+    `https://graph.instagram.com/v21.0/me/media`,
     {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -131,7 +219,7 @@ async function publishInstagramImage(
 
   // 3. Publicar
   const publishRes = await fetch(
-    `https://graph.instagram.com/v21.0/${igUserId}/media_publish`,
+    `https://graph.instagram.com/v21.0/me/media_publish`,
     {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -152,9 +240,10 @@ Deno.serve(async (req) => {
 
   try {
     // 1. Buscar posts pendentes com scheduled_at <= agora
+    // LEFT JOIN em videos (carousel/feed posts podem não ter video_id)
     const now = new Date().toISOString();
     const postsRes = await db(
-      `social_posts?status=eq.pending&scheduled_at=lte.${now}&select=*,videos!inner(id,title,embed_url)`
+      `social_posts?status=eq.pending&scheduled_at=lte.${now}&select=*,videos(id,title,embed_url),articles(id,title)`
     );
     const posts = await postsRes.json();
 
@@ -191,7 +280,20 @@ Deno.serve(async (req) => {
 
       try {
         if (post.platform === "instagram") {
-          if (postType === "feed") {
+          if (postType === "carousel") {
+            const urls: string[] = Array.isArray(post.carousel_image_urls) ? post.carousel_image_urls : [];
+            if (urls.length < 2) {
+              await updatePost(post.id, "failed", "Carrossel precisa de pelo menos 2 imagens.");
+              results.push({ id: post.id, status: "failed", error: "Sem imagens" });
+              continue;
+            }
+            await publishInstagramCarousel(
+              account.account_id,
+              account.access_token,
+              urls.slice(0, 10),
+              post.description ?? post.articles?.title ?? "",
+            );
+          } else if (postType === "feed") {
             const imageUrl: string = post.image_url ?? "";
             if (!imageUrl) {
               await updatePost(post.id, "failed", "URL da imagem não encontrada para post de Feed.");

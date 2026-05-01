@@ -14,10 +14,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { toast } from "sonner";
 import {
   Plus, Pencil, Trash2, Upload, Film, CheckCircle2, X,
-  Scissors, Wand2, Image, Loader2, PlayCircle, Share2, Download, Copy,
+  Scissors, Wand2, Image, Loader2, PlayCircle, Share2, Download, Copy, Instagram,
 } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
+import PublishPanel from "@/components/dashboard/PublishPanel";
 
 const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
 
@@ -206,6 +207,7 @@ export default function AdminVideos() {
   const [editPanelVideo, setEditPanelVideo] = useState<any>(null);
   const [playerVideo, setPlayerVideo] = useState<any>(null);
   const [shareVideo, setShareVideo]   = useState<any>(null);
+  const [publishVideo, setPublishVideo] = useState<any>(null);
   const [form, setForm]               = useState<VideoForm>(emptyForm);
   const [saving, setSaving]           = useState(false);
   const [uploadingVideo, setUploadingVideo] = useState(false);
@@ -396,98 +398,123 @@ export default function AdminVideos() {
         </p>
       ) : (
         <div className="grid gap-4">
-          {videos.map((v) => (
-            <Card key={v.id}>
-              <CardContent className="p-4 flex gap-4 items-start">
-                {/* Thumbnail com play overlay */}
-                <button
-                  className="shrink-0 relative group rounded-lg overflow-hidden w-20 h-20"
-                  onClick={() => setPlayerVideo(v)}
-                  title="Assistir vídeo"
-                >
-                  {(v as any).thumbnail_url ? (
-                    <img src={(v as any).thumbnail_url} alt=""
-                      className="w-20 h-20 object-cover transition-opacity group-hover:opacity-70" />
-                  ) : (
-                    <div className="w-20 h-20 bg-muted flex items-center justify-center">
-                      <Film className="h-7 w-7 text-muted-foreground" />
-                    </div>
-                  )}
-                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <PlayCircle className="h-9 w-9 text-white drop-shadow-lg" />
-                  </div>
-                </button>
-
-                {/* Info */}
-                <div className="flex-1 min-w-0 space-y-1">
-                  <p className="font-semibold truncate">{v.title}</p>
-                  <span className={`inline-block text-xs px-2 py-0.5 rounded-full ${v.published ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
-                    {v.published ? "Publicado" : "Rascunho"}
-                  </span>
-                  {(v as any).script_json && (
-                    <p className="text-xs text-muted-foreground">Roteiro salvo ✓</p>
-                  )}
-                </div>
-
-                {/* Ações */}
-                <div className="flex flex-col gap-1.5 shrink-0">
-                  {/* Reeditar com IA */}
-                  {(v as any).script_json && (
-                    <Button size="sm" variant="outline"
-                      className="gap-1.5 text-xs"
-                      onClick={() => navigate(`/admin/criar-video?edit=${v.id}`)}>
-                      <Wand2 className="h-3.5 w-3.5" /> Reeditar
-                    </Button>
-                  )}
-
-                  {/* Editar (trim + thumbnail) */}
-                  <Dialog open={editPanelVideo?.id === v.id}
-                    onOpenChange={(o) => !o && setEditPanelVideo(null)}>
-                    <DialogTrigger asChild>
-                      <Button size="sm" variant="outline"
-                        className="gap-1.5 text-xs"
-                        onClick={() => setEditPanelVideo(v)}>
-                        <Scissors className="h-3.5 w-3.5" /> Editar
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-lg">
-                      <DialogHeader>
-                        <DialogTitle>Editar — {v.title}</DialogTitle>
-                      </DialogHeader>
-                      {editPanelVideo?.id === v.id && professional?.slug && (
-                        <EditPanel
-                          video={v as any}
-                          professionalSlug={professional.slug}
-                          onClose={() => setEditPanelVideo(null)}
-                        />
+          {videos.map((v) => {
+            const isYoutube = /youtube|youtu\.be/i.test((v as any).embed_url ?? "");
+            const canPublishToIG = !isYoutube && !!(v as any).embed_url;
+            return (
+              <div key={v.id} className="space-y-3">
+                <Card>
+                  <CardContent className="p-4 flex gap-4 items-start">
+                    {/* Thumbnail com play overlay */}
+                    <button
+                      className="shrink-0 relative group rounded-lg overflow-hidden w-20 h-20"
+                      onClick={() => setPlayerVideo(v)}
+                      title="Assistir vídeo"
+                    >
+                      {(v as any).thumbnail_url ? (
+                        <img src={(v as any).thumbnail_url} alt=""
+                          className="w-20 h-20 object-cover transition-opacity group-hover:opacity-70" />
+                      ) : (
+                        <div className="w-20 h-20 bg-muted flex items-center justify-center">
+                          <Film className="h-7 w-7 text-muted-foreground" />
+                        </div>
                       )}
-                    </DialogContent>
-                  </Dialog>
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <PlayCircle className="h-9 w-9 text-white drop-shadow-lg" />
+                      </div>
+                    </button>
 
-                  {/* Metadados */}
-                  <Button size="sm" variant="ghost"
-                    className="gap-1.5 text-xs text-muted-foreground"
-                    onClick={() => openEdit(v)}>
-                    <Pencil className="h-3.5 w-3.5" /> Detalhes
-                  </Button>
+                    {/* Info */}
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <p className="font-semibold truncate">{v.title}</p>
+                      <span className={`inline-block text-xs px-2 py-0.5 rounded-full ${v.published ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+                        {v.published ? "Publicado" : "Rascunho"}
+                      </span>
+                      {(v as any).script_json && (
+                        <p className="text-xs text-muted-foreground">Roteiro salvo ✓</p>
+                      )}
+                    </div>
 
-                  {/* Compartilhar */}
-                  <Button size="sm" variant="ghost"
-                    className="gap-1.5 text-xs text-muted-foreground"
-                    onClick={() => setShareVideo(v)}>
-                    <Share2 className="h-3.5 w-3.5" /> Compartilhar
-                  </Button>
+                    {/* Ações */}
+                    <div className="flex flex-col gap-1.5 shrink-0">
+                      {/* Reeditar com IA */}
+                      {(v as any).script_json && (
+                        <Button size="sm" variant="outline"
+                          className="gap-1.5 text-xs"
+                          onClick={() => navigate(`/admin/criar-video?edit=${v.id}`)}>
+                          <Wand2 className="h-3.5 w-3.5" /> Reeditar
+                        </Button>
+                      )}
 
-                  {/* Excluir */}
-                  <Button size="sm" variant="ghost"
-                    className="gap-1.5 text-xs text-destructive hover:text-destructive"
-                    onClick={() => handleDelete(v.id)}>
-                    <Trash2 className="h-3.5 w-3.5" /> Excluir
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                      {/* Publicar no Instagram (só para vídeos do Storage) */}
+                      {canPublishToIG && (
+                        <Button size="sm"
+                          className="gap-1.5 text-xs bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white border-0"
+                          onClick={() => setPublishVideo(v)}>
+                          <Instagram className="h-3.5 w-3.5" /> Publicar
+                        </Button>
+                      )}
+
+                      {/* Editar (trim + thumbnail) */}
+                      <Dialog open={editPanelVideo?.id === v.id}
+                        onOpenChange={(o) => !o && setEditPanelVideo(null)}>
+                        <DialogTrigger asChild>
+                          <Button size="sm" variant="outline"
+                            className="gap-1.5 text-xs"
+                            onClick={() => setEditPanelVideo(v)}>
+                            <Scissors className="h-3.5 w-3.5" /> Editar
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-lg">
+                          <DialogHeader>
+                            <DialogTitle>Editar — {v.title}</DialogTitle>
+                          </DialogHeader>
+                          {editPanelVideo?.id === v.id && professional?.slug && (
+                            <EditPanel
+                              video={v as any}
+                              professionalSlug={professional.slug}
+                              onClose={() => setEditPanelVideo(null)}
+                            />
+                          )}
+                        </DialogContent>
+                      </Dialog>
+
+                      {/* Metadados */}
+                      <Button size="sm" variant="ghost"
+                        className="gap-1.5 text-xs text-muted-foreground"
+                        onClick={() => openEdit(v)}>
+                        <Pencil className="h-3.5 w-3.5" /> Detalhes
+                      </Button>
+
+                      {/* Compartilhar */}
+                      <Button size="sm" variant="ghost"
+                        className="gap-1.5 text-xs text-muted-foreground"
+                        onClick={() => setShareVideo(v)}>
+                        <Share2 className="h-3.5 w-3.5" /> Compartilhar
+                      </Button>
+
+                      {/* Excluir */}
+                      <Button size="sm" variant="ghost"
+                        className="gap-1.5 text-xs text-destructive hover:text-destructive"
+                        onClick={() => handleDelete(v.id)}>
+                        <Trash2 className="h-3.5 w-3.5" /> Excluir
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {publishVideo?.id === v.id && (
+                  <PublishPanel
+                    videoId={v.id}
+                    videoTitle={v.title}
+                    videoDescription={v.description}
+                    videoUrl={(v as any).embed_url}
+                    onDismiss={() => setPublishVideo(null)}
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

@@ -1,1 +1,7 @@
 project_id = "lpqkkbtadnqkbathdvzb"
+
+[functions.oauth-meta-callback]
+verify_jwt = false
+
+[functions.oauth-linkedin-callback]
+verify_jwt = false

@@ -11,9 +11,10 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Sparkles, X, ExternalLink, Eye, Type, MessageCircle, Lightbulb, Share2, Copy } from "lucide-react";
+import { Plus, Pencil, Trash2, Sparkles, X, ExternalLink, Eye, Type, MessageCircle, Lightbulb, Share2, Copy, Instagram } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
+import PublishArticleCarousel from "@/components/dashboard/PublishArticleCarousel";
 
 const FONT_SIZES = [
   { value: "sm", label: "Pequeno", class: "text-2xl md:text-3xl",  preview: "Aa" },
@@ -116,6 +117,7 @@ export default function AdminArtigos() {
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [shareArticle, setShareArticle] = useState<any>(null);
+  const [publishArticle, setPublishArticle] = useState<any>(null);
 
   const { data: articles = [], isLoading } = useQuery({
     queryKey: ["admin-articles", professional?.id],
@@ -585,55 +587,78 @@ export default function AdminArtigos() {
         </p>
       ) : (
         <div className="grid gap-4">
-          {articles.map((a: any) => (
-            <Card key={a.id}>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <div className="flex items-center gap-4">
-                  {a.cover_image_url && (
-                    <img src={a.cover_image_url} alt="" className="h-12 w-12 object-cover rounded" />
-                  )}
-                  <div>
-                    <CardTitle className="text-lg">{a.title}</CardTitle>
-                    <p className="text-xs text-muted-foreground">
-                      {Array.isArray(a.carousel_items) ? `${a.carousel_items.length} slides` : "Sem carrossel"}
-                      {a.font_style && (
-                        <span className="ml-2 text-muted-foreground/60">
-                          · {FONT_STYLES.find((f) => f.value === a.font_style)?.label ?? a.font_style}
-                        </span>
+          {articles.map((a: any) => {
+            const slidesCount = Array.isArray(a.carousel_items) ? a.carousel_items.length : 0;
+            const canPublishCarousel = slidesCount >= 1; // 1+ slides já vira carrossel (capa+slides+contato)
+            return (
+              <div key={a.id} className="space-y-3">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <div className="flex items-center gap-4">
+                      {a.cover_image_url && (
+                        <img src={a.cover_image_url} alt="" className="h-12 w-12 object-cover rounded" />
                       )}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  {a.published && professional?.slug && (
-                    <Button variant="ghost" size="icon" asChild title="Visualizar artigo">
-                      <a href={`/${professional.slug}/artigo/${a.slug}`} target="_blank" rel="noreferrer">
-                        <Eye className="h-4 w-4 text-primary" />
-                      </a>
-                    </Button>
-                  )}
-                  <Button variant="ghost" size="icon" title="Compartilhar" onClick={() => setShareArticle(a)}>
-                    <Share2 className="h-4 w-4 text-muted-foreground" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => openEdit(a)}>
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => handleDelete(a.id)}>
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <span
-                  className={`text-xs px-2 py-1 rounded-full ${
-                    a.published ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {a.published ? "Publicado" : "Rascunho"}
-                </span>
-              </CardContent>
-            </Card>
-          ))}
+                      <div>
+                        <CardTitle className="text-lg">{a.title}</CardTitle>
+                        <p className="text-xs text-muted-foreground">
+                          {Array.isArray(a.carousel_items) ? `${a.carousel_items.length} slides` : "Sem carrossel"}
+                          {a.font_style && (
+                            <span className="ml-2 text-muted-foreground/60">
+                              · {FONT_STYLES.find((f) => f.value === a.font_style)?.label ?? a.font_style}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      {a.published && professional?.slug && (
+                        <Button variant="ghost" size="icon" asChild title="Visualizar artigo">
+                          <a href={`/${professional.slug}/artigo/${a.slug}`} target="_blank" rel="noreferrer">
+                            <Eye className="h-4 w-4 text-primary" />
+                          </a>
+                        </Button>
+                      )}
+                      {canPublishCarousel && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Publicar carrossel no Instagram"
+                          onClick={() => setPublishArticle(a)}
+                        >
+                          <Instagram className="h-4 w-4 text-pink-500" />
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="icon" title="Compartilhar" onClick={() => setShareArticle(a)}>
+                        <Share2 className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(a)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDelete(a.id)}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <span
+                      className={`text-xs px-2 py-1 rounded-full ${
+                        a.published ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {a.published ? "Publicado" : "Rascunho"}
+                    </span>
+                  </CardContent>
+                </Card>
+
+                {publishArticle?.id === a.id && (
+                  <PublishArticleCarousel
+                    article={a}
+                    onDismiss={() => setPublishArticle(null)}
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

@@ -70,12 +70,12 @@ Deno.serve(async (req) => {
         code,
       }),
     });
-    const tokenData = await tokenRes.json();
+    // Parse user_id como string preservando precisão (números grandes perdem dígitos no JSON.parse padrão)
+    const tokenText = await tokenRes.text();
+    const tokenData = JSON.parse(tokenText);
     if (!tokenData.access_token) {
       throw new Error(tokenData.error_message ?? tokenData.error?.message ?? "Token não obtido");
     }
-
-    const igUserId = tokenData.user_id as string;
 
     // 2. Trocar por long-lived token (60 dias)
     const longRes = await fetch(
@@ -88,11 +88,14 @@ Deno.serve(async (req) => {
     const longToken = longData.access_token ?? tokenData.access_token;
     const expiresIn = longData.expires_in as number | undefined;
 
-    // 3. Buscar username do Instagram
+    // 3. Buscar dados via /me (evita problema de precisão numérica do user_id)
     const igRes  = await fetch(
-      `https://graph.instagram.com/v21.0/${igUserId}?fields=username,name&access_token=${longToken}`
+      `https://graph.instagram.com/v21.0/me?fields=user_id,username,name&access_token=${longToken}`
     );
-    const igData = await igRes.json();
+    const igText = await igRes.text();
+    const igMatch = igText.match(/"id"\s*:\s*"?(\d+)"?/);
+    const igUserId = igMatch ? igMatch[1] : "";
+    const igData = JSON.parse(igText);
     const accountName = igData.username ? `@${igData.username}` : (igData.name ?? "Instagram");
 
     const expires_at = expiresIn

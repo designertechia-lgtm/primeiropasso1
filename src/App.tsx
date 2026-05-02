@@ -31,6 +31,7 @@ import AdminCriarVideoPro from "./pages/admin/AdminCriarVideoPro.tsx";
 import AdminLandingPage from "./pages/admin/AdminLandingPage.tsx";
 import AdminRedesSociais from "./pages/admin/AdminRedesSociais.tsx";
 import AdminAvatares from "./pages/admin/AdminAvatares.tsx";
+import AdminClientes from "./pages/admin/AdminClientes.tsx";
 
 import PatientBuscar from "./pages/paciente/PatientBuscar.tsx";
 import PatientAgendamentos from "./pages/paciente/PatientAgendamentos.tsx";
@@ -75,6 +76,7 @@ const App = () => (
             <Route path="/admin/artigos" element={<AdminRoute><AdminArtigos /></AdminRoute>} />
             <Route path="/admin/videos" element={<AdminRoute><AdminVideos /></AdminRoute>} />
             <Route path="/admin/leads" element={<AdminRoute><AdminLeads /></AdminRoute>} />
+            <Route path="/admin/clientes" element={<AdminRoute><AdminClientes /></AdminRoute>} />
             <Route path="/admin/configuracoes" element={<AdminRoute><AdminConfiguracoes /></AdminRoute>} />
             <Route path="/admin/disponibilidade" element={<AdminRoute><AdminDisponibilidade /></AdminRoute>} />
             <Route path="/admin/agendamentos" element={<AdminRoute><AdminAgendamentos /></AdminRoute>} />

@@ -94,7 +94,7 @@ function deriveColors(hex: string) {
   };
 }
 
-function buildPreviewVars(primary: string, secondary: string, bg: string, fontFamily?: string, fontSizeScale?: string): Record<string, string> {
+function buildPreviewVars(primary: string, secondary: string, bg: string, fontFamily?: string, fontSizeScale?: string, headingFontFamily?: string): Record<string, string> {
   const p = hexToHsl(primary);
   const b = hexToHsl(bg);
   const primaryHSL = `${p.h} ${p.s}% ${p.l}%`;
@@ -107,8 +107,9 @@ function buildPreviewVars(primary: string, secondary: string, bg: string, fontFa
   const mutedFgHSL = b.l < 50 ? `${b.h} ${Math.max(b.s - 15, 0)}% 60%` : `${b.h} ${Math.max(b.s - 5, 0)}% 45%`;
   const sec = hexToHsl(secondary);
   const secHSL = `${sec.h} ${sec.s}% ${sec.l}%`;
-  const fontDef = FONTS.find((f) => f.value === fontFamily) ?? FONTS[0];
-  const sizeDef = FONT_SIZES.find((s) => s.value === fontSizeScale) ?? FONT_SIZES[1];
+  const bodyDef    = FONTS.find((f) => f.value === fontFamily)        ?? FONTS[0];
+  const headingDef = FONTS.find((f) => f.value === headingFontFamily) ?? bodyDef;
+  const sizeDef    = FONT_SIZES.find((s) => s.value === fontSizeScale) ?? FONT_SIZES[1];
   return {
     "--primary": primaryHSL,
     "--primary-foreground": contrastFg,
@@ -127,17 +128,24 @@ function buildPreviewVars(primary: string, secondary: string, bg: string, fontFa
     "--card-foreground": fgHSL,
     "--popover-foreground": fgHSL,
     "--muted-foreground": mutedFgHSL,
-    "font-family": fontDef.style.fontFamily,
-    "font-size": `${sizeDef.scale}rem`,
+    "--font-body":    bodyDef.style.fontFamily,
+    "--font-heading": headingDef.style.fontFamily,
+    "font-family":    bodyDef.style.fontFamily,
+    "font-size":      `${sizeDef.scale}rem`,
   };
 }
 
 const FONTS = [
-  { value: "inter",       label: "Inter",            desc: "Moderno e neutro",      style: { fontFamily: "Inter, system-ui, sans-serif" } },
-  { value: "poppins",     label: "Poppins",          desc: "Geométrico e amigável", style: { fontFamily: "'Poppins', sans-serif" } },
-  { value: "lato",        label: "Lato",             desc: "Limpo e profissional",  style: { fontFamily: "'Lato', sans-serif" } },
-  { value: "playfair",    label: "Playfair Display", desc: "Elegante e clássico",   style: { fontFamily: "'Playfair Display', serif" } },
-  { value: "merriweather",label: "Merriweather",     desc: "Legível e confiável",   style: { fontFamily: "'Merriweather', serif" } },
+  { value: "inter",        label: "Inter",            desc: "Moderno e neutro",      style: { fontFamily: "'Inter', system-ui, sans-serif" } },
+  { value: "poppins",      label: "Poppins",          desc: "Geométrico e amigável", style: { fontFamily: "'Poppins', sans-serif" } },
+  { value: "lato",         label: "Lato",             desc: "Limpo e profissional",  style: { fontFamily: "'Lato', sans-serif" } },
+  { value: "montserrat",   label: "Montserrat",       desc: "Forte e contemporâneo", style: { fontFamily: "'Montserrat', sans-serif" } },
+  { value: "raleway",      label: "Raleway",          desc: "Fino e estiloso",       style: { fontFamily: "'Raleway', sans-serif" } },
+  { value: "roboto",       label: "Roboto",           desc: "Universal e técnico",   style: { fontFamily: "'Roboto', sans-serif" } },
+  { value: "opensans",     label: "Open Sans",        desc: "Acolhedor e neutro",    style: { fontFamily: "'Open Sans', sans-serif" } },
+  { value: "playfair",     label: "Playfair Display", desc: "Elegante e clássico",   style: { fontFamily: "'Playfair Display', serif" } },
+  { value: "merriweather", label: "Merriweather",     desc: "Legível e confiável",   style: { fontFamily: "'Merriweather', serif" } },
+  { value: "lora",         label: "Lora",             desc: "Editorial e sereno",    style: { fontFamily: "'Lora', serif" } },
 ];
 
 const FONT_SIZES = [
@@ -148,7 +156,7 @@ const FONT_SIZES = [
 ];
 
 const GOOGLE_FONTS_URL =
-  "https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Lato:wght@400;700&family=Playfair+Display:wght@400;600;700&family=Merriweather:wght@400;700&display=swap";
+  "https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Lato:wght@400;700&family=Montserrat:wght@400;500;600;700&family=Raleway:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Open+Sans:wght@400;600;700&family=Playfair+Display:wght@400;600;700&family=Merriweather:wght@400;700&family=Lora:wght@400;500;600;700&display=swap";
 
 const PALETTES = [
   { name: "Sálvia",      primary: "#87A96B" },
@@ -234,6 +242,7 @@ export default function AdminLandingPage() {
 
   // tipografia
   const [fontFamily, setFontFamily] = useState("inter");
+  const [headingFontFamily, setHeadingFontFamily] = useState("playfair");
   const [fontSizeScale, setFontSizeScale] = useState("md");
 
   // contatos
@@ -338,6 +347,7 @@ export default function AdminLandingPage() {
     setSolutionSubtitle((professional as any).solution_subtitle || "");
     setSolutionItems((professional as any).solution_items || []);
     setFontFamily((professional as any).font_family || "inter");
+    setHeadingFontFamily((professional as any).heading_font_family || "playfair");
     setFontSizeScale((professional as any).font_size_scale || "md");
     setContactTitle((professional as any).contact_title || "");
     setContactSubtitle((professional as any).contact_subtitle || "");
@@ -355,7 +365,7 @@ export default function AdminLandingPage() {
   }, [heroTitle, heroSubtitle, heroImageUrl, heroBgUrl, heroBgOpacity, heroBgOverlay, photoUrl, photoStyle, photoFit,
       bio, aboutImageUrl, approaches, primaryColor, secondaryColor, bgColor,
       painTitle, painSubtitle, painItems, solutionTitle, solutionSubtitle, solutionItems,
-      fontFamily, fontSizeScale, contactTitle, contactSubtitle, contactWhatsapp, contactPhone, contactEmail, contactInstagram]);
+      fontFamily, headingFontFamily, fontSizeScale, contactTitle, contactSubtitle, contactWhatsapp, contactPhone, contactEmail, contactInstagram]);
 
   // alerta ao fechar/recarregar a aba
   useEffect(() => {
@@ -432,6 +442,7 @@ export default function AdminLandingPage() {
       secondary_color: secondaryColor,
       background_color: bgColor,
       font_family: fontFamily,
+      heading_font_family: headingFontFamily,
       font_size_scale: fontSizeScale,
     } as any).eq("id", professional.id);
     setSaving(false);
@@ -516,7 +527,7 @@ export default function AdminLandingPage() {
         <link rel="stylesheet" href={GOOGLE_FONTS_URL} />
 
         {/* scale wrapper */}
-        <div style={{ transform: "scale(0.58)", transformOrigin: "top left", width: "172.4%", pointerEvents: "none", ...buildPreviewVars(primaryColor, secondaryColor, bgColor, fontFamily, fontSizeScale) } as React.CSSProperties}>
+        <div style={{ transform: "scale(0.58)", transformOrigin: "top left", width: "172.4%", pointerEvents: "none", ...buildPreviewVars(primaryColor, secondaryColor, bgColor, fontFamily, fontSizeScale, headingFontFamily) } as React.CSSProperties}>
           <div style={{ pointerEvents: "auto" }}>
 
             <SectionBlock label="Hero" icon={Layout} active={activeSection === "hero"} onClick={() => setActiveSection("hero")}>
@@ -1055,11 +1066,39 @@ export default function AdminLandingPage() {
               </div>
 
               <div className="space-y-3 pt-2 border-t">
-                <Label className="flex items-center gap-2"><Type className="h-4 w-4" />Família de fonte</Label>
-                <div className="grid grid-cols-1 gap-2">
+                <div className="flex items-center justify-between">
+                  <Label className="flex items-center gap-2"><Type className="h-4 w-4" />Fonte dos títulos (H1, H2…)</Label>
+                  <FieldHint text="Aplicada a todos os títulos da sua página (H1 a H6)." />
+                </div>
+                <div className="grid grid-cols-1 gap-2 max-h-72 overflow-y-auto pr-1">
                   {FONTS.map((f) => (
                     <button
-                      key={f.value}
+                      key={`h-${f.value}`}
+                      type="button"
+                      onClick={() => setHeadingFontFamily(f.value)}
+                      className={`flex items-center justify-between rounded-xl border-2 px-4 py-3 text-left transition-all ${
+                        headingFontFamily === f.value ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
+                      }`}
+                    >
+                      <div>
+                        <p className="text-base font-semibold" style={f.style}>{f.label}</p>
+                        <p className="text-xs text-muted-foreground">{f.desc}</p>
+                      </div>
+                      <span className="text-lg font-semibold text-muted-foreground" style={f.style}>Título</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="flex items-center gap-2"><Type className="h-4 w-4" />Fonte do corpo (parágrafos)</Label>
+                  <FieldHint text="Aplicada ao texto comum do site (body)." />
+                </div>
+                <div className="grid grid-cols-1 gap-2 max-h-72 overflow-y-auto pr-1">
+                  {FONTS.map((f) => (
+                    <button
+                      key={`b-${f.value}`}
                       type="button"
                       onClick={() => setFontFamily(f.value)}
                       className={`flex items-center justify-between rounded-xl border-2 px-4 py-3 text-left transition-all ${

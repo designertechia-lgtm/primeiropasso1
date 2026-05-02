@@ -253,29 +253,41 @@ export type Database = {
       }
       leads: {
         Row: {
+          agent_enabled: boolean
           created_at: string
           email: string | null
           id: string
           interest: string | null
+          last_message_at: string | null
           name: string
+          origin_platform: string
+          pipeline_stage: string
           professional_id: string
           whatsapp: string | null
         }
         Insert: {
+          agent_enabled?: boolean
           created_at?: string
           email?: string | null
           id?: string
           interest?: string | null
+          last_message_at?: string | null
           name: string
+          origin_platform?: string
+          pipeline_stage?: string
           professional_id: string
           whatsapp?: string | null
         }
         Update: {
+          agent_enabled?: boolean
           created_at?: string
           email?: string | null
           id?: string
           interest?: string | null
+          last_message_at?: string | null
           name?: string
+          origin_platform?: string
+          pipeline_stage?: string
           professional_id?: string
           whatsapp?: string | null
         }

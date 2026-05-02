@@ -402,41 +402,54 @@ export default function AdminVideos() {
             const isYoutube = /youtube|youtu\.be/i.test((v as any).embed_url ?? "");
             const canPublishToIG = !isYoutube && !!(v as any).embed_url;
             return (
-              <div key={v.id} className="space-y-3">
-                <Card>
-                  <CardContent className="p-4 flex gap-4 items-start">
-                    {/* Thumbnail com play overlay */}
-                    <button
-                      className="shrink-0 relative group rounded-lg overflow-hidden w-20 h-20"
-                      onClick={() => setPlayerVideo(v)}
-                      title="Assistir vídeo"
-                    >
-                      {(v as any).thumbnail_url ? (
-                        <img src={(v as any).thumbnail_url} alt=""
-                          className="w-20 h-20 object-cover transition-opacity group-hover:opacity-70" />
-                      ) : (
-                        <div className="w-20 h-20 bg-muted flex items-center justify-center">
-                          <Film className="h-7 w-7 text-muted-foreground" />
+              <div key={v.id} className="space-y-3 min-w-0">
+                <Card className="overflow-hidden">
+                  <CardContent className="p-4 flex flex-col sm:flex-row gap-4 items-stretch sm:items-start min-w-0">
+                    {/* Linha topo no mobile: thumbnail + info lado a lado */}
+                    <div className="flex gap-4 sm:contents min-w-0">
+                      {/* Thumbnail com play overlay */}
+                      <button
+                        className="shrink-0 relative group rounded-lg overflow-hidden w-20 h-20"
+                        onClick={() => setPlayerVideo(v)}
+                        title="Assistir vídeo"
+                      >
+                        {(v as any).thumbnail_url ? (
+                          <img src={(v as any).thumbnail_url} alt=""
+                            className="w-20 h-20 object-cover transition-opacity group-hover:opacity-70" />
+                        ) : (
+                          <div className="w-20 h-20 bg-muted flex items-center justify-center">
+                            <Film className="h-7 w-7 text-muted-foreground" />
+                          </div>
+                        )}
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <PlayCircle className="h-9 w-9 text-white drop-shadow-lg" />
                         </div>
-                      )}
-                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <PlayCircle className="h-9 w-9 text-white drop-shadow-lg" />
-                      </div>
-                    </button>
+                      </button>
 
-                    {/* Info */}
-                    <div className="flex-1 min-w-0 space-y-1">
-                      <p className="font-semibold truncate">{v.title}</p>
-                      <span className={`inline-block text-xs px-2 py-0.5 rounded-full ${v.published ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
-                        {v.published ? "Publicado" : "Rascunho"}
-                      </span>
-                      {(v as any).script_json && (
-                        <p className="text-xs text-muted-foreground">Roteiro salvo ✓</p>
-                      )}
+                      {/* Info */}
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <p className="font-semibold truncate">{v.title}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`inline-block text-xs px-2 py-0.5 rounded-full ${v.published ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+                            {v.published ? "Publicado" : "Rascunho"}
+                          </span>
+                          {(v as any).created_at && (
+                            <span className="text-xs text-muted-foreground">
+                              Criado em {new Date((v as any).created_at).toLocaleString("pt-BR", {
+                                day: "2-digit", month: "2-digit", year: "numeric",
+                                hour: "2-digit", minute: "2-digit",
+                              })}
+                            </span>
+                          )}
+                        </div>
+                        {(v as any).script_json && (
+                          <p className="text-xs text-muted-foreground">Roteiro salvo ✓</p>
+                        )}
+                      </div>
                     </div>
 
-                    {/* Ações */}
-                    <div className="flex flex-col gap-1.5 shrink-0">
+                    {/* Ações: wrap em mobile, coluna no desktop */}
+                    <div className="flex flex-row flex-wrap gap-1.5 sm:flex-col sm:shrink-0">
                       {/* Reeditar com IA */}
                       {(v as any).script_json && (
                         <Button size="sm" variant="outline"

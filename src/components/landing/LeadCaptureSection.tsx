@@ -8,7 +8,7 @@ interface LeadCaptureSectionProps {
 
 export default function LeadCaptureSection({ slug, whatsapp }: LeadCaptureSectionProps) {
   const whatsappLink = whatsapp
-    ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent("Olá! Gostaria de agendar uma consulta.")}`
+    ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent("Olá! Gostaria de agendar um horário.")}`
     : null;
 
   return (

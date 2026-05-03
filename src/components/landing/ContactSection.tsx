@@ -19,7 +19,7 @@ export default function ContactSection({
   instagram,
 }: ContactSectionProps) {
   const whatsappLink = whatsapp
-    ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent("Olá! Gostaria de agendar uma consulta.")}`
+    ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent("Olá! Gostaria de agendar um horário.")}`
     : null;
 
   const hasAnyContact = whatsapp || phone || email || instagram;

@@ -41,8 +41,8 @@ export function EvolutionConnectDialog({
     logoutInstance.mutate(undefined, {
       onSuccess: () => {
         toast({
-          title: "Desconectado",
-          description: "Instância do WhatsApp desconectada com sucesso.",
+          title: "Instância removida",
+          description: "Instância deletada do Evolution e banco de dados. Você pode criar uma nova.",
         });
       },
     });

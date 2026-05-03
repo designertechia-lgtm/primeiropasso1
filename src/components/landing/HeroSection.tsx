@@ -42,7 +42,7 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
   const displayTitle = title || DEMO_PROFESSIONAL.hero_title;
   const displaySubtitle = subtitle || DEMO_PROFESSIONAL.hero_subtitle;
   const whatsappLink = whatsapp
-    ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=Olá! Gostaria de agendar uma consulta.`
+    ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=Olá! Gostaria de agendar um horário.`
     : "#";
 
   const isDefaultBg = !heroBgUrl; // usando fallback, sem bg customizado

@@ -5,3 +5,9 @@ verify_jwt = false
 
 [functions.oauth-linkedin-callback]
 verify_jwt = false
+
+[functions.whatsapp-webhook]
+verify_jwt = false
+
+[functions.debug-db]
+verify_jwt = false

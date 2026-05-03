@@ -19,7 +19,7 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
   const [menuOpen, setMenuOpen] = useState(false);
 
   const whatsappLink = whatsapp
-    ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=Olá! Gostaria de agendar uma consulta.`
+    ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=Olá! Gostaria de agendar um horário.`
     : "#";
 
   const scrollTo = (id: string) => {

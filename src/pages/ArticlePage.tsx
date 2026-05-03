@@ -115,7 +115,7 @@ export default function ArticlePage() {
 
   const whatsappNumber = professional?.whatsapp?.replace(/\D/g, "") ?? "";
   const whatsappLink = whatsappNumber
-    ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent("Olá! Gostaria de agendar uma consulta.")}`
+    ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent("Olá! Gostaria de agendar um horário.")}`
     : null;
   const siteLink = `https://primeiropasso.online/${slug}`;
 

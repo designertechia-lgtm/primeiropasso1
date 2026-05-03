@@ -10,10 +10,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Phone, Mail, Bot, MessageSquare, User } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { useLeadConversation } from "@/hooks/useLeadConversation";
+import { useChatMessages } from "@/hooks/useChatMessages";
 import { useToggleAgentEnabled } from "@/hooks/useUpdateLeadStage";
 import type { Lead } from "@/hooks/useLeadsKanban";
 import { PIPELINE_COLUMNS } from "@/hooks/useLeadsKanban";
+import { useEffect, useRef } from "react";
 
 interface LeadDetailSheetProps {
   lead: Lead | null;
@@ -26,10 +27,18 @@ export function LeadDetailSheet({
   open,
   onOpenChange,
 }: LeadDetailSheetProps) {
-  const { data: messages = [], isLoading } = useLeadConversation(
-    lead?.whatsapp ?? null
+  const { data: messages = [], isLoading } = useChatMessages(
+    lead?.id ?? null
   );
   const toggleAgent = useToggleAgentEnabled();
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll para a última mensagem
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
 
   if (!lead) return null;
 
@@ -55,7 +64,7 @@ export function LeadDetailSheet({
           <div className="space-y-2 text-sm">
             {lead.whatsapp && (
               <a
-                href={`https://wa.me/55${lead.whatsapp.replace(/\D/g, "")}`}
+                href={`https://wa.me/${lead.whatsapp}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 text-muted-foreground hover:text-foreground"
@@ -73,7 +82,7 @@ export function LeadDetailSheet({
             )}
             <p className="text-xs text-muted-foreground">
               Criado em{" "}
-              {format(new Date(lead.created_at), "dd/MM/yyyy 'as' HH:mm", {
+              {format(new Date(lead.created_at), "dd/MM/yyyy 'às' HH:mm", {
                 locale: ptBR,
               })}
             </p>
@@ -95,7 +104,7 @@ export function LeadDetailSheet({
           {/* Conversation history */}
           <div>
             <h3 className="text-sm font-semibold mb-2 flex items-center gap-1">
-              <MessageSquare className="h-4 w-4" /> Historico de Conversa
+              <MessageSquare className="h-4 w-4" /> Histórico de Conversa
             </h3>
             {isLoading ? (
               <p className="text-xs text-muted-foreground animate-pulse">
@@ -103,31 +112,34 @@ export function LeadDetailSheet({
               </p>
             ) : messages.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-4">
-                Nenhuma mensagem encontrada
+                Nenhuma mensagem ainda. Quando o lead enviar uma mensagem via WhatsApp, a conversa aparecerá aqui em tempo real.
               </p>
             ) : (
-              <ScrollArea className="h-[400px] pr-3">
+              <ScrollArea className="h-[400px] pr-3" ref={scrollRef}>
                 <div className="space-y-3">
-                  {messages.map((msg, i) => (
+                  {messages.map((msg) => (
                     <div
-                      key={i}
+                      key={msg.id}
                       className={`flex gap-2 ${
-                        msg.type === "ai" ? "justify-start" : "justify-end"
+                        msg.role === "assistant" ? "justify-start" : "justify-end"
                       }`}
                     >
-                      {msg.type === "ai" && (
+                      {msg.role === "assistant" && (
                         <Bot className="h-5 w-5 text-primary shrink-0 mt-1" />
                       )}
                       <div
                         className={`rounded-lg px-3 py-2 text-sm max-w-[80%] ${
-                          msg.type === "ai"
+                          msg.role === "assistant"
                             ? "bg-muted"
                             : "bg-primary text-primary-foreground"
                         }`}
                       >
-                        {msg.content}
+                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                        <p className="text-[10px] opacity-60 mt-1">
+                          {format(new Date(msg.created_at), "HH:mm", { locale: ptBR })}
+                        </p>
                       </div>
-                      {msg.type === "human" && (
+                      {msg.role === "user" && (
                         <User className="h-5 w-5 text-muted-foreground shrink-0 mt-1" />
                       )}
                     </div>

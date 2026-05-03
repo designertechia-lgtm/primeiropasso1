@@ -8,7 +8,7 @@ interface LandingFooterProps {
 
 export default function LandingFooter({ professionalName, whatsapp }: LandingFooterProps) {
   const whatsappLink = whatsapp
-    ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=Olá! Gostaria de agendar uma consulta.`
+    ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=Olá! Gostaria de agendar um horário.`
     : "#";
 
   return (

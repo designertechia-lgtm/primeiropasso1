@@ -23,20 +23,46 @@ serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     )
 
+    // O JWT vem como "Bearer <token>", extraímos apenas o token
+    const token = authHeader.replace('Bearer ', '')
+
     // Get professional context
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser()
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
     if (authError || !user) {
       throw new Error(`Unauthorized: ${authError?.message || 'No user found'}`)
     }
 
-    const { data: pro, error: proError } = await supabaseClient
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+
+    let { data: pro, error: proError } = await supabaseAdmin
       .from('professionals')
       .select('id, evolution_instance_name')
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
 
-    if (proError || !pro) {
-      throw new Error("Professional not found")
+    if (proError) {
+      throw new Error(`Erro ao buscar profissional: ${proError.message}`)
+    }
+
+    // Se for a conta admin e não tiver perfil, auto-cria via Service Role para arrumar o BD
+    if (!pro && user.email === 'designertech.ia@gmail.com') {
+      const { data: newPro, error: insertError } = await supabaseAdmin
+        .from('professionals')
+        .insert({ user_id: user.id, slug: 'designertech' })
+        .select('id, evolution_instance_name')
+        .single()
+
+      if (insertError) {
+        throw new Error(`Erro ao auto-criar perfil admin: ${insertError.message}`)
+      }
+      pro = newPro
+    }
+
+    if (!pro) {
+      throw new Error(`Nenhum perfil de profissional encontrado para o usuário: ${user.id}`)
     }
 
     const { action } = await req.json()
@@ -111,7 +137,7 @@ serve(async (req) => {
       const data = await res.json()
       
       // Update DB
-      await supabaseClient
+      await supabaseAdmin
         .from('professionals')
         .update({ evolution_instance_name: instanceName })
         .eq('id', pro.id)

@@ -73,6 +73,7 @@ export function useLeadsKanban(filters: Filters = { period: "all", platform: "al
       return (data ?? []) as Lead[];
     },
     enabled: !!professional?.id,
+    staleTime: 1000 * 60 * 5, // 5 minutes cache
   });
 
   // Supabase Realtime subscription

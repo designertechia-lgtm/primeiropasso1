@@ -12,16 +12,21 @@ serve(async (req) => {
   }
 
   try {
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
+      throw new Error("Unauthorized: Missing Authorization header")
+    }
+
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+      { global: { headers: { Authorization: authHeader } } }
     )
 
     // Get professional context
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser()
     if (authError || !user) {
-      throw new Error("Unauthorized")
+      throw new Error(`Unauthorized: ${authError?.message || 'No user found'}`)
     }
 
     const { data: pro, error: proError } = await supabaseClient

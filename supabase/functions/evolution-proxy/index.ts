@@ -70,7 +70,7 @@ serve(async (req) => {
 
     if (action === 'create') {
       if (pro.evolution_instance_name) {
-        throw new Error("Instance already created")
+        throw new Error("Você já possui uma instância criada.")
       }
 
       const instanceName = `prof_${pro.id.replace(/-/g, '')}`
@@ -94,7 +94,13 @@ serve(async (req) => {
       });
       
       if (!res.ok) {
-        throw new Error("Failed to create instance")
+        let errMsg = "Erro ao criar instância na Evolution."
+        try {
+          const errData = await res.json()
+          errMsg = errData?.response?.message || errData?.message || errMsg
+          if (Array.isArray(errMsg)) errMsg = errMsg[0]
+        } catch (e) {}
+        throw new Error(errMsg)
       }
 
       const data = await res.json()
@@ -110,7 +116,7 @@ serve(async (req) => {
 
     if (action === 'connect') {
       if (!pro.evolution_instance_name) {
-        throw new Error("No instance created")
+        throw new Error("Nenhuma instância criada.")
       }
 
       const res = await fetch(`${evoUrl}/instance/connect/${pro.evolution_instance_name}`, {
@@ -118,7 +124,7 @@ serve(async (req) => {
       });
       
       if (!res.ok) {
-        throw new Error("Failed to get qrcode")
+        throw new Error("Falha ao obter o QR Code da Evolution.")
       }
 
       const data = await res.json()
@@ -127,7 +133,7 @@ serve(async (req) => {
 
     if (action === 'logout') {
       if (!pro.evolution_instance_name) {
-        throw new Error("No instance created")
+        throw new Error("Nenhuma instância criada.")
       }
 
       const res = await fetch(`${evoUrl}/instance/logout/${pro.evolution_instance_name}`, {
@@ -136,17 +142,17 @@ serve(async (req) => {
       });
       
       if (!res.ok) {
-        throw new Error("Failed to logout instance")
+        throw new Error("Falha ao desconectar instância na Evolution.")
       }
 
       return new Response(JSON.stringify({ status: 'logged_out' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    throw new Error("Invalid action")
+    throw new Error("Ação inválida solicitada.")
 
   } catch (error) {
     return new Response(JSON.stringify({ error: error.message }), {
-      status: 400,
+      status: 200, // Retornamos 200 para que o payload seja lido pelo front e dispare o erro assertivo
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }

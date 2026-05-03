@@ -20,6 +20,7 @@ export function useEvolutionInstance() {
         body: { action: "status" },
       });
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
       return data as EvolutionResponse;
     },
     refetchInterval: (query) => {
@@ -37,6 +38,7 @@ export function useEvolutionInstance() {
         body: { action: "create" },
       });
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
       return data as EvolutionResponse;
     },
     onSuccess: () => {
@@ -51,6 +53,7 @@ export function useEvolutionInstance() {
         body: { action: "connect" },
       });
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
       return data as EvolutionResponse;
     },
     // Só buscar o QR code se o status for de não conectado
@@ -64,6 +67,7 @@ export function useEvolutionInstance() {
         body: { action: "logout" },
       });
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
       return data;
     },
     onSuccess: () => {

@@ -487,15 +487,17 @@ export default function AdminLandingPage() {
   };
 
   const PHOTO_STYLES = [
-    { value: "portrait", label: "Retrato",  desc: "3:4 vertical", shape: "rounded-[1rem]", aspect: "aspect-[3/4]" },
-    { value: "circle",   label: "Círculo",  desc: "Clássico",     shape: "rounded-full",   aspect: "aspect-square" },
-    { value: "square",   label: "Quadrado", desc: "Moderno",      shape: "rounded-lg",     aspect: "aspect-square" },
+    { value: "portrait",   label: "Retrato",    desc: "Flexível",   shape: "rounded-[2rem]", aspect: "aspect-auto",   previewAspect: "aspect-[3/4]" },
+    { value: "horizontal", label: "Horizontal", desc: "Formato 3:2", shape: "rounded-[2rem]", aspect: "aspect-[3/2]",  previewAspect: "aspect-[3/2]" },
+    { value: "square",     label: "Quadrado",   desc: "Formato 1:1", shape: "rounded-[2rem]", aspect: "aspect-square", previewAspect: "aspect-square" },
+    { value: "circle",     label: "Círculo",    desc: "Redondo",     shape: "rounded-full",   aspect: "aspect-square", previewAspect: "aspect-square" },
   ];
 
   const SHAPES: Record<string, { shape: string; aspect: string }> = {
-    portrait: { shape: "rounded-[2rem]", aspect: "aspect-[3/4]" },
-    circle:   { shape: "rounded-full",   aspect: "aspect-square" },
-    square:   { shape: "rounded-[1rem]", aspect: "aspect-square" },
+    portrait:   { shape: "rounded-[2rem]", aspect: "aspect-auto"   },
+    circle:     { shape: "rounded-full",   aspect: "aspect-square" },
+    square:     { shape: "rounded-[2rem]", aspect: "aspect-square" },
+    horizontal: { shape: "rounded-[2rem]", aspect: "aspect-[3/2]"  },
   };
 
   const name = (professional as any)?.full_name || "";
@@ -694,7 +696,7 @@ export default function AdminLandingPage() {
 
               <div className="space-y-2">
                 <Label>Estilo da foto</Label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   {PHOTO_STYLES.map((opt) => (
                     <button
                       key={opt.value}
@@ -704,7 +706,7 @@ export default function AdminLandingPage() {
                         photoStyle === opt.value ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
                       }`}
                     >
-                      <div className={`${opt.shape} ${opt.aspect} bg-muted w-12 overflow-hidden`}>
+                      <div className={`${opt.shape} ${opt.previewAspect} bg-muted w-12 overflow-hidden`}>
                         {(heroImageUrl || photoUrl) && (
                           <img src={heroImageUrl || photoUrl} alt="" className={`w-full h-full ${photoFit === "cover" ? "object-cover object-top" : "object-contain"}`} />
                         )}

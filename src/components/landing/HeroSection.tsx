@@ -2,12 +2,13 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { DEMO_PROFESSIONAL } from "@/data/demoProfessional";
 
-type PhotoStyle = "portrait" | "circle" | "square";
+type PhotoStyle = "portrait" | "circle" | "square" | "horizontal";
 
 const PHOTO_STYLES: Record<PhotoStyle, { shape: string; aspect: string }> = {
-  portrait: { shape: "rounded-[2rem]",  aspect: "aspect-[3/4]"  },
-  circle:   { shape: "rounded-full",    aspect: "aspect-square" },
-  square:   { shape: "rounded-[1rem]",  aspect: "aspect-square" },
+  portrait:   { shape: "rounded-[2rem]",  aspect: "aspect-auto"   },
+  circle:     { shape: "rounded-full",    aspect: "aspect-square" },
+  square:     { shape: "rounded-[2rem]",  aspect: "aspect-square" },
+  horizontal: { shape: "rounded-[2rem]",  aspect: "aspect-[3/2]"  },
 };
 
 const OVERLAY_COLORS: Record<string, string> = {

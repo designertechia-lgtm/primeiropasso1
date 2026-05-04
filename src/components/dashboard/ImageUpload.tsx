@@ -12,9 +12,10 @@ interface ImageUploadProps {
   folder: string; // e.g. "logos" or "photos"
   variant?: "logo" | "avatar" | "wide";
   className?: string;
+  accept?: string;
 }
 
-export default function ImageUpload({ currentUrl, onUploaded, folder, variant = "logo", className }: ImageUploadProps) {
+export default function ImageUpload({ currentUrl, onUploaded, folder, variant = "logo", className, accept = "image/*" }: ImageUploadProps) {
   const { user } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -38,9 +39,13 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
     const file = e.target.files?.[0];
     if (!file || !user) return;
 
-    const maxSize = 5 * 1024 * 1024; // 5MB
+    const isVideo = file.type.startsWith("video/");
+    const maxSize = isVideo ? 20 * 1024 * 1024 : 5 * 1024 * 1024; // 20MB para vídeo, 5MB para imagem
+    
     if (file.size > maxSize) {
-      toast.error("Arquivo muito grande", { description: "Máximo de 5MB." });
+      toast.error("Arquivo muito grande", { 
+        description: isVideo ? "Máximo de 20MB para vídeos." : "Máximo de 5MB para imagens." 
+      });
       return;
     }
 
@@ -65,27 +70,44 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
     setPreview(publicUrl);
     onUploaded(publicUrl);
     setUploading(false);
-    toast.success("Imagem enviada!");
+    toast.success(isVideo ? "Vídeo enviado!" : "Imagem enviada!");
   };
 
   const isAvatar = variant === "avatar";
   const isWide   = variant === "wide";
+  const isPreviewVideo = preview && /\.(mp4|webm|ogg|mov|m4v)($|\?)/i.test(preview);
 
   return (
     <div className={cn("space-y-3", className)}>
       {preview ? (
         <div className={cn("relative", isAvatar ? "w-fit" : isWide ? "w-full" : "inline-block")}>
-          <img
-            src={preview}
-            alt="Preview"
-            onError={() => { setPreview(null); onUploaded(""); }}
-            className={cn(
-              "object-cover object-center border",
-              isAvatar ? "h-[116px] w-[116px] rounded-full"
-                : isWide ? "h-40 w-full rounded-xl"
-                : "h-16 max-w-[200px] rounded-md"
-            )}
-          />
+          {isPreviewVideo ? (
+            <video
+              src={preview}
+              autoPlay
+              loop
+              muted
+              playsInline
+              className={cn(
+                "object-cover object-center border",
+                isAvatar ? "h-[116px] w-[116px] rounded-full"
+                  : isWide ? "h-40 w-full rounded-xl"
+                  : "h-16 max-w-[200px] rounded-md"
+              )}
+            />
+          ) : (
+            <img
+              src={preview}
+              alt="Preview"
+              onError={() => { setPreview(null); onUploaded(""); }}
+              className={cn(
+                "object-cover object-center border",
+                isAvatar ? "h-[116px] w-[116px] rounded-full"
+                  : isWide ? "h-40 w-full rounded-xl"
+                  : "h-16 max-w-[200px] rounded-md"
+              )}
+            />
+          )}
           <button
             type="button"
             onClick={async () => { if (preview) await deleteFromStorage(preview); setPreview(null); onUploaded(""); }}
@@ -108,7 +130,7 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
         </div>
       )}
 
-      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+      <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={handleFile} />
 
       <Button
         type="button"
@@ -117,7 +139,7 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
         disabled={uploading}
         onClick={() => inputRef.current?.click()}
       >
-        {uploading ? "Enviando..." : preview ? "Trocar imagem" : "Enviar imagem"}
+        {uploading ? "Enviando..." : preview ? "Trocar arquivo" : "Enviar arquivo"}
       </Button>
     </div>
   );

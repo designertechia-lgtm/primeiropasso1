@@ -743,8 +743,8 @@ export default function AdminLandingPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>Imagem de fundo do Hero <FieldHint text="Aparece atrás do conteúdo. Use fotos de ambiente, textura ou paisagem." /></Label>
-                <ImageUpload currentUrl={heroBgUrl || null} onUploaded={setHeroBgUrl} folder="hero-bg" variant="logo" />
+                <Label>Fundo do Hero <FieldHint text="Aparece atrás do conteúdo. Use fotos de ambiente ou micro-vídeos (loops)." /></Label>
+                <ImageUpload currentUrl={heroBgUrl || null} onUploaded={setHeroBgUrl} folder="hero-bg" variant="logo" accept="image/*,video/*" />
                 {heroBgUrl && (
                   <button
                     type="button"

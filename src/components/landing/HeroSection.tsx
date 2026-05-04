@@ -56,11 +56,28 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
   return (
     <section id="hero" className="relative overflow-hidden">
       <>
-        <img
-          src={activeBgUrl}
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover object-center"
-        />
+        {(() => {
+          const isVideo = /\.(mp4|webm|ogg|mov|m4v)($|\?)/i.test(activeBgUrl);
+          if (isVideo) {
+            return (
+              <video
+                src={activeBgUrl}
+                autoPlay
+                loop
+                muted
+                playsInline
+                className="absolute inset-0 w-full h-full object-cover object-center"
+              />
+            );
+          }
+          return (
+            <img
+              src={activeBgUrl}
+              alt=""
+              className="absolute inset-0 w-full h-full object-cover object-center"
+            />
+          );
+        })()}
         {heroBgOverlay !== "none" && (
           overlayRgb
             ? <div className="absolute inset-0" style={{ background: `rgba(${overlayRgb},${overlayAlpha})` }} />

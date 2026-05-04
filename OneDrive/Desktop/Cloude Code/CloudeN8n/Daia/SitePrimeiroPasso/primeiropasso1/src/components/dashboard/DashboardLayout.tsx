@@ -38,7 +38,7 @@ function BillingBanner() {
     banners.push({
       bg: "bg-yellow-500 text-white",
       icon: <AlertTriangle className="h-4 w-4 shrink-0" />,
-      text: Sua assinatura vence em \ dia\. Renove para não perder acesso.,
+      text: `Sua assinatura vence em ${daysLeft} dia${daysLeft === 1 ? '' : 's'}. Renove para não perder acesso.`,
     });
   }
 
@@ -46,14 +46,14 @@ function BillingBanner() {
     banners.push({
       bg: "bg-amber-500 text-white",
       icon: <Zap className="h-4 w-4 shrink-0" />,
-      text: Saldo de créditos baixo (\). Recarregue para continuar usando IA avançada.,
+      text: `Saldo de créditos baixo (${bal?.balance ?? 0}). Recarregue para continuar usando IA avançada.`,
     });
   }
 
   return (
     <>
       {banners.map((b, i) => (
-        <div key={i} className={\ px-4 py-2 text-sm flex items-center justify-center gap-2}>
+        <div key={i} className={`${b.bg} px-4 py-2 text-sm flex items-center justify-center gap-2`}>
           {b.icon}
           <span>{b.text}</span>
           <Link to="/admin/assinatura" className="underline font-semibold ml-1 whitespace-nowrap">

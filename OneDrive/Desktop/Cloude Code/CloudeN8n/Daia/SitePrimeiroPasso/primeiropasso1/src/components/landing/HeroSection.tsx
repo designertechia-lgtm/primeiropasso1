@@ -1,4 +1,3 @@
-import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { DEMO_PROFESSIONAL } from "@/data/demoProfessional";
@@ -6,15 +5,15 @@ import { DEMO_PROFESSIONAL } from "@/data/demoProfessional";
 type PhotoStyle = "portrait" | "circle" | "square" | "horizontal";
 
 const PHOTO_STYLES: Record<PhotoStyle, { shape: string; aspect: string }> = {
-  portrait:   { shape: "rounded-[2rem]",  aspect: "aspect-auto"   },
-  circle:     { shape: "rounded-full",    aspect: "aspect-square" },
-  square:     { shape: "rounded-[2rem]",  aspect: "aspect-square" },
-  horizontal: { shape: "rounded-[2rem]",  aspect: "aspect-[3/2]"  },
+  portrait: { shape: "rounded-[2rem]", aspect: "aspect-auto" },
+  circle: { shape: "rounded-full", aspect: "aspect-square" },
+  square: { shape: "rounded-[2rem]", aspect: "aspect-square" },
+  horizontal: { shape: "rounded-[2rem]", aspect: "aspect-[3/2]" },
 };
 
 const OVERLAY_COLORS: Record<string, string> = {
-  dark:    "0,0,0",
-  light:   "255,255,255",
+  dark: "0,0,0",
+  light: "255,255,255",
   primary: "var(--overlay-primary,0,0,0)",
 };
 
@@ -37,20 +36,7 @@ interface HeroSectionProps {
 const DEFAULT_HERO_BG = "/hero-bg-default.jpg";
 
 export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroImageUrl, heroBgUrl, heroBgOpacity = 70, heroBgOverlay = "dark", slug, professionalName, crp, photoStyle = "portrait", photoFit = "contain" }: HeroSectionProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-
   const activeBgUrl = heroBgUrl || DEFAULT_HERO_BG;
-  const isVideo = /\.(mp4|webm|ogg|mov|m4v)($|\?)/i.test(activeBgUrl);
-
-  useEffect(() => {
-    if (isVideo && videoRef.current) {
-      // Garante reprodução e loop no mobile
-      videoRef.current.defaultMuted = true;
-      videoRef.current.muted = true;
-      videoRef.current.play().catch(e => console.log("Autoplay failed:", e));
-    }
-  }, [activeBgUrl, isVideo]);
-
   const displayImage = heroImageUrl || photoUrl || DEMO_PROFESSIONAL.hero_image_url || DEMO_PROFESSIONAL.photo_url;
   const displayName = professionalName && professionalName !== "Profissional" ? professionalName : DEMO_PROFESSIONAL.full_name;
   const displayCrp = crp || DEMO_PROFESSIONAL.crp;
@@ -71,10 +57,10 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
     <section id="hero" className="relative overflow-hidden">
       <>
         {(() => {
+          const isVideo = /\.(mp4|webm|ogg|mov|m4v)($|\?)/i.test(activeBgUrl);
           if (isVideo) {
             return (
               <video
-                ref={videoRef}
                 src={activeBgUrl}
                 autoPlay
                 loop

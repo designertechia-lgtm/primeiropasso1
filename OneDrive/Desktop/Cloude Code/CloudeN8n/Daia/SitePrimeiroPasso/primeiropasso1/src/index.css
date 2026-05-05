@@ -1,0 +1,188 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Lato:wght@400;700&family=Lora:wght@400;500;600;700&family=Merriweather:wght@400;700&family=Montserrat:wght@400;500;600;700&family=Open+Sans:wght@400;600;700&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Poppins:wght@400;500;600;700&family=Raleway:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Verde sálvia + tons terrosos */
+    --background: 30 33% 95%;
+    --foreground: 24 38% 15%;
+
+    --card: 30 25% 97%;
+    --card-foreground: 24 38% 15%;
+
+    --popover: 30 25% 97%;
+    --popover-foreground: 24 38% 15%;
+
+    --primary: 100 24% 53%;
+    --primary-foreground: 30 33% 97%;
+
+    --secondary: 30 30% 65%;
+    --secondary-foreground: 24 38% 15%;
+
+    --muted: 30 20% 90%;
+    --muted-foreground: 24 15% 45%;
+
+    --accent: 100 30% 38%;
+    --accent-foreground: 30 33% 97%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 30 33% 97%;
+
+    --border: 30 20% 85%;
+    --input: 30 20% 85%;
+    --ring: 100 24% 53%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 100 15% 96%;
+    --sidebar-foreground: 24 38% 15%;
+    --sidebar-primary: 100 24% 53%;
+    --sidebar-primary-foreground: 30 33% 97%;
+    --sidebar-accent: 100 15% 90%;
+    --sidebar-accent-foreground: 24 38% 15%;
+    --sidebar-border: 30 20% 85%;
+    --sidebar-ring: 100 24% 53%;
+  }
+
+  .dark {
+    --background: 24 20% 10%;
+    --foreground: 30 25% 90%;
+
+    --card: 24 20% 13%;
+    --card-foreground: 30 25% 90%;
+
+    --popover: 24 20% 13%;
+    --popover-foreground: 30 25% 90%;
+
+    --primary: 100 24% 53%;
+    --primary-foreground: 24 20% 10%;
+
+    --secondary: 30 20% 25%;
+    --secondary-foreground: 30 25% 90%;
+
+    --muted: 24 15% 20%;
+    --muted-foreground: 30 15% 60%;
+
+    --accent: 100 30% 38%;
+    --accent-foreground: 30 25% 90%;
+
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 30 25% 90%;
+
+    --border: 24 15% 38%;
+    --input: 24 15% 38%;
+    --ring: 100 24% 53%;
+
+    --sidebar-background: 24 20% 10%;
+    --sidebar-foreground: 30 25% 90%;
+    --sidebar-primary: 100 24% 53%;
+    --sidebar-primary-foreground: 24 20% 10%;
+    --sidebar-accent: 24 15% 18%;
+    --sidebar-accent-foreground: 30 25% 90%;
+    --sidebar-border: 24 15% 20%;
+    --sidebar-ring: 100 24% 53%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-body, 'Inter', system-ui, sans-serif);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading, 'Playfair Display', serif);
+  }
+}
+
+/* FullCalendar Theme */
+.fc-wrapper .fc {
+  --fc-border-color: hsl(var(--border));
+  --fc-button-bg-color: hsl(var(--primary));
+  --fc-button-border-color: hsl(var(--primary));
+  --fc-button-hover-bg-color: hsl(var(--primary) / 0.85);
+  --fc-button-hover-border-color: hsl(var(--primary) / 0.85);
+  --fc-button-active-bg-color: hsl(var(--accent));
+  --fc-button-active-border-color: hsl(var(--accent));
+  --fc-today-bg-color: hsl(var(--primary) / 0.06);
+  --fc-now-indicator-color: hsl(var(--destructive));
+  --fc-page-bg-color: transparent;
+  --fc-neutral-bg-color: hsl(var(--muted));
+  --fc-event-border-color: transparent;
+  font-family: 'Inter', sans-serif;
+}
+
+.fc-wrapper .fc .fc-toolbar-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.fc-wrapper .fc .fc-button {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius);
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.fc-wrapper .fc .fc-col-header-cell {
+  background: hsl(var(--muted));
+  font-weight: 500;
+  font-size: 0.8rem;
+  padding: 0.5rem 0;
+}
+
+.fc-wrapper .fc .fc-col-header-cell-cushion {
+  color: hsl(var(--foreground));
+  text-decoration: none;
+}
+
+.fc-wrapper .fc .fc-timegrid-slot-label-cushion {
+  font-size: 0.75rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.fc-wrapper .fc .fc-event {
+  border-radius: calc(var(--radius) - 4px);
+  font-size: 0.78rem;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+
+.fc-wrapper .fc .fc-timegrid-event .fc-event-main {
+  padding: 2px 4px;
+}
+
+.fc-wrapper .fc .fc-daygrid-day-number,
+.fc-wrapper .fc .fc-timegrid-axis-cushion {
+  color: hsl(var(--muted-foreground));
+  font-size: 0.75rem;
+}
+
+.fc-wrapper .fc .fc-scrollgrid {
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.fc-wrapper .fc td, .fc-wrapper .fc th {
+  border-color: hsl(var(--border));
+}
+
+@media (max-width: 640px) {
+  .fc-wrapper .fc .fc-toolbar {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .fc-wrapper .fc .fc-toolbar-title {
+    font-size: 1rem;
+  }
+}

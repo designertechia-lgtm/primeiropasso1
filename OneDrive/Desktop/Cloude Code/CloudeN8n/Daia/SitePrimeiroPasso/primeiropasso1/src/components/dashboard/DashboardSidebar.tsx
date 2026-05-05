@@ -1,41 +1,92 @@
-import { Link } from "react-router-dom";
-import { SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import {
-  Home,
-  BookOpen,
-  Calendar,
+  LayoutDashboard,
+  User,
+  FileText,
+  Video,
   Users,
+  LayoutList,
   Settings,
-  CreditCard,
+  Clock,
+  Calendar,
+  CalendarDays,
+  ClockIcon,
+  FileUp,
+  Ban,
+  Clapperboard,
+  Monitor,
   Share2,
+  Drama,
+  CreditCard,
 } from "lucide-react";
+import { NavLink } from "@/components/NavLink";
+import { useLocation } from "react-router-dom";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from "@/components/ui/sidebar";
 
-const menuItems = [
-  { label: "Dashboard", href: "/admin", icon: Home },
-  { label: "Contas Conectadas", href: "/admin/contas-conectadas", icon: Share2 },
-  { label: "Agenda", href: "/admin/agenda", icon: Calendar },
-  { label: "Assinatura", href: "/admin/assinatura", icon: CreditCard },
-  { label: "Vídeos", href: "/admin/videos", icon: BookOpen },
-  { label: "Configurações", href: "/admin/configuracoes", icon: Settings },
+const items = [
+  { title: "Painel", url: "/admin", icon: LayoutDashboard },
+  { title: "Meu Perfil", url: "/admin/perfil", icon: User },
+  { title: "Minha Página", url: "/admin/landing", icon: Monitor },
+  { title: "Agenda", url: "/admin/agenda", icon: CalendarDays },
+  { title: "Agendamentos", url: "/admin/agendamentos", icon: Calendar },
+  { title: "Bloqueios", url: "/admin/disponibilidade", icon: Ban },
+  { title: "Novos Pacientes", url: "/admin/leads", icon: Users },
+  { title: "CRM Clientes", url: "/admin/clientes", icon: LayoutList },
+  { title: "Artigos", url: "/admin/artigos", icon: FileText },
+  { title: "Vídeos", url: "/admin/videos", icon: Video },
+  { title: "Criar Vídeo",     url: "/admin/criar-video",    icon: Clapperboard },
+  { title: "Personagens",     url: "/admin/avatares",        icon: Drama        },
+  { title: "Redes Sociais",   url: "/admin/redes-sociais",  icon: Share2       },
+  { title: "Documentos", url: "/admin/documentos", icon: FileUp },
+  { title: "Assinatura", url: "/admin/assinatura", icon: CreditCard },
+  { title: "Configurações", url: "/admin/configuracoes", icon: Settings },
 ];
 
 export function DashboardSidebar() {
+  const { state, isMobile, setOpenMobile } = useSidebar();
+  const collapsed = state === "collapsed";
+  const location = useLocation();
+
+  const handleNavClick = () => {
+    if (isMobile) setOpenMobile(false);
+  };
+
+  const isActive = (path: string) =>
+    path === "/admin"
+      ? location.pathname === "/admin"
+      : location.pathname.startsWith(path);
+
   return (
-    <div className="flex flex-col h-full border-r">
-      <div className="p-4 border-b">
-        <h2 className="font-semibold text-lg">Admin</h2>
-      </div>
-      <SidebarContent className="flex-1">
+    <Sidebar collapsible="icon">
+      <SidebarContent>
         <SidebarGroup>
+          <SidebarGroupLabel>
+            {!collapsed && "Primeiro Passo"}
+          </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {menuItems.map((item) => (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton asChild>
-                    <Link to={item.href} className="flex items-center gap-2 px-2 py-1.5 text-sm rounded-md hover:bg-accent">
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.label}</span>
-                    </Link>
+              {items.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild isActive={isActive(item.url)}>
+                    <NavLink
+                      to={item.url}
+                      end={item.url === "/admin"}
+                      className="hover:bg-muted/50"
+                      activeClassName="bg-muted text-primary font-medium"
+                      onClick={handleNavClick}
+                    >
+                      <item.icon className="mr-2 h-4 w-4" />
+                      {!collapsed && <span>{item.title}</span>}
+                    </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
@@ -43,6 +94,6 @@ export function DashboardSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-    </div>
+    </Sidebar>
   );
 }

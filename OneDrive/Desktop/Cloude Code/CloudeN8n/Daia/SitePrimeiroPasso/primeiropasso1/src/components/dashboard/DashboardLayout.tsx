@@ -1,4 +1,4 @@
-﻿import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { DashboardSidebar } from "./DashboardSidebar";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfessional } from "@/hooks/useProfessional";
@@ -20,15 +20,22 @@ function BillingBanner() {
     ? differenceInDays(parseISO(sub.current_period_end), new Date())
     : null;
 
+  const noSubscription = !sub;
   const isExpired = daysLeft !== null && daysLeft < 0;
   const isExpiring = daysLeft !== null && daysLeft >= 0 && daysLeft <= 5;
   const lowCredits = (bal?.balance ?? 0) < LOW_CREDIT_THRESHOLD;
 
-  if (!isExpired && !isExpiring && !lowCredits) return null;
+  if (!noSubscription && !isExpired && !isExpiring && !lowCredits) return null;
 
   const banners: Array<{ bg: string; icon: React.ReactNode; text: string }> = [];
 
-  if (isExpired) {
+  if (noSubscription) {
+    banners.push({
+      bg: "bg-red-600 text-white",
+      icon: <XCircle className="h-4 w-4 shrink-0" />,
+      text: "Você ainda não possui assinatura ativa. Assine via PIX para liberar todos os recursos.",
+    });
+  } else if (isExpired) {
     banners.push({
       bg: "bg-red-600 text-white",
       icon: <XCircle className="h-4 w-4 shrink-0" />,
@@ -38,7 +45,7 @@ function BillingBanner() {
     banners.push({
       bg: "bg-yellow-500 text-white",
       icon: <AlertTriangle className="h-4 w-4 shrink-0" />,
-      text: `Sua assinatura vence em ${daysLeft} dia${daysLeft === 1 ? '' : 's'}. Renove para não perder acesso.`,
+      text: `Sua assinatura vence em ${daysLeft} dia${daysLeft === 1 ? "" : "s"}. Renove para não perder acesso.`,
     });
   }
 
@@ -88,6 +95,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     }
     localStorage.setItem("admin_dark_mode", dark ? "1" : "0");
     return () => {
+      // Ao desmontar (saindo do admin), remove o .dark global pra não vazar pra paciente/site público
       document.documentElement.classList.remove("dark");
     };
   }, [dark]);
@@ -95,6 +103,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const themeVars = useMemo(
     () => buildProfessionalThemeVars({
       primary_color:       (professional as any)?.primary_color,
+      // Não injetamos background no admin — fica neutro e o dark mode funciona corretamente.
       font_family:         (professional as any)?.font_family,
       heading_font_family: (professional as any)?.heading_font_family,
       skipBackground:      true,

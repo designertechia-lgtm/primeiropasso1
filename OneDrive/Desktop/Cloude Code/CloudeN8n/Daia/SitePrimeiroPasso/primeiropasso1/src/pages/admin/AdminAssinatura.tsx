@@ -22,6 +22,12 @@ import {
   RefreshCw,
   Package,
   Loader2,
+  MessageCircle,
+  Users,
+  Bot,
+  Video,
+  Mic,
+  Sparkles,
 } from "lucide-react";
 import { format, parseISO, differenceInDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -153,6 +159,97 @@ export default function AdminAssinatura() {
             <RefreshCw className="h-4 w-4" />
             Renovar agora via PIX
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* ── Card 1.5: Benefícios da Assinatura ──────── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-xl">
+            <Sparkles className="h-5 w-5 text-primary" />
+            Benefícios da Assinatura
+          </CardTitle>
+          <CardDescription>
+            O que está incluso no seu plano e o que é cobrado por créditos.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Incluso na assinatura */}
+          <div>
+            <h3 className="text-sm font-semibold mb-3 flex items-center gap-1.5 text-green-600">
+              <CheckCircle2 className="h-4 w-4" /> Incluso na sua assinatura
+            </h3>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex gap-3 p-3 rounded-lg border bg-green-50 dark:bg-green-950/20">
+                <MessageCircle className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-sm">Agente WhatsApp</p>
+                  <p className="text-xs text-muted-foreground">
+                    Atendimento automatizado 24/7 para seus pacientes via WhatsApp.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3 p-3 rounded-lg border bg-green-50 dark:bg-green-950/20">
+                <Users className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-sm">Funil de Clientes (CRM)</p>
+                  <p className="text-xs text-muted-foreground">
+                    Kanban completo para gerenciar leads, agendamentos e relacionamento.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3 p-3 rounded-lg border bg-green-50 dark:bg-green-950/20">
+                <Bot className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-sm">Agentes de Texto</p>
+                  <p className="text-xs text-muted-foreground">
+                    IA para criar artigos, posts, respostas e textos institucionais.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3 p-3 rounded-lg border bg-green-50 dark:bg-green-950/20">
+                <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-sm">Agenda + Site Profissional</p>
+                  <p className="text-xs text-muted-foreground">
+                    Landing page personalizada, agendamento online e área do paciente.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Cobrado por créditos */}
+          <div>
+            <h3 className="text-sm font-semibold mb-3 flex items-center gap-1.5 text-amber-600">
+              <Zap className="h-4 w-4" /> Cobrado por créditos (uso sob demanda)
+            </h3>
+            <p className="text-xs text-muted-foreground mb-3">
+              Recursos de IA premium são cobrados por uso para que você só pague pelo que utiliza.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex gap-3 p-3 rounded-lg border bg-amber-50 dark:bg-amber-950/20">
+                <Video className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-sm">Criação de Vídeos com IA</p>
+                  <p className="text-xs text-muted-foreground">
+                    Geração de vídeos via Gemini, Kling AI e outros modelos premium.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3 p-3 rounded-lg border bg-amber-50 dark:bg-amber-950/20">
+                <Mic className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-sm">Voz Sintética (ElevenLabs)</p>
+                  <p className="text-xs text-muted-foreground">
+                    Narração profissional com vozes realistas para seus vídeos.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 

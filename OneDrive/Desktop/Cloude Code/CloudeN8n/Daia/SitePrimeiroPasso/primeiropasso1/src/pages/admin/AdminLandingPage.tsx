@@ -798,7 +798,6 @@ export default function AdminLandingPage() {
                       ))}
                     </div>
                   </div>
-                  </div>
                 </>
               )}
 

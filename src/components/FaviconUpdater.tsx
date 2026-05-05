@@ -1,25 +1,11 @@
 import { useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { useProfessional } from "@/hooks/useProfessional";
 
 export default function FaviconUpdater() {
-  const { data } = useQuery({
-    queryKey: ["favicon-professional"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("professionals")
-        .select("logo_url, name")
-        .not("logo_url", "is", null)
-        .limit(1)
-        .maybeSingle();
-      return data;
-    },
-    staleTime: 0,
-    gcTime: 0,
-  });
+  const { data: professional } = useProfessional();
 
   useEffect(() => {
-    if (!data?.logo_url) return;
+    if (!professional?.logo_url) return;
 
     let link = document.querySelector("link[rel='icon']") as HTMLLinkElement;
     if (!link) {
@@ -28,12 +14,12 @@ export default function FaviconUpdater() {
       document.head.appendChild(link);
     }
     link.type = "image/png";
-    link.href = `${data.logo_url}?t=${Date.now()}`;
+    link.href = `${professional.logo_url}?t=${Date.now()}`;
 
-    if (data.name) {
-      document.title = data.name;
+    if (professional.full_name) {
+      document.title = professional.full_name;
     }
-  }, [data]);
+  }, [professional?.logo_url, professional?.full_name]);
 
   return null;
 }

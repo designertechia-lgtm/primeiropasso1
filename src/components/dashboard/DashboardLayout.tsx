@@ -3,9 +3,74 @@ import { DashboardSidebar } from "./DashboardSidebar";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfessional } from "@/hooks/useProfessional";
 import { useState, useEffect, useMemo } from "react";
-import { Moon, Sun } from "lucide-react";
+import { Moon, Sun, AlertTriangle, XCircle, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { buildProfessionalThemeVars } from "@/lib/utils";
+import { Link } from "react-router-dom";
+import { useSubscription, useCreditBalance } from "@/hooks/useBilling";
+import { differenceInDays, parseISO } from "date-fns";
+
+const LOW_CREDIT_THRESHOLD = 10;
+
+function BillingBanner() {
+  const { data: sub } = useSubscription();
+  const { data: bal } = useCreditBalance();
+
+  const daysLeft = sub?.current_period_end
+    ? differenceInDays(parseISO(sub.current_period_end), new Date())
+    : null;
+
+  const noSubscription = !sub;
+  const isExpired = daysLeft !== null && daysLeft < 0;
+  const isExpiring = daysLeft !== null && daysLeft >= 0 && daysLeft <= 5;
+  const lowCredits = (bal?.balance ?? 0) < LOW_CREDIT_THRESHOLD;
+
+  if (!noSubscription && !isExpired && !isExpiring && !lowCredits) return null;
+
+  const banners: Array<{ bg: string; icon: React.ReactNode; text: string }> = [];
+
+  if (noSubscription) {
+    banners.push({
+      bg: "bg-red-600 text-white",
+      icon: <XCircle className="h-4 w-4 shrink-0" />,
+      text: "Você ainda não possui assinatura ativa. Assine via PIX para liberar todos os recursos.",
+    });
+  } else if (isExpired) {
+    banners.push({
+      bg: "bg-red-600 text-white",
+      icon: <XCircle className="h-4 w-4 shrink-0" />,
+      text: "Sua assinatura está vencida. Renove via PIX para continuar usando a plataforma.",
+    });
+  } else if (isExpiring) {
+    banners.push({
+      bg: "bg-yellow-500 text-white",
+      icon: <AlertTriangle className="h-4 w-4 shrink-0" />,
+      text: `Sua assinatura vence em ${daysLeft} dia${daysLeft === 1 ? "" : "s"}. Renove para não perder acesso.`,
+    });
+  }
+
+  if (lowCredits) {
+    banners.push({
+      bg: "bg-amber-500 text-white",
+      icon: <Zap className="h-4 w-4 shrink-0" />,
+      text: `Saldo de créditos baixo (${bal?.balance ?? 0}). Recarregue para continuar usando IA avançada.`,
+    });
+  }
+
+  return (
+    <>
+      {banners.map((b, i) => (
+        <div key={i} className={`${b.bg} px-4 py-2 text-sm flex items-center justify-center gap-2`}>
+          {b.icon}
+          <span>{b.text}</span>
+          <Link to="/admin/assinatura" className="underline font-semibold ml-1 whitespace-nowrap">
+            Gerenciar →
+          </Link>
+        </div>
+      ))}
+    </>
+  );
+}
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -51,6 +116,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       <div className="min-h-screen flex w-full" style={themeVars as React.CSSProperties}>
         <DashboardSidebar />
         <div className="flex-1 flex flex-col min-w-0">
+          <BillingBanner />
           <header className="h-14 flex items-center justify-between border-b px-4 bg-card">
             <SidebarTrigger className="ml-0" />
             <div className="flex items-center gap-3">

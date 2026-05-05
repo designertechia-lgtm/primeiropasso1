@@ -239,6 +239,11 @@ export default function AdminLandingPage() {
   const [primaryColor, setPrimaryColor] = useState("#87A96B");
   const [secondaryColor, setSecondaryColor] = useState(() => deriveColors("#87A96B").secondary);
   const [bgColor, setBgColor] = useState(() => deriveColors("#87A96B").background);
+  const [darkPrimaryColor, setDarkPrimaryColor] = useState("");
+  const [darkSecondaryColor, setDarkSecondaryColor] = useState("");
+  const [darkBgColor, setDarkBgColor] = useState("");
+  const [darkModeEnabled, setDarkModeEnabled] = useState(false);
+  const [previewMode, setPreviewMode] = useState<"light" | "dark">("light");
 
   // tipografia
   const [fontFamily, setFontFamily] = useState("inter");
@@ -340,6 +345,10 @@ export default function AdminLandingPage() {
     setPrimaryColor(pc);
     setSecondaryColor((professional as any).secondary_color || dv.secondary);
     setBgColor((professional as any).background_color || dv.background);
+    setDarkPrimaryColor((professional as any).dark_primary_color || "");
+    setDarkSecondaryColor((professional as any).dark_secondary_color || "");
+    setDarkBgColor((professional as any).dark_background_color || "");
+    setDarkModeEnabled(!!(professional as any).dark_mode);
     setPainTitle((professional as any).pain_title || "");
     setPainSubtitle((professional as any).pain_subtitle || "");
     setPainItems((professional as any).pain_items || []);
@@ -363,7 +372,7 @@ export default function AdminLandingPage() {
     if (!hasLoaded.current) return;
     setIsDirty(true);
   }, [heroTitle, heroSubtitle, heroImageUrl, heroBgUrl, heroBgOpacity, heroBgOverlay, photoUrl, photoStyle, photoFit,
-      bio, aboutImageUrl, approaches, primaryColor, secondaryColor, bgColor,
+      bio, aboutImageUrl, approaches, primaryColor, secondaryColor, bgColor, darkPrimaryColor, darkSecondaryColor, darkBgColor, darkModeEnabled,
       painTitle, painSubtitle, painItems, solutionTitle, solutionSubtitle, solutionItems,
       fontFamily, headingFontFamily, fontSizeScale, contactTitle, contactSubtitle, contactWhatsapp, contactPhone, contactEmail, contactInstagram]);
 
@@ -441,6 +450,10 @@ export default function AdminLandingPage() {
       primary_color: primaryColor,
       secondary_color: secondaryColor,
       background_color: bgColor,
+      dark_primary_color: darkPrimaryColor || null,
+      dark_secondary_color: darkSecondaryColor || null,
+      dark_background_color: darkBgColor || null,
+      dark_mode: darkModeEnabled,
       font_family: fontFamily,
       heading_font_family: headingFontFamily,
       font_size_scale: fontSizeScale,
@@ -529,8 +542,12 @@ export default function AdminLandingPage() {
         <link rel="stylesheet" href={GOOGLE_FONTS_URL} />
 
         {/* scale wrapper */}
-        <div style={{ transform: "scale(0.58)", transformOrigin: "top left", width: "172.4%", pointerEvents: "none", ...buildPreviewVars(primaryColor, secondaryColor, bgColor, fontFamily, fontSizeScale, headingFontFamily) } as React.CSSProperties}>
-          <div style={{ pointerEvents: "auto" }}>
+        <div className={previewMode} style={{ transform: "scale(0.58)", transformOrigin: "top left", width: "172.4%", pointerEvents: "none", ...buildPreviewVars(
+          previewMode === "dark" && darkPrimaryColor ? darkPrimaryColor : primaryColor, 
+          previewMode === "dark" && darkSecondaryColor ? darkSecondaryColor : secondaryColor, 
+          previewMode === "dark" && darkBgColor ? darkBgColor : bgColor, 
+          fontFamily, fontSizeScale, headingFontFamily) } as React.CSSProperties}>
+          <div className="bg-background text-foreground" style={{ pointerEvents: "auto" }}>
 
             <SectionBlock label="Hero" icon={Layout} active={activeSection === "hero"} onClick={() => setActiveSection("hero")}>
               <HeroSection
@@ -577,23 +594,23 @@ export default function AdminLandingPage() {
 
             <SectionBlock label="Cores" icon={Palette} active={activeSection === "cores"} onClick={() => setActiveSection("cores")}>
               <div className="py-16 px-8 flex flex-col items-center gap-8 bg-background">
-                <p className="text-sm font-medium text-muted-foreground uppercase tracking-widest">Paleta ativa</p>
+                <p className="text-sm font-medium text-muted-foreground uppercase tracking-widest">Paleta ativa ({previewMode === "dark" ? "Escuro" : "Claro"})</p>
                 <div className="flex gap-6">
                   {[
-                    { label: "Principal",  color: primaryColor },
-                    { label: "Secundária", color: secondaryColor },
-                    { label: "Fundo",      color: bgColor },
+                    { label: "Principal",  color: previewMode === "dark" && darkPrimaryColor ? darkPrimaryColor : primaryColor },
+                    { label: "Secundária", color: previewMode === "dark" && darkSecondaryColor ? darkSecondaryColor : secondaryColor },
+                    { label: "Fundo",      color: previewMode === "dark" && darkBgColor ? darkBgColor : bgColor },
                   ].map((c) => (
                     <div key={c.label} className="flex flex-col items-center gap-2">
                       <div className="w-20 h-20 rounded-2xl shadow-lg border" style={{ background: c.color }} />
                       <span className="text-xs text-muted-foreground">{c.label}</span>
-                      <span className="text-xs font-mono text-foreground/60">{c.color}</span>
+                      <span className="text-xs font-mono text-foreground/60">{c.color || "—"}</span>
                     </div>
                   ))}
                 </div>
                 <div className="flex gap-3 flex-wrap justify-center">
-                  <div className="rounded-xl px-5 py-2.5 text-sm font-medium shadow-sm" style={{ background: primaryColor, color: "#fff" }}>Botão primário</div>
-                  <div className="rounded-xl px-5 py-2.5 text-sm font-medium border shadow-sm" style={{ background: bgColor, borderColor: primaryColor, color: primaryColor }}>Botão outline</div>
+                  <div className="rounded-xl px-5 py-2.5 text-sm font-medium shadow-sm" style={{ background: previewMode === "dark" && darkPrimaryColor ? darkPrimaryColor : primaryColor, color: "#fff" }}>Botão primário</div>
+                  <div className="rounded-xl px-5 py-2.5 text-sm font-medium border shadow-sm" style={{ background: previewMode === "dark" && darkBgColor ? darkBgColor : bgColor, borderColor: previewMode === "dark" && darkPrimaryColor ? darkPrimaryColor : primaryColor, color: previewMode === "dark" && darkPrimaryColor ? darkPrimaryColor : primaryColor }}>Botão outline</div>
                 </div>
                 <p className="text-sm text-muted-foreground" style={{ fontFamily: (FONTS.find(f => f.value === fontFamily) ?? FONTS[0]).style.fontFamily }}>
                   Fonte: <strong>{(FONTS.find(f => f.value === fontFamily) ?? FONTS[0]).label}</strong>
@@ -781,28 +798,26 @@ export default function AdminLandingPage() {
                       ))}
                     </div>
                   </div>
-
-                  {heroBgOverlay !== "none" && (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <Label>Opacidade do overlay</Label>
-                        <span className="text-sm font-semibold tabular-nums text-primary">{heroBgOpacity}%</span>
-                      </div>
-                      <Slider
-                        min={0}
-                        max={100}
-                        step={5}
-                        value={[heroBgOpacity]}
-                        onValueChange={([v]) => setHeroBgOpacity(v)}
-                      />
-                      <div className="flex justify-between text-[10px] text-muted-foreground">
-                        <span>Transparente</span>
-                        <span>Sólido</span>
-                      </div>
-                    </div>
-                  )}
                 </>
               )}
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>Opacidade do card de texto (vidro)</Label>
+                  <span className="text-sm font-semibold tabular-nums text-primary">{heroBgOpacity}%</span>
+                </div>
+                <Slider
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={[heroBgOpacity]}
+                  onValueChange={([v]) => setHeroBgOpacity(v)}
+                />
+                <div className="flex justify-between text-[10px] text-muted-foreground">
+                  <span>Transparente</span>
+                  <span>Sólido</span>
+                </div>
+              </div>
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -1001,63 +1016,90 @@ export default function AdminLandingPage() {
           {/* ── CORES ── */}
           {activeSection === "cores" && (
             <>
-              <div className="space-y-3">
-                <Label>Paletas recomendadas</Label>
-                <div className="grid grid-cols-5 gap-2">
-                  {PALETTES.map((p) => {
-                    const d = deriveColors(p.primary);
-                    const isSelected = primaryColor.toLowerCase() === p.primary.toLowerCase();
-                    return (
-                      <button
-                        key={p.primary}
-                        type="button"
-                        onClick={() => { const dv = deriveColors(p.primary); setPrimaryColor(p.primary); setSecondaryColor(dv.secondary); setBgColor(dv.background); }}
-                        title={p.name}
-                        className={`group relative flex flex-col items-center gap-1 rounded-xl border-2 p-2 transition-all hover:scale-105 ${
-                          isSelected ? "border-primary shadow-md" : "border-transparent hover:border-border"
-                        }`}
-                      >
-                        <div className="flex w-full rounded-lg overflow-hidden h-8">
-                          <div className="flex-1" style={{ background: p.primary }} />
-                          <div className="flex-1" style={{ background: d.secondary }} />
-                          <div className="flex-1" style={{ background: d.background }} />
-                        </div>
-                        <span className="text-[10px] text-muted-foreground leading-none">{p.name}</span>
-                        {isSelected && (
-                          <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-[8px] font-bold shadow">✓</span>
-                        )}
-                      </button>
-                    );
-                  })}
+              <div className="flex justify-center mb-2">
+                <div className="bg-muted/50 p-1 rounded-xl flex gap-1 border">
+                  <button type="button" onClick={() => setPreviewMode("light")} className={`px-5 py-2 text-sm font-medium rounded-lg transition-all ${previewMode === "light" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>☀️ Modo Claro</button>
+                  <button type="button" onClick={() => setPreviewMode("dark")} className={`px-5 py-2 text-sm font-medium rounded-lg transition-all ${previewMode === "dark" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>🌙 Modo Escuro</button>
                 </div>
               </div>
 
-              <div className="space-y-3">
+              {previewMode === "light" && (
+                <div className="space-y-3">
+                  <Label>Paletas recomendadas (Apenas Modo Claro)</Label>
+                  <div className="grid grid-cols-5 gap-2">
+                    {PALETTES.map((p) => {
+                      const d = deriveColors(p.primary);
+                      const isSelected = primaryColor.toLowerCase() === p.primary.toLowerCase();
+                      return (
+                        <button
+                          key={p.primary}
+                          type="button"
+                          onClick={() => { const dv = deriveColors(p.primary); setPrimaryColor(p.primary); setSecondaryColor(dv.secondary); setBgColor(dv.background); }}
+                          title={p.name}
+                          className={`group relative flex flex-col items-center gap-1 rounded-xl border-2 p-2 transition-all hover:scale-105 ${
+                            isSelected ? "border-primary shadow-md" : "border-transparent hover:border-border"
+                          }`}
+                        >
+                          <div className="flex w-full rounded-lg overflow-hidden h-8">
+                            <div className="flex-1" style={{ background: p.primary }} />
+                            <div className="flex-1" style={{ background: d.secondary }} />
+                            <div className="flex-1" style={{ background: d.background }} />
+                          </div>
+                          <span className="text-[10px] text-muted-foreground leading-none">{p.name}</span>
+                          {isSelected && (
+                            <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-[8px] font-bold shadow">✓</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-3 pt-4">
                 <div className="flex items-center justify-between">
-                  <Label>Cores personalizadas</Label>
+                  <Label>Cores personalizadas ({previewMode === "dark" ? "Modo Escuro" : "Modo Claro"})</Label>
                   <button
                     type="button"
-                    onClick={() => { const dv = deriveColors(primaryColor); setSecondaryColor(dv.secondary); setBgColor(dv.background); }}
+                    onClick={() => {
+                      if (previewMode === "dark") {
+                        setDarkPrimaryColor("");
+                        setDarkSecondaryColor("");
+                        setDarkBgColor("");
+                      } else {
+                        const dv = deriveColors(primaryColor); setSecondaryColor(dv.secondary); setBgColor(dv.background);
+                      }
+                    }}
                     className="text-xs text-muted-foreground hover:text-primary underline"
                   >
-                    Resetar derivadas
+                    {previewMode === "dark" ? "Limpar cores escuras" : "Resetar derivadas"}
                   </button>
                 </div>
                 {[
-                  { label: "Principal",  value: primaryColor,   setter: setPrimaryColor   },
-                  { label: "Secundária", value: secondaryColor, setter: setSecondaryColor },
-                  { label: "Fundo",      value: bgColor,        setter: setBgColor        },
-                ].map(({ label, value, setter }) => (
+                  { label: "Principal",  
+                    value: previewMode === "dark" ? darkPrimaryColor : primaryColor,   
+                    setter: previewMode === "dark" ? setDarkPrimaryColor : setPrimaryColor,
+                    fallback: primaryColor },
+                  { label: "Secundária", 
+                    value: previewMode === "dark" ? darkSecondaryColor : secondaryColor, 
+                    setter: previewMode === "dark" ? setDarkSecondaryColor : setSecondaryColor,
+                    fallback: secondaryColor },
+                  { label: "Fundo",      
+                    value: previewMode === "dark" ? darkBgColor : bgColor,        
+                    setter: previewMode === "dark" ? setDarkBgColor : setBgColor,
+                    fallback: previewMode === "dark" ? "#1a1b1e" : bgColor },
+                ].map(({ label, value, setter, fallback }) => (
                   <div key={label} className="flex items-center gap-3">
                     <input
                       type="color"
-                      value={value}
+                      value={value || fallback}
                       onChange={(e) => setter(e.target.value)}
                       className="h-10 w-10 cursor-pointer rounded-lg border p-1 flex-shrink-0"
                     />
-                    <div className="flex-1 h-10 rounded-lg border shadow-sm" style={{ background: value }} />
+                    <div className="flex-1 h-10 rounded-lg border shadow-sm" style={{ background: value || fallback }} />
                     <Input
                       value={value}
+                      placeholder={fallback}
                       onChange={(e) => setter(e.target.value)}
                       className="font-mono uppercase w-28 flex-shrink-0"
                       maxLength={7}
@@ -1065,6 +1107,17 @@ export default function AdminLandingPage() {
                     <span className="text-xs text-muted-foreground w-20 flex-shrink-0">{label}</span>
                   </div>
                 ))}
+              </div>
+
+              <div className="space-y-3 pt-6 border-t">
+                <div className="flex items-center justify-between">
+                  <Label className="flex items-center gap-2">Permitir Modo Escuro no site?</Label>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" className="sr-only peer" checked={darkModeEnabled} onChange={(e) => setDarkModeEnabled(e.target.checked)} />
+                    <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                  </label>
+                </div>
+                <p className="text-xs text-muted-foreground">Se ativado, um botão de alternar tema aparecerá no cabeçalho do seu site público para os visitantes.</p>
               </div>
 
               <div className="space-y-3 pt-2 border-t">

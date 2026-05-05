@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { DEMO_PROFESSIONAL } from "@/data/demoProfessional";
@@ -5,15 +6,15 @@ import { DEMO_PROFESSIONAL } from "@/data/demoProfessional";
 type PhotoStyle = "portrait" | "circle" | "square" | "horizontal";
 
 const PHOTO_STYLES: Record<PhotoStyle, { shape: string; aspect: string }> = {
-  portrait:   { shape: "rounded-[2rem]",  aspect: "aspect-auto"   },
-  circle:     { shape: "rounded-full",    aspect: "aspect-square" },
-  square:     { shape: "rounded-[2rem]",  aspect: "aspect-square" },
-  horizontal: { shape: "rounded-[2rem]",  aspect: "aspect-[3/2]"  },
+  portrait: { shape: "rounded-[2rem]", aspect: "aspect-auto" },
+  circle: { shape: "rounded-full", aspect: "aspect-square" },
+  square: { shape: "rounded-[2rem]", aspect: "aspect-square" },
+  horizontal: { shape: "rounded-[2rem]", aspect: "aspect-[3/2]" },
 };
 
 const OVERLAY_COLORS: Record<string, string> = {
-  dark:    "0,0,0",
-  light:   "255,255,255",
+  dark: "0,0,0",
+  light: "255,255,255",
   primary: "var(--overlay-primary,0,0,0)",
 };
 
@@ -36,7 +37,19 @@ interface HeroSectionProps {
 const DEFAULT_HERO_BG = "/hero-bg-default.jpg";
 
 export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroImageUrl, heroBgUrl, heroBgOpacity = 70, heroBgOverlay = "dark", slug, professionalName, crp, photoStyle = "portrait", photoFit = "contain" }: HeroSectionProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
   const activeBgUrl = heroBgUrl || DEFAULT_HERO_BG;
+  const isVideo = /\.(mp4|webm|ogg|mov|m4v)($|\?)/i.test(activeBgUrl);
+
+  useEffect(() => {
+    if (isVideo && videoRef.current) {
+      videoRef.current.defaultMuted = true;
+      videoRef.current.muted = true;
+      videoRef.current.play().catch(e => console.log("Autoplay failed:", e));
+    }
+  }, [activeBgUrl, isVideo]);
+
   const displayImage = heroImageUrl || photoUrl || DEMO_PROFESSIONAL.hero_image_url || DEMO_PROFESSIONAL.photo_url;
   const displayName = professionalName && professionalName !== "Profissional" ? professionalName : DEMO_PROFESSIONAL.full_name;
   const displayCrp = crp || DEMO_PROFESSIONAL.crp;
@@ -50,17 +63,19 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
   const overlayRgb = heroBgOverlay === "primary"
     ? null
     : (OVERLAY_COLORS[heroBgOverlay] ?? OVERLAY_COLORS.dark);
-  // Quando usa imagem padrão (sem customização), limita overlay a 30% para a imagem aparecer
-  const overlayAlpha = isDefaultBg ? Math.min(heroBgOpacity / 100, 0.30) : heroBgOpacity / 100;
+    
+  // O controle de opacidade agora afeta o painel de vidro (card).
+  // O overlay do vídeo fica fixo em 15% (ou 30% se for padrão) para deixar o vídeo brilhar.
+  const overlayAlpha = isDefaultBg ? 0.30 : 0.15;
 
   return (
     <section id="hero" className="relative overflow-hidden">
       <>
         {(() => {
-          const isVideo = /\.(mp4|webm|ogg|mov|m4v)($|\?)/i.test(activeBgUrl);
           if (isVideo) {
             return (
               <video
+                ref={videoRef}
                 src={activeBgUrl}
                 autoPlay
                 loop
@@ -112,42 +127,48 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
             );
           })()}
 
-          {/* Name & CRP */}
-          {(displayName || displayCrp) && (
-            <div className="space-y-1">
-              {displayName && (
-                <h2 className="font-serif text-2xl md:text-3xl font-bold text-foreground">
-                  {displayName}
-                </h2>
-              )}
-              {displayCrp && (
-                <p className="text-sm text-muted-foreground tracking-wide uppercase">
-                  {displayCrp}
-                </p>
-              )}
-            </div>
-          )}
+          {/* Text & CTA Container (Glassmorphism & Animation) */}
+          <div 
+            className="flex flex-col items-center gap-6 p-8 md:p-12 rounded-3xl backdrop-blur-xl border border-white/20 dark:border-white/10 shadow-2xl animate-in fade-in slide-in-from-bottom-10 duration-1000 ease-out max-w-4xl"
+            style={{ backgroundColor: `hsl(var(--background) / ${heroBgOpacity / 100})` }}
+          >
+            {/* Name & CRP */}
+            {(displayName || displayCrp) && (
+              <div className="space-y-1">
+                {displayName && (
+                  <h2 className="font-serif text-2xl md:text-3xl font-bold text-black dark:text-white drop-shadow-md">
+                    {displayName}
+                  </h2>
+                )}
+                {displayCrp && (
+                  <p className="text-sm text-black/80 dark:text-white/80 tracking-wide uppercase font-semibold drop-shadow-sm">
+                    {displayCrp}
+                  </p>
+                )}
+              </div>
+            )}
 
-          {/* Title & Subtitle */}
-          <div className="max-w-2xl space-y-4">
-            <h1 className="font-serif text-3xl md:text-4xl lg:text-5xl font-bold text-foreground leading-tight">
-              {displayTitle}
-            </h1>
-            <p className="text-lg md:text-xl text-muted-foreground leading-relaxed">
-              {displaySubtitle}
-            </p>
+            {/* Title & Subtitle */}
+            <div className="max-w-2xl space-y-4">
+              <h1 className="font-serif text-3xl md:text-4xl lg:text-5xl font-bold text-black dark:text-white leading-tight drop-shadow-md">
+                {displayTitle}
+              </h1>
+              <p className="text-lg md:text-xl text-black/90 dark:text-white/90 leading-relaxed font-medium drop-shadow-sm">
+                {displaySubtitle}
+              </p>
+            </div>
+
+            {/* CTA Buttons */}
+            {whatsapp && (
+              <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
+                  <Button size="lg" className="text-base gap-2 shadow-lg hover:shadow-xl transition-shadow duration-300">
+                    Agenda <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </a>
+              </div>
+            )}
           </div>
-
-          {/* CTA Buttons */}
-          {whatsapp && (
-            <div className="flex flex-col sm:flex-row gap-3">
-              <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
-                <Button size="lg" className="text-base gap-2">
-                  Agenda <ArrowRight className="h-4 w-4" />
-                </Button>
-              </a>
-            </div>
-          )}
         </div>
       </div>
     </section>

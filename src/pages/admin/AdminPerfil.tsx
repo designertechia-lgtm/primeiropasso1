@@ -17,6 +17,7 @@ export default function AdminPerfil() {
   const queryClient = useQueryClient();
 
   const [fullName, setFullName] = useState("");
+  const [slug, setSlug] = useState("");
   const [crp, setCrp] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -24,6 +25,7 @@ export default function AdminPerfil() {
   const [instagram, setInstagram] = useState("");
   const [linkedin, setLinkedin] = useState("");
   const [photoUrl, setPhotoUrl] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
   const [priceMin, setPriceMin] = useState("");
   const [priceMax, setPriceMax] = useState("");
   const [priceFirstSession, setPriceFirstSession] = useState("");
@@ -32,13 +34,15 @@ export default function AdminPerfil() {
   useEffect(() => {
     if (!professional) return;
     setFullName(professional.full_name || profile?.full_name || "");
+    setSlug(professional.slug || "");
     setCrp(professional.crp || "");
-    setPhone(professional.phone || "");
+    setPhone(professional.phone || (professional as any).whatsapp || "");
     setEmail(professional.email || profile?.email || "");
     setAddress(professional.address || "");
     setInstagram(professional.instagram || "");
     setLinkedin(professional.linkedin || "");
     setPhotoUrl(professional.photo_url || "");
+    setLogoUrl(professional.logo_url || "");
     setPriceMin(professional.price_min?.toString() || "");
     setPriceMax(professional.price_max?.toString() || "");
     setPriceFirstSession(professional.price_first_session?.toString() || "");
@@ -52,13 +56,16 @@ export default function AdminPerfil() {
       supabase.from("profiles").update({ full_name: fullName }).eq("user_id", user.id),
       supabase.from("professionals").update({
         full_name: fullName,
+        slug: slug || null,
         crp,
         phone: phone || null,
+        whatsapp: phone || null,
         email: email || null,
         address: address || null,
         instagram: instagram || null,
         linkedin: linkedin || null,
         photo_url: photoUrl || null,
+        logo_url: logoUrl || null,
         price_min: priceMin ? parseFloat(priceMin) : null,
         price_max: priceMax ? parseFloat(priceMax) : null,
         price_first_session: priceFirstSession ? parseFloat(priceFirstSession) : null,
@@ -81,15 +88,34 @@ export default function AdminPerfil() {
       <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">Meu Perfil</h1>
 
       <Card>
+        <CardHeader><CardTitle>Identidade Visual</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Foto de perfil <FieldHint text="Sua foto principal exibida na sua página pública e no painel." /></Label>
+              <ImageUpload currentUrl={photoUrl || null} onUploaded={setPhotoUrl} folder="photos" variant="avatar" />
+            </div>
+            <div className="space-y-2">
+              <Label>Logo / Favicon <FieldHint text="Logo da sua marca exibida na sua página e como ícone no navegador (favicon). Recomendado: PNG com fundo transparente, 200×200px." /></Label>
+              <ImageUpload currentUrl={logoUrl || null} onUploaded={setLogoUrl} folder="logos" variant="avatar" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardHeader><CardTitle>Dados Pessoais</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Foto de perfil <FieldHint text="Sua foto principal exibida na sua página pública e no painel." /></Label>
-            <ImageUpload currentUrl={photoUrl || null} onUploaded={setPhotoUrl} folder="photos" variant="avatar" />
-          </div>
-          <div className="space-y-2">
             <Label htmlFor="fullName">Nome completo</Label>
             <Input id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="slug">Slug (URL personalizada) <FieldHint text="Endereço único da sua página. Ex: 'daia-silva' → primeiropasso.online/daia-silva. Use apenas letras minúsculas, números e hífens." /></Label>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">primeiropasso.online/</span>
+              <Input id="slug" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="seu-nome" />
+            </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="crp">Número do conselho / associação <FieldHint text="Ex: CRP 06/12345, CFP 01/00000, CRM 123456." /></Label>

@@ -63,8 +63,10 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
   const overlayRgb = heroBgOverlay === "primary"
     ? null
     : (OVERLAY_COLORS[heroBgOverlay] ?? OVERLAY_COLORS.dark);
-  // Quando usa imagem padrão (sem customização), limita overlay a 30% para a imagem aparecer
-  const overlayAlpha = isDefaultBg ? Math.min(heroBgOpacity / 100, 0.30) : heroBgOpacity / 100;
+    
+  // O controle de opacidade agora afeta o painel de vidro (card).
+  // O overlay do vídeo fica fixo em 15% (ou 30% se for padrão) para deixar o vídeo brilhar.
+  const overlayAlpha = isDefaultBg ? 0.30 : 0.15;
 
   return (
     <section id="hero" className="relative overflow-hidden">
@@ -126,7 +128,10 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
           })()}
 
           {/* Text & CTA Container (Glassmorphism & Animation) */}
-          <div className="flex flex-col items-center gap-6 p-8 md:p-12 rounded-3xl bg-background/70 dark:bg-background/40 backdrop-blur-xl border border-white/20 dark:border-white/10 shadow-2xl animate-in fade-in slide-in-from-bottom-10 duration-1000 ease-out max-w-4xl">
+          <div 
+            className="flex flex-col items-center gap-6 p-8 md:p-12 rounded-3xl backdrop-blur-xl border border-white/20 dark:border-white/10 shadow-2xl animate-in fade-in slide-in-from-bottom-10 duration-1000 ease-out max-w-4xl"
+            style={{ backgroundColor: `hsl(var(--background) / ${heroBgOpacity / 100})` }}
+          >
             {/* Name & CRP */}
             {(displayName || displayCrp) && (
               <div className="space-y-1">

@@ -1,23 +1,13 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfessional } from "@/hooks/useProfessional";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
-import { Instagram, Linkedin, Link2, Unlink, Loader2 } from "lucide-react";
-
-interface SocialAccount {
-  id: string;
-  platform: string;
-  account_name: string | null;
-  expires_at: string | null;
-}
 
 function hexToHsl(hex: string): { h: number; s: number; l: number } {
   const r = parseInt(hex.slice(1, 3), 16) / 255;
@@ -66,78 +56,7 @@ export default function AdminConfiguracoes() {
   const { data: professional, isLoading } = useProfessional();
   const queryClient = useQueryClient();
 
-  const [slug, setSlug] = useState("");
-  const [whatsapp, setWhatsapp] = useState("");
-  const [logoUrl, setLogoUrl] = useState("");
-  const [photoUrl, setPhotoUrl] = useState("");
   const [saving, setSaving] = useState(false);
-  const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
-
-  // Contas conectadas
-  const { data: socialAccounts = [], refetch: refetchAccounts } = useQuery<SocialAccount[]>({
-    queryKey: ["social-accounts", professional?.id],
-    queryFn: async () => {
-      const { data } = await (supabase as any)
-        .from("social_accounts")
-        .select("id, platform, account_name, expires_at")
-        .eq("professional_id", professional!.id);
-      return (data ?? []) as SocialAccount[];
-    },
-    enabled: !!professional?.id,
-  });
-
-  // Escutar mensagem de sucesso/erro do popup OAuth
-  useEffect(() => {
-    const handler = (event: MessageEvent) => {
-      if (event.data?.type === "OAUTH_SUCCESS") {
-        const label = event.data.platform === "instagram" ? "Instagram" : "LinkedIn";
-        toast.success(`${label} conectado com sucesso!`);
-        refetchAccounts();
-        setConnectingPlatform(null);
-      } else if (event.data?.type === "OAUTH_ERROR") {
-        toast.error("Erro ao conectar", { description: event.data.error ?? "Tente novamente." });
-        setConnectingPlatform(null);
-      }
-    };
-    window.addEventListener("message", handler);
-    return () => window.removeEventListener("message", handler);
-  }, [refetchAccounts]);
-
-  const connectPlatform = async (platform: string) => {
-    if (!professional) return;
-    setConnectingPlatform(platform);
-    try {
-      const { data, error } = await supabase.functions.invoke("oauth-connect", {
-        body: { platform: platform === "instagram" ? "meta" : platform },
-      });
-      if (error || !data?.url) {
-        toast.error("Erro ao iniciar autenticação", { description: error?.message });
-        setConnectingPlatform(null);
-        return;
-      }
-      const popup = window.open(data.url, "oauth-popup", "width=620,height=720,scrollbars=yes,resizable=yes");
-      // Detecta fechamento manual do popup sem completar auth
-      const check = setInterval(() => {
-        if (popup?.closed) {
-          clearInterval(check);
-          setConnectingPlatform(null);
-        }
-      }, 1000);
-    } catch {
-      toast.error("Erro ao iniciar autenticação");
-      setConnectingPlatform(null);
-    }
-  };
-
-  const disconnectPlatform = async (id: string, name: string | null) => {
-    if (!confirm(`Desconectar ${name ?? "esta conta"}?`)) return;
-    const { error } = await (supabase as any).from("social_accounts").delete().eq("id", id);
-    if (error) toast.error("Erro ao desconectar");
-    else {
-      toast.success("Conta desconectada");
-      refetchAccounts();
-    }
-  };
 
   // Status colors
   const [colorStatusPending, setColorStatusPending] = useState("#EAB308");
@@ -149,10 +68,6 @@ export default function AdminConfiguracoes() {
 
   useEffect(() => {
     if (professional) {
-      setSlug(professional.slug || "");
-      setWhatsapp(professional.whatsapp || "");
-      setLogoUrl(professional.logo_url || "");
-      setPhotoUrl(professional.photo_url || "");
       setColorStatusPending((professional as any).color_status_pending || "#EAB308");
       setColorStatusConfirmed((professional as any).color_status_confirmed || "#22C55E");
       setColorStatusCompleted((professional as any).color_status_completed || "#3B82F6");
@@ -166,10 +81,6 @@ export default function AdminConfiguracoes() {
     if (!professional) return;
     setSaving(true);
     const { error } = await supabase.from("professionals").update({
-      slug,
-      whatsapp: whatsapp || null,
-      logo_url: logoUrl || null,
-      photo_url: photoUrl || null,
       color_status_pending: colorStatusPending,
       color_status_confirmed: colorStatusConfirmed,
       color_status_completed: colorStatusCompleted,
@@ -193,58 +104,6 @@ export default function AdminConfiguracoes() {
     <div className="space-y-6 max-w-2xl">
       <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">Configurações</h1>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Endereço da Página</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="slug">Slug (URL) <FieldHint text="Endereço único da sua página. Ex: 'daia-silva' → primeiropasso.online/daia-silva. Use apenas letras minúsculas, números e hífens." /></Label>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground whitespace-nowrap">primeiropasso.com/</span>
-              <Input id="slug" value={slug} onChange={(e) => setSlug(e.target.value)} />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Contato</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="whatsapp">WhatsApp <FieldHint text="Número de contato exibido na sua página. Pacientes podem clicar para te contatar diretamente. Ex: (11) 99999-9999." /></Label>
-            <Input id="whatsapp" placeholder="(11) 99999-9999" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Imagens</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-2">
-            <Label>Logo <FieldHint text="Logo da sua marca exibida na sua página e como ícone no navegador (favicon). Recomendado: PNG com fundo transparente, 200×200px." /></Label>
-            <ImageUpload
-              currentUrl={logoUrl || null}
-              onUploaded={(url) => setLogoUrl(url)}
-              folder="logos"
-              variant="logo"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Foto de Perfil <FieldHint text="Sua foto principal. Usada como fallback nas seções Hero e Sobre quando não há imagem específica definida." /></Label>
-            <ImageUpload
-              currentUrl={photoUrl || null}
-              onUploaded={(url) => setPhotoUrl(url)}
-              folder="photos"
-              variant="avatar"
-            />
-          </div>
-        </CardContent>
-      </Card>
 
       <Card>
         <CardHeader>
@@ -302,94 +161,6 @@ export default function AdminConfiguracoes() {
               ))}
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Contas Conectadas</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Conecte suas redes sociais para publicar conteúdo automaticamente a partir do painel.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {([
-            {
-              platform: "instagram",
-              label:    "Instagram",
-              Icon:     Instagram,
-              color:    "text-pink-500",
-              hint:     "Requer conta Business/Creator vinculada a uma Página do Facebook.",
-            },
-            {
-              platform: "linkedin",
-              label:    "LinkedIn",
-              Icon:     Linkedin,
-              color:    "text-blue-600",
-              hint:     "Conecte seu perfil profissional para publicar artigos e vídeos.",
-            },
-          ] as const).map(({ platform, label, Icon, color, hint }) => {
-            const account     = socialAccounts.find((a) => a.platform === platform);
-            const isConnecting = connectingPlatform === platform;
-            const nearExpiry   = account?.expires_at
-              ? new Date(account.expires_at) < new Date(Date.now() + 7 * 86_400_000)
-              : false;
-
-            return (
-              <div
-                key={platform}
-                className="flex items-center justify-between gap-4 rounded-lg border p-4"
-              >
-                {/* Info */}
-                <div className="flex items-center gap-3 min-w-0">
-                  <Icon className={`h-5 w-5 shrink-0 ${color}`} />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium">{label}</p>
-                    {account ? (
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs text-green-600 font-medium">
-                          {account.account_name ?? "Conectado"}
-                        </span>
-                        {nearExpiry && (
-                          <Badge variant="outline" className="text-xs text-orange-600 border-orange-300 py-0">
-                            Token expirando
-                          </Badge>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground truncate">{hint}</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Ação */}
-                {account ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={() => disconnectPlatform(account.id, account.account_name)}
-                  >
-                    <Unlink className="h-3.5 w-3.5 mr-1.5" />
-                    Desconectar
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    className="shrink-0"
-                    disabled={isConnecting}
-                    onClick={() => connectPlatform(platform)}
-                  >
-                    {isConnecting
-                      ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                      : <Link2 className="h-3.5 w-3.5 mr-1.5" />
-                    }
-                    {isConnecting ? "Aguardando..." : "Conectar"}
-                  </Button>
-                )}
-              </div>
-            );
-          })}
         </CardContent>
       </Card>
 

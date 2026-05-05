@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -76,12 +76,14 @@ const App = () => (
             <Route path="/admin/perfil" element={<AdminRoute><AdminPerfil /></AdminRoute>} />
             <Route path="/admin/artigos" element={<AdminRoute><AdminArtigos /></AdminRoute>} />
             <Route path="/admin/videos" element={<AdminRoute><AdminVideos /></AdminRoute>} />
-            <Route path="/admin/leads" element={<AdminRoute><AdminLeads /></AdminRoute>} />
             <Route path="/admin/clientes" element={<AdminRoute><AdminClientes /></AdminRoute>} />
+            {/* Redirect da rota antiga para tab Novos Leads */}
+            <Route path="/admin/leads" element={<Navigate to="/admin/clientes?tab=novos" replace />} />
             <Route path="/admin/configuracoes" element={<AdminRoute><AdminConfiguracoes /></AdminRoute>} />
-            <Route path="/admin/disponibilidade" element={<AdminRoute><AdminDisponibilidade /></AdminRoute>} />
-            <Route path="/admin/agendamentos" element={<AdminRoute><AdminAgendamentos /></AdminRoute>} />
             <Route path="/admin/agenda" element={<AdminRoute><AdminAgenda /></AdminRoute>} />
+            {/* Redirects das rotas antigas para tabs da Agenda */}
+            <Route path="/admin/agendamentos" element={<Navigate to="/admin/agenda?tab=agendamentos" replace />} />
+            <Route path="/admin/disponibilidade" element={<Navigate to="/admin/agenda?tab=bloqueios" replace />} />
             <Route path="/admin/documentos" element={<AdminRoute><AdminDocumentos /></AdminRoute>} />
             <Route path="/admin/criar-video" element={<AdminRoute><AdminCriarVideo /></AdminRoute>} />
             <Route path="/admin/criar-video-pro" element={<AdminRoute><AdminCriarVideoPro /></AdminRoute>} />

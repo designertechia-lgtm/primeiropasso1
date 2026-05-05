@@ -63,7 +63,7 @@ const App = () => (
         <AuthProvider>
           <FaviconUpdater />
           <Routes>
-            <Route path="/" element={<Index />} />
+            <Route path="/" element={<Navigate to="/designertech-io" replace />} />
             <Route path="/login" element={<Login />} />
             <Route path="/cadastro" element={<Cadastro />} />
             {/* Protected patient routes */}

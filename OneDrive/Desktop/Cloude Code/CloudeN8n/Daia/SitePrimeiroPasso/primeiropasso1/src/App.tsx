@@ -57,11 +57,11 @@ const PatientRoute = ({ children }: { children: React.ReactNode }) => (
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <FaviconUpdater />
       <Toaster />
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
+          <FaviconUpdater />
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />

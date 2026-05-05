@@ -136,12 +136,12 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
             {(displayName || displayCrp) && (
               <div className="space-y-1">
                 {displayName && (
-                  <h2 className="font-serif text-2xl md:text-3xl font-bold text-foreground drop-shadow-sm">
+                  <h2 className="font-serif text-2xl md:text-3xl font-bold text-black dark:text-white drop-shadow-md">
                     {displayName}
                   </h2>
                 )}
                 {displayCrp && (
-                  <p className="text-sm text-muted-foreground tracking-wide uppercase font-medium">
+                  <p className="text-sm text-black/80 dark:text-white/80 tracking-wide uppercase font-semibold drop-shadow-sm">
                     {displayCrp}
                   </p>
                 )}
@@ -150,10 +150,10 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
 
             {/* Title & Subtitle */}
             <div className="max-w-2xl space-y-4">
-              <h1 className="font-serif text-3xl md:text-4xl lg:text-5xl font-bold text-foreground leading-tight drop-shadow-sm">
+              <h1 className="font-serif text-3xl md:text-4xl lg:text-5xl font-bold text-black dark:text-white leading-tight drop-shadow-md">
                 {displayTitle}
               </h1>
-              <p className="text-lg md:text-xl text-muted-foreground leading-relaxed font-medium">
+              <p className="text-lg md:text-xl text-black/90 dark:text-white/90 leading-relaxed font-medium drop-shadow-sm">
                 {displaySubtitle}
               </p>
             </div>

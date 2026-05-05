@@ -9,7 +9,7 @@ const PHOTO_STYLES: Record<PhotoStyle, { shape: string; aspect: string }> = {
   portrait: { shape: "rounded-[2rem]", aspect: "aspect-auto" },
   circle: { shape: "rounded-full", aspect: "aspect-square" },
   square: { shape: "rounded-[2rem]", aspect: "aspect-square" },
-  horizontal: { shape: "rounded-[2rem]", aspect: "aspect-[3/2]" },
+  horizontal: { shape: "rounded-[2rem]", aspect: "aspect-[4/3]" },
 };
 
 const OVERLAY_COLORS: Record<string, string> = {
@@ -99,18 +99,18 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
             : <div className="absolute inset-0 bg-primary" style={{ opacity: overlayAlpha }} />
         )}
       </>
-      {/* Gradiente secundário — mais leve quando há imagem de fundo */}
       <div className={`absolute inset-0 bg-gradient-to-br from-primary/10 via-background/60 to-secondary/10 ${isDefaultBg ? "opacity-20" : "opacity-50"}`} />
-      <div className="container mx-auto px-4 py-20 md:py-32 relative">
-        <div className="flex flex-col items-center text-center gap-8">
+      <div className="container mx-auto px-4 pt-28 pb-16 md:pt-36 md:pb-24 relative min-h-[90vh] flex items-center justify-center">
+        <div className="flex flex-col lg:flex-row items-center justify-between gap-10 lg:gap-16 w-full max-w-6xl">
           {/* Profile Photo - Hero Protagonist */}
           {(() => {
             const style = PHOTO_STYLES[(photoStyle as PhotoStyle)] ?? PHOTO_STYLES.portrait;
             const fitClass = photoFit === "cover" ? "object-cover object-top" : "object-contain";
             return (
-              <div className="w-full max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg relative">
-                {displayImage ? (
-                  <div className="relative">
+              <div className="flex-1 w-full flex justify-center lg:justify-center">
+                <div className="w-full max-w-[16rem] sm:max-w-xs md:max-w-[20rem] relative">
+                  {displayImage ? (
+                    <div className="relative group">
                     <div className={`absolute -inset-3 ${style.shape} bg-gradient-to-br from-primary/30 to-accent/30 blur-md`} />
                     <img
                       src={displayImage}
@@ -124,14 +124,16 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
                   </div>
                 )}
               </div>
+            </div>
             );
           })()}
 
           {/* Text & CTA Container (Glassmorphism & Animation) */}
-          <div 
-            className="flex flex-col items-center gap-6 p-8 md:p-12 rounded-3xl backdrop-blur-xl border border-white/20 dark:border-white/10 shadow-2xl animate-in fade-in slide-in-from-bottom-10 duration-1000 ease-out max-w-4xl"
-            style={{ backgroundColor: `hsl(var(--background) / ${heroBgOpacity / 100})` }}
-          >
+          <div className="flex-1 w-full flex justify-center lg:justify-center">
+            <div 
+              className="flex flex-col items-center lg:items-start text-center lg:text-left gap-5 md:gap-6 p-8 md:p-10 lg:p-12 rounded-[2rem] backdrop-blur-xl border border-white/20 dark:border-white/10 shadow-2xl animate-in fade-in slide-in-from-bottom-10 duration-1000 ease-out w-full max-w-2xl"
+              style={{ backgroundColor: `hsl(var(--background) / ${heroBgOpacity / 100})` }}
+            >
             {/* Name & CRP */}
             {(displayName || displayCrp) && (
               <div className="space-y-1">
@@ -160,14 +162,15 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
 
             {/* CTA Buttons */}
             {whatsapp && (
-              <div className="flex flex-col sm:flex-row gap-3 pt-4">
+              <div className="flex flex-col sm:flex-row gap-3 pt-4 w-full justify-center lg:justify-start">
                 <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
-                  <Button size="lg" className="text-base gap-2 shadow-lg hover:shadow-xl transition-shadow duration-300">
-                    Agenda <ArrowRight className="h-4 w-4" />
+                  <Button size="lg" className="text-base gap-2 shadow-lg hover:shadow-xl transition-shadow duration-300 w-full sm:w-auto">
+                    Agendar Horário <ArrowRight className="h-4 w-4" />
                   </Button>
                 </a>
               </div>
             )}
+            </div>
           </div>
         </div>
       </div>

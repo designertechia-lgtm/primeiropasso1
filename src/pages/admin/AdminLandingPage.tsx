@@ -219,8 +219,10 @@ export default function AdminLandingPage() {
   const [photoFit, setPhotoFit] = useState("contain");
 
   // sobre
+  const [aboutTitle, setAboutTitle] = useState("");
   const [bio, setBio] = useState("");
   const [aboutImageUrl, setAboutImageUrl] = useState("");
+  const [aboutVideoUrl, setAboutVideoUrl] = useState("");
   const [approaches, setApproaches] = useState<string[]>([]);
   const [newApproach, setNewApproach] = useState("");
 
@@ -337,8 +339,10 @@ export default function AdminLandingPage() {
     setPhotoUrl(professional.photo_url || "");
     setPhotoStyle((professional as any).photo_style || "portrait");
     setPhotoFit((professional as any).photo_fit || "contain");
+    setAboutTitle((professional as any).about_title || "");
     setBio(professional.bio || "");
     setAboutImageUrl((professional as any).about_image_url || "");
+    setAboutVideoUrl((professional as any).about_video_url || "");
     setApproaches(professional.approaches || []);
     const pc = professional.primary_color || "#87A96B";
     const dv = deriveColors(pc);
@@ -372,7 +376,7 @@ export default function AdminLandingPage() {
     if (!hasLoaded.current) return;
     setIsDirty(true);
   }, [heroTitle, heroSubtitle, heroImageUrl, heroBgUrl, heroBgOpacity, heroBgOverlay, photoUrl, photoStyle, photoFit,
-      bio, aboutImageUrl, approaches, primaryColor, secondaryColor, bgColor, darkPrimaryColor, darkSecondaryColor, darkBgColor, darkModeEnabled,
+      aboutTitle, bio, aboutImageUrl, aboutVideoUrl, approaches, primaryColor, secondaryColor, bgColor, darkPrimaryColor, darkSecondaryColor, darkBgColor, darkModeEnabled,
       painTitle, painSubtitle, painItems, solutionTitle, solutionSubtitle, solutionItems,
       fontFamily, headingFontFamily, fontSizeScale, contactTitle, contactSubtitle, contactWhatsapp, contactPhone, contactEmail, contactInstagram]);
 
@@ -408,8 +412,10 @@ export default function AdminLandingPage() {
     if (!professional) return;
     setSaving(true);
     const { error } = await supabase.from("professionals").update({
+      about_title: aboutTitle || null,
       bio,
       about_image_url: aboutImageUrl || null,
+      about_video_url: aboutVideoUrl || null,
       approaches,
     } as any).eq("id", professional.id);
     setSaving(false);
@@ -583,11 +589,13 @@ export default function AdminLandingPage() {
 
             <SectionBlock label="Sobre" icon={BookOpen} active={activeSection === "sobre"} onClick={() => setActiveSection("sobre")}>
               <AboutSection
+                title={aboutTitle || undefined}
                 name={name}
                 bio={bio}
                 crp={crp}
                 photoUrl={photoUrl}
                 aboutImageUrl={aboutImageUrl}
+                aboutVideoUrl={aboutVideoUrl}
                 approaches={approaches}
               />
             </SectionBlock>
@@ -960,13 +968,50 @@ export default function AdminLandingPage() {
           {activeSection === "sobre" && (
             <>
               <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="aboutTitle">Saudação (Título)</Label>
+                  <AiButton loading={aiLoading === "about_title"} onClick={() => generate("about_title", setAboutTitle)} />
+                </div>
+                <Input id="aboutTitle" value={aboutTitle} onChange={(e) => setAboutTitle(e.target.value)} placeholder="Muito prazer, sou o(a)..." />
+                <p className="text-xs text-muted-foreground">O seu nome será exibido automaticamente abaixo desta saudação, com o efeito colorido.</p>
+              </div>
+
+              <div className="space-y-2">
                 <Label>Imagem da seção Sobre <FieldHint text="Foto exibida na seção 'Sobre'. Se não definida, usa a foto de perfil." /></Label>
                 <ImageUpload currentUrl={aboutImageUrl || null} onUploaded={setAboutImageUrl} folder="about" variant="logo" />
               </div>
 
+              <div className="space-y-4 border rounded-xl p-4 bg-muted/20">
+                <div className="space-y-2">
+                  <Label htmlFor="aboutVideoUrl">Vídeo Institucional</Label>
+                  <Input 
+                    id="aboutVideoUrl" 
+                    value={aboutVideoUrl} 
+                    onChange={(e) => setAboutVideoUrl(e.target.value)} 
+                    placeholder="Ex: https://www.youtube.com/watch?v=..." 
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Cole o link do YouTube, Vimeo ou faça o upload direto do seu computador abaixo.
+                  </p>
+                </div>
+                <div className="space-y-2 pt-2 border-t">
+                  <Label className="text-xs">Ou faça upload de um vídeo (.mp4)</Label>
+                  <ImageUpload 
+                    currentUrl={aboutVideoUrl || null} 
+                    onUploaded={setAboutVideoUrl} 
+                    folder="videos" 
+                    variant="wide" 
+                    accept="video/mp4,video/webm" 
+                  />
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="bio">Biografia</Label>
+                  <Label htmlFor="bio" className="flex items-center gap-2">
+                    Biografia
+                    <FieldHint text="Para uma bio envolvente (mesmo com IA), foque em como você ajuda as pessoas e no seu propósito, não apenas no currículo. Dica de ouro: divida o texto em 3 ou 4 parágrafos com 'Enter' para aproveitar o efeito visual de 'Bloco de Notas'!" />
+                  </Label>
                   <AiButton loading={aiLoading === "bio"} onClick={() => generate("bio", setBio)} />
                 </div>
                 <Textarea id="bio" rows={6} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Conte sobre sua formação e experiência..." />

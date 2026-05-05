@@ -151,11 +151,13 @@ export default function Index() {
       <PainSection />
       <SolutionSection />
       <AboutSection
+        title={(demo as any).about_title}
         name={demo.full_name}
         bio={demo.bio}
         crp={demo.crp}
         photoUrl={demo.photo_url}
         aboutImageUrl={demo.about_image_url}
+        aboutVideoUrl={(demo as any).about_video_url}
         approaches={demo.approaches}
       />
       <ContentSection articles={[]} videos={[]} slug={demo.slug} />

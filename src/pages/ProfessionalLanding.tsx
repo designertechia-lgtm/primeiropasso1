@@ -254,11 +254,13 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         items={(professional as any).solution_items ?? undefined}
       />
       <AboutSection
+        title={(professional as any).about_title ?? undefined}
         name={name}
         bio={professional.bio ?? undefined}
         crp={professional.crp ?? undefined}
         photoUrl={professional.photo_url ?? undefined}
         aboutImageUrl={professional.about_image_url ?? undefined}
+        aboutVideoUrl={(professional as any).about_video_url ?? undefined}
         approaches={professional.approaches ?? undefined}
       />
       <ContentSection articles={articles} videos={videos} slug={professional.slug} whatsapp={professional.whatsapp} />

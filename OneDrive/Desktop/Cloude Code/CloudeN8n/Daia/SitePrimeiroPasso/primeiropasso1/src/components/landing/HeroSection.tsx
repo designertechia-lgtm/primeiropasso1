@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { DEMO_PROFESSIONAL } from "@/data/demoProfessional";
@@ -36,7 +37,20 @@ interface HeroSectionProps {
 const DEFAULT_HERO_BG = "/hero-bg-default.jpg";
 
 export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroImageUrl, heroBgUrl, heroBgOpacity = 70, heroBgOverlay = "dark", slug, professionalName, crp, photoStyle = "portrait", photoFit = "contain" }: HeroSectionProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
   const activeBgUrl = heroBgUrl || DEFAULT_HERO_BG;
+  const isVideo = /\.(mp4|webm|ogg|mov|m4v)($|\?)/i.test(activeBgUrl);
+
+  useEffect(() => {
+    if (isVideo && videoRef.current) {
+      // Garante reprodução e loop no mobile
+      videoRef.current.defaultMuted = true;
+      videoRef.current.muted = true;
+      videoRef.current.play().catch(e => console.log("Autoplay failed:", e));
+    }
+  }, [activeBgUrl, isVideo]);
+
   const displayImage = heroImageUrl || photoUrl || DEMO_PROFESSIONAL.hero_image_url || DEMO_PROFESSIONAL.photo_url;
   const displayName = professionalName && professionalName !== "Profissional" ? professionalName : DEMO_PROFESSIONAL.full_name;
   const displayCrp = crp || DEMO_PROFESSIONAL.crp;
@@ -57,10 +71,10 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
     <section id="hero" className="relative overflow-hidden">
       <>
         {(() => {
-          const isVideo = /\.(mp4|webm|ogg|mov|m4v)($|\?)/i.test(activeBgUrl);
           if (isVideo) {
             return (
               <video
+                ref={videoRef}
                 src={activeBgUrl}
                 autoPlay
                 loop

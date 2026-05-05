@@ -112,42 +112,45 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
             );
           })()}
 
-          {/* Name & CRP */}
-          {(displayName || displayCrp) && (
-            <div className="space-y-1">
-              {displayName && (
-                <h2 className="font-serif text-2xl md:text-3xl font-bold text-foreground">
-                  {displayName}
-                </h2>
-              )}
-              {displayCrp && (
-                <p className="text-sm text-muted-foreground tracking-wide uppercase">
-                  {displayCrp}
-                </p>
-              )}
-            </div>
-          )}
+          {/* Text & CTA Container (Glassmorphism & Animation) */}
+          <div className="flex flex-col items-center gap-6 p-8 md:p-12 rounded-3xl bg-background/70 dark:bg-background/40 backdrop-blur-xl border border-white/20 dark:border-white/10 shadow-2xl animate-in fade-in slide-in-from-bottom-10 duration-1000 ease-out max-w-4xl">
+            {/* Name & CRP */}
+            {(displayName || displayCrp) && (
+              <div className="space-y-1">
+                {displayName && (
+                  <h2 className="font-serif text-2xl md:text-3xl font-bold text-foreground drop-shadow-sm">
+                    {displayName}
+                  </h2>
+                )}
+                {displayCrp && (
+                  <p className="text-sm text-muted-foreground tracking-wide uppercase font-medium">
+                    {displayCrp}
+                  </p>
+                )}
+              </div>
+            )}
 
-          {/* Title & Subtitle */}
-          <div className="max-w-2xl space-y-4">
-            <h1 className="font-serif text-3xl md:text-4xl lg:text-5xl font-bold text-foreground leading-tight">
-              {displayTitle}
-            </h1>
-            <p className="text-lg md:text-xl text-muted-foreground leading-relaxed">
-              {displaySubtitle}
-            </p>
+            {/* Title & Subtitle */}
+            <div className="max-w-2xl space-y-4">
+              <h1 className="font-serif text-3xl md:text-4xl lg:text-5xl font-bold text-foreground leading-tight drop-shadow-sm">
+                {displayTitle}
+              </h1>
+              <p className="text-lg md:text-xl text-muted-foreground leading-relaxed font-medium">
+                {displaySubtitle}
+              </p>
+            </div>
+
+            {/* CTA Buttons */}
+            {whatsapp && (
+              <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
+                  <Button size="lg" className="text-base gap-2 shadow-lg hover:shadow-xl transition-shadow duration-300">
+                    Agenda <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </a>
+              </div>
+            )}
           </div>
-
-          {/* CTA Buttons */}
-          {whatsapp && (
-            <div className="flex flex-col sm:flex-row gap-3">
-              <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
-                <Button size="lg" className="text-base gap-2">
-                  Agenda <ArrowRight className="h-4 w-4" />
-                </Button>
-              </a>
-            </div>
-          )}
         </div>
       </div>
     </section>

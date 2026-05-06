@@ -171,7 +171,7 @@ export default function AdminDocumentos() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Documentos</h1>
+        <h1 className="text-2xl font-bold">RAG conteúdo criação</h1>
         <p className="text-muted-foreground">Faça upload de PDFs e envie para processamento via webhook</p>
       </div>
 

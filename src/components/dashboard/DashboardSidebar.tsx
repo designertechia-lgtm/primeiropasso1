@@ -13,6 +13,7 @@ import {
   Drama,
   CreditCard,
   Crown,
+  MessageSquare,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -29,20 +30,36 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-const items = [
-  { title: "Painel", url: "/admin", icon: LayoutDashboard },
-  { title: "Meu Perfil", url: "/admin/perfil", icon: User },
-  { title: "Minha Página", url: "/admin/landing", icon: Monitor },
-  { title: "Agenda", url: "/admin/agenda", icon: CalendarDays },
-  { title: "CRM Leads", url: "/admin/clientes", icon: LayoutList },
-  { title: "Artigos", url: "/admin/artigos", icon: FileText },
-  { title: "Vídeos", url: "/admin/videos", icon: Video },
-  { title: "Criar Vídeo",     url: "/admin/criar-video",    icon: Clapperboard },
-  { title: "Personagens",     url: "/admin/avatares",        icon: Drama        },
-  { title: "Redes Sociais",   url: "/admin/redes-sociais",  icon: Share2       },
-  { title: "Documentos", url: "/admin/documentos", icon: FileUp },
-  { title: "Assinatura", url: "/admin/assinatura", icon: CreditCard },
-  { title: "Configurações", url: "/admin/configuracoes", icon: Settings },
+const sections = [
+  {
+    label: "Geral",
+    items: [
+      { title: "Painel", url: "/admin", icon: LayoutDashboard },
+      { title: "Meu Perfil", url: "/admin/perfil", icon: User },
+      { title: "Minha Página", url: "/admin/landing", icon: Monitor },
+    ]
+  },
+  {
+    label: "Gestão",
+    items: [
+      { title: "Agenda", url: "/admin/agenda", icon: CalendarDays },
+      { title: "CRM Leads", url: "/admin/clientes", icon: LayoutList },
+    ]
+  },
+  {
+    label: "Marketing",
+    items: [
+      { title: "Redes Sociais", url: "/admin/redes-sociais", icon: Share2 },
+    ]
+  },
+  {
+    label: "Sistema",
+    items: [
+      { title: "Assinatura", url: "/admin/assinatura", icon: CreditCard },
+      { title: "Configurações", url: "/admin/configuracoes", icon: Settings },
+      { title: "Feedback", url: "/admin/feedback", icon: MessageSquare },
+    ]
+  }
 ];
 
 export function DashboardSidebar() {
@@ -50,10 +67,6 @@ export function DashboardSidebar() {
   const collapsed = state === "collapsed";
   const location = useLocation();
   const { isOwner } = useAuth();
-
-  const visibleItems = isOwner
-    ? [...items, { title: "Gerente", url: "/admin-gerente", icon: Crown }]
-    : items;
 
   const handleNavClick = () => {
     if (isMobile) setOpenMobile(false);
@@ -67,31 +80,62 @@ export function DashboardSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>
-            {!collapsed && "Primeiro Passo"}
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {visibleItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={isActive(item.url)}>
+        {sections.map((section) => (
+          <SidebarGroup key={section.label}>
+            {!collapsed && (
+              <SidebarGroupLabel className="px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                {section.label}
+              </SidebarGroupLabel>
+            )}
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {section.items.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild isActive={isActive(item.url)}>
+                      <NavLink
+                        to={item.url}
+                        end={item.url === "/admin"}
+                        className="hover:bg-muted/50 transition-colors"
+                        activeClassName="bg-primary/10 text-primary font-semibold"
+                        onClick={handleNavClick}
+                      >
+                        <item.icon className="mr-2 h-4 w-4" />
+                        {!collapsed && <span>{item.title}</span>}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
+
+        {isOwner && (
+          <SidebarGroup>
+            {!collapsed && (
+              <SidebarGroupLabel className="px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Administração
+              </SidebarGroupLabel>
+            )}
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={isActive("/admin-gerente")}>
                     <NavLink
-                      to={item.url}
-                      end={item.url === "/admin"}
-                      className="hover:bg-muted/50"
-                      activeClassName="bg-muted text-primary font-medium"
+                      to="/admin-gerente"
+                      className="hover:bg-muted/50 transition-colors"
+                      activeClassName="bg-primary/10 text-primary font-semibold"
                       onClick={handleNavClick}
                     >
-                      <item.icon className="mr-2 h-4 w-4" />
-                      {!collapsed && <span>{item.title}</span>}
+                      <Crown className="mr-2 h-4 w-4" />
+                      {!collapsed && <span>Gerente</span>}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
     </Sidebar>
   );

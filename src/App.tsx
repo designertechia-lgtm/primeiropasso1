@@ -35,6 +35,7 @@ import AdminAvatares from "./pages/admin/AdminAvatares.tsx";
 import AdminClientes from "./pages/admin/AdminClientes.tsx";
 import AdminAssinatura from "./pages/admin/AdminAssinatura.tsx";
 import AdminGerente from "./pages/admin/AdminGerente.tsx";
+import AdminFeedback from "./pages/admin/AdminFeedback.tsx";
 
 import PatientBuscar from "./pages/paciente/PatientBuscar.tsx";
 import PatientAgendamentos from "./pages/paciente/PatientAgendamentos.tsx";
@@ -86,8 +87,8 @@ const App = () => (
             {/* Protected professional routes */}
             <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
             <Route path="/admin/perfil" element={<AdminRoute><AdminPerfil /></AdminRoute>} />
-            <Route path="/admin/artigos" element={<AdminRoute><AdminArtigos /></AdminRoute>} />
-            <Route path="/admin/videos" element={<AdminRoute><AdminVideos /></AdminRoute>} />
+            <Route path="/admin/artigos" element={<Navigate to="/admin/redes-sociais?tab=artigos" replace />} />
+            <Route path="/admin/videos" element={<Navigate to="/admin/redes-sociais?tab=videos" replace />} />
             <Route path="/admin/clientes" element={<AdminRoute><AdminClientes /></AdminRoute>} />
             {/* Redirect da rota antiga para tab Novos Leads */}
             <Route path="/admin/leads" element={<Navigate to="/admin/clientes?tab=novos" replace />} />
@@ -96,13 +97,14 @@ const App = () => (
             {/* Redirects das rotas antigas para tabs da Agenda */}
             <Route path="/admin/agendamentos" element={<Navigate to="/admin/agenda?tab=agendamentos" replace />} />
             <Route path="/admin/disponibilidade" element={<Navigate to="/admin/agenda?tab=bloqueios" replace />} />
-            <Route path="/admin/documentos" element={<AdminRoute><AdminDocumentos /></AdminRoute>} />
-            <Route path="/admin/criar-video" element={<AdminRoute><AdminCriarVideo /></AdminRoute>} />
+            <Route path="/admin/documentos" element={<Navigate to="/admin/redes-sociais?tab=rag" replace />} />
+            <Route path="/admin/criar-video" element={<Navigate to="/admin/redes-sociais?tab=criar-video" replace />} />
             <Route path="/admin/criar-video-pro" element={<AdminRoute><AdminCriarVideoPro /></AdminRoute>} />
             <Route path="/admin/landing" element={<AdminRoute><AdminLandingPage /></AdminRoute>} />
             <Route path="/admin/redes-sociais" element={<AdminRoute><AdminRedesSociais /></AdminRoute>} />
-            <Route path="/admin/avatares" element={<AdminRoute><AdminAvatares /></AdminRoute>} />
+            <Route path="/admin/avatares" element={<Navigate to="/admin/redes-sociais?tab=personagens" replace />} />
             <Route path="/admin/assinatura" element={<AdminRoute><AdminAssinatura /></AdminRoute>} />
+            <Route path="/admin/feedback" element={<AdminRoute><AdminFeedback /></AdminRoute>} />
             <Route path="/admin-gerente" element={<OwnerOnlyRoute><AdminGerente /></OwnerOnlyRoute>} />
             <Route path="/admin-proprietario" element={<Navigate to="/admin-gerente" replace />} />
 

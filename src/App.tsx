@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import OwnerRoute from "@/components/OwnerRoute";
 import Index from "./pages/Index.tsx";
 import Login from "./pages/Login.tsx";
 import Cadastro from "./pages/Cadastro.tsx";
@@ -33,6 +34,7 @@ import AdminRedesSociais from "./pages/admin/AdminRedesSociais.tsx";
 import AdminAvatares from "./pages/admin/AdminAvatares.tsx";
 import AdminClientes from "./pages/admin/AdminClientes.tsx";
 import AdminAssinatura from "./pages/admin/AdminAssinatura.tsx";
+import AdminProprietario from "./pages/admin/AdminProprietario.tsx";
 
 import PatientBuscar from "./pages/paciente/PatientBuscar.tsx";
 import PatientAgendamentos from "./pages/paciente/PatientAgendamentos.tsx";
@@ -46,6 +48,12 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => (
   <ProtectedRoute requiredRole="professional">
     <DashboardLayout>{children}</DashboardLayout>
   </ProtectedRoute>
+);
+
+const OwnerOnlyRoute = ({ children }: { children: React.ReactNode }) => (
+  <OwnerRoute>
+    <DashboardLayout>{children}</DashboardLayout>
+  </OwnerRoute>
 );
 
 const PatientRoute = ({ children }: { children: React.ReactNode }) => (
@@ -91,6 +99,7 @@ const App = () => (
             <Route path="/admin/redes-sociais" element={<AdminRoute><AdminRedesSociais /></AdminRoute>} />
             <Route path="/admin/avatares" element={<AdminRoute><AdminAvatares /></AdminRoute>} />
             <Route path="/admin/assinatura" element={<AdminRoute><AdminAssinatura /></AdminRoute>} />
+            <Route path="/admin-proprietario" element={<OwnerOnlyRoute><AdminProprietario /></OwnerOnlyRoute>} />
 
             {/* Dynamic professional landing page - MUST be last before catch-all */}
             <Route path="/:slug" element={<ProfessionalLanding />} />

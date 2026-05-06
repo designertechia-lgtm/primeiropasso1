@@ -12,9 +12,11 @@ import {
   Share2,
   Drama,
   CreditCard,
+  Crown,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
 import {
   Sidebar,
   SidebarContent,
@@ -47,6 +49,11 @@ export function DashboardSidebar() {
   const { state, isMobile, setOpenMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
+  const { isOwner } = useAuth();
+
+  const visibleItems = isOwner
+    ? [...items, { title: "Proprietário", url: "/admin-proprietario", icon: Crown }]
+    : items;
 
   const handleNavClick = () => {
     if (isMobile) setOpenMobile(false);
@@ -66,7 +73,7 @@ export function DashboardSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {items.map((item) => (
+              {visibleItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild isActive={isActive(item.url)}>
                     <NavLink

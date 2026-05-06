@@ -13,6 +13,7 @@ interface AuthContextType {
   isLoading: boolean;
   isProfessional: boolean;
   isPatient: boolean;
+  isOwner: boolean;
   signOut: () => Promise<void>;
 }
 
@@ -23,15 +24,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<AuthContextType["profile"]>(null);
   const [roles, setRoles] = useState<AppRole[]>([]);
+  const [isOwner, setIsOwner] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchUserData = async (userId: string) => {
-    const [profileRes, rolesRes] = await Promise.all([
+    const [profileRes, rolesRes, ownerRes] = await Promise.all([
       supabase.from("profiles").select("id, full_name, avatar_url, phone").eq("user_id", userId).single(),
       supabase.from("user_roles").select("role").eq("user_id", userId),
+      supabase.rpc("is_super_admin"),
     ]);
     if (profileRes.data) setProfile(profileRes.data);
     if (rolesRes.data) setRoles(rolesRes.data.map((r) => r.role));
+    setIsOwner(ownerRes.data === true);
   };
 
   useEffect(() => {
@@ -50,6 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         setProfile(null);
         setRoles([]);
+        setIsOwner(false);
         if (initialLoad) {
           initialLoad = false;
           setIsLoading(false);
@@ -78,6 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setProfile(null);
     setRoles([]);
+    setIsOwner(false);
   };
 
   return (
@@ -90,6 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         isProfessional: roles.includes("professional"),
         isPatient: roles.includes("patient"),
+        isOwner,
         signOut,
       }}
     >

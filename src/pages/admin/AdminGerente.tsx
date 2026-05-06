@@ -12,6 +12,8 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import ReceitaTab from "@/components/admin-gerente/ReceitaTab";
 import PixPrecosTab from "@/components/admin-gerente/PixPrecosTab";
+import UsuariosTab from "@/components/admin-gerente/UsuariosTab";
+import EngajamentoTab from "@/components/admin-gerente/EngajamentoTab";
 
 const VALID_TABS = [
   "overview",
@@ -107,17 +109,11 @@ export default function AdminGerente() {
         </TabsContent>
 
         <TabsContent value="usuarios" className="mt-6">
-          <ComingSoon
-            title="Usuários"
-            description="Volume de cadastros (trial vs pago), funil de ativação, segmentação heavy/médio/dormente e distribuição geográfica."
-          />
+          <UsuariosTab />
         </TabsContent>
 
         <TabsContent value="engajamento" className="mt-6">
-          <ComingSoon
-            title="Engajamento"
-            description="Posts publicados, vídeos gerados, distribuição reels/feed/carrossel, créditos consumidos por feature e top 10 usuários mais ativos."
-          />
+          <EngajamentoTab />
         </TabsContent>
 
         <TabsContent value="pix" className="mt-6">

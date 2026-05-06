@@ -21,6 +21,8 @@ import {
   useOwnerSubscriptionStatus,
   type OverdueSubscriber,
 } from "@/hooks/useOwnerStats";
+import { Download } from "lucide-react";
+import { exportToCsv } from "@/lib/exportUtils";
 
 const PERIODS = [
   { label: "Últimos 3 meses", value: 3 },
@@ -121,18 +123,39 @@ export default function ReceitaTab() {
             MRR, status das assinaturas e inadimplência em tempo real.
           </p>
         </div>
-        <Select value={String(months)} onValueChange={(v) => setMonths(Number(v))}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {PERIODS.map((p) => (
-              <SelectItem key={p.value} value={String(p.value)}>
-                {p.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="gap-2"
+            onClick={() => {
+              const dataToExport = overdueQuery.data?.map(s => ({
+                Nome: s.full_name || "",
+                Email: s.email || "",
+                WhatsApp: s.whatsapp || s.phone || "",
+                Valor: s.monthly_price_brl,
+                DiasAtraso: s.days_overdue,
+                Status: s.status
+              })) || [];
+              exportToCsv(dataToExport, "assinantes_atraso");
+            }}
+          >
+            <Download className="h-4 w-4" />
+            Exportar CSV
+          </Button>
+          <Select value={String(months)} onValueChange={(v) => setMonths(Number(v))}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PERIODS.map((p) => (
+                <SelectItem key={p.value} value={String(p.value)}>
+                  {p.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">

@@ -41,6 +41,8 @@ import PatientAgendamentos from "./pages/paciente/PatientAgendamentos.tsx";
 import PatientAgendar from "./pages/paciente/PatientAgendar.tsx";
 import PatientPerfil from "./pages/paciente/PatientPerfil.tsx";
 import FaviconUpdater from "./components/FaviconUpdater.tsx";
+import FeedbackButton from "./components/FeedbackButton.tsx";
+import AppAnnouncements from "./components/AppAnnouncements.tsx";
 
 const queryClient = new QueryClient();
 
@@ -70,6 +72,8 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <FaviconUpdater />
+          <FeedbackButton />
+          <AppAnnouncements />
           <Routes>
             <Route path="/" element={<Navigate to="/designertech-io" replace />} />
             <Route path="/login" element={<Login />} />

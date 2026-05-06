@@ -279,3 +279,137 @@ export function useOwnerCreditsByService() {
     },
   });
 }
+// ── Fatia 4: Feedback + Acesso + Polish ─────────────────────────────────────
+
+export interface Feedback {
+  id: string;
+  author_id: string | null;
+  type: 'bug' | 'sugestao' | 'duvida' | 'elogio' | 'outro';
+  status: 'novo' | 'em_analise' | 'resolvido' | 'arquivado';
+  severity: 'baixa' | 'media' | 'alta' | 'critica';
+  message: string;
+  screenshot_url: string | null;
+  nps_score: number | null;
+  created_at: string;
+  author?: {
+    full_name: string | null;
+    email: string | null;
+    whatsapp: string | null;
+  };
+}
+
+export interface SuperAdminAccess {
+  user_id: string;
+  granted_by: string | null;
+  granted_at: string;
+  scopes: string[];
+  revoked_at: string | null;
+  notes: string | null;
+  user_email: string | null;
+  user_name?: string;
+}
+
+export function useOwnerFeedbacks() {
+  return useQuery({
+    queryKey: ["owner-feedbacks"],
+    queryFn: async (): Promise<Feedback[]> => {
+      const { data, error } = await supabase
+        .from("feedbacks")
+        .select(`
+          *,
+          author:professionals(full_name, email, whatsapp)
+        `)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data as unknown as Feedback[];
+    },
+  });
+}
+
+export function useUpdateFeedbackStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: Feedback["status"] }) => {
+      const { error } = await supabase
+        .from("feedbacks")
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["owner-feedbacks"] }),
+  });
+}
+
+export function useOwnerAccessList() {
+  return useQuery({
+    queryKey: ["owner-access-list"],
+    queryFn: async (): Promise<SuperAdminAccess[]> => {
+      const { data, error } = await supabase
+        .from("super_admin_access")
+        .select("*")
+        .order("granted_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []).map(item => ({
+        ...item,
+        user_name: item.user_email ?? undefined,
+      })) as SuperAdminAccess[];
+    },
+  });
+}
+
+export function useGrantAccessByEmail() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ email, scopes, notes }: { email: string; scopes: string[]; notes?: string }) => {
+      const { data, error } = await supabase.rpc("grant_super_admin_by_email", {
+        target_email: email,
+        target_scopes: scopes,
+        target_notes: notes
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["owner-access-list"] }),
+  });
+}
+
+export function useRevokeAccess() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (user_id: string) => {
+      const { error } = await supabase
+        .from("super_admin_access")
+        .update({ revoked_at: new Date().toISOString() })
+        .eq("user_id", user_id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["owner-access-list"] }),
+  });
+}
+
+export function useAnnouncements() {
+  return useQuery({
+    queryKey: ["announcements"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("app_announcements")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export function useFeatureFlags() {
+  return useQuery({
+    queryKey: ["feature-flags"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("feature_flags")
+        .select("*");
+      if (error) throw error;
+      return data;
+    },
+  });
+}

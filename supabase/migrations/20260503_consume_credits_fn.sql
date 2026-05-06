@@ -1,0 +1,1 @@
+-- Migration applied directly via SQL editor. Stub para sincronizar histórico local.

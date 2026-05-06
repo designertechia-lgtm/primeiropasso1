@@ -75,3 +75,10 @@ export function buildProfessionalThemeVars(opts: {
   if (FONT_STACKS[headingKey]) styles["--font-heading"] = FONT_STACKS[headingKey];
   return Object.keys(styles).length > 0 ? styles : undefined;
 }
+
+export function formatCurrency(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(value);
+}

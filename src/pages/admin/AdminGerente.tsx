@@ -14,6 +14,9 @@ import ReceitaTab from "@/components/admin-gerente/ReceitaTab";
 import PixPrecosTab from "@/components/admin-gerente/PixPrecosTab";
 import UsuariosTab from "@/components/admin-gerente/UsuariosTab";
 import EngajamentoTab from "@/components/admin-gerente/EngajamentoTab";
+import OverviewTab from "@/components/admin-gerente/OverviewTab";
+import FeedbackTab from "@/components/admin-gerente/FeedbackTab";
+import AcessoTab from "@/components/admin-gerente/AcessoTab";
 
 const VALID_TABS = [
   "overview",
@@ -25,16 +28,6 @@ const VALID_TABS = [
   "acesso",
 ] as const;
 type TabValue = (typeof VALID_TABS)[number];
-
-function ComingSoon({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="flex min-h-[320px] flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 p-8 text-center">
-      <h3 className="font-serif text-xl text-foreground">{title}</h3>
-      <p className="mt-2 max-w-md text-sm text-muted-foreground">{description}</p>
-      <p className="mt-4 text-xs uppercase tracking-wider text-muted-foreground/70">Em construção</p>
-    </div>
-  );
-}
 
 export default function AdminGerente() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -98,10 +91,7 @@ export default function AdminGerente() {
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
-          <ComingSoon
-            title="Visão Geral"
-            description="KPIs do mês (MRR, assinantes ativos, churn, inadimplência), variação % vs período anterior, mini-gráfico de receita 90d e lista de itens que precisam de atenção."
-          />
+          <OverviewTab />
         </TabsContent>
 
         <TabsContent value="receita" className="mt-6">
@@ -121,17 +111,11 @@ export default function AdminGerente() {
         </TabsContent>
 
         <TabsContent value="feedback" className="mt-6">
-          <ComingSoon
-            title="Feedback"
-            description="Sugestões e reclamações dos usuários em painel Kanban (novo / em análise / resolvido / arquivado), com resposta direta via WhatsApp e estimativa de NPS."
-          />
+          <FeedbackTab />
         </TabsContent>
 
         <TabsContent value="acesso" className="mt-6">
-          <ComingSoon
-            title="Acesso"
-            description="Lista de quem tem acesso ao painel, scopes liberados, formulário para conceder a novos usuários e botão para revogar. Audit log incluso."
-          />
+          <AcessoTab />
         </TabsContent>
       </Tabs>
     </div>

@@ -777,6 +777,107 @@ export type Database = {
         }
         Relationships: []
       }
+      app_announcements: {
+        Row: {
+          id: string
+          message: string
+          type: string
+          is_active: boolean
+          end_date: string | null
+          created_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          message: string
+          type?: string
+          is_active?: boolean
+          end_date?: string | null
+          created_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          id?: string
+          message?: string
+          type?: string
+          is_active?: boolean
+          end_date?: string | null
+          created_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      feedbacks: {
+        Row: {
+          id: string
+          author_id: string | null
+          type: string
+          status: string
+          severity: string
+          message: string
+          screenshot_url: string | null
+          nps_score: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          author_id?: string | null
+          type: string
+          status?: string
+          severity?: string
+          message: string
+          screenshot_url?: string | null
+          nps_score?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          author_id?: string | null
+          type?: string
+          status?: string
+          severity?: string
+          message?: string
+          screenshot_url?: string | null
+          nps_score?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feedbacks_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "professionals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      feature_flags: {
+        Row: {
+          key: string
+          is_enabled: boolean
+          description: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          key: string
+          is_enabled?: boolean
+          description?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          key?: string
+          is_enabled?: boolean
+          description?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       super_admin_access: {
         Row: {
           user_id: string
@@ -785,6 +886,7 @@ export type Database = {
           scopes: string[]
           revoked_at: string | null
           notes: string | null
+          user_email: string | null
         }
         Insert: {
           user_id: string
@@ -793,6 +895,7 @@ export type Database = {
           scopes?: string[]
           revoked_at?: string | null
           notes?: string | null
+          user_email?: string | null
         }
         Update: {
           user_id?: string
@@ -801,6 +904,7 @@ export type Database = {
           scopes?: string[]
           revoked_at?: string | null
           notes?: string | null
+          user_email?: string | null
         }
         Relationships: []
       }

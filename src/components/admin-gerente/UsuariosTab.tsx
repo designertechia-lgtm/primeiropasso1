@@ -18,6 +18,9 @@ import {
   useOwnerActivationFunnel,
   useOwnerUserSegments,
 } from "@/hooks/useOwnerStats";
+import { Button } from "@/components/ui/button";
+import { Download } from "lucide-react";
+import { exportToCsv } from "@/lib/exportUtils";
 
 const SEGMENT_LABELS: Record<string, string> = {
   heavy:    "Ativos (7d)",
@@ -116,6 +119,24 @@ export default function UsuariosTab() {
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-end">
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="gap-2"
+          onClick={() => {
+            const dataToExport = growth.data?.map(g => ({
+              Data: g.week_start,
+              Novos: g.new_total,
+              Acumulado: g.cumulative_total
+            })) || [];
+            exportToCsv(dataToExport, "crescimento_usuarios");
+          }}
+        >
+          <Download className="h-4 w-4" />
+          Exportar CSV
+        </Button>
+      </div>
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard title="Total cadastrados"  value={totalUsers}    icon={Users}      />

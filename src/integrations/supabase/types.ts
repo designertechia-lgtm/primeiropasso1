@@ -687,6 +687,123 @@ export type Database = {
         }
         Relationships: []
       }
+      pix_settings: {
+        Row: {
+          id: string
+          pix_key: string
+          pix_key_type: string
+          beneficiary_name: string
+          bank_name: string | null
+          instructions: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          pix_key: string
+          pix_key_type: string
+          beneficiary_name: string
+          bank_name?: string | null
+          instructions?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          pix_key?: string
+          pix_key_type?: string
+          beneficiary_name?: string
+          bank_name?: string | null
+          instructions?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      credit_packs: {
+        Row: {
+          id: string
+          name: string
+          price_brl: number
+          credits: number
+          bonus_credits: number | null
+          active: boolean | null
+        }
+        Insert: {
+          id: string
+          name: string
+          price_brl: number
+          credits: number
+          bonus_credits?: number | null
+          active?: boolean | null
+        }
+        Update: {
+          id?: string
+          name?: string
+          price_brl?: number
+          credits?: number
+          bonus_credits?: number | null
+          active?: boolean | null
+        }
+        Relationships: []
+      }
+      service_pricing: {
+        Row: {
+          service_key: string
+          display_name: string
+          unit: string
+          base_cost_brl: number
+          markup_pct: number | null
+          description: string | null
+          active: boolean | null
+          updated_at: string | null
+        }
+        Insert: {
+          service_key: string
+          display_name: string
+          unit: string
+          base_cost_brl: number
+          markup_pct?: number | null
+          description?: string | null
+          active?: boolean | null
+          updated_at?: string | null
+        }
+        Update: {
+          service_key?: string
+          display_name?: string
+          unit?: string
+          base_cost_brl?: number
+          markup_pct?: number | null
+          description?: string | null
+          active?: boolean | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      super_admin_access: {
+        Row: {
+          user_id: string
+          granted_by: string | null
+          granted_at: string
+          scopes: string[]
+          revoked_at: string | null
+          notes: string | null
+        }
+        Insert: {
+          user_id: string
+          granted_by?: string | null
+          granted_at?: string
+          scopes?: string[]
+          revoked_at?: string | null
+          notes?: string | null
+        }
+        Update: {
+          user_id?: string
+          granted_by?: string | null
+          granted_at?: string
+          scopes?: string[]
+          revoked_at?: string | null
+          notes?: string | null
+        }
+        Relationships: []
+      }
       videos: {
         Row: {
           created_at: string
@@ -761,6 +878,36 @@ export type Database = {
       is_super_admin: {
         Args: Record<string, never>
         Returns: boolean
+      }
+      owner_mrr_monthly: {
+        Args: { months_back?: number }
+        Returns: {
+          month_start: string
+          mrr_brl: number
+          active_count: number
+        }[]
+      }
+      owner_subscription_status: {
+        Args: { grace_days?: number }
+        Returns: {
+          status: string
+          count: number
+          total_brl: number
+        }[]
+      }
+      owner_overdue_subscribers: {
+        Args: { grace_days?: number }
+        Returns: {
+          professional_id: string
+          full_name: string | null
+          email: string | null
+          whatsapp: string | null
+          phone: string | null
+          monthly_price_brl: number
+          current_period_end: string
+          days_overdue: number
+          status: string
+        }[]
       }
       hybrid_search: {
         Args: {

@@ -52,7 +52,7 @@ export function DashboardSidebar() {
   const { isOwner } = useAuth();
 
   const visibleItems = isOwner
-    ? [...items, { title: "Proprietário", url: "/admin-proprietario", icon: Crown }]
+    ? [...items, { title: "Gerente", url: "/admin-gerente", icon: Crown }]
     : items;
 
   const handleNavClick = () => {

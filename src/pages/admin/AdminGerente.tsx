@@ -10,6 +10,8 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import ReceitaTab from "@/components/admin-gerente/ReceitaTab";
+import PixPrecosTab from "@/components/admin-gerente/PixPrecosTab";
 
 const VALID_TABS = [
   "overview",
@@ -32,7 +34,7 @@ function ComingSoon({ title, description }: { title: string; description: string
   );
 }
 
-export default function AdminProprietario() {
+export default function AdminGerente() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const tabParam = searchParams.get("tab");
@@ -52,7 +54,7 @@ export default function AdminProprietario() {
   return (
     <div className="space-y-6">
       <header className="space-y-1">
-        <h1 className="font-serif text-3xl text-foreground">Painel do Proprietário</h1>
+        <h1 className="font-serif text-3xl text-foreground">Painel do Gerente</h1>
         <p className="text-sm text-muted-foreground">
           Métricas, receita, usuários e configurações do SaaS — visível apenas para você e usuários liberados.
         </p>
@@ -101,10 +103,7 @@ export default function AdminProprietario() {
         </TabsContent>
 
         <TabsContent value="receita" className="mt-6">
-          <ComingSoon
-            title="Receita"
-            description="Gráfico de MRR mensal (12m), funil do mês com pagos/atrasados/vencidos/cancelados, cohort de retenção e tabela de assinantes em atraso com ação de notificar via WhatsApp."
-          />
+          <ReceitaTab />
         </TabsContent>
 
         <TabsContent value="usuarios" className="mt-6">
@@ -122,10 +121,7 @@ export default function AdminProprietario() {
         </TabsContent>
 
         <TabsContent value="pix" className="mt-6">
-          <ComingSoon
-            title="PIX & Preços"
-            description="Configuração da chave PIX, CRUD de pacotes de créditos e preços por feature, com histórico de mudanças."
-          />
+          <PixPrecosTab />
         </TabsContent>
 
         <TabsContent value="feedback" className="mt-6">

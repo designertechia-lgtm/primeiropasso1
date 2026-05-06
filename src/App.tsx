@@ -34,7 +34,7 @@ import AdminRedesSociais from "./pages/admin/AdminRedesSociais.tsx";
 import AdminAvatares from "./pages/admin/AdminAvatares.tsx";
 import AdminClientes from "./pages/admin/AdminClientes.tsx";
 import AdminAssinatura from "./pages/admin/AdminAssinatura.tsx";
-import AdminProprietario from "./pages/admin/AdminProprietario.tsx";
+import AdminGerente from "./pages/admin/AdminGerente.tsx";
 
 import PatientBuscar from "./pages/paciente/PatientBuscar.tsx";
 import PatientAgendamentos from "./pages/paciente/PatientAgendamentos.tsx";
@@ -99,7 +99,8 @@ const App = () => (
             <Route path="/admin/redes-sociais" element={<AdminRoute><AdminRedesSociais /></AdminRoute>} />
             <Route path="/admin/avatares" element={<AdminRoute><AdminAvatares /></AdminRoute>} />
             <Route path="/admin/assinatura" element={<AdminRoute><AdminAssinatura /></AdminRoute>} />
-            <Route path="/admin-proprietario" element={<OwnerOnlyRoute><AdminProprietario /></OwnerOnlyRoute>} />
+            <Route path="/admin-gerente" element={<OwnerOnlyRoute><AdminGerente /></OwnerOnlyRoute>} />
+            <Route path="/admin-proprietario" element={<Navigate to="/admin-gerente" replace />} />
 
             {/* Dynamic professional landing page - MUST be last before catch-all */}
             <Route path="/:slug" element={<ProfessionalLanding />} />

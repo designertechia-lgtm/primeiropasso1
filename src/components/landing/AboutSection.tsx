@@ -92,7 +92,7 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
             {/* Soft decorative border behind */}
             <div className="absolute -inset-4 bg-gradient-to-tr from-primary/20 to-accent/20 rounded-[2.5rem] rotate-3 scale-[0.98] transition-transform duration-500 group-hover:rotate-6 group-hover:scale-100" />
             
-            <div className="relative rounded-[2rem] overflow-hidden shadow-2xl bg-card aspect-[4/5] md:aspect-square lg:aspect-[4/5]">
+            <div className="relative rounded-[2rem] overflow-hidden shadow-2xl bg-card aspect-[4/5] lg:aspect-square max-h-[650px] mx-auto">
               {isVideoPlaying && aboutVideoUrl ? (
                 isMp4 ? (
                   <video 
@@ -157,10 +157,6 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
           {/* Text Column */}
           <div className="w-full lg:w-1/2 space-y-8">
             <div className="space-y-4">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-medium">
-                <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                Conheça sua especialista
-              </div>
               <h2 className="font-serif text-4xl md:text-5xl font-bold text-foreground leading-tight">
                 {title || "Muito prazer, sou o(a)"}<br/> 
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent">

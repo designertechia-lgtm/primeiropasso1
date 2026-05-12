@@ -312,6 +312,30 @@ export default function AdminAgendaCalendario() {
 
       if (dates.length === 0) throw new Error("Nenhuma data");
 
+      // ── VALIDAÇÃO ANTI-DOUBLE-BOOKING (só para consultas) ──────────────
+      // Bloqueios pessoais/férias/outros não competem com agendamentos,
+      // mas consultas (blockType === 'appointment') sim.
+      if (blockType === "appointment") {
+        for (const date of dates) {
+          const { data: conflito } = await supabase
+            .from("appointments")
+            .select("id")
+            .eq("professional_id", professional.id)
+            .eq("appointment_date", date)
+            .eq("start_time", blockStartTime)
+            .in("status", ["pending", "confirmed"])
+            .is("appointment_type", null) // bookings reais, não bloqueios
+            .maybeSingle();
+
+          if (conflito) {
+            throw new Error(
+              `Conflito de horário: já existe uma consulta agendada para ${date} às ${blockStartTime}. Escolha outro horário.`
+            );
+          }
+        }
+      }
+      // ──────────────────────────────────────────────────────────────────
+
       const recurrenceGroup = dates.length > 1 ? crypto.randomUUID() : null;
 
       const records = dates.map((date) => ({
@@ -328,7 +352,13 @@ export default function AdminAgendaCalendario() {
       }));
 
       const { error } = await supabase.from("appointments").insert(records);
-      if (error) throw error;
+      if (error) {
+        // Constraint do banco captura race conditions
+        if ((error as any).code === "23505") {
+          throw new Error("Conflito de horário: esse horário acabou de ser reservado. Escolha outro.");
+        }
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
@@ -338,8 +368,9 @@ export default function AdminAgendaCalendario() {
       setBlockDialogOpen(false);
       resetBlockForm();
     },
-    onError: () => toast.error("Erro ao adicionar bloqueio"),
+    onError: (err: Error) => toast.error(err.message || "Erro ao adicionar bloqueio"),
   });
+
 
   // Remove single block
   const removeBlock = useMutation({

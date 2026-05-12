@@ -159,6 +159,31 @@ async function handleToolCall(
   }
 
   if (toolName === 'criar_agendamento') {
+    // ── VALIDAÇÃO ANTI-DOUBLE-BOOKING ─────────────────────────────────────
+    // Verifica se já existe um agendamento ativo no mesmo horário antes de inserir
+    const { data: conflito, error: conflictError } = await supabaseAdmin
+      .from('appointments')
+      .select('id, start_time, end_time')
+      .eq('professional_id', professionalId)
+      .eq('appointment_date', args.data)
+      .eq('start_time', args.hora_inicio)
+      .in('status', ['pending', 'confirmed'])
+      .is('appointment_type', null) // só bookings, não bloqueios
+      .maybeSingle()
+
+    if (conflictError) {
+      console.error('[criar_agendamento] Erro ao verificar conflito:', conflictError.message)
+    }
+
+    if (conflito) {
+      console.warn(`[criar_agendamento] Double-booking bloqueado: ${args.data} ${args.hora_inicio}`)
+      return {
+        erro: 'horario_indisponivel',
+        mensagem: `Infelizmente o horário das ${args.hora_inicio} no dia ${args.data} já está reservado. Por favor, escolha outro horário disponível.`
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     const { data: agendamento, error } = await supabaseAdmin
       .from('appointments')
       .insert({
@@ -172,7 +197,16 @@ async function handleToolCall(
       .select('id, appointment_date, start_time, end_time')
       .single()
 
-    if (error) return { erro: error.message }
+    if (error) {
+      // Se a constraint do banco pegar (race condition), retorna mensagem amigável
+      if (error.code === '23505') {
+        return {
+          erro: 'horario_indisponivel',
+          mensagem: `O horário das ${args.hora_inicio} acabou de ser reservado. Por favor, escolha outro horário disponível.`
+        }
+      }
+      return { erro: error.message }
+    }
 
     await supabaseAdmin.from('leads').update({ pipeline_stage: 'agendado' }).eq('id', leadId)
 

@@ -52,6 +52,7 @@ export default function PublishPanel({ videoId, videoTitle, videoDescription, vi
   const [uploadingImage, setUploadingImage]   = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
   const [publishing, setPublishing]           = useState(false);
+  const [publishLabel, setPublishLabel]       = useState("Publicar agora");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -127,6 +128,7 @@ export default function PublishPanel({ videoId, videoTitle, videoDescription, vi
     }
   };
 
+
   const handlePublish = async () => {
     if (!professional || !canPublish) return;
     if (postType === "feed" && !feedImageUrl) {
@@ -135,46 +137,114 @@ export default function PublishPanel({ videoId, videoTitle, videoDescription, vi
     }
 
     setPublishing(true);
+    setPublishLabel("Salvando...");
+    let postId: string | null = null;
+
     try {
       const scheduledDate = postMode === "now"
-        ? new Date(Date.now() + 5000).toISOString()
+        ? new Date(Date.now() + 2000).toISOString()
         : new Date(scheduledAt).toISOString();
 
-      const { error } = await (supabase as any).from("social_posts").insert({
-        professional_id: professional.id,
-        video_id:        videoId,
-        platform:        "instagram",
-        post_type:       postType,
-        scheduled_at:    scheduledDate,
-        description,
-        image_url:       postType === "feed" ? feedImageUrl : null,
-        status:          "pending",
-      });
+      // 1. Salva o post no banco
+      const { data: inserted, error } = await (supabase as any)
+        .from("social_posts")
+        .insert({
+          professional_id: professional.id,
+          video_id:        videoId,
+          platform:        "instagram",
+          post_type:       postType,
+          scheduled_at:    scheduledDate,
+          description,
+          image_url:       postType === "feed" ? feedImageUrl : null,
+          status:          "pending",
+        })
+        .select("id")
+        .single();
 
       if (error) throw error;
+      postId = inserted?.id ?? null;
 
-      if (postMode === "now") {
-        const { data, error: fnErr } = await supabase.functions.invoke("publish-social-posts");
-        if (fnErr) throw fnErr;
-        const { published, failed } = data as { published: number; failed: number };
-        if (published > 0) toast.success("Publicado no Instagram!");
-        else if (failed > 0) toast.error("Falhou ao publicar — verifique os logs.");
-        else toast.info("Post agendado para publicação em instantes.");
-      } else {
+      if (postMode === "schedule") {
+        // Agendamento: sem polling, só confirma
         const d = new Date(scheduledAt);
         toast.success("Post agendado!", {
           description: `Instagram — ${d.toLocaleString("pt-BR")}`,
         });
+        queryClient.invalidateQueries({ queryKey: ["social-posts"] });
+        onDismiss?.();
+        return;
       }
 
+      // 2. Dispara a Edge Function sem aguardar (fire and forget)
+      setPublishLabel("Enviando para o Instagram...");
+      supabase.functions.invoke("publish-social-posts").catch(() => {});
+
+      // 3. Polling do status no banco (a cada 4s, até 110s)
+      const MAX_ATTEMPTS = 27;
+      const INTERVAL_MS  = 4000;
+      let attempt = 0;
+
+      const labels = [
+        "Enviando para o Instagram...",
+        "Enviando para o Instagram...",
+        "Processando vídeo...",
+        "Processando vídeo...",
+        "Processando vídeo...",
+        "Processando vídeo...",
+        "Processando vídeo...",
+        "Quase lá...",
+      ];
+
+      while (attempt < MAX_ATTEMPTS) {
+        await new Promise((r) => setTimeout(r, INTERVAL_MS));
+        attempt++;
+
+        setPublishLabel(labels[Math.min(attempt - 1, labels.length - 1)]);
+
+        if (!postId) break;
+        const { data: postRow } = await (supabase as any)
+          .from("social_posts")
+          .select("status, error_message")
+          .eq("id", postId)
+          .single();
+
+        if (!postRow) continue;
+
+        if (postRow.status === "published") {
+          toast.success("✅ Publicado no Instagram!", {
+            description: "O post já está no ar.",
+            duration: 6000,
+          });
+          queryClient.invalidateQueries({ queryKey: ["social-posts"] });
+          onDismiss?.();
+          return;
+        }
+
+        if (postRow.status === "failed") {
+          throw new Error(postRow.error_message || "Falha ao publicar no Instagram.");
+        }
+        // status === "pending" → continua polling
+      }
+
+      // Timeout: a function demorou mais que o esperado, mas não falhou explicitamente
+      toast.warning("⏳ Processando no Instagram", {
+        description: "O vídeo ainda está sendo processado. Verifique a aba Posts em alguns minutos.",
+        duration: 8000,
+      });
       queryClient.invalidateQueries({ queryKey: ["social-posts"] });
       onDismiss?.();
+
     } catch (e: any) {
-      toast.error("Erro ao publicar", { description: e.message });
+      toast.error("❌ Falha ao publicar no Instagram", {
+        description: e.message,
+        duration: 8000,
+      });
     } finally {
       setPublishing(false);
+      setPublishLabel("Publicar agora");
     }
   };
+
 
   if (!professional) return null;
 
@@ -203,7 +273,7 @@ export default function PublishPanel({ videoId, videoTitle, videoDescription, vi
               Conecte o Instagram para publicar ou agendar.
             </p>
             <Button size="sm" variant="outline" asChild>
-              <a href="/admin/configuracoes">Conectar Instagram</a>
+              <a href="/admin/redes-sociais?tab=contas">Conectar Instagram</a>
             </Button>
           </div>
         )}
@@ -213,7 +283,7 @@ export default function PublishPanel({ videoId, videoTitle, videoDescription, vi
           <div className="flex flex-col items-center gap-3 py-2 text-center">
             <p className="text-sm text-amber-700 font-medium">Token expirado — reconecte o Instagram.</p>
             <Button size="sm" variant="outline" asChild>
-              <a href="/admin/configuracoes">Reconectar</a>
+              <a href="/admin/redes-sociais?tab=contas">Reconectar</a>
             </Button>
           </div>
         )}
@@ -376,7 +446,7 @@ export default function PublishPanel({ videoId, videoTitle, videoDescription, vi
               disabled={publishing || (postType === "feed" && !feedImageUrl)}
             >
               {publishing ? (
-                <><Loader2 className="h-4 w-4 animate-spin" />Publicando...</>
+                <><Loader2 className="h-4 w-4 animate-spin" />{publishLabel}</>
               ) : postMode === "now" ? (
                 <><Send className="h-4 w-4" />Publicar agora</>
               ) : (

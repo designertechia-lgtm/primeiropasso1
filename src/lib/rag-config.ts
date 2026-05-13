@@ -14,3 +14,9 @@
 export const RAG_INGEST_URL: string =
   (import.meta.env.VITE_RAG_INGEST_URL as string | undefined) ??
   "https://worker.primeiropasso.online/rag/ingest";
+
+// Base do worker derivada da URL de ingest: usado por outros endpoints (/rag/documents/{id}, etc.)
+const RAG_BASE_URL: string = RAG_INGEST_URL.replace(/\/rag\/ingest\/?$/, "");
+
+export const ragDeleteUrl = (documentId: string): string =>
+  `${RAG_BASE_URL}/rag/documents/${encodeURIComponent(documentId)}`;

@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { FileUp, Trash2, RefreshCw, Upload, FileText, Copy, Check } from "lucide-react";
-import { RAG_INGEST_URL } from "@/lib/rag-config";
+import { RAG_INGEST_URL, ragDeleteUrl } from "@/lib/rag-config";
 
 export default function AdminDocumentos() {
   const { data: professional } = useProfessional();
@@ -89,9 +89,11 @@ export default function AdminDocumentos() {
 
   const deleteDoc = useMutation({
     mutationFn: async (doc: { id: string; file_url: string; id_vector?: number | null }) => {
-      if (doc.id_vector) {
-        await supabase.from("documents").delete().eq("id_vector", doc.id_vector);
-      }
+      // Worker apaga todos os chunks em `documents` via service key (bypass RLS).
+      // Um documento gera N chunks (rag_ingest.py chunk_size=5000); o id_vector salvo
+      // em professional_documents é só do último chunk, então não dá pra usar aqui.
+      const response = await fetch(ragDeleteUrl(doc.id), { method: "DELETE" });
+      if (!response.ok) throw new Error(`Worker delete falhou: HTTP ${response.status}`);
       const url = new URL(doc.file_url);
       const pathParts = url.pathname.split("/storage/v1/object/public/documents/");
       if (pathParts[1]) { await supabase.storage.from("documents").remove([decodeURIComponent(pathParts[1])]); }

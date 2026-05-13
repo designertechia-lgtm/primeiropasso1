@@ -5,85 +5,171 @@
 @tailwind utilities;
 
 @layer base {
+  /* Brand Primeiro Passo — Calm Cyan + Health Green
+     Aplicado em landing pública e como base do admin (.theme-admin sobrescreve) */
   :root {
-    /* Verde sálvia + tons terrosos */
-    --background: 30 33% 95%;
-    --foreground: 24 38% 15%;
+    --font-heading: 'Lora', Georgia, serif;
+    --font-body: 'Raleway', system-ui, sans-serif;
 
-    --card: 30 25% 97%;
-    --card-foreground: 24 38% 15%;
+    --background: 184 86% 96%;
+    --foreground: 190 64% 26%;
 
-    --popover: 30 25% 97%;
-    --popover-foreground: 24 38% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 190 64% 26%;
 
-    --primary: 100 24% 53%;
-    --primary-foreground: 30 33% 97%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 190 64% 26%;
 
-    --secondary: 30 30% 65%;
-    --secondary-foreground: 24 38% 15%;
+    --primary: 188 87% 36%;
+    --primary-foreground: 0 0% 100%;
 
-    --muted: 30 20% 90%;
-    --muted-foreground: 24 15% 45%;
+    --secondary: 187 78% 54%;
+    --secondary-foreground: 190 64% 18%;
 
-    --accent: 100 30% 38%;
-    --accent-foreground: 30 33% 97%;
+    --muted: 188 40% 92%;
+    --muted-foreground: 190 30% 38%;
 
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 30 33% 97%;
+    --accent: 160 84% 31%;
+    --accent-foreground: 0 0% 100%;
 
-    --border: 30 20% 85%;
-    --input: 30 20% 85%;
-    --ring: 100 24% 53%;
+    --destructive: 0 73% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 187 75% 82%;
+    --input: 187 75% 82%;
+    --ring: 188 87% 36%;
 
     --radius: 0.75rem;
 
-    --sidebar-background: 100 15% 96%;
-    --sidebar-foreground: 24 38% 15%;
-    --sidebar-primary: 100 24% 53%;
-    --sidebar-primary-foreground: 30 33% 97%;
-    --sidebar-accent: 100 15% 90%;
-    --sidebar-accent-foreground: 24 38% 15%;
-    --sidebar-border: 30 20% 85%;
-    --sidebar-ring: 100 24% 53%;
+    --sidebar-background: 184 86% 98%;
+    --sidebar-foreground: 190 64% 26%;
+    --sidebar-primary: 188 87% 36%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 188 40% 92%;
+    --sidebar-accent-foreground: 190 64% 26%;
+    --sidebar-border: 187 75% 82%;
+    --sidebar-ring: 188 87% 36%;
   }
 
   .dark {
-    --background: 24 20% 10%;
-    --foreground: 30 25% 90%;
+    --background: 190 50% 10%;
+    --foreground: 184 70% 92%;
 
-    --card: 24 20% 13%;
-    --card-foreground: 30 25% 90%;
+    --card: 190 45% 13%;
+    --card-foreground: 184 70% 92%;
 
-    --popover: 24 20% 13%;
-    --popover-foreground: 30 25% 90%;
+    --popover: 190 45% 13%;
+    --popover-foreground: 184 70% 92%;
 
-    --primary: 100 24% 53%;
-    --primary-foreground: 24 20% 10%;
+    --primary: 187 85% 55%;
+    --primary-foreground: 190 50% 10%;
 
-    --secondary: 30 20% 25%;
-    --secondary-foreground: 30 25% 90%;
+    --secondary: 190 30% 22%;
+    --secondary-foreground: 184 70% 92%;
 
-    --muted: 24 15% 20%;
-    --muted-foreground: 30 15% 60%;
+    --muted: 190 30% 18%;
+    --muted-foreground: 184 25% 65%;
 
-    --accent: 100 30% 38%;
-    --accent-foreground: 30 25% 90%;
+    --accent: 160 70% 45%;
+    --accent-foreground: 190 50% 10%;
 
-    --destructive: 0 62% 30%;
-    --destructive-foreground: 30 25% 90%;
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 184 70% 92%;
 
-    --border: 24 15% 38%;
-    --input: 24 15% 38%;
-    --ring: 100 24% 53%;
+    --border: 190 30% 28%;
+    --input: 190 30% 28%;
+    --ring: 187 85% 55%;
 
-    --sidebar-background: 24 20% 10%;
-    --sidebar-foreground: 30 25% 90%;
-    --sidebar-primary: 100 24% 53%;
-    --sidebar-primary-foreground: 24 20% 10%;
-    --sidebar-accent: 24 15% 18%;
-    --sidebar-accent-foreground: 30 25% 90%;
-    --sidebar-border: 24 15% 20%;
-    --sidebar-ring: 100 24% 53%;
+    --sidebar-background: 190 50% 10%;
+    --sidebar-foreground: 184 70% 92%;
+    --sidebar-primary: 187 85% 55%;
+    --sidebar-primary-foreground: 190 50% 10%;
+    --sidebar-accent: 190 30% 18%;
+    --sidebar-accent-foreground: 184 70% 92%;
+    --sidebar-border: 190 30% 22%;
+    --sidebar-ring: 187 85% 55%;
+  }
+
+  /* Admin scope — Data-Dense Dashboard: Blue + Amber alerts.
+     Aplicado via classe no DashboardLayout. themeVars inline per-tenant
+     (buildProfessionalThemeVars) vencem essas vars quando o pro customiza. */
+  .theme-admin {
+    --background: 210 40% 98%;
+    --foreground: 222 65% 33%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 65% 33%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 65% 33%;
+
+    --primary: 224 76% 40%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 217 91% 60%;
+    --secondary-foreground: 222 65% 18%;
+
+    --muted: 219 33% 94%;
+    --muted-foreground: 222 30% 40%;
+
+    --accent: 33 92% 44%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 73% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 219 60% 90%;
+    --input: 219 60% 90%;
+    --ring: 224 76% 40%;
+
+    --sidebar-background: 222 47% 11%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-primary: 224 76% 60%;
+    --sidebar-primary-foreground: 222 47% 11%;
+    --sidebar-accent: 222 40% 18%;
+    --sidebar-accent-foreground: 210 40% 96%;
+    --sidebar-border: 222 30% 22%;
+    --sidebar-ring: 224 76% 60%;
+  }
+
+  .theme-admin.dark,
+  .dark .theme-admin {
+    --background: 222 47% 8%;
+    --foreground: 210 40% 96%;
+
+    --card: 222 47% 12%;
+    --card-foreground: 210 40% 96%;
+
+    --popover: 222 47% 12%;
+    --popover-foreground: 210 40% 96%;
+
+    --primary: 224 76% 60%;
+    --primary-foreground: 222 47% 11%;
+
+    --secondary: 217 50% 22%;
+    --secondary-foreground: 210 40% 96%;
+
+    --muted: 222 35% 18%;
+    --muted-foreground: 219 25% 65%;
+
+    --accent: 33 85% 55%;
+    --accent-foreground: 222 47% 11%;
+
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 210 40% 96%;
+
+    --border: 222 30% 25%;
+    --input: 222 30% 25%;
+    --ring: 224 76% 60%;
+
+    --sidebar-background: 222 47% 6%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-primary: 224 76% 60%;
+    --sidebar-primary-foreground: 222 47% 11%;
+    --sidebar-accent: 222 40% 14%;
+    --sidebar-accent-foreground: 210 40% 96%;
+    --sidebar-border: 222 30% 18%;
+    --sidebar-ring: 224 76% 60%;
   }
 }
 
@@ -94,11 +180,11 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: var(--font-body, 'Inter', system-ui, sans-serif);
+    font-family: var(--font-body, 'Raleway', system-ui, sans-serif);
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-heading, 'Playfair Display', serif);
+    font-family: var(--font-heading, 'Lora', Georgia, serif);
   }
 }
 
@@ -116,11 +202,11 @@
   --fc-page-bg-color: transparent;
   --fc-neutral-bg-color: hsl(var(--muted));
   --fc-event-border-color: transparent;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-body, 'Raleway', sans-serif);
 }
 
 .fc-wrapper .fc .fc-toolbar-title {
-  font-family: 'Playfair Display', serif;
+  font-family: var(--font-heading, 'Lora', serif);
   font-size: 1.15rem;
   font-weight: 600;
   color: hsl(var(--foreground));

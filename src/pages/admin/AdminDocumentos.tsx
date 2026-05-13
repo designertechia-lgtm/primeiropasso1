@@ -1,45 +1,24 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfessional } from "@/hooks/useProfessional";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { FileUp, Trash2, RefreshCw, Save, Upload, FileText, Link, Copy, Check } from "lucide-react";
+import { FileUp, Trash2, RefreshCw, Upload, FileText, Copy, Check } from "lucide-react";
+import { RAG_INGEST_URL } from "@/lib/rag-config";
 
 export default function AdminDocumentos() {
   const { data: professional } = useProfessional();
   const queryClient = useQueryClient();
-  const [webhookUrl, setWebhookUrl] = useState("");
-  const [webhookLoaded, setWebhookLoaded] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; file_url: string; id_vector?: number | null } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-
-  const { data: settings } = useQuery({
-    queryKey: ["professional-settings", professional?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("professional_settings").select("*")
-        .eq("professional_id", professional!.id).maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!professional?.id,
-  });
-
-  useEffect(() => {
-    if (webhookLoaded) return;
-    if (settings) { setWebhookUrl(settings.webhook_url || ""); setWebhookLoaded(true); }
-    else if (professional?.id) { setWebhookLoaded(true); }
-  }, [settings, professional?.id, webhookLoaded]);
 
   const { data: documents = [] } = useQuery({
     queryKey: ["professional-documents", professional?.id],
@@ -54,32 +33,18 @@ export default function AdminDocumentos() {
     enabled: !!professional?.id,
   });
 
-  const saveWebhook = useMutation({
-    mutationFn: async (url: string) => {
-      const { data: existing } = await supabase
-        .from("professional_settings").select("id")
-        .eq("professional_id", professional!.id).maybeSingle();
-      if (existing) {
-        const { error } = await supabase.from("professional_settings")
-          .update({ webhook_url: url }).eq("professional_id", professional!.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("professional_settings")
-          .insert({ professional_id: professional!.id, webhook_url: url });
-        if (error) throw error;
-      }
-    },
-    onSuccess: () => { toast.success("Webhook salvo com sucesso!"); queryClient.invalidateQueries({ queryKey: ["professional-settings"] }); },
-    onError: () => { toast.error("Erro ao salvar webhook"); },
-  });
-
   const sendWebhook = async (fileUrl: string, fileName: string, docId: string) => {
-    const currentUrl = webhookUrl || settings?.webhook_url;
-    if (!currentUrl) return;
     try {
-      const response = await fetch(currentUrl, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file_url: fileUrl, file_name: fileName, professional_id: professional!.id, document_id: docId, rag_status: "pending" }),
+      const response = await fetch(RAG_INGEST_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file_url: fileUrl,
+          file_name: fileName,
+          professional_id: professional!.id,
+          document_id: docId,
+          rag_status: "pending",
+        }),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       await supabase.from("professional_documents").update({ webhook_status: "sent" }).eq("id", docId);
@@ -107,8 +72,7 @@ export default function AdminDocumentos() {
       if (insertError) throw insertError;
       toast.success("PDF enviado com sucesso!");
       queryClient.invalidateQueries({ queryKey: ["professional-documents"] });
-      const currentUrl = webhookUrl || settings?.webhook_url;
-      if (currentUrl && doc) { await sendWebhook(publicUrl, file.name, doc.id); }
+      if (doc) { await sendWebhook(publicUrl, file.name, doc.id); }
     } catch (err: any) {
       toast.error("Erro no upload", { description: err.message });
     } finally { setUploading(false); }
@@ -116,15 +80,12 @@ export default function AdminDocumentos() {
 
   const deleteDoc = useMutation({
     mutationFn: async (doc: { id: string; file_url: string; id_vector?: number | null }) => {
-      // Remove vector row if exists
       if (doc.id_vector) {
         await supabase.from("documents").delete().eq("id_vector", doc.id_vector);
       }
-      // Remove file from storage
       const url = new URL(doc.file_url);
       const pathParts = url.pathname.split("/storage/v1/object/public/documents/");
       if (pathParts[1]) { await supabase.storage.from("documents").remove([decodeURIComponent(pathParts[1])]); }
-      // Remove document record
       const { error } = await supabase.from("professional_documents").delete().eq("id", doc.id);
       if (error) throw error;
     },
@@ -153,18 +114,18 @@ export default function AdminDocumentos() {
 
   const webhookBadge = (status: string) => {
     switch (status) {
-      case "sent": return <Badge className="bg-green-100 text-green-800 border-green-200">✅ Enviado</Badge>;
-      case "error": return <Badge variant="destructive">❌ Erro</Badge>;
-      default: return <Badge variant="secondary">⏳ Pendente</Badge>;
+      case "sent": return <Badge className="bg-green-100 text-green-800 border-green-200">Enviado</Badge>;
+      case "error": return <Badge variant="destructive">Erro</Badge>;
+      default: return <Badge variant="secondary">Pendente</Badge>;
     }
   };
 
   const ragBadge = (status: string) => {
     switch (status) {
-      case "completed": return <Badge className="bg-blue-100 text-blue-800 border-blue-200">✅ Vetorizado</Badge>;
-      case "processing": return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">⚙️ Processando</Badge>;
-      case "error": return <Badge variant="destructive">❌ Erro RAG</Badge>;
-      default: return <Badge variant="secondary">⏳ Pendente</Badge>;
+      case "completed": return <Badge className="bg-blue-100 text-blue-800 border-blue-200">Vetorizado</Badge>;
+      case "processing": return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">Processando</Badge>;
+      case "error": return <Badge variant="destructive">Erro RAG</Badge>;
+      default: return <Badge variant="secondary">Pendente</Badge>;
     }
   };
 
@@ -172,10 +133,9 @@ export default function AdminDocumentos() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">RAG conteúdo criação</h1>
-        <p className="text-muted-foreground">Faça upload de PDFs e envie para processamento via webhook</p>
+        <p className="text-muted-foreground">Faça upload de PDFs para alimentar a base de conhecimento da sua IA.</p>
       </div>
 
-      {/* 1. Document list - TOP */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -197,7 +157,7 @@ export default function AdminDocumentos() {
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       {(doc.webhook_status === "error" || doc.webhook_status === "pending") && (
-                        <Button size="sm" variant="outline" onClick={() => sendWebhook(doc.file_url, doc.file_name, doc.id)} title="Reenviar webhook">
+                        <Button size="sm" variant="outline" onClick={() => sendWebhook(doc.file_url, doc.file_name, doc.id)} title="Reenviar para processamento">
                           <RefreshCw className="h-3.5 w-3.5" />
                         </Button>
                       )}
@@ -222,7 +182,7 @@ export default function AdminDocumentos() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 pl-7">
-                    <span className="text-xs text-muted-foreground">Webhook:</span>
+                    <span className="text-xs text-muted-foreground">Envio:</span>
                     {webhookBadge(doc.webhook_status)}
                     <span className="text-xs text-muted-foreground ml-2">RAG:</span>
                     {ragBadge(doc.rag_status)}
@@ -234,7 +194,6 @@ export default function AdminDocumentos() {
         </CardContent>
       </Card>
 
-      {/* 2. Upload area - MIDDLE */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -264,29 +223,6 @@ export default function AdminDocumentos() {
         </CardContent>
       </Card>
 
-      {/* 3. Webhook config - BOTTOM */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Link className="h-5 w-5" />
-            Webhook n8n
-          </CardTitle>
-          <CardDescription>Configure a URL do webhook. Use a URL de teste e depois troque pela de produção.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <Label htmlFor="webhook-url" className="sr-only">URL do Webhook</Label>
-              <Input id="webhook-url" placeholder="https://seu-n8n.app/webhook/..." value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} />
-            </div>
-            <Button onClick={() => saveWebhook.mutate(webhookUrl)} disabled={saveWebhook.isPending}>
-              <Save className="h-4 w-4 mr-1" /> Salvar
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Delete confirmation */}
       <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <DialogContent>
           <DialogHeader>

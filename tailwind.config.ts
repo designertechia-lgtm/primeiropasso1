@@ -6,8 +6,8 @@ export default {
   prefix: "",
   theme: {
     fontFamily: {
-      sans: ['Inter', 'system-ui', 'sans-serif'],
-      serif: ['Playfair Display', 'Georgia', 'serif'],
+      sans: ['Raleway', 'system-ui', 'sans-serif'],
+      serif: ['Lora', 'Georgia', 'serif'],
     },
     container: {
       center: true,

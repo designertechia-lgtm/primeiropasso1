@@ -76,7 +76,7 @@ const App = () => (
           <FeedbackButton />
           <AppAnnouncements />
           <Routes>
-            <Route path="/" element={<Navigate to="/designertech-io" replace />} />
+            <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
             <Route path="/cadastro" element={<Cadastro />} />
             {/* Protected patient routes */}

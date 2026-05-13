@@ -113,7 +113,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   return (
     <SidebarProvider>
-      <div className="min-h-screen flex w-full" style={themeVars as React.CSSProperties}>
+      <div className="theme-admin min-h-screen flex w-full" style={themeVars as React.CSSProperties}>
         <DashboardSidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <BillingBanner />

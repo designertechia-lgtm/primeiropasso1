@@ -8,6 +8,7 @@ import {
   Banknote,
   MessageSquare,
   ShieldCheck,
+  Globe,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import ReceitaTab from "@/components/admin-gerente/ReceitaTab";
@@ -17,6 +18,7 @@ import EngajamentoTab from "@/components/admin-gerente/EngajamentoTab";
 import OverviewTab from "@/components/admin-gerente/OverviewTab";
 import FeedbackTab from "@/components/admin-gerente/FeedbackTab";
 import AcessoTab from "@/components/admin-gerente/AcessoTab";
+import LandingOficialTab from "@/components/admin-gerente/LandingOficialTab";
 
 const VALID_TABS = [
   "overview",
@@ -26,6 +28,7 @@ const VALID_TABS = [
   "pix",
   "feedback",
   "acesso",
+  "landing-oficial",
 ] as const;
 type TabValue = (typeof VALID_TABS)[number];
 
@@ -88,6 +91,10 @@ export default function AdminGerente() {
             <ShieldCheck className="h-4 w-4" />
             <span className="hidden sm:inline">Acesso</span>
           </TabsTrigger>
+          <TabsTrigger value="landing-oficial" className="gap-2">
+            <Globe className="h-4 w-4" />
+            <span className="hidden sm:inline">Landing</span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
@@ -116,6 +123,10 @@ export default function AdminGerente() {
 
         <TabsContent value="acesso" className="mt-6">
           <AcessoTab />
+        </TabsContent>
+
+        <TabsContent value="landing-oficial" className="mt-6">
+          <LandingOficialTab />
         </TabsContent>
       </Tabs>
     </div>

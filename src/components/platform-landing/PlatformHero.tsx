@@ -1,8 +1,11 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, PlayCircle, ShieldCheck, Sparkles } from "lucide-react";
+import { usePlatformHeroContent, HERO_DEFAULTS } from "@/hooks/usePlatformLanding";
 
 export default function PlatformHero() {
+  const { data: hero = HERO_DEFAULTS } = usePlatformHeroContent();
+
   return (
     <section
       id="hero"
@@ -26,40 +29,37 @@ export default function PlatformHero() {
           <div className="flex flex-col gap-6 max-w-xl">
             <div className="inline-flex items-center gap-2 self-start px-3 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-medium tracking-wide">
               <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
-              Em conformidade com CFP e LGPD
+              {hero.badge_text}
             </div>
 
             <h1 className="font-serif text-4xl md:text-5xl lg:text-6xl font-semibold text-foreground leading-[1.1] tracking-tight">
-              Seu consultório com{" "}
-              <span className="text-primary">presença digital e IA</span>
-              {" "}que atende sozinha.
+              {hero.headline_before}{" "}
+              <span className="text-primary">{hero.headline_highlight}</span>
+              {" "}{hero.headline_after}
             </h1>
 
             <p className="text-lg md:text-xl text-foreground/75 leading-relaxed">
-              Vídeos com seu avatar, carrosséis, posts e artigos a partir de uma
-              só ideia. Um agente no WhatsApp que{" "}
-              <strong className="font-semibold">conversa, negocia e agenda</strong>
-              {" "}por você. Tudo personalizado para sua especialidade.
+              {hero.subheadline}
             </p>
 
             <div className="flex flex-col sm:flex-row gap-3 pt-2">
-              <Link to="/cadastro">
+              <Link to={hero.cta_primary_href}>
                 <Button
                   size="lg"
                   className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground gap-2 shadow-md hover:shadow-lg transition-shadow"
                 >
-                  Começar grátis
+                  {hero.cta_primary_label}
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>
-              <a href="#como-funciona">
+              <a href={hero.cta_secondary_anchor}>
                 <Button
                   size="lg"
                   variant="outline"
                   className="w-full sm:w-auto gap-2"
                 >
                   <PlayCircle className="h-4 w-4" />
-                  Ver como funciona
+                  {hero.cta_secondary_label}
                 </Button>
               </a>
             </div>
@@ -67,10 +67,10 @@ export default function PlatformHero() {
             <div className="flex flex-wrap items-center gap-4 pt-1 text-sm text-foreground/60">
               <span className="flex items-center gap-1.5">
                 <Sparkles className="h-3.5 w-3.5 text-accent" aria-hidden />
-                Multi-IA: HeyGen, Kling, Veo
+                {hero.trust_badge_1}
               </span>
               <span className="h-3 w-px bg-border" aria-hidden />
-              <span>Sem cartão de crédito</span>
+              <span>{hero.trust_badge_2}</span>
             </div>
           </div>
 
@@ -90,12 +90,12 @@ export default function PlatformHero() {
                     <PlayCircle className="h-10 w-10 text-primary" aria-hidden />
                   </div>
                   <p className="font-serif text-xl text-center text-foreground/80">
-                    "Como reconhecer pensamentos automáticos em 30 segundos"
+                    "{hero.preview_quote}"
                   </p>
                   <div className="flex items-center gap-2 text-xs text-foreground/60">
-                    <span className="px-2 py-1 rounded-full bg-muted">TCC</span>
-                    <span className="px-2 py-1 rounded-full bg-muted">Ansiedade</span>
-                    <span className="px-2 py-1 rounded-full bg-muted">9:16</span>
+                    {hero.preview_tags.map((tag) => (
+                      <span key={tag} className="px-2 py-1 rounded-full bg-muted">{tag}</span>
+                    ))}
                   </div>
                   <div className="mt-2 pt-3 border-t border-border w-full flex flex-col gap-1.5">
                     <div className="flex items-center gap-2 text-xs text-foreground/60">

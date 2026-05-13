@@ -64,6 +64,21 @@ def _extract_pdf_text(pdf_bytes: bytes) -> str:
     return "\n\n".join(pages).strip()
 
 
+SUPPORTED_TEXT_EXTS = {"md", "markdown", "txt"}
+
+
+def _extract_text(file_name: str, file_bytes: bytes) -> str:
+    """Dispatcha por extensão: PDF usa pypdf; .md/.txt lê como utf-8."""
+    ext = file_name.lower().rsplit(".", 1)[-1] if "." in file_name else ""
+    if ext == "pdf":
+        return _extract_pdf_text(file_bytes)
+    if ext in SUPPORTED_TEXT_EXTS:
+        return file_bytes.decode("utf-8", errors="replace").strip()
+    raise ValueError(
+        f"Tipo de arquivo não suportado: .{ext}. Aceitos: pdf, md, markdown, txt"
+    )
+
+
 def _chunk_text(text: str) -> list[str]:
     """Splitter pareado ao n8n: RecursiveCharacterTextSplitter chunk_size=5000, markdown separators."""
     splitter = RecursiveCharacterTextSplitter.from_language(
@@ -103,10 +118,10 @@ def ingest_document(
         "rag_ingest_start", extra={"document_id": document_id, "file_name": file_name}
     )
 
-    pdf_bytes = _download_pdf(file_url, settings.SUPABASE_SERVICE_KEY)
-    raw_text = _extract_pdf_text(pdf_bytes)
+    file_bytes = _download_pdf(file_url, settings.SUPABASE_SERVICE_KEY)
+    raw_text = _extract_text(file_name, file_bytes)
     if not raw_text:
-        raise ValueError("PDF text extraction returned empty content")
+        raise ValueError("Text extraction returned empty content")
 
     chunks = _chunk_text(raw_text)
     if not chunks:

@@ -56,7 +56,16 @@ export default function AdminDocumentos() {
 
   const handleUpload = async (file: File) => {
     if (!professional?.id) return;
-    if (file.type !== "application/pdf") { toast.error("Apenas arquivos PDF são aceitos"); return; }
+    const name = file.name.toLowerCase();
+    const isAccepted =
+      file.type === "application/pdf" ||
+      file.type === "text/markdown" ||
+      file.type === "text/plain" ||
+      name.endsWith(".pdf") ||
+      name.endsWith(".md") ||
+      name.endsWith(".markdown") ||
+      name.endsWith(".txt");
+    if (!isAccepted) { toast.error("Apenas arquivos PDF, MD ou TXT são aceitos"); return; }
     if (file.size > 20 * 1024 * 1024) { toast.error("Arquivo deve ter no máximo 20MB"); return; }
     setUploading(true);
     try {
@@ -70,7 +79,7 @@ export default function AdminDocumentos() {
         .insert({ professional_id: professional.id, file_name: file.name, file_url: publicUrl, file_size: file.size, webhook_status: "pending" })
         .select().single();
       if (insertError) throw insertError;
-      toast.success("PDF enviado com sucesso!");
+      toast.success("Documento enviado com sucesso!");
       queryClient.invalidateQueries({ queryKey: ["professional-documents"] });
       if (doc) { await sendWebhook(publicUrl, file.name, doc.id); }
     } catch (err: any) {
@@ -133,7 +142,7 @@ export default function AdminDocumentos() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">RAG conteúdo criação</h1>
-        <p className="text-muted-foreground">Faça upload de PDFs para alimentar a base de conhecimento da sua IA.</p>
+        <p className="text-muted-foreground">Faça upload de PDF, Markdown ou TXT para alimentar a base de conhecimento da sua IA.</p>
       </div>
 
       <Card>
@@ -198,7 +207,7 @@ export default function AdminDocumentos() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
             <Upload className="h-5 w-5" />
-            Upload de PDF
+            Upload de Documento
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -212,10 +221,12 @@ export default function AdminDocumentos() {
             onClick={() => document.getElementById("pdf-input")?.click()}
           >
             <FileUp className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">{uploading ? "Enviando..." : "Arraste um PDF aqui ou clique para selecionar"}</p>
-            <p className="text-xs text-muted-foreground mt-1">Máximo 20MB • Apenas PDF</p>
+            <p className="text-sm text-muted-foreground">{uploading ? "Enviando..." : "Arraste um arquivo aqui ou clique para selecionar"}</p>
+            <p className="text-xs text-muted-foreground mt-1">Máximo 20MB • PDF, MD ou TXT</p>
             <input
-              id="pdf-input" type="file" accept="application/pdf" className="hidden"
+              id="pdf-input" type="file"
+              accept=".pdf,.md,.markdown,.txt,application/pdf,text/markdown,text/plain"
+              className="hidden"
               onChange={(e) => { const file = e.target.files?.[0]; if (file) handleUpload(file); e.target.value = ""; }}
               disabled={uploading}
             />

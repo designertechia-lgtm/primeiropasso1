@@ -429,6 +429,7 @@ export interface OwnerUserRow {
   current_period_end: string | null;
   cancelled_at: string | null;
   days_until_expiry: number | null;
+  auto_renew: boolean;
 }
 
 export function useOwnerListAllUsers() {

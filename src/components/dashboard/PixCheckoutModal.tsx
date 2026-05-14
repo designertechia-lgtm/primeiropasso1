@@ -9,10 +9,17 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Copy, CheckCircle2, Upload, Loader2, Clock, AlertCircle, QrCode } from "lucide-react";
+import { Copy, CheckCircle2, Upload, Loader2, Clock, AlertCircle, QrCode, RefreshCw } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
-import { useCreatePixPayment, useSubmitPaymentProof } from "@/hooks/useBilling";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import {
+  useCreatePixPayment,
+  useSubmitPaymentProof,
+  useSubscription,
+  useSetMyAutoRenew,
+} from "@/hooks/useBilling";
 import { generatePixBrCode } from "@/lib/pixBrCode";
 
 type PaymentData = {
@@ -271,6 +278,9 @@ export function PixCheckoutModal({ open, onOpenChange, kind, referenceId, label,
               </div>
             )}
 
+            {/* Auto-renovação (só pra renovação de assinatura) */}
+            {kind === "subscription_renewal" && <AutoRenewToggle />}
+
             <Separator />
 
             {/* Proof upload */}
@@ -334,5 +344,47 @@ export function PixCheckoutModal({ open, onOpenChange, kind, referenceId, label,
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function AutoRenewToggle() {
+  const { data: subscription } = useSubscription();
+  const setAutoRenew = useSetMyAutoRenew();
+  const enabled = !!subscription?.auto_renew;
+
+  const handleToggle = async (next: boolean) => {
+    try {
+      await setAutoRenew.mutateAsync(next);
+      toast.success(
+        next
+          ? "Auto-renovação ativada — você receberá lembrete antes do vencimento"
+          : "Auto-renovação desativada",
+      );
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Erro ao alterar auto-renovação");
+    }
+  };
+
+  return (
+    <div className="flex items-start gap-3 rounded-lg border bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900 p-3">
+      <RefreshCw className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+      <div className="flex-1 space-y-1">
+        <div className="flex items-center justify-between">
+          <Label htmlFor="auto_renew_toggle" className="text-sm font-medium cursor-pointer">
+            Renovar automaticamente
+          </Label>
+          <Switch
+            id="auto_renew_toggle"
+            checked={enabled}
+            disabled={setAutoRenew.isPending}
+            onCheckedChange={handleToggle}
+          />
+        </div>
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          Ativando, você recebe um WhatsApp 5 dias antes de vencer com a próxima cobrança PIX
+          já preparada. Pode desativar a qualquer momento na sua página de assinatura.
+        </p>
+      </div>
+    </div>
   );
 }

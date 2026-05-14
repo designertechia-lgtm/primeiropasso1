@@ -19,6 +19,24 @@ export function useSubscription() {
   });
 }
 
+export function useSetMyAutoRenew() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (enabled: boolean) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc("set_my_auto_renew", {
+        p_enabled: enabled,
+      });
+      if (error) throw error;
+      return data as boolean;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["subscription"] });
+      qc.invalidateQueries({ queryKey: ["owner-list-all-users"] });
+    },
+  });
+}
+
 export function useCreditBalance() {
   const { data: professional } = useProfessional();
   return useQuery({

@@ -37,8 +37,12 @@ import {
   useCreditLedger,
   useServicePricing,
   useCreditPacks,
+  useSetMyAutoRenew,
 } from "@/hooks/useBilling";
 import { PixCheckoutModal } from "@/components/dashboard/PixCheckoutModal";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 
 /* ── helpers ─────────────────────────────────────────── */
 
@@ -159,6 +163,8 @@ export default function AdminAssinatura() {
             <RefreshCw className="h-4 w-4" />
             Renovar agora via PIX
           </Button>
+
+          <AutoRenewSection autoRenew={!!sub?.auto_renew} />
         </CardContent>
       </Card>
 
@@ -420,6 +426,47 @@ export default function AdminAssinatura() {
         label={pixLabel}
         amountLabel={pixAmount}
       />
+    </div>
+  );
+}
+
+function AutoRenewSection({ autoRenew }: { autoRenew: boolean }) {
+  const setAutoRenew = useSetMyAutoRenew();
+
+  const handleToggle = async (next: boolean) => {
+    try {
+      await setAutoRenew.mutateAsync(next);
+      toast.success(
+        next
+          ? "Auto-renovação ativada"
+          : "Auto-renovação desativada — você precisará renovar manualmente",
+      );
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Erro ao alterar");
+    }
+  };
+
+  return (
+    <div className="mt-2 flex items-start gap-3 rounded-lg border bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900 p-3">
+      <RefreshCw className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+      <div className="flex-1 space-y-1">
+        <div className="flex items-center justify-between">
+          <Label htmlFor="auto_renew_page_toggle" className="text-sm font-medium cursor-pointer">
+            Renovação automática
+          </Label>
+          <Switch
+            id="auto_renew_page_toggle"
+            checked={autoRenew}
+            disabled={setAutoRenew.isPending}
+            onCheckedChange={handleToggle}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          {autoRenew
+            ? "Ativa: 5 dias antes do vencimento, você recebe um WhatsApp com a próxima cobrança PIX já preparada (com QR e valor)."
+            : "Inativa: você precisa lembrar de pagar a renovação manualmente todo mês."}
+        </p>
+      </div>
     </div>
   );
 }

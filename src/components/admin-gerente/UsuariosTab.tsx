@@ -22,6 +22,7 @@ import {
   Gift,
   XCircle,
   Search,
+  RefreshCw,
 } from "lucide-react";
 import {
   useOwnerUserGrowth,
@@ -492,7 +493,20 @@ function GerenciarUsuariosCard() {
                       <TableCell className="text-xs text-muted-foreground">
                         {u.slug ?? "—"}
                       </TableCell>
-                      <TableCell>{statusBadge(u)}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {statusBadge(u)}
+                          {u.auto_renew && (
+                            <Badge
+                              variant="outline"
+                              className="border-emerald-500/40 text-emerald-700 dark:text-emerald-400 text-[10px] px-1.5 py-0 gap-1"
+                              title="Renovação automática ativa"
+                            >
+                              <RefreshCw className="h-2.5 w-2.5" /> Auto
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {u.monthly_price_brl != null
                           ? Number(u.monthly_price_brl).toLocaleString("pt-BR", {

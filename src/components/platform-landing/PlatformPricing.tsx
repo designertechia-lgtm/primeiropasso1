@@ -1,69 +1,43 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Check } from "lucide-react";
+import {
+  useSubscriptionPlans,
+  SUBSCRIPTION_PLANS_DEFAULTS,
+  type SubscriptionPlan,
+} from "@/hooks/useSubscriptionPlans";
+import { useOwnerCreditPacks, type CreditPack } from "@/hooks/useOwnerStats";
 
-const TIERS = [
-  {
-    name: "Starter",
-    price: "R$ 97",
-    period: "/mês",
-    description: "Landing, agenda e atendimento via agente WhatsApp.",
-    features: [
-      "Landing per-tenant + agenda",
-      "Agente WhatsApp · 200 msgs/mês",
-      "Artigos no blog (ilimitado)",
-      "Templates da sua especialidade",
-      "Biblioteca de ideias (50/mês)",
-      "Pagamento via Pix",
-    ],
-    cta: "Começar Starter",
-    featured: false,
-  },
-  {
-    name: "Pro",
-    price: "R$ 197",
-    period: "/mês",
-    description: "Pipeline completo de vídeo, multi-formato e CRM.",
-    features: [
-      "Tudo do Starter +",
-      "10 créditos de vídeo premium",
-      "Multi-formato: vídeo + carrossel + post + blog",
-      "Avatar real (HeyGen) + voz clonada",
-      "CRM Kanban completo",
-      "Publica em YouTube, TikTok, Instagram, LinkedIn",
-      "Biblioteca completa de ideias",
-    ],
-    cta: "Começar Pro",
-    featured: true,
-    badge: "Mais escolhido",
-  },
-  {
-    name: "Scale",
-    price: "R$ 397",
-    period: "/mês",
-    description: "Para quem quer escala, IAs premium e inteligência completa.",
-    features: [
-      "Tudo do Pro +",
-      "30 créditos de vídeo premium",
-      "Multi-IA: Kling, Veo, Sora, Pika",
-      "Avatares fotorrealistas extras",
-      "Analytics + sugestão de tópicos",
-      "Resposta automática DMs/comentários",
-      "Calendário editorial inteligente",
-      "Suporte prioritário",
-    ],
-    cta: "Começar Scale",
-    featured: false,
-  },
+const CREDIT_PACKS_FALLBACK: Pick<CreditPack, "id" | "credits" | "price_brl" | "bonus_credits">[] = [
+  { id: "fallback_10", credits: 10, price_brl: 29, bonus_credits: 0 },
+  { id: "fallback_30", credits: 30, price_brl: 79, bonus_credits: 0 },
+  { id: "fallback_70", credits: 70, price_brl: 149, bonus_credits: 0 },
 ];
 
-const CREDIT_PACKS = [
-  { credits: 10, price: "R$ 29" },
-  { credits: 30, price: "R$ 79" },
-  { credits: 70, price: "R$ 149" },
-];
+const brl = (v: number) =>
+  `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
 export default function PlatformPricing() {
+  const { data: plansData } = useSubscriptionPlans(false);
+  const { data: packsData } = useOwnerCreditPacks();
+
+  const tiers: SubscriptionPlan[] =
+    plansData && plansData.length > 0 ? plansData : SUBSCRIPTION_PLANS_DEFAULTS;
+
+  const activePacks = (packsData ?? []).filter((p) => p.active);
+  const packs =
+    activePacks.length > 0
+      ? activePacks.map((p) => ({
+          id: p.id,
+          credits: (p.credits ?? 0) + (p.bonus_credits ?? 0),
+          price_brl: Number(p.price_brl),
+        }))
+      : CREDIT_PACKS_FALLBACK.map((p) => ({
+          id: p.id,
+          credits: p.credits,
+          price_brl: Number(p.price_brl),
+        }));
+
   return (
     <section id="precos" className="py-20 md:py-28 bg-background">
       <div className="container mx-auto max-w-6xl px-4">
@@ -81,9 +55,9 @@ export default function PlatformPricing() {
         </div>
 
         <div className="grid md:grid-cols-3 gap-6 mb-12">
-          {TIERS.map((tier) => (
+          {tiers.map((tier) => (
             <div
-              key={tier.name}
+              key={tier.id}
               className={`relative rounded-2xl p-7 md:p-8 flex flex-col gap-6 transition-all ${
                 tier.featured
                   ? "bg-card border-2 border-primary shadow-xl scale-[1.02] md:scale-[1.04]"
@@ -106,9 +80,9 @@ export default function PlatformPricing() {
 
               <div className="flex items-baseline gap-1">
                 <span className="font-serif text-5xl font-bold text-foreground tracking-tight">
-                  {tier.price}
+                  {brl(tier.monthly_price_brl)}
                 </span>
-                <span className="text-foreground/60 text-base">{tier.period}</span>
+                <span className="text-foreground/60 text-base">/mês</span>
               </div>
 
               <ul className="flex flex-col gap-3 flex-1">
@@ -138,7 +112,7 @@ export default function PlatformPricing() {
                   }`}
                   variant={tier.featured ? "default" : "outline"}
                 >
-                  {tier.cta}
+                  {tier.cta_label}
                 </Button>
               </Link>
             </div>
@@ -156,15 +130,15 @@ export default function PlatformPricing() {
               </p>
             </div>
             <div className="flex flex-wrap justify-center gap-3">
-              {CREDIT_PACKS.map(({ credits, price }) => (
+              {packs.map((p) => (
                 <div
-                  key={credits}
+                  key={p.id}
                   className="bg-card border border-border rounded-xl px-4 py-3 text-center min-w-[6rem]"
                 >
                   <div className="font-serif text-lg font-semibold text-foreground">
-                    {credits} créditos
+                    {p.credits} créditos
                   </div>
-                  <div className="text-sm text-accent font-medium">{price}</div>
+                  <div className="text-sm text-accent font-medium">{brl(p.price_brl)}</div>
                 </div>
               ))}
             </div>

@@ -29,6 +29,12 @@ import {
   type CreditPack,
   type ServicePricing,
 } from "@/hooks/useOwnerStats";
+import {
+  useSubscriptionPlans,
+  useUpsertSubscriptionPlan,
+  useDeleteSubscriptionPlan,
+  type SubscriptionPlan,
+} from "@/hooks/useSubscriptionPlans";
 
 const PIX_KEY_TYPES = [
   { value: "cpf", label: "CPF" },
@@ -608,17 +614,318 @@ function ServicePricingCard() {
   );
 }
 
+// ─── Planos de assinatura mensal (lidos pela landing oficial) ───────────────
+
+function SubscriptionPlanEditor({
+  plan,
+  onClose,
+}: {
+  plan: SubscriptionPlan | null;
+  onClose: () => void;
+}) {
+  const upsert = useUpsertSubscriptionPlan();
+  const isNew = !plan;
+  const [form, setForm] = useState<SubscriptionPlan>(
+    plan ?? {
+      id: "",
+      name: "",
+      monthly_price_brl: 0,
+      description: "",
+      features: [],
+      cta_label: "",
+      featured: false,
+      badge: null,
+      active: true,
+      sort_order: 0,
+    },
+  );
+  const [featuresText, setFeaturesText] = useState(form.features.join("\n"));
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.id.trim() || !form.name.trim()) {
+      toast.error("ID e nome são obrigatórios");
+      return;
+    }
+    const features = featuresText
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    try {
+      await upsert.mutateAsync({
+        id: form.id.trim(),
+        name: form.name.trim(),
+        monthly_price_brl: Number(form.monthly_price_brl),
+        description: form.description.trim(),
+        features,
+        cta_label: form.cta_label.trim() || `Começar ${form.name.trim()}`,
+        featured: form.featured,
+        badge: form.badge?.trim() || null,
+        active: form.active,
+        sort_order: Number(form.sort_order ?? 0),
+      });
+      toast.success(isNew ? "Plano criado" : "Plano atualizado");
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar");
+    }
+  };
+
+  return (
+    <DialogContent className="max-w-2xl">
+      <DialogHeader>
+        <DialogTitle>{isNew ? "Novo plano de assinatura" : `Editar ${plan?.name}`}</DialogTitle>
+        <DialogDescription>
+          Aparece na seção Preços de <strong>primeiropasso.online</strong>.
+        </DialogDescription>
+      </DialogHeader>
+      <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="plan_id">ID</Label>
+          <Input
+            id="plan_id"
+            value={form.id}
+            onChange={(e) => setForm({ ...form, id: e.target.value })}
+            disabled={!isNew}
+            placeholder="ex: starter"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="plan_name">Nome</Label>
+          <Input
+            id="plan_name"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            placeholder="Starter"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="plan_price">Preço mensal (R$)</Label>
+          <Input
+            id="plan_price"
+            type="number"
+            step="1"
+            min="0"
+            value={form.monthly_price_brl}
+            onChange={(e) =>
+              setForm({ ...form, monthly_price_brl: Number(e.target.value) })
+            }
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="plan_sort">Ordem (1, 2, 3...)</Label>
+          <Input
+            id="plan_sort"
+            type="number"
+            min="0"
+            value={form.sort_order}
+            onChange={(e) => setForm({ ...form, sort_order: Number(e.target.value) })}
+          />
+        </div>
+        <div className="space-y-2 md:col-span-2">
+          <Label htmlFor="plan_desc">Descrição curta</Label>
+          <Input
+            id="plan_desc"
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            placeholder="Pipeline completo de vídeo, multi-formato e CRM."
+          />
+        </div>
+        <div className="space-y-2 md:col-span-2">
+          <Label htmlFor="plan_features">
+            Features (uma por linha — viram bullets na landing)
+          </Label>
+          <Textarea
+            id="plan_features"
+            rows={8}
+            value={featuresText}
+            onChange={(e) => setFeaturesText(e.target.value)}
+            placeholder={"Landing per-tenant + agenda\nAgente WhatsApp · 200 msgs/mês\n..."}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="plan_cta">CTA do botão</Label>
+          <Input
+            id="plan_cta"
+            value={form.cta_label}
+            onChange={(e) => setForm({ ...form, cta_label: e.target.value })}
+            placeholder="Começar Starter"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="plan_badge">Badge (opcional)</Label>
+          <Input
+            id="plan_badge"
+            value={form.badge ?? ""}
+            onChange={(e) => setForm({ ...form, badge: e.target.value })}
+            placeholder="Mais escolhido"
+          />
+        </div>
+        <div className="flex items-center gap-2 self-end pb-2">
+          <Switch
+            id="plan_featured"
+            checked={form.featured}
+            onCheckedChange={(v) => setForm({ ...form, featured: v })}
+          />
+          <Label htmlFor="plan_featured">Destaque (card maior)</Label>
+        </div>
+        <div className="flex items-center gap-2 self-end pb-2">
+          <Switch
+            id="plan_active"
+            checked={form.active}
+            onCheckedChange={(v) => setForm({ ...form, active: v })}
+          />
+          <Label htmlFor="plan_active">Ativo</Label>
+        </div>
+        <DialogFooter className="md:col-span-2">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={upsert.isPending}>
+            {upsert.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Salvar
+          </Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  );
+}
+
+function SubscriptionPlansCard() {
+  const { data, isLoading } = useSubscriptionPlans(true);
+  const del = useDeleteSubscriptionPlan();
+  const [editing, setEditing] = useState<SubscriptionPlan | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Excluir este plano da landing oficial?")) return;
+    try {
+      await del.mutateAsync(id);
+      toast.success("Plano removido");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao remover");
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle className="text-base">Planos de assinatura</CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">
+            Cards exibidos em <strong>primeiropasso.online</strong> (seção Preços)
+          </p>
+        </div>
+        <Dialog
+          open={open}
+          onOpenChange={(o) => {
+            setOpen(o);
+            if (!o) setEditing(null);
+          }}
+        >
+          <DialogTrigger asChild>
+            <Button
+              size="sm"
+              onClick={() => {
+                setEditing(null);
+                setOpen(true);
+              }}
+            >
+              <Plus className="mr-1 h-4 w-4" /> Novo plano
+            </Button>
+          </DialogTrigger>
+          <SubscriptionPlanEditor plan={editing} onClose={() => setOpen(false)} />
+        </Dialog>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="flex h-24 items-center justify-center">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : (data ?? []).length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            Nenhum plano cadastrado.
+          </p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Ordem</TableHead>
+                <TableHead>Nome</TableHead>
+                <TableHead className="text-right">Preço/mês</TableHead>
+                <TableHead className="text-right">Features</TableHead>
+                <TableHead className="text-center">Destaque</TableHead>
+                <TableHead className="text-center">Ativo</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(data ?? []).map((p) => (
+                <TableRow key={p.id}>
+                  <TableCell className="text-xs text-muted-foreground">{p.sort_order}</TableCell>
+                  <TableCell className="font-medium">
+                    {p.name}
+                    {p.badge && (
+                      <span className="ml-2 inline-block rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-medium text-accent">
+                        {p.badge}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">{brl(Number(p.monthly_price_brl))}</TableCell>
+                  <TableCell className="text-right text-xs text-muted-foreground">
+                    {p.features.length} itens
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <span
+                      className={`inline-block h-2 w-2 rounded-full ${
+                        p.featured ? "bg-primary" : "bg-muted-foreground/30"
+                      }`}
+                    />
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <span
+                      className={`inline-block h-2 w-2 rounded-full ${
+                        p.active ? "bg-emerald-500" : "bg-muted-foreground/40"
+                      }`}
+                    />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setEditing(p);
+                        setOpen(true);
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleDelete(p.id)}>
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function PixPrecosTab() {
   return (
     <div className="space-y-6">
       <header className="space-y-1">
         <h2 className="font-serif text-2xl text-foreground">PIX & Preços</h2>
         <p className="text-sm text-muted-foreground">
-          Configure a chave PIX de recebimento, pacotes de créditos e o custo de cada serviço.
+          Configure a chave PIX, planos de assinatura, pacotes de créditos e o custo de cada serviço.
         </p>
       </header>
 
       <PixSettingsCard />
+      <SubscriptionPlansCard />
       <CreditPacksCard />
       <ServicePricingCard />
     </div>

@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useCallback } from "react";
+﻿import { useState, useRef, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -85,21 +85,30 @@ export function PixCheckoutModal({ open, onOpenChange, kind, referenceId, label,
   const createPayment = useCreatePixPayment();
   const submitProof = useSubmitPaymentProof();
 
-  const handleOpen = useCallback(async (isOpen: boolean) => {
-    if (!isOpen) {
-      onOpenChange(false);
-      return;
-    }
-    if (!payment) {
-      try {
-        const data = await createPayment.mutateAsync({ kind, reference_id: referenceId });
-        setPayment(data);
-      } catch (e: unknown) {
+  // Cria a cobranca PIX ao abrir o modal (parent controla open via prop;
+  // Radix nao dispara onOpenChange nesse caso, entao usamos useEffect)
+  useEffect(() => {
+    if (!open) return;
+    if (payment || createPayment.isPending) return;
+    createPayment
+      .mutateAsync({ kind, reference_id: referenceId })
+      .then(setPayment)
+      .catch((e: unknown) => {
         toast.error(e instanceof Error ? e.message : "Erro ao criar pagamento");
         onOpenChange(false);
-      }
+      });
+  }, [open, payment, createPayment, kind, referenceId, onOpenChange]);
+
+  // Reseta estado quando o modal fecha
+  useEffect(() => {
+    if (!open) {
+      setPayment(null);
+      setFile(null);
+      setSubmitted(false);
+      setCopied(false);
+      setBrCopied(false);
     }
-  }, [payment, createPayment, kind, referenceId, onOpenChange]);
+  }, [open]);
 
   const copyKey = async () => {
     if (!payment?.pix?.pix_key) return;
@@ -141,7 +150,7 @@ export function PixCheckoutModal({ open, onOpenChange, kind, referenceId, label,
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Pagamento via PIX</DialogTitle>

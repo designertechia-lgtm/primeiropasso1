@@ -413,3 +413,76 @@ export function useFeatureFlags() {
     },
   });
 }
+
+// ── Fatia 5: Gestão manual de usuários ──────────────────────────────────────
+
+export interface OwnerUserRow {
+  user_id: string;
+  professional_id: string;
+  email: string;
+  full_name: string | null;
+  slug: string | null;
+  whatsapp: string | null;
+  user_created_at: string | null;
+  subscription_status: string | null;
+  monthly_price_brl: number | null;
+  current_period_end: string | null;
+  cancelled_at: string | null;
+  days_until_expiry: number | null;
+}
+
+export function useOwnerListAllUsers() {
+  return useQuery({
+    queryKey: ["owner-list-all-users"],
+    queryFn: async (): Promise<OwnerUserRow[]> => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc("owner_list_all_users");
+      if (error) throw error;
+      return (data ?? []) as OwnerUserRow[];
+    },
+  });
+}
+
+export function useOwnerGrantManualSubscription() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: {
+      professional_id: string;
+      days: number;
+      monthly_price?: number | null;
+    }) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc("owner_grant_manual_subscription", {
+        p_professional_id: args.professional_id,
+        p_days: args.days,
+        p_monthly_price: args.monthly_price ?? null,
+      });
+      if (error) throw error;
+      return data as string;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["owner-list-all-users"] });
+      qc.invalidateQueries({ queryKey: ["owner-mrr"] });
+      qc.invalidateQueries({ queryKey: ["owner-sub-status"] });
+    },
+  });
+}
+
+export function useOwnerCancelSubscription() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (professional_id: string) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc("owner_cancel_subscription", {
+        p_professional_id: professional_id,
+      });
+      if (error) throw error;
+      return data as number;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["owner-list-all-users"] });
+      qc.invalidateQueries({ queryKey: ["owner-mrr"] });
+      qc.invalidateQueries({ queryKey: ["owner-sub-status"] });
+    },
+  });
+}

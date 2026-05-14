@@ -17,9 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Loader2, Plus, Pencil, Trash2, Copy, QrCode } from "lucide-react";
-import { QRCodeSVG } from "qrcode.react";
-import { generatePixBrCode } from "@/lib/pixBrCode";
+import { Loader2, Plus, Pencil, Trash2 } from "lucide-react";
 import {
   useDeleteCreditPack,
   useOwnerCreditPacks,
@@ -162,71 +160,10 @@ function PixSettingsCard() {
                 Salvar configurações
               </Button>
             </div>
-
-            {data?.pix_key && data?.beneficiary_name && (
-              <PixQrCodePreview
-                pixKey={data.pix_key}
-                beneficiaryName={data.beneficiary_name}
-              />
-            )}
           </div>
         )}
       </CardContent>
     </Card>
-  );
-}
-
-function PixQrCodePreview({
-  pixKey,
-  beneficiaryName,
-}: {
-  pixKey: string;
-  beneficiaryName: string;
-}) {
-  const brCode = generatePixBrCode({ pixKey, beneficiaryName });
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(brCode);
-      toast.success("Pix Copia-e-Cola copiado!");
-    } catch {
-      toast.error("Não foi possível copiar. Selecione manualmente.");
-    }
-  };
-
-  return (
-    <div className="md:col-span-2 mt-4 rounded-xl border border-border bg-muted/30 p-5">
-      <div className="flex flex-col md:flex-row items-start md:items-center gap-5">
-        <div className="bg-white p-3 rounded-lg border shadow-sm">
-          <QRCodeSVG value={brCode} size={160} level="M" includeMargin={false} />
-        </div>
-        <div className="flex-1 space-y-3 w-full">
-          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <QrCode className="h-4 w-4 text-primary" />
-            QR Code Pix gerado a partir das configurações acima
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Escaneie com qualquer app de banco para pagar à <strong>{beneficiaryName}</strong>.
-            Ou use o Pix Copia-e-Cola abaixo:
-          </p>
-          <div className="flex gap-2">
-            <Input
-              readOnly
-              value={brCode}
-              className="font-mono text-xs"
-              onClick={(e) => (e.target as HTMLInputElement).select()}
-            />
-            <Button type="button" size="sm" variant="outline" onClick={handleCopy}>
-              <Copy className="h-4 w-4" />
-            </Button>
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            Esse código segue o padrão BR Code do BCB e dispensa digitar a chave manualmente.
-            Salve as configurações primeiro se acabou de mudar a chave.
-          </p>
-        </div>
-      </div>
-    </div>
   );
 }
 

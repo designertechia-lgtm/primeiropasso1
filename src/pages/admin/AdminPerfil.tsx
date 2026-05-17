@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
@@ -29,11 +30,32 @@ export default function AdminPerfil() {
   const [priceMin, setPriceMin] = useState("");
   const [priceMax, setPriceMax] = useState("");
   const [priceFirstSession, setPriceFirstSession] = useState("");
+  const [category, setCategory]             = useState("psicologo");
+  const [categoryCustom, setCategoryCustom] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!professional) return;
     setFullName(professional.full_name || profile?.full_name || "");
+    // Migra categorias legadas (psicologia/odontologia/nutricao/etc) para "outro"
+    // preservando o rótulo original no texto livre.
+    const rawCat = (professional as any).category || "psicologo";
+    const VALID = ["terapeuta", "psicologo", "psiquiatra", "outro"] as const;
+    if (VALID.includes(rawCat as typeof VALID[number])) {
+      setCategory(rawCat);
+      setCategoryCustom((professional as any).category_custom || "");
+    } else {
+      setCategory("outro");
+      const labels: Record<string, string> = {
+        psicologia: "Psicologia clínica",
+        plataforma_saas: "Plataforma digital / SaaS",
+        odontologia: "Odontologia",
+        nutricao: "Nutrição",
+        medicina: "Medicina",
+        educacao: "Educação / Coaching",
+      };
+      setCategoryCustom((professional as any).category_custom || labels[rawCat] || rawCat);
+    }
     setSlug(professional.slug || "");
     setCrp(professional.crp || "");
     setPhone(professional.phone || (professional as any).whatsapp || "");
@@ -69,7 +91,9 @@ export default function AdminPerfil() {
         price_min: priceMin ? parseFloat(priceMin) : null,
         price_max: priceMax ? parseFloat(priceMax) : null,
         price_first_session: priceFirstSession ? parseFloat(priceFirstSession) : null,
-      }).eq("id", professional.id),
+        category,
+        category_custom: category === "outro" ? (categoryCustom.trim() || null) : null,
+      } as any).eq("id", professional.id),
     ]);
 
     setSaving(false);
@@ -169,6 +193,39 @@ export default function AdminPerfil() {
             <Label htmlFor="priceFirstSession">Primeira consulta — Promocional (R$) <FieldHint text="Valor especial para a primeira consulta." /></Label>
             <Input id="priceFirstSession" type="number" min="0" step="0.01" placeholder="Ex: 100" value={priceFirstSession} onChange={(e) => setPriceFirstSession(e.target.value)} />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Área de Atuação <FieldHint text="Define o vocabulário e o contexto visual dos vídeos gerados pela IA." /></CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="category">Categoria profissional</Label>
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger id="category">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="terapeuta">Terapeuta</SelectItem>
+                <SelectItem value="psicologo">Psicólogo</SelectItem>
+                <SelectItem value="psiquiatra">Psiquiatra</SelectItem>
+                <SelectItem value="outro">Outro</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {category === "outro" && (
+            <div className="space-y-2">
+              <Label htmlFor="categoryCustom">
+                Descreva sua área <FieldHint text="A IA usa esse texto para escolher o vocabulário e o tom certos. Ex: Nutricionista esportivo, Coach financeiro, Plataforma digital." />
+              </Label>
+              <Input
+                id="categoryCustom"
+                placeholder="Ex: Nutricionista esportivo · Coach financeiro · Plataforma digital"
+                value={categoryCustom}
+                onChange={(e) => setCategoryCustom(e.target.value)}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 

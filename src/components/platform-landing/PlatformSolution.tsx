@@ -19,7 +19,7 @@ const FEATURES = [
   {
     icon: Sparkles,
     title: "Multi-IA, paga só o que usa",
-    body: "HeyGen para avatar fotorrealista, Kling para cenas cinematográficas, Google Veo para qualidade institucional, Pika para B-roll. Sistema de créditos flexível via Pix.",
+    body: "Avatar fotorrealista, cenas cinematográficas, qualidade institucional e B-roll dinâmico — escolhe o motor ideal pra cada vídeo. Sistema de créditos flexível via Pix.",
   },
 ];
 

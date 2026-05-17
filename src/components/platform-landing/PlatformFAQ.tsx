@@ -16,7 +16,7 @@ const FAQS = [
   },
   {
     q: "Posso usar meu próprio rosto como avatar?",
-    a: "Sim. Você grava um vídeo curto de calibração e o HeyGen cria seu avatar fotorrealista. Quem assiste vê e ouve você de verdade, com lip-sync preciso. Para conteúdo cinematográfico sem avatar, use Kling AI, Google Veo ou Sora.",
+    a: "Sim. Você grava um vídeo curto de calibração e a plataforma cria seu avatar fotorrealista. Quem assiste vê e ouve você de verdade, com lip-sync preciso. Para conteúdo cinematográfico sem avatar, escolha um dos motores premium disponíveis.",
   },
   {
     q: "Como funciona o multi-formato?",
@@ -28,11 +28,11 @@ const FAQS = [
   },
   {
     q: "Quanto tempo leva para gerar um vídeo?",
-    a: "Do tema à versão final: 8 a 12 minutos com HeyGen. Com Kling/Veo pode levar até 25 minutos pela qualidade superior. A publicação automática nas redes acontece após sua aprovação no WhatsApp.",
+    a: "Do tema à versão final: 8 a 12 minutos no modo padrão. Com motor premium pode levar até 25 minutos pela qualidade superior. A publicação automática nas redes acontece após sua aprovação no WhatsApp.",
   },
   {
     q: "Como funcionam os créditos de vídeo premium?",
-    a: "Cada plano inclui uma quantidade de créditos mensais (Pro: 10, Scale: 30). Um crédito = um vídeo premium gerado com Kling, Veo ou Sora. Vídeos com HeyGen padrão não consomem crédito. Quando precisar de mais, compra pacotes avulsos via Pix (10/30/70 créditos) sem mudar de plano.",
+    a: "Cada plano inclui uma quantidade de créditos mensais (Pro: 10, Scale: 30). Um crédito = um vídeo gerado com motor premium. Vídeos no modo padrão não consomem crédito. Quando precisar de mais, compra pacotes avulsos via Pix (10/30/70 créditos) sem mudar de plano.",
   },
   {
     q: "Como cancelo a assinatura?",

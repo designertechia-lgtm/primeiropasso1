@@ -20,7 +20,7 @@ const ENGINES = [
   {
     icon: Video,
     title: "Vídeo com seu rosto",
-    subtitle: "HeyGen · Kling · Veo · Pika",
+    subtitle: "Motores premium · Multi-IA",
     body: "Escolha o motor por contexto: avatar realista para conexão, cinematográfico para mensagens, B-roll para variações.",
     accent: "from-primary/20 to-primary/5",
     iconColor: "text-primary",

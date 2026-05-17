@@ -151,7 +151,7 @@ function HeroEditor() {
             <Input
               value={form.trust_badge_1}
               onChange={(e) => set("trust_badge_1", e.target.value)}
-              placeholder="Multi-IA: HeyGen, Kling, Veo"
+              placeholder="Múltiplas IAs premium de vídeo"
             />
           </div>
           <div className="space-y-1.5">

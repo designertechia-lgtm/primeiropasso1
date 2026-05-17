@@ -241,7 +241,7 @@ export default function AdminAssinatura() {
                 <div>
                   <p className="font-medium text-sm">Criação de Vídeos com IA</p>
                   <p className="text-xs text-muted-foreground">
-                    Geração de vídeos via Gemini, Kling AI e outros modelos premium.
+                    Geração de vídeos com motores premium de IA.
                   </p>
                 </div>
               </div>

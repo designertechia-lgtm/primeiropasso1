@@ -28,7 +28,7 @@ export const HERO_DEFAULTS: HeroContent = {
   cta_primary_href: "/cadastro",
   cta_secondary_label: "Ver como funciona",
   cta_secondary_anchor: "#como-funciona",
-  trust_badge_1: "Multi-IA: HeyGen, Kling, Veo",
+  trust_badge_1: "Múltiplas IAs premium de vídeo",
   trust_badge_2: "Sem cartão de crédito",
   preview_quote: "Como reconhecer pensamentos automáticos em 30 segundos",
   preview_tags: ["TCC", "Ansiedade", "9:16"],

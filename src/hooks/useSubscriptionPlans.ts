@@ -43,7 +43,7 @@ export const SUBSCRIPTION_PLANS_DEFAULTS: SubscriptionPlan[] = [
       "Tudo do Starter +",
       "10 créditos de vídeo premium",
       "Multi-formato: vídeo + carrossel + post + blog",
-      "Avatar real (HeyGen) + voz clonada",
+      "Avatar real + voz clonada",
       "CRM Kanban completo",
       "Publica em YouTube, TikTok, Instagram, LinkedIn",
       "Biblioteca completa de ideias",
@@ -62,7 +62,7 @@ export const SUBSCRIPTION_PLANS_DEFAULTS: SubscriptionPlan[] = [
     features: [
       "Tudo do Pro +",
       "30 créditos de vídeo premium",
-      "Multi-IA: Kling, Veo, Sora, Pika",
+      "Acesso a múltiplas IAs premium de vídeo",
       "Avatares fotorrealistas extras",
       "Analytics + sugestão de tópicos",
       "Resposta automática DMs/comentários",

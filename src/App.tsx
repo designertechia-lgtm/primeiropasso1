@@ -28,7 +28,6 @@ import AdminAgendamentos from "./pages/admin/AdminAgendamentos.tsx";
 import AdminAgenda from "./pages/admin/AdminAgenda.tsx";
 import AdminDocumentos from "./pages/admin/AdminDocumentos.tsx";
 import AdminCriarVideo from "./pages/admin/AdminCriarVideo.tsx";
-import AdminCriarVideoPro from "./pages/admin/AdminCriarVideoPro.tsx";
 import AdminLandingPage from "./pages/admin/AdminLandingPage.tsx";
 import AdminRedesSociais from "./pages/admin/AdminRedesSociais.tsx";
 import AdminAvatares from "./pages/admin/AdminAvatares.tsx";
@@ -99,7 +98,6 @@ const App = () => (
             <Route path="/admin/disponibilidade" element={<Navigate to="/admin/agenda?tab=bloqueios" replace />} />
             <Route path="/admin/documentos" element={<Navigate to="/admin/redes-sociais?tab=rag" replace />} />
             <Route path="/admin/criar-video" element={<Navigate to="/admin/redes-sociais?tab=criar-video" replace />} />
-            <Route path="/admin/criar-video-pro" element={<AdminRoute><AdminCriarVideoPro /></AdminRoute>} />
             <Route path="/admin/landing" element={<AdminRoute><AdminLandingPage /></AdminRoute>} />
             <Route path="/admin/redes-sociais" element={<AdminRoute><AdminRedesSociais /></AdminRoute>} />
             <Route path="/admin/avatares" element={<Navigate to="/admin/redes-sociais?tab=personagens" replace />} />

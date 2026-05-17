@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import {
   Plus, Pencil, Trash2, Upload, Film, CheckCircle2, X,
   Scissors, Wand2, Image, Loader2, PlayCircle, Share2, Download, Copy, Instagram,
-  Sparkles, Clapperboard,
+  Clapperboard,
 } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
@@ -302,14 +302,6 @@ export default function AdminVideos() {
           >
             <Clapperboard className="h-4 w-4" />
             Criar Vídeo
-          </Button>
-
-          <Button
-            onClick={() => navigate("/admin/criar-video-pro")}
-            className="gap-2 bg-purple-600 hover:bg-purple-700 text-white border-0"
-          >
-            <Sparkles className="h-4 w-4" />
-            Criar Vídeo PRO
           </Button>
         </div>
 

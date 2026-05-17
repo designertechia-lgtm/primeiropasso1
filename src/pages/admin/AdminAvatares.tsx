@@ -400,7 +400,7 @@ export default function AdminAvatares() {
               <span>
                 <strong>Gerar por descrição</strong>
                 <span className={`block ${photoMode === "generate" ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
-                  Descreva e a IA cria do zero (Imagen 3)
+                  Descreva e a IA cria do zero (FLUX)
                 </span>
               </span>
             </button>

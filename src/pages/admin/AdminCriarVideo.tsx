@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type ComponentType } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useProfessional } from "@/hooks/useProfessional";
 import PublishPanel from "@/components/dashboard/PublishPanel";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import {
   Film, Loader2, CheckCircle2, AlertCircle,
@@ -31,6 +32,15 @@ function TikTokIcon({ className }: { className?: string }) {
 
 const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
 const STORAGE_KEY = "pp-criar-video";
+
+// Plataforma escolhida no Step 1 → formato técnico recomendado no Step 2.
+// O usuário pode sobrescrever; um aviso aparece se divergir do recomendado.
+const PLATAFORMA_FORMATO_PADRAO: Record<"geral" | "instagram" | "tiktok" | "linkedin", "portrait" | "square" | "landscape"> = {
+  geral:     "portrait",
+  instagram: "portrait",   // Reels/Stories — formato dominante no IG
+  tiktok:    "portrait",
+  linkedin:  "square",
+};
 
 function loadSaved() {
   try {
@@ -58,6 +68,8 @@ type VideoModel   = "gratuito" | "premium" | "pro";
 type EstiloIA     = "cinematico" | "realista" | "animacao" | "pixar" | "paisagem" | "neon" | "minimalista" | "vintage" | "motion_graphics" | "dramatico" | "aquarela" | "espaco";
 type VisualStyle  = "images" | "animated" | "particles" | "lines" | "geometric" | "mixed";
 type Tom          = "acolhedor" | "educativo" | "provocador" | "motivacional";
+type DuracaoAlvo  = "10s" | "15s" | "30s" | "45s" | "60s";
+type PlataformaAlvo = "geral" | "instagram" | "linkedin" | "tiktok";
 type Legenda   = { tempo: number; texto: string };
 type Slide     = {
   indice: number;
@@ -90,6 +102,66 @@ type JobStatus = {
 };
 
 type PlatformId = "tiktok" | "reels" | "stories_instagram" | "shorts" | "feed_instagram" | "linkedin" | "facebook" | "youtube";
+type FormatoId = "livre" | "o_momento" | "antes_depois" | "crenca_errada" | "dialogo_interno" | "confissao" | "o_processo" | "dado_emocao";
+
+const FORMATOS: Record<FormatoId, { emoji: string; nome: string; tagline: string; exemplo: string; tags: string[] }> = {
+  livre: {
+    emoji: "✨",
+    nome: "Livre",
+    tagline: "Claude escolhe a melhor estrutura",
+    exemplo: "Formato padrão — a IA define a abordagem mais eficaz para o objetivo.",
+    tags: ["Flexível", "Padrão"],
+  },
+  o_momento: {
+    emoji: "🎬",
+    nome: "O Momento",
+    tagline: "Uma cena específica que vira universal",
+    exemplo: "\"Tinha uma paciente que chegou dizendo que estava ótima. Eram 23h de uma segunda.\"",
+    tags: ["Alta retenção", "Identificação"],
+  },
+  antes_depois: {
+    emoji: "🔄",
+    nome: "Antes / Depois",
+    tagline: "Jornada de transformação em 60s",
+    exemplo: "\"Antes ela não conseguia jantar sem checar o celular. Hoje pediu para desligar o wifi.\"",
+    tags: ["Prova social", "Conversão"],
+  },
+  crenca_errada: {
+    emoji: "🧠",
+    nome: "A Crença Errada",
+    tagline: "Desmonta o que o paciente acha que sabe",
+    exemplo: "\"Pedir ajuda não é fraqueza — é exatamente o oposto.\"",
+    tags: ["Viral", "Debate"],
+  },
+  dialogo_interno: {
+    emoji: "💬",
+    nome: "Diálogo Interno",
+    tagline: "A voz da ansiedade falando em voz alta",
+    exemplo: "\"Você está bem. Não, não está. Mas tem que estar. Não pode reclamar.\"",
+    tags: ["Para o scroll", "DMs"],
+  },
+  confissao: {
+    emoji: "🤝",
+    nome: "Confissão do Terapeuta",
+    tagline: "O que aprendi com meus pacientes",
+    exemplo: "\"Depois de anos atendendo, aprendi que pedir ajuda é o ato mais corajoso.\"",
+    tags: ["Confiança", "Autoridade"],
+  },
+  o_processo: {
+    emoji: "🌱",
+    nome: "O Processo",
+    tagline: "Desmistifica o que é terapia de verdade",
+    exemplo: "\"Terapia não é ficar deitado num sofá. Às vezes é só aprender a respirar.\"",
+    tags: ["Reduz barreiras", "Conversão"],
+  },
+  dado_emocao: {
+    emoji: "⚡",
+    nome: "Dado + Emoção",
+    tagline: "Um número que muda perspectiva",
+    exemplo: "\"1 em cada 4 pessoas vai ter ansiedade clínica este ano.\"",
+    tags: ["Shareável", "Autoridade"],
+  },
+};
 
 const PLATFORMS: readonly {
   id: PlatformId;
@@ -206,7 +278,6 @@ function VoiceRecorder({
 export default function AdminCriarVideo() {
   const { data: professional } = useProfessional();
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
   const editVideoId = searchParams.get("edit");
 
   // Inicializa do localStorage para persistir entre navegações
@@ -214,6 +285,9 @@ export default function AdminCriarVideo() {
   const [step, setStep]             = useState<1 | 2 | 3>(saved?.step ?? 1);
   const [objetivo, setObjetivo]     = useState<string>(saved?.objetivo ?? "");
   const [tom, setTom]               = useState<Tom>(saved?.tom ?? "acolhedor");
+  const [formato, setFormato]       = useState<FormatoId>(saved?.formato ?? "livre");
+  const [duracaoAlvo, setDuracaoAlvo] = useState<DuracaoAlvo>(saved?.duracaoAlvo ?? "45s");
+  const [plataformaAlvo, setPlataformaAlvo] = useState<PlataformaAlvo>(saved?.plataformaAlvo ?? "geral");
   const [iaLoading, setIaLoading]   = useState(false);
   const [script, setScript]         = useState<Script | null>(saved?.script ?? null);
   const [videoModel, setVideoModel] = useState<VideoModel>(saved?.videoModel ?? "gratuito");
@@ -224,8 +298,12 @@ export default function AdminCriarVideo() {
   const [narBlob, setNarBlob]       = useState<Blob | null>(null);
   const [imageMode, setImageMode]     = useState<"auto" | "custom">(saved?.imageMode ?? "auto");
   const [visualStyle, setVisualStyle] = useState<VisualStyle>(saved?.visualStyle ?? "images");
+  const [imageStyle, setImageStyle]   = useState<string>(saved?.imageStyle ?? "realistic");
   const [userImages, setUserImages] = useState<{ file: File; preview: string }[]>([]);
   const [format, setFormat]         = useState<"portrait" | "landscape" | "square">(saved?.format ?? "portrait");
+  // Marca quando o usuário escolhe um formato manualmente. Enquanto false,
+  // o formato segue a plataforma do Step 1 automaticamente.
+  const [formatTouched, setFormatTouched] = useState<boolean>(saved?.formatTouched ?? false);
   const [jobStatus, setJobStatus]   = useState<JobStatus>(saved?.jobStatus ?? { status: "idle" });
   const [activeJobId, setActiveJobId] = useState<string | null>(saved?.activeJobId ?? null);
   const [videoDuration, setVideoDuration] = useState<number>(0);
@@ -253,11 +331,30 @@ export default function AdminCriarVideo() {
     try {
       const persistedJobStatus = jobStatus.status === "loading" ? { status: "idle" } : jobStatus;
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        step, objetivo, tom, script, videoModel, estiloIA, voiceMode, edgeVoice, format, imageMode, visualStyle,
+        step, objetivo, tom, formato, duracaoAlvo, plataformaAlvo, script, videoModel, estiloIA, voiceMode, edgeVoice, format, formatTouched, imageMode, visualStyle, imageStyle,
         jobStatus: persistedJobStatus, activeJobId, draftId,
       }));
     } catch {}
-  }, [step, objetivo, tom, script, videoModel, estiloIA, voiceMode, edgeVoice, format, imageMode, visualStyle, jobStatus, activeJobId]);
+  }, [step, objetivo, tom, formato, duracaoAlvo, plataformaAlvo, script, videoModel, estiloIA, voiceMode, edgeVoice, format, formatTouched, imageMode, visualStyle, imageStyle, jobStatus, activeJobId]);
+
+  // Se o usuário voltar de Premium/Pro para Gratuito com duração de teste
+  // (10s/15s) selecionada, normaliza para 30s. Essas durações curtas só
+  // fazem sentido com motor premium onde cada slide custa.
+  useEffect(() => {
+    if (videoModel === "gratuito" && (duracaoAlvo === "10s" || duracaoAlvo === "15s")) {
+      setDuracaoAlvo("30s");
+    }
+  }, [videoModel, duracaoAlvo]);
+
+  // Auto-sincroniza formato com a plataforma escolhida enquanto o usuário
+  // não tiver mexido no seletor de formato manualmente.
+  useEffect(() => {
+    if (formatTouched) return;
+    const recomendado = PLATAFORMA_FORMATO_PADRAO[plataformaAlvo];
+    if (recomendado && recomendado !== format) {
+      setFormat(recomendado);
+    }
+  }, [plataformaAlvo, formatTouched]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Retoma polling se voltar com um vídeo ainda em processamento
   useEffect(() => {
@@ -311,6 +408,7 @@ export default function AdminCriarVideo() {
         if (data.script_json) {
           setScript(data.script_json);
           setFormat(data.video_format ?? "portrait");
+          setFormatTouched(true); // re-edição preserva escolha original
           setJobStatus({ status: "editing" });
           setStep(2);
           toast.info("Roteiro carregado — edite e regere o vídeo.");
@@ -372,18 +470,6 @@ export default function AdminCriarVideo() {
   const handleManualRoteiro = () => {
     if (!objetivo.trim()) return;
     const cta = buildDefaultCta();
-    if (videoModel === "pro") {
-      localStorage.removeItem("pp-criar-video-pro");
-      navigate("/admin/criar-video-pro", {
-        state: {
-          roteiro: { titulo: objetivo.trim(), narracao: "", cta, slides: [] },
-          objetivo: objetivo.trim(),
-          tom,
-          plataforma: "geral",
-        },
-      });
-      return;
-    }
     setScript({
       titulo: objetivo.trim(),
       narracao: "",
@@ -404,7 +490,9 @@ export default function AdminCriarVideo() {
           professional_slug: professional.slug,
           tema_sugerido: objetivo.trim(),
           tom,
-          plataforma: "geral",
+          formato,
+          plataforma: plataformaAlvo,
+          duracao_alvo: duracaoAlvo,
         }),
       });
       if (!res.ok) {
@@ -413,13 +501,6 @@ export default function AdminCriarVideo() {
       }
       const data = await res.json();
       if (!data.cta) data.cta = buildDefaultCta();
-      if (videoModel === "pro") {
-        localStorage.removeItem("pp-criar-video-pro");
-        navigate("/admin/criar-video-pro", {
-          state: { roteiro: data, objetivo: objetivo.trim(), tom, plataforma: "geral" },
-        });
-        return;
-      }
       setScript(data);
       setJobStatus({ status: "editing" });
       setStep(2);
@@ -511,10 +592,23 @@ export default function AdminCriarVideo() {
           format,
           model: videoModel,
           visual_style: visualStyle,
-          estilo_visual: estiloIA,
+          // estilo_visual e image_style só fazem sentido no tier escolhido — mas o
+          // backend ignora os campos não usados, então mandamos com defaults.
+          estilo_visual: videoModel === "gratuito" ? undefined : estiloIA,
+          image_style: videoModel === "gratuito" ? (imageStyle || "realistic") : undefined,
         }),
       });
       const data = await res.json();
+      if (!res.ok) {
+        const msg = data.detail || "Erro ao iniciar geração";
+        const isCredit = res.status === 402 || msg.toLowerCase().includes("crédit");
+        if (isCredit) {
+          toast.error(msg, { duration: 8000 });
+          setJobStatus({ status: "error", message: msg });
+          return;
+        }
+        throw new Error(msg);
+      }
       setActiveJobId(data.job_id);
       pollStatus(data.job_id);
     } catch (e: any) {
@@ -624,12 +718,13 @@ export default function AdminCriarVideo() {
 
   const handleReset = () => {
     setStep(1); setScript(null); setObjetivo("");
-    setTom("acolhedor");
+    setTom("acolhedor"); setFormato("livre");
+    setDuracaoAlvo("45s"); setPlataformaAlvo("geral");
     setVideoModel("gratuito");
     setEstiloIA("cinematico");
     setVoiceMode("edge"); setEdgeVoice("pt-BR-FranciscaNeural");
     setVoiceBlob(null); setNarBlob(null);
-    setImageMode("auto"); setVisualStyle("images"); setUserImages([]); setFormat("portrait");
+    setImageMode("auto"); setVisualStyle("images"); setUserImages([]); setFormat("portrait"); setFormatTouched(false);
     setJobStatus({ status: "idle" }); setActiveJobId(null);
     setTrimState(null); setVideoDuration(0);
     localStorage.removeItem(STORAGE_KEY);
@@ -773,8 +868,8 @@ export default function AdminCriarVideo() {
             <CardContent className="p-3 text-center space-y-1.5">
               <Star className="h-5 w-5 mx-auto text-amber-500" />
               <p className="font-semibold text-sm">Premium</p>
-              <p className="text-xs text-muted-foreground">Vídeo IA (Kling AI)</p>
-              <Badge variant="outline" className="text-xs border-amber-400 text-amber-600">~R$ 4,50/vídeo</Badge>
+              <p className="text-xs text-muted-foreground">Vídeo IA de qualidade</p>
+              <Badge variant="outline" className="text-xs border-amber-400 text-amber-600">~R$ 8/vídeo</Badge>
             </CardContent>
           </Card>
           <Card
@@ -784,8 +879,8 @@ export default function AdminCriarVideo() {
             <CardContent className="p-3 text-center space-y-1.5">
               <Crown className="h-5 w-5 mx-auto text-purple-500" />
               <p className="font-semibold text-sm">Pro</p>
-              <p className="text-xs text-muted-foreground">Vídeo IA HD (Google Veo)</p>
-              <Badge variant="outline" className="text-xs border-purple-400 text-purple-600">~R$ 18/vídeo</Badge>
+              <p className="text-xs text-muted-foreground">Vídeo IA topo de linha</p>
+              <Badge variant="outline" className="text-xs border-purple-400 text-purple-600">~R$ 16/vídeo</Badge>
             </CardContent>
           </Card>
         </div>
@@ -793,10 +888,108 @@ export default function AdminCriarVideo() {
           <p className="text-xs text-muted-foreground flex items-center gap-1.5">
             <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
             {videoModel === "premium"
-              ? "Gera clipes cinematográficos com Kling AI para cada slide · ~4-6min"
-              : "Máxima qualidade · clipes HD gerados pelo Google Veo · ~8-15min"}
+              ? "Gera clipes cinematográficos com IA para cada slide · ~4-6min"
+              : "Máxima qualidade · clipes HD topo de linha · ~8-15min"}
           </p>
         )}
+        {videoModel !== "gratuito" && (duracaoAlvo === "10s" || duracaoAlvo === "15s") && (
+          <div className="rounded-lg border border-amber-300/50 bg-amber-50/40 dark:bg-amber-950/20 px-3 py-2 flex items-start gap-2 text-xs">
+            <Zap className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
+            <p className="text-muted-foreground leading-relaxed">
+              <strong>Modo teste ativo</strong> — vídeo curto pra economizar nos clipes pagos.
+              Custo estimado: <strong>~R$ {videoModel === "premium" ? (duracaoAlvo === "10s" ? "2-3" : "3-5") : (duracaoAlvo === "10s" ? "4-6" : "6-9")}</strong> em vez do valor cheio.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Duração e Plataforma alvo (orientam o agente de roteiro — depois do modelo
+         pra que opções de teste 10s/15s apareçam só quando Premium/Pro estiver ativo) */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label className="text-sm font-medium text-muted-foreground">Duração alvo</Label>
+          <Select value={duracaoAlvo} onValueChange={(v) => setDuracaoAlvo(v as DuracaoAlvo)}>
+            <SelectTrigger className="h-9 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {videoModel !== "gratuito" && (
+                <>
+                  <SelectItem value="10s">
+                    <span className="flex items-center gap-1.5">
+                      <Zap className="h-3 w-3 text-amber-500" />
+                      10s · teste rápido <span className="text-muted-foreground text-xs">(~3 slides)</span>
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="15s">
+                    <span className="flex items-center gap-1.5">
+                      <Zap className="h-3 w-3 text-amber-500" />
+                      15s · teste <span className="text-muted-foreground text-xs">(~3-4 slides)</span>
+                    </span>
+                  </SelectItem>
+                </>
+              )}
+              <SelectItem value="30s">30 segundos · ritmo acelerado</SelectItem>
+              <SelectItem value="45s">45 segundos · equilibrado</SelectItem>
+              <SelectItem value="60s">60 segundos · mais reflexivo</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-sm font-medium text-muted-foreground">Plataforma principal</Label>
+          <Select value={plataformaAlvo} onValueChange={(v) => setPlataformaAlvo(v as PlataformaAlvo)}>
+            <SelectTrigger className="h-9 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="geral">Geral · funciona em qualquer canal</SelectItem>
+              <SelectItem value="instagram">Instagram · hook visual forte</SelectItem>
+              <SelectItem value="tiktok">TikTok · hook ultra-rápido</SelectItem>
+              <SelectItem value="linkedin">LinkedIn · mais reflexivo</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Seletor de formato narrativo (dropdown + preview) */}
+      <div className="space-y-2">
+        <Label className="text-base font-semibold">Formato Narrativo</Label>
+        <Select value={formato} onValueChange={(v) => setFormato(v as FormatoId)}>
+          <SelectTrigger className="h-10">
+            <SelectValue>
+              <span className="flex items-center gap-2">
+                <span className="text-base leading-none">{FORMATOS[formato].emoji}</span>
+                <span className="font-medium">{FORMATOS[formato].nome}</span>
+                <span className="text-muted-foreground text-xs">— {FORMATOS[formato].tagline}</span>
+              </span>
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {(Object.entries(FORMATOS) as [FormatoId, (typeof FORMATOS)[FormatoId]][]).map(([id, f]) => (
+              <SelectItem key={id} value={id}>
+                <span className="flex items-center gap-2">
+                  <span className="text-base leading-none">{f.emoji}</span>
+                  <span className="font-medium">{f.nome}</span>
+                  <span className="text-muted-foreground text-xs hidden sm:inline">— {f.tagline}</span>
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Preview do formato selecionado */}
+        <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 space-y-2">
+          {formato !== "livre" ? (
+            <p className="text-sm italic text-muted-foreground leading-relaxed">{FORMATOS[formato].exemplo}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground leading-relaxed">{FORMATOS.livre.exemplo}</p>
+          )}
+          <div className="flex gap-1.5 flex-wrap">
+            {FORMATOS[formato].tags.map((tag) => (
+              <Badge key={tag} variant="secondary" className="text-[10px] px-1.5 py-0">{tag}</Badge>
+            ))}
+          </div>
+        </div>
       </div>
 
       <Button
@@ -1058,6 +1251,12 @@ export default function AdminCriarVideo() {
             <div className="rounded-lg bg-muted/50 border p-3 text-sm text-muted-foreground leading-relaxed max-h-36 overflow-y-auto">
               {script.narracao}
             </div>
+            <div className="rounded-lg border border-amber-300/50 bg-amber-50/40 dark:bg-amber-950/20 px-3 py-2 flex items-start gap-2 text-xs">
+              <AlertCircle className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
+              <p className="text-muted-foreground leading-relaxed">
+                As <strong>legendas</strong> e os slides seguem o roteiro escrito acima — fale o mais próximo possível dele para manter a sincronia.
+              </p>
+            </div>
             <VoiceRecorder
               onRecorded={setNarBlob}
               label="Leia o texto acima em voz alta e grave aqui"
@@ -1076,7 +1275,7 @@ export default function AdminCriarVideo() {
         )}
       </div>
 
-      {/* ── Imagens ── (oculto em Premium/Pro — Veo gera visualmente) */}
+      {/* ── Imagens ── (oculto em Premium/Pro — motor premium gera visualmente) */}
       {videoModel === "gratuito" && <div className="space-y-3">
         <Label className="text-base font-semibold flex items-center gap-2">
           <Images className="h-4 w-4" /> Estilo Visual
@@ -1141,7 +1340,7 @@ export default function AdminCriarVideo() {
             <CardContent className="p-3 text-center space-y-1">
               <Sparkles className="h-5 w-5 mx-auto text-muted-foreground" />
               <p className="font-medium text-sm">Automáticas</p>
-              <p className="text-xs text-muted-foreground">Pexels via IA</p>
+              <p className="text-xs text-muted-foreground">Pexels · Unsplash · Pixabay</p>
             </CardContent>
           </Card>
           <Card className={`cursor-pointer border-2 transition-all ${imageMode === "custom" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
@@ -1153,6 +1352,24 @@ export default function AdminCriarVideo() {
             </CardContent>
           </Card>
         </div>
+
+        {imageMode === "auto" && (
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Estilo das imagens</Label>
+            <Select value={imageStyle || "realistic"} onValueChange={setImageStyle}>
+              <SelectTrigger className="h-8 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="realistic">Fotografia Realista</SelectItem>
+                <SelectItem value="warm_portrait">Retratos Acolhedores</SelectItem>
+                <SelectItem value="nature">Paisagens & Natureza</SelectItem>
+                <SelectItem value="minimal">Minimalista & Clean</SelectItem>
+                <SelectItem value="abstract">Arte Abstrata</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         {imageMode === "custom" && (
           <div className="space-y-3">
@@ -1228,7 +1445,7 @@ export default function AdminCriarVideo() {
               {videoModel === "premium" ? "Modelo Premium ativo" : "Modelo Pro ativo"}
             </p>
             <p className="text-muted-foreground text-xs mt-0.5">
-              {videoModel === "premium" ? "Kling AI" : "Google Veo"} vai gerar clipes cinematográficos para cada slide automaticamente.
+              A IA vai gerar clipes cinematográficos para cada slide automaticamente.
               Imagens de fundo não são necessárias.
             </p>
           </div>
@@ -1266,10 +1483,33 @@ export default function AdminCriarVideo() {
 
       {/* Formato */}
       <div className="space-y-2">
-        <Label className="text-base font-semibold">Formato</Label>
+        <div className="flex items-center justify-between">
+          <Label className="text-base font-semibold">Formato</Label>
+          {!formatTouched && plataformaAlvo !== "geral" && (
+            <span className="text-xs text-muted-foreground">
+              Sugerido para {plataformaAlvo === "linkedin" ? "LinkedIn" : plataformaAlvo === "tiktok" ? "TikTok" : "Instagram"}
+            </span>
+          )}
+        </div>
+        {formatTouched && format !== PLATAFORMA_FORMATO_PADRAO[plataformaAlvo] && plataformaAlvo !== "geral" && (
+          <div className="rounded-lg border border-amber-300/50 bg-amber-50/40 dark:bg-amber-950/20 px-3 py-2 flex items-start gap-2 text-xs">
+            <AlertCircle className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
+            <p className="text-muted-foreground leading-relaxed">
+              Você escolheu plataforma <strong>{plataformaAlvo === "linkedin" ? "LinkedIn" : plataformaAlvo === "tiktok" ? "TikTok" : "Instagram"}</strong> mas formato{" "}
+              <strong>{format === "portrait" ? "Vertical" : format === "square" ? "Quadrado" : "Paisagem"}</strong>. O vídeo pode ficar com cortes nessa plataforma.{" "}
+              <button
+                type="button"
+                className="underline text-amber-700 dark:text-amber-400"
+                onClick={() => { setFormat(PLATAFORMA_FORMATO_PADRAO[plataformaAlvo]); setFormatTouched(false); }}
+              >
+                Usar formato recomendado
+              </button>
+            </p>
+          </div>
+        )}
         <div className="grid grid-cols-3 gap-3">
           <Card className={`cursor-pointer border-2 transition-all ${format === "portrait" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
-            onClick={() => setFormat("portrait")}>
+            onClick={() => { setFormat("portrait"); setFormatTouched(true); }}>
             <CardContent className="p-3 flex flex-col items-center gap-1.5 text-center">
               <Smartphone className="h-5 w-5 text-primary" />
               <p className="font-medium text-sm">Vertical</p>
@@ -1277,7 +1517,7 @@ export default function AdminCriarVideo() {
             </CardContent>
           </Card>
           <Card className={`cursor-pointer border-2 transition-all ${format === "square" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
-            onClick={() => setFormat("square")}>
+            onClick={() => { setFormat("square"); setFormatTouched(true); }}>
             <CardContent className="p-3 flex flex-col items-center gap-1.5 text-center">
               <Square className="h-5 w-5 text-primary" />
               <p className="font-medium text-sm">Quadrado</p>
@@ -1285,7 +1525,7 @@ export default function AdminCriarVideo() {
             </CardContent>
           </Card>
           <Card className={`cursor-pointer border-2 transition-all ${format === "landscape" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
-            onClick={() => setFormat("landscape")}>
+            onClick={() => { setFormat("landscape"); setFormatTouched(true); }}>
             <CardContent className="p-3 flex flex-col items-center gap-1.5 text-center">
               <Monitor className="h-5 w-5 text-primary" />
               <p className="font-medium text-sm">Paisagem</p>

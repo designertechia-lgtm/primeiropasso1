@@ -42,6 +42,15 @@ const PLATAFORMA_FORMATO_PADRAO: Record<"geral" | "instagram" | "tiktok" | "link
   linkedin:  "square",
 };
 
+// Custo estimado em R$ por tier × duração — calibrado com:
+//   Premium (kling-v1-6 std):     ~$0.025/seg × 5.5 (BRL/USD)
+//   Pro     (kling-v2-1-master pro): ~$0.10/seg  × 5.5 (BRL/USD)
+// Fonte do nº de slides × duração de clipe: roteiro_agent.py duracao_override.
+const CUSTO_KLING_BRL: Record<"premium" | "pro", Record<"10s" | "15s" | "30s" | "45s" | "60s", number>> = {
+  premium: { "10s": 1.4, "15s": 2.1, "30s": 4.2, "45s": 6.3, "60s": 8.4 },
+  pro:     { "10s": 5.5, "15s": 8.3, "30s": 16.5, "45s": 24.8, "60s": 33.0 },
+};
+
 function loadSaved() {
   try {
     const s = localStorage.getItem(STORAGE_KEY);
@@ -588,12 +597,15 @@ export default function AdminCriarVideo() {
           voice_provider: voiceMode,
           elevenlabs_voice_id: voiceId,
           narration_audio_path: narrationPath,
-          custom_image_paths: customImagePaths,
+          // custom_image_paths só faz sentido no Gratuito; Premium/Pro geram
+          // todo o visual via Kling, então omitimos pra não confundir.
+          custom_image_paths: videoModel === "gratuito" ? customImagePaths : undefined,
           format,
+          formato,
           model: videoModel,
           visual_style: visualStyle,
-          // estilo_visual e image_style só fazem sentido no tier escolhido — mas o
-          // backend ignora os campos não usados, então mandamos com defaults.
+          // estilo_visual: Premium e Pro (motor Kling).
+          // image_style: só Gratuito (filtra busca em Pexels).
           estilo_visual: videoModel === "gratuito" ? undefined : estiloIA,
           image_style: videoModel === "gratuito" ? (imageStyle || "realistic") : undefined,
         }),
@@ -869,7 +881,9 @@ export default function AdminCriarVideo() {
               <Star className="h-5 w-5 mx-auto text-amber-500" />
               <p className="font-semibold text-sm">Premium</p>
               <p className="text-xs text-muted-foreground">Vídeo IA de qualidade</p>
-              <Badge variant="outline" className="text-xs border-amber-400 text-amber-600">~R$ 8/vídeo</Badge>
+              <Badge variant="outline" className="text-xs border-amber-400 text-amber-600">
+                ~R$ {CUSTO_KLING_BRL.premium[duracaoAlvo]?.toFixed(2).replace(".", ",") ?? "8,40"}/vídeo
+              </Badge>
             </CardContent>
           </Card>
           <Card
@@ -880,7 +894,9 @@ export default function AdminCriarVideo() {
               <Crown className="h-5 w-5 mx-auto text-purple-500" />
               <p className="font-semibold text-sm">Pro</p>
               <p className="text-xs text-muted-foreground">Vídeo IA topo de linha</p>
-              <Badge variant="outline" className="text-xs border-purple-400 text-purple-600">~R$ 16/vídeo</Badge>
+              <Badge variant="outline" className="text-xs border-purple-400 text-purple-600">
+                ~R$ {CUSTO_KLING_BRL.pro[duracaoAlvo]?.toFixed(2).replace(".", ",") ?? "33,00"}/vídeo
+              </Badge>
             </CardContent>
           </Card>
         </div>
@@ -1452,31 +1468,45 @@ export default function AdminCriarVideo() {
         </div>
       )}
 
-      {/* Estilo Visual — visível apenas para Premium */}
-      {videoModel === "premium" && (
+      {/* Estilo Visual — Premium e Pro (ambos usam o motor Kling) */}
+      {videoModel !== "gratuito" && (
         <div className="space-y-3">
           <Label className="text-base font-semibold flex items-center gap-2">
             <Sparkles className="h-4 w-4" /> Estilo Visual
           </Label>
           <div className="grid grid-cols-3 gap-2">
             {([
-              { value: "cinematico",  icon: "🎬", label: "Cinemático",   desc: "Luz dramática, bokeh" },
-              { value: "realista",    icon: "📸", label: "Realista",      desc: "8K, natural" },
-              { value: "animacao",    icon: "🎨", label: "Animação",      desc: "Cartoon 2D" },
-              { value: "pixar",       icon: "✨", label: "Pixar",         desc: "3D animado" },
-              { value: "paisagem",    icon: "🌿", label: "Paisagens",     desc: "Natureza, épico" },
-              { value: "neon",        icon: "🌃", label: "Neon",          desc: "Cyberpunk, néon" },
-            ] as const).map(({ value, icon, label, desc }) => (
-              <Card key={value}
-                className={`cursor-pointer border-2 transition-all ${estiloIA === value ? "border-amber-500 bg-amber-50/50 dark:bg-amber-950/20" : "border-border hover:border-amber-400/50"}`}
-                onClick={() => setEstiloIA(value)}>
-                <CardContent className="p-2.5 text-center space-y-0.5">
-                  <p className="text-lg leading-none">{icon}</p>
-                  <p className="font-medium text-xs">{label}</p>
-                  <p className="text-[10px] text-muted-foreground leading-tight">{desc}</p>
-                </CardContent>
-              </Card>
-            ))}
+              { value: "cinematico",      icon: "🎬", label: "Cinemático",      desc: "Luz dramática, bokeh" },
+              { value: "realista",        icon: "📸", label: "Realista",         desc: "8K, natural" },
+              { value: "animacao",        icon: "🎨", label: "Animação",         desc: "Cartoon 2D" },
+              { value: "pixar",           icon: "✨", label: "Pixar",            desc: "3D animado" },
+              { value: "paisagem",        icon: "🌿", label: "Paisagens",        desc: "Natureza, épico" },
+              { value: "neon",            icon: "🌃", label: "Neon",             desc: "Cyberpunk, néon" },
+              { value: "minimalista",     icon: "⬜", label: "Minimalista",      desc: "Limpo, espaço branco" },
+              { value: "vintage",         icon: "📼", label: "Vintage",          desc: "Filme, retrô, sépia" },
+              { value: "motion_graphics", icon: "📊", label: "Motion Graphics",  desc: "Geométrico, infográfico" },
+              { value: "dramatico",       icon: "🎭", label: "Dramático",        desc: "Alto contraste, noir" },
+              { value: "aquarela",        icon: "🖌️", label: "Aquarela",         desc: "Pintura, suave, art" },
+              { value: "espaco",          icon: "🌌", label: "Espaço",           desc: "Cosmos, sci-fi" },
+            ] as const).map(({ value, icon, label, desc }) => {
+              const selectedRing = videoModel === "pro"
+                ? "border-purple-500 bg-purple-50/50 dark:bg-purple-950/20"
+                : "border-amber-500 bg-amber-50/50 dark:bg-amber-950/20";
+              const hoverRing = videoModel === "pro"
+                ? "hover:border-purple-400/50"
+                : "hover:border-amber-400/50";
+              return (
+                <Card key={value}
+                  className={`cursor-pointer border-2 transition-all ${estiloIA === value ? selectedRing : `border-border ${hoverRing}`}`}
+                  onClick={() => setEstiloIA(value)}>
+                  <CardContent className="p-2.5 text-center space-y-0.5">
+                    <p className="text-lg leading-none">{icon}</p>
+                    <p className="font-medium text-xs">{label}</p>
+                    <p className="text-[10px] text-muted-foreground leading-tight">{desc}</p>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </div>
       )}

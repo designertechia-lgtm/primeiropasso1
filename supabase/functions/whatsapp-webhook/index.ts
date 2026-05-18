@@ -9,6 +9,92 @@ const corsHeaders = {
 // Mensagem programada que o site envia automaticamente quando o usuário clica em "Agendar consulta"
 const SITE_GREETING = "Olá! Gostaria de agendar um horário."
 
+// ─── Parser de intenção temporal (texto livre BR) ──────────────────────
+// Extrai {date, time} de mensagens como "hoje 18h", "amanhã às 17:30",
+// "dia 19 às 17:00", "19/05 17h", "segunda 10h", "às 18h" (só hora).
+// Retorna null se nada reconhecido. Roda APENAS quando o regex de clique
+// não bate — evita dupla interpretação de "Ter 19/05".
+type ParsedIntent = { date: string | null; time: string | null; raw: string; at: string }
+
+function parseUserIntent(text: string): ParsedIntent | null {
+  const t = text.toLowerCase()
+  let date: string | null = null
+  let time: string | null = null
+
+  // ── HORA ── prioridade: "às HH(:MM|hMM)?" > "HH:MM" > "HHh(MM)?"
+  let m = t.match(/(?:à|a)s\s+(\d{1,2})(?:[:h](\d{1,2}))?/)
+  if (!m) m = t.match(/\b(\d{1,2}):(\d{2})\b/)
+  if (!m) m = t.match(/\b(\d{1,2})h(\d{2})?s?\b/)
+  if (m) {
+    const h = parseInt(m[1], 10)
+    const min = m[2] ? parseInt(m[2], 10) : 0
+    if (h >= 0 && h <= 23 && min >= 0 && min <= 59) {
+      time = String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0')
+    }
+  }
+
+  // ── DATA ── relativa ao BRT (UTC-3)
+  const nowUtc = new Date()
+  const brt = new Date(nowUtc.getTime() - 3 * 3600 * 1000)
+  const addDays = (d: Date, n: number) => new Date(d.getTime() + n * 86400000)
+  const isoFromBRT = (d: Date) =>
+    `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
+
+  // Nota: \b após "ã/ç" falha em JS regex (não trata como word char).
+  // Por isso usamos lookahead explícito (?=\W|$) nesses casos.
+  if (/\bhoje\b/.test(t)) {
+    date = isoFromBRT(brt)
+  } else if (/\bdepois\s+de\s+amanh[aã](?=\W|$)/.test(t)) {
+    date = isoFromBRT(addDays(brt, 2))
+  } else if (/\bamanh[aã](?=\W|$)/.test(t)) {
+    date = isoFromBRT(addDays(brt, 1))
+  } else {
+    const dmMatch = t.match(/(?:\bdia\s+)?(\d{1,2})\/(\d{1,2})\b/)
+    if (dmMatch) {
+      const dd = parseInt(dmMatch[1], 10)
+      const mm = parseInt(dmMatch[2], 10)
+      if (dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12) {
+        const y = brt.getUTCFullYear()
+        const todayMs = Date.UTC(y, brt.getUTCMonth(), brt.getUTCDate())
+        const candMs = Date.UTC(y, mm - 1, dd)
+        const useYear = candMs < todayMs ? y + 1 : y
+        date = `${useYear}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`
+      }
+    } else {
+      const dMatch = t.match(/\bdia\s+(\d{1,2})\b/)
+      if (dMatch) {
+        const dd = parseInt(dMatch[1], 10)
+        if (dd >= 1 && dd <= 31) {
+          let useMonth = brt.getUTCMonth()
+          let useYear = brt.getUTCFullYear()
+          if (dd < brt.getUTCDate()) {
+            useMonth += 1
+            if (useMonth > 11) { useMonth = 0; useYear += 1 }
+          }
+          date = `${useYear}-${String(useMonth + 1).padStart(2, '0')}-${String(dd).padStart(2, '0')}`
+        }
+      } else {
+        const dowMap: Record<string, number> = {
+          'domingo': 0, 'segunda': 1, 'terça': 2, 'terca': 2,
+          'quarta': 3, 'quinta': 4, 'sexta': 5, 'sábado': 6, 'sabado': 6,
+        }
+        for (const [name, dow] of Object.entries(dowMap)) {
+          if (new RegExp(`\\b${name}\\b`).test(t)) {
+            const cur = brt.getUTCDay()
+            let diff = dow - cur
+            if (diff <= 0) diff += 7
+            date = isoFromBRT(addDays(brt, diff))
+            break
+          }
+        }
+      }
+    }
+  }
+
+  if (!date && !time) return null
+  return { date, time, raw: text, at: new Date().toISOString() }
+}
+
 /**
  * Formata número de telefone do WhatsApp:
  * - Remove @s.whatsapp.net e :XX (session id)
@@ -119,8 +205,147 @@ serve(async (req) => {
     console.log(`[WEBHOOK] fromMe: ${key?.fromMe}, remoteJid: ${key?.remoteJid}`)
 
     if (key?.fromMe) {
-      console.log(`[WEBHOOK] ⚠️ Ignorado: mensagem enviada por nós`)
-      return new Response(JSON.stringify({ ignored: true, reason: 'fromMe' }), {
+      // ✦ MODO ADMINISTRATIVO ✦
+      // Suporta 2 cenários:
+      // 1. Self-chat: dispatch pro whatsapp-admin-agent (consultar agenda etc)
+      // 2. Chat com LEAD: detecta comandos com prefixo "#" do profissional
+      //    (ex: #ok desliga agente nesse lead, #ativar religa)
+      const remoteJidRaw = key?.remoteJid || ''
+      const remoteJidNum = remoteJidRaw.replace(/@s\.whatsapp\.net$/i, '').replace(/@c\.us$/i, '').replace(/\D/g, '')
+      const instanceName = body.instance || ''
+
+      const supabaseAdminEarly = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      )
+
+      const { data: proSelf } = await supabaseAdminEarly
+        .from('professionals')
+        .select('id, full_name, whatsapp')
+        .eq('evolution_instance_name', instanceName)
+        .maybeSingle()
+
+      if (!proSelf) {
+        return new Response(JSON.stringify({ ignored: true, reason: 'fromMe_pro_not_found' }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      const proPhone = (proSelf?.whatsapp || '').replace(/\D/g, '')
+      const isSelfChat = !!proPhone && remoteJidNum === proPhone
+
+      // Extrai texto da mensagem
+      const msgFromMe = data?.message
+      const adminText = (
+        msgFromMe?.conversation ||
+        msgFromMe?.extendedTextMessage?.text ||
+        msgFromMe?.buttonsResponseMessage?.selectedDisplayText ||
+        msgFromMe?.templateButtonReplyMessage?.selectedDisplayText ||
+        ''
+      ).trim()
+
+      if (!adminText) {
+        return new Response(JSON.stringify({ ignored: true, reason: 'fromMe_no_text' }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      // ── Comandos do profissional em chat com lead (#ok, #ativar) ─────
+      const lowerCmd = adminText.toLowerCase().split(/\s+/)[0]
+      const isCommand = lowerCmd.startsWith('#') && !isSelfChat
+
+      if (isCommand) {
+        // Acha o lead pelo whatsapp do remoteJid
+        const { data: leadCmd } = await supabaseAdminEarly
+          .from('leads')
+          .select('id, name, agent_enabled')
+          .eq('professional_id', proSelf.id)
+          .eq('whatsapp', remoteJidNum)
+          .maybeSingle()
+
+        if (!leadCmd) {
+          console.log(`[WEBHOOK] Comando "${lowerCmd}" mas lead ${remoteJidNum} não encontrado`)
+          return new Response(JSON.stringify({ ignored: true, reason: 'cmd_lead_not_found' }), {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        }
+
+        let actionMsg = ''
+        let newEnabled: boolean | null = null
+
+        if (lowerCmd === '#ok' || lowerCmd === '#desligar' || lowerCmd === '#pausar') {
+          newEnabled = false
+          actionMsg = `🔕 Agente desligado para ${leadCmd.name}. Digite #ativar para religar.`
+        } else if (lowerCmd === '#ativar' || lowerCmd === '#on' || lowerCmd === '#ligar') {
+          newEnabled = true
+          actionMsg = `🔔 Agente reativado para ${leadCmd.name}.`
+        } else if (lowerCmd === '#status') {
+          actionMsg = `Agente: ${leadCmd.agent_enabled ? '🟢 ligado' : '🔴 desligado'} para ${leadCmd.name}`
+        } else {
+          actionMsg = `Comando "${lowerCmd}" não reconhecido. Disponíveis: #ok (desliga), #ativar (liga), #status.`
+        }
+
+        if (newEnabled !== null) {
+          await supabaseAdminEarly
+            .from('leads')
+            .update({ agent_enabled: newEnabled })
+            .eq('id', leadCmd.id)
+          console.log(`[WEBHOOK] Comando "${lowerCmd}": agent_enabled=${newEnabled} para lead ${leadCmd.name}`)
+        }
+
+        // Envia confirmação discreta no chat (mensagem aparece no celular do profissional)
+        const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
+        const evoKey = Deno.env.get('EVOLUTION_API_KEY')
+        if (evoUrl && evoKey) {
+          try {
+            await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
+              method: 'POST',
+              headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ number: remoteJidRaw, text: actionMsg }),
+            })
+          } catch (e: any) {
+            console.error('[WEBHOOK] Erro ao enviar confirmação de comando:', e.message)
+          }
+        }
+
+        return new Response(JSON.stringify({ success: true, action: 'cmd_executed', cmd: lowerCmd, agent_enabled: newEnabled }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      // ── Self-chat → dispatch pro admin-agent (hoje não dispara — Baileys) ──
+      if (isSelfChat) {
+        console.log(`[WEBHOOK] ✦ Self-chat administrativo: "${adminText}"`)
+        const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEYS') || ''
+        const adminUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/whatsapp-admin-agent`
+        try {
+          await fetch(adminUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
+            body: JSON.stringify({
+              professional_id: proSelf.id,
+              instance_name: instanceName,
+              remote_jid: remoteJidRaw,
+              message: adminText,
+            }),
+          })
+        } catch (e: any) {
+          console.error('[WEBHOOK] Erro admin-agent:', e.message)
+        }
+        return new Response(JSON.stringify({ success: true, action: 'admin_dispatched' }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      // Mensagem fromMe normal pra outro contato (sem #) — ignora
+      // (NÃO desabilitamos agente automaticamente; só o comando explícito faz isso)
+      console.log(`[WEBHOOK] fromMe sem # para ${remoteJidNum} — ignorado`)
+      return new Response(JSON.stringify({ ignored: true, reason: 'fromMe_no_command' }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -245,7 +470,8 @@ serve(async (req) => {
       leadId = newLead.id
     }
 
-    // 3. Salvar mensagem do usuário na memória
+    // 3. Salvar mensagem do usuário na memória (processed=false: vai ser
+    //    processada pelo debounce no passo 4)
     console.log(`[DEBUG] Salvando mensagem do usuário...`)
     await supabaseAdmin
       .from('chat_messages')
@@ -253,37 +479,352 @@ serve(async (req) => {
         lead_id: leadId,
         role: 'user',
         content: messageText,
+        processed: false,
       })
-    console.log(`[DEBUG] ✅ Mensagem salva`)
+    console.log(`[DEBUG] ✅ Mensagem salva (processed=false)`)
 
-    // 3.5. Detectar resposta de botão "Conversar com profissional" → desabilita agente
-    const proName = professional.full_name || ''
-    const conversarLabel = proName ? `Conversar com ${proName}` : 'Conversar com profissional'
-    if (messageText.trim() === conversarLabel) {
-      console.log(`[DEBUG] Lead pediu para falar com humano. Desabilitando agente.`)
-      await supabaseAdmin.from('leads').update({ agent_enabled: false }).eq('id', leadId)
-      await sendPresence(instanceName, remoteJid)
-      const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
-      const evoKey = Deno.env.get('EVOLUTION_API_KEY')
-      await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
-        method: 'POST',
-        headers: { 'apikey': evoKey ?? '', 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          number: remoteJid,
-          text: 'Estou em atendimento logo retornarei sua mensagem',
-        }),
-      })
-      return new Response(JSON.stringify({ success: true, action: 'transferred_to_human' }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+    // 3.35. RESPOSTA A LEMBRETE 24h — Confirmar/Remarcar/Cancelar atualizam
+    //       appointments.status + appointment_reminders.patient_response, sem invocar agente.
+    //       Identificação: existe appointment_reminders sent_at nas últimas 6h sem patient_response,
+    //       E a mensagem do lead bate com uma das 3 opções.
+    {
+      const txtR = messageText.trim()
+      const lowerR = txtR.toLowerCase()
+      const isConfirm   = /^confirmar(\s|$|✅)/i.test(txtR) || lowerR === 'confirmar' || lowerR === 'confirmar ✅' || lowerR === '✅ confirmar'
+      const isReschedule= /^remarcar(\s|$)/i.test(txtR) || lowerR === 'remarcar'
+      const isCancel    = /^cancelar(\s|$)/i.test(txtR) || lowerR === 'cancelar'
+
+      if (isConfirm || isReschedule || isCancel) {
+        const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString()
+        const { data: pendingReminders } = await supabaseAdmin
+          .from('appointment_reminders')
+          .select('id, appointment_id, kind, sent_at, appointments!inner(id, professional_id, appointment_date, start_time, status, professionals!inner(id, full_name, evolution_instance_name))')
+          .is('patient_response', null)
+          .gte('sent_at', sixHoursAgo)
+          .order('sent_at', { ascending: false })
+          .limit(5)
+
+        // Filtra: apenas reminders cujo appointment pertence a este lead (via booking_state.appointment_id)
+        const { data: leadBs } = await supabaseAdmin
+          .from('leads')
+          .select('booking_state, name')
+          .eq('id', leadId)
+          .single()
+        const myApptId = (leadBs?.booking_state as any)?.appointment_id
+
+        const matched = (pendingReminders || []).find((r: any) => r.appointment_id === myApptId)
+
+        if (matched) {
+          console.log(`[reminder-response] Match: lead ${leadId} respondeu "${txtR}" ao reminder ${matched.id} (kind=${matched.kind})`)
+
+          const appt: any = matched.appointments
+          const pro: any = appt?.professionals
+          const proName = (pro?.full_name || 'o profissional').split(' ')[0]
+          const instName = pro?.evolution_instance_name
+          const dateStr  = appt?.appointment_date as string
+          const hora     = ((appt?.start_time as string) || '').slice(0, 5)
+
+          let newStatus: string | null = null
+          let responseValue = ''
+          let replyText = ''
+
+          if (isConfirm) {
+            newStatus = 'confirmed'
+            responseValue = 'confirmed'
+            replyText = `Combinado, ${(leadBs?.name || 'amigo(a)').split(' ')[0]}! Te espero ${dateStr} às ${hora} 🙌`
+          } else if (isCancel) {
+            newStatus = 'cancelled'
+            responseValue = 'cancelled'
+            replyText = `Tudo bem, agendamento cancelado. Quando quiser remarcar, é só chamar. Um abraço!`
+          } else if (isReschedule) {
+            // Não muda status do appointment — deixa o agente conduzir o fluxo de remarcação
+            responseValue = 'reschedule_requested'
+            replyText = '' // não responde aqui — agente vai responder
+          }
+
+          // Atualiza appointment_reminders
+          await supabaseAdmin
+            .from('appointment_reminders')
+            .update({ patient_response: responseValue, response_at: new Date().toISOString() })
+            .eq('id', matched.id)
+
+          // Atualiza appointments.status se for Confirmar ou Cancelar
+          if (newStatus) {
+            await supabaseAdmin
+              .from('appointments')
+              .update({ status: newStatus, updated_at: new Date().toISOString() })
+              .eq('id', matched.appointment_id)
+            console.log(`[reminder-response] appointments.status → ${newStatus}`)
+
+            // Se cancelado, atualiza booking_state também
+            if (newStatus === 'cancelled') {
+              const prev = (leadBs?.booking_state as any) || {}
+              await supabaseAdmin.from('leads').update({
+                booking_state: { ...prev, stage: 'cancelled', cancelled_at: new Date().toISOString() },
+              }).eq('id', leadId)
+            }
+          }
+
+          // Pra Confirmar/Cancelar: responde direto e encerra (sem invocar agente)
+          if (replyText) {
+            const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
+            const evoKey = Deno.env.get('EVOLUTION_API_KEY')
+            if (evoUrl && evoKey && instName) {
+              try {
+                await fetch(`${evoUrl}/message/sendText/${instName}`, {
+                  method: 'POST',
+                  headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ number: remoteJid, text: replyText }),
+                })
+              } catch (e: any) {
+                console.error('[reminder-response] Erro Evolution:', e.message)
+              }
+            }
+            // Grava resposta no histórico e marca msg do user como processed
+            await supabaseAdmin.from('chat_messages').insert({
+              lead_id: leadId, role: 'assistant', content: replyText, processed: true,
+            })
+            await supabaseAdmin
+              .from('chat_messages')
+              .update({ processed: true })
+              .eq('lead_id', leadId)
+              .eq('processed', false)
+
+            return new Response(JSON.stringify({ success: true, action: 'reminder_response_handled', kind: matched.kind, response: responseValue }), {
+              status: 200,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            })
+          }
+          // Pra Remarcar: cai no fluxo normal e o agente assume
+        }
+      }
     }
 
-    // 3.6. Lead novo + mensagem diferente da programada do site → enviar menu de botões
+    // 3.4. DETECÇÃO DE CLIQUES NO FLUXO DE AGENDAMENTO — atualiza booking_state
+    //      no banco pra que as tools do agente recebam contexto explícito do estado.
+    //      Evita o agente entrar em loop ao re-perguntar dia/horário já escolhidos.
+    {
+      const txt = messageText.trim()
+
+      // Match de DIA (formato "Seg 18/05", "Ter 19/05", etc — gerado pelo agente)
+      const diaMatch = txt.match(/^(Seg|Ter|Qua|Qui|Sex|Sáb|Sab|Dom)\s+(\d{1,2})\/(\d{1,2})$/i)
+      if (diaMatch) {
+        const dd = diaMatch[2].padStart(2, '0')
+        const mm = diaMatch[3].padStart(2, '0')
+        const year = new Date().getFullYear()
+        const isoDate = `${year}-${mm}-${dd}`
+        await supabaseAdmin.from('leads').update({
+          booking_state: {
+            stage: 'day_picked',
+            selected_date: isoDate,
+            selected_day_label: txt,
+            selected_time: null,
+            updated_at: new Date().toISOString(),
+          },
+        }).eq('id', leadId)
+        console.log(`[booking_state] day_picked: ${isoDate}`)
+      }
+
+      // Match de HORÁRIO (formato "HH:MM")
+      else if (/^\d{1,2}:\d{2}$/.test(txt)) {
+        const { data: leadNow } = await supabaseAdmin
+          .from('leads')
+          .select('booking_state')
+          .eq('id', leadId)
+          .single()
+        const prev = (leadNow?.booking_state as any) || {}
+        await supabaseAdmin.from('leads').update({
+          booking_state: {
+            ...prev,
+            stage: 'time_picked',
+            selected_time: txt.padStart(5, '0'),
+            updated_at: new Date().toISOString(),
+          },
+        }).eq('id', leadId)
+        console.log(`[booking_state] time_picked: ${txt}`)
+      }
+
+      // Match de CONFIRMAÇÃO ("Confirmar", "Confirmar ✅", etc)
+      else if (/^confirmar(\s|$)/i.test(txt) || txt === 'Confirmar ✅') {
+        const { data: leadNow } = await supabaseAdmin
+          .from('leads')
+          .select('booking_state')
+          .eq('id', leadId)
+          .single()
+        const prev = (leadNow?.booking_state as any) || {}
+        await supabaseAdmin.from('leads').update({
+          booking_state: {
+            ...prev,
+            stage: 'awaiting_confirm',
+            updated_at: new Date().toISOString(),
+          },
+        }).eq('id', leadId)
+        console.log('[booking_state] awaiting_confirm')
+      }
+
+      // Match de REMARCAR — reseta o estado
+      else if (/^remarcar/i.test(txt)) {
+        await supabaseAdmin.from('leads').update({
+          booking_state: {
+            stage: 'awaiting_day',
+            selected_date: null,
+            selected_time: null,
+            updated_at: new Date().toISOString(),
+          },
+        }).eq('id', leadId)
+        console.log('[booking_state] reset → awaiting_day')
+      }
+
+      // Match de CANCELAR — limpa o estado
+      else if (/^cancelar/i.test(txt)) {
+        await supabaseAdmin.from('leads').update({
+          booking_state: { stage: 'cancelled', updated_at: new Date().toISOString() },
+        }).eq('id', leadId)
+        console.log('[booking_state] cancelled')
+      }
+
+      // Texto livre — tenta extrair data/hora natural ("hoje 18h", "dia 19 às 17:00")
+      else {
+        const parsed = parseUserIntent(txt)
+        if (parsed) {
+          const { data: leadNow } = await supabaseAdmin
+            .from('leads')
+            .select('booking_state')
+            .eq('id', leadId)
+            .single()
+          const prev = (leadNow?.booking_state as any) || {}
+          await supabaseAdmin.from('leads').update({
+            booking_state: {
+              ...prev,
+              parsed_intent: parsed,
+              updated_at: new Date().toISOString(),
+            },
+          }).eq('id', leadId)
+          console.log(`[booking_state] parsed_intent: date=${parsed.date} time=${parsed.time}`)
+        }
+      }
+    }
+
+    // 3.5. ORQUESTRAÇÃO DE ESTADO — agente Sonnet só é chamado quando o fluxo
+    //      decide que é hora. Webhook gerencia bloqueios, buffer e expiração.
+    const proName = professional.full_name || ''
+    const conversarLabel = proName ? `Conversar com ${proName}` : 'Conversar com profissional'
+
+    // Re-fetch lead pra cobrir race condition (lead recém-criado pela rajada)
+    const { data: leadFresh } = await supabaseAdmin
+      .from('leads')
+      .select('awaiting_form, awaiting_form_options, awaiting_form_expires_at')
+      .eq('id', leadId)
+      .single()
+
+    // Bloqueio ativo? = tem formulário pendente E não expirou
+    const expiresAt = leadFresh?.awaiting_form_expires_at
+      ? new Date(leadFresh.awaiting_form_expires_at).getTime()
+      : 0
+    const blockingActive = !!leadFresh?.awaiting_form && expiresAt > Date.now()
+
+    if (blockingActive) {
+      const options: string[] = Array.isArray(leadFresh.awaiting_form_options)
+        ? (leadFresh.awaiting_form_options as string[])
+        : []
+
+      // Match flexível: case-insensitive + ignora acentos básicos
+      const txt = messageText.trim()
+      const lowerTxt = txt.toLowerCase()
+      const matchedOption = options.find((opt) => {
+        const lowerOpt = opt.toLowerCase()
+        return txt === opt || lowerTxt === lowerOpt
+      })
+
+      if (matchedOption) {
+        // ✅ Clique reconhecido — DESBLOQUEIA e processa
+        console.log(`[FLUXO] Match de opção: "${matchedOption}". Desbloqueando.`)
+        await supabaseAdmin
+          .from('leads')
+          .update({
+            awaiting_form: null,
+            awaiting_form_options: null,
+            awaiting_form_expires_at: null,
+          })
+          .eq('id', leadId)
+
+        // Caso especial: "Conversar com X" → desabilita agente, manda mensagem de transferência
+        if (matchedOption === conversarLabel) {
+          console.log(`[FLUXO] Lead pediu para falar com humano. Desabilitando agente.`)
+          await supabaseAdmin.from('leads').update({ agent_enabled: false }).eq('id', leadId)
+          await sendPresence(instanceName, remoteJid)
+          const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
+          const evoKey = Deno.env.get('EVOLUTION_API_KEY')
+          await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
+            method: 'POST',
+            headers: { 'apikey': evoKey ?? '', 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              number: remoteJid,
+              text: 'Estou em atendimento logo retornarei sua mensagem',
+            }),
+          })
+          // Marca tudo como processed (já foi cuidado)
+          await supabaseAdmin
+            .from('chat_messages')
+            .update({ processed: true })
+            .eq('lead_id', leadId)
+            .eq('processed', false)
+          return new Response(JSON.stringify({ success: true, action: 'transferred_to_human' }), {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        }
+
+        // Demais opções → chama agente com o clique + buffer. Cai no fluxo normal abaixo
+        // sem debounce (resposta imediata após clique). Continua pro processamento normal.
+      } else {
+        // 🛑 Mensagem livre durante bloqueio — empilha (já está em chat_messages
+        //    com processed=false) e SILENCIA. Agente não é chamado.
+        console.log(`[FLUXO] Lead bloqueado em "${leadFresh.awaiting_form}" e mensagem não bate. Empilhando.`)
+        return new Response(JSON.stringify({ success: true, action: 'buffered_during_block' }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+    }
+
+    // 3.6. Lead novo + mensagem diferente da programada do site → enviar menu de botões.
+    // BLOQUEIA o lead ANTES de chamar Evolution pra evitar race condition.
     if (!existingLead && messageText.trim() !== SITE_GREETING) {
-      console.log(`[DEBUG] Lead novo sem contexto do site. Enviando menu de opções.`)
+      console.log(`[FLUXO] Lead novo sem contexto do site. Bloqueando + enviando menu.`)
+
+      const menuOptions = [conversarLabel, 'Conferir agenda', 'Agendar um horário', 'Tirar dúvidas']
+      const expiresAt5min = new Date(Date.now() + 5 * 60_000).toISOString()
+
+      // 1. Bloqueia ANTES da chamada Evolution (rápido, atômico)
+      await supabaseAdmin
+        .from('leads')
+        .update({
+          awaiting_form: 'menu_inicial',
+          awaiting_form_options: menuOptions,
+          awaiting_form_expires_at: expiresAt5min,
+        })
+        .eq('id', leadId)
+
+      // 2. Marca a mensagem do user como processed=true — ela foi respondida pelo menu
+      await supabaseAdmin
+        .from('chat_messages')
+        .update({ processed: true })
+        .eq('lead_id', leadId)
+        .eq('processed', false)
+
+      // 3. Grava registro do menu no histórico (pro agente ter contexto se conversa retomar)
+      await supabaseAdmin.from('chat_messages').insert({
+        lead_id: leadId,
+        role: 'assistant',
+        content: `[Menu enviado: ${menuOptions.join(' · ')}]`,
+        processed: true,
+      })
+
+      // 4. AGORA chama Evolution (parte lenta — pode demorar 1-2s)
       await sendPresence(instanceName, remoteJid)
       await sendOptionsMenu(instanceName, remoteJid, proName)
+
       return new Response(JSON.stringify({ success: true, action: 'options_menu_sent' }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -293,9 +834,68 @@ serve(async (req) => {
     // 3.7. Mostrar "digitando" enquanto o agente processa
     await sendPresence(instanceName, remoteJid)
 
-    // 4. Chamar o agente IA para gerar resposta
+    // 4. DEBOUNCE — espera 4s pra dar tempo de chegar mensagens em rajada.
+    //    Se outra mensagem chegar nesse intervalo, abandona esta task e deixa
+    //    a próxima processar tudo. Garante resposta única com contexto completo.
+    const DEBOUNCE_MS = 4000
+    const messageReceivedAt = Date.now()
+    console.log(`[DEBOUNCE] Aguardando ${DEBOUNCE_MS}ms antes de processar...`)
+    await new Promise((r) => setTimeout(r, DEBOUNCE_MS))
+
+    // Confere se chegou mensagem mais recente — se sim, abandona pra que a próxima task processe tudo.
+    const { data: leadAfter } = await supabaseAdmin
+      .from('leads')
+      .select('last_message_at, awaiting_form, awaiting_form_expires_at')
+      .eq('id', leadId)
+      .single()
+
+    const lastAt = leadAfter?.last_message_at ? new Date(leadAfter.last_message_at).getTime() : 0
+    if (lastAt > messageReceivedAt + 500) {
+      console.log(`[DEBOUNCE] Mensagem mais recente chegou — abandonando esta task`)
+      return new Response(JSON.stringify({ debounced: true, reason: 'newer_message_arrived' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Re-check: webhook concorrente bloqueou o lead enquanto dormíamos no debounce?
+    const lateBlockActive = leadAfter?.awaiting_form
+      && leadAfter.awaiting_form_expires_at
+      && new Date(leadAfter.awaiting_form_expires_at).getTime() > Date.now()
+    if (lateBlockActive) {
+      console.log(`[DEBOUNCE] Bloqueio "${leadAfter.awaiting_form}" detectado tarde — abandonando`)
+      return new Response(JSON.stringify({ debounced: true, reason: 'form_became_pending' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Marca atomicamente todas as mensagens não-processadas como processed=true
+    // ANTES de chamar o agente. Se uma 2ª task chegar aqui em paralelo, vai
+    // pegar zero linhas e desistir naturalmente.
+    const { data: pendingMessages } = await supabaseAdmin
+      .from('chat_messages')
+      .update({ processed: true })
+      .eq('lead_id', leadId)
+      .eq('processed', false)
+      .select('id, content, created_at')
+      .order('created_at', { ascending: true })
+
+    if (!pendingMessages || pendingMessages.length === 0) {
+      console.log(`[DEBOUNCE] Nenhuma mensagem pendente — outra task já processou`)
+      return new Response(JSON.stringify({ debounced: true, reason: 'already_processed' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Junta o conteúdo de todas as mensagens pendentes. Quando o lead manda
+    // 3 mensagens em rajada, o agente vê tudo de uma vez como um único turno.
+    const mergedText = pendingMessages.map((m: any) => m.content).join('\n')
+    console.log(`[DEBOUNCE] Processando ${pendingMessages.length} mensagem(ns) merged`)
+
+    // 5. Chamar o agente IA para gerar resposta
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEYS') || ''
-    console.log(`[DEBUG] anonKey length: ${anonKey.length}, prefix: ${anonKey.substring(0, 20)}`)
     console.log(`[DEBUG] Invocando whatsapp-agent...`)
     const agentUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/whatsapp-agent`
     const agentResponse = await fetch(agentUrl, {
@@ -306,9 +906,9 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         lead_id: leadId,
-        lead_name: existingLead ? pushName : pushName,
+        lead_name: pushName,
         lead_phone: formattedNumber,
-        message: messageText,
+        message: mergedText,
         remote_jid: remoteJid,
         professional_id: professional.id,
         instance_name: instanceName,
@@ -321,7 +921,7 @@ serve(async (req) => {
 
     console.log(`[WEBHOOK] ✅ SUCESSO COMPLETO: Webhook processado, agente respondeu`)
 
-    return new Response(JSON.stringify({ success: true, agent: agentResult }), {
+    return new Response(JSON.stringify({ success: true, agent: agentResult, merged: pendingMessages.length }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })

@@ -5,7 +5,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Trash2, Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
@@ -23,13 +25,12 @@ export default function AdminPerfil() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
-  const [instagram, setInstagram] = useState("");
-  const [linkedin, setLinkedin] = useState("");
   const [photoUrl, setPhotoUrl] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [priceMin, setPriceMin] = useState("");
   const [priceMax, setPriceMax] = useState("");
   const [priceFirstSession, setPriceFirstSession] = useState("");
+  const [promoPackages, setPromoPackages] = useState<Array<{ id: string; descricao: string; link: string }>>([]);
   const [category, setCategory]             = useState("psicologo");
   const [categoryCustom, setCategoryCustom] = useState("");
   const [saving, setSaving] = useState(false);
@@ -61,14 +62,31 @@ export default function AdminPerfil() {
     setPhone(professional.phone || (professional as any).whatsapp || "");
     setEmail(professional.email || profile?.email || "");
     setAddress(professional.address || "");
-    setInstagram(professional.instagram || "");
-    setLinkedin(professional.linkedin || "");
     setPhotoUrl(professional.photo_url || "");
     setLogoUrl(professional.logo_url || "");
     setPriceMin(professional.price_min?.toString() || "");
     setPriceMax(professional.price_max?.toString() || "");
     setPriceFirstSession(professional.price_first_session?.toString() || "");
+    const rawPkgs = (professional as any).promo_packages;
+    if (Array.isArray(rawPkgs)) {
+      setPromoPackages(
+        rawPkgs.map((p: any) => ({
+          id: typeof p?.id === "string" ? p.id : crypto.randomUUID(),
+          descricao: typeof p?.descricao === "string" ? p.descricao : "",
+          link: typeof p?.link === "string" ? p.link : "",
+        })),
+      );
+    } else {
+      setPromoPackages([]);
+    }
   }, [professional, profile]);
+
+  const addPromoPackage = () =>
+    setPromoPackages((prev) => [...prev, { id: crypto.randomUUID(), descricao: "", link: "" }]);
+  const removePromoPackage = (id: string) =>
+    setPromoPackages((prev) => prev.filter((p) => p.id !== id));
+  const updatePromoPackage = (id: string, field: "descricao" | "link", value: string) =>
+    setPromoPackages((prev) => prev.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
 
   const handleSave = async () => {
     if (!professional || !user) return;
@@ -84,13 +102,14 @@ export default function AdminPerfil() {
         whatsapp: phone || null,
         email: email || null,
         address: address || null,
-        instagram: instagram || null,
-        linkedin: linkedin || null,
         photo_url: photoUrl || null,
         logo_url: logoUrl || null,
         price_min: priceMin ? parseFloat(priceMin) : null,
         price_max: priceMax ? parseFloat(priceMax) : null,
         price_first_session: priceFirstSession ? parseFloat(priceFirstSession) : null,
+        promo_packages: promoPackages
+          .map((p) => ({ id: p.id, descricao: p.descricao.trim(), link: p.link.trim() }))
+          .filter((p) => p.descricao.length > 0),
         category,
         category_custom: category === "outro" ? (categoryCustom.trim() || null) : null,
       } as any).eq("id", professional.id),
@@ -163,20 +182,6 @@ export default function AdminPerfil() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Redes Sociais</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="instagram">Instagram <FieldHint text="Apenas o @ sem o link completo. Ex: @meuperfil" /></Label>
-            <Input id="instagram" placeholder="@seuperfil" value={instagram} onChange={(e) => setInstagram(e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="linkedin">LinkedIn <FieldHint text="URL do seu perfil LinkedIn." /></Label>
-            <Input id="linkedin" placeholder="linkedin.com/in/seuperfil" value={linkedin} onChange={(e) => setLinkedin(e.target.value)} />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
         <CardHeader><CardTitle>Valores da Consulta</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -192,6 +197,58 @@ export default function AdminPerfil() {
           <div className="space-y-2">
             <Label htmlFor="priceFirstSession">Primeira consulta — Promocional (R$) <FieldHint text="Valor especial para a primeira consulta." /></Label>
             <Input id="priceFirstSession" type="number" min="0" step="0.01" placeholder="Ex: 100" value={priceFirstSession} onChange={(e) => setPriceFirstSession(e.target.value)} />
+          </div>
+
+          <div className="space-y-3 pt-2 border-t border-border">
+            <div className="flex items-center justify-between">
+              <Label className="text-base">
+                Pacotes Promocionais <FieldHint text="Crie pacotes opcionais que voce oferece. Ex: 'Pacote 4 sessoes por R$ 1.000'. O link e opcional — use se tiver checkout, formulario ou link direto do WhatsApp; se deixar em branco, o paciente combina com voce." />
+              </Label>
+              <Button type="button" variant="outline" size="sm" onClick={addPromoPackage}>
+                <Plus className="h-4 w-4 mr-1" /> Adicionar
+              </Button>
+            </div>
+
+            {promoPackages.length === 0 && (
+              <p className="text-sm text-muted-foreground">Nenhum pacote cadastrado. Clique em "Adicionar" para criar.</p>
+            )}
+
+            {promoPackages.map((pkg, idx) => (
+              <div key={pkg.id} className="space-y-2 p-3 rounded-md border border-border bg-muted/30">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground">Pacote {idx + 1}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removePromoPackage(pkg.id)}
+                    className="h-7 px-2 text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor={`pkg-desc-${pkg.id}`} className="text-sm">Descricao</Label>
+                  <Textarea
+                    id={`pkg-desc-${pkg.id}`}
+                    placeholder="Ex: Pacote 4 sessoes por R$ 1.000 (economia de R$ 200 vs valor unitario)"
+                    rows={2}
+                    value={pkg.descricao}
+                    onChange={(e) => updatePromoPackage(pkg.id, "descricao", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor={`pkg-link-${pkg.id}`} className="text-sm">Link (opcional)</Label>
+                  <Input
+                    id={`pkg-link-${pkg.id}`}
+                    type="url"
+                    placeholder="https://wa.me/... ou checkout/formulario"
+                    value={pkg.link}
+                    onChange={(e) => updatePromoPackage(pkg.id, "link", e.target.value)}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>

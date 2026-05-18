@@ -21,7 +21,13 @@ export default function Cadastro() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, roles, isLoading: authLoading } = useAuth();
-  const refSlug = new URLSearchParams(location.search).get("ref") || "";
+  const searchParams = new URLSearchParams(location.search);
+  const refSlug = searchParams.get("ref") || "";
+  const prefilledEmail = searchParams.get("email") || "";
+
+  useEffect(() => {
+    if (prefilledEmail) setEmail(prefilledEmail);
+  }, [prefilledEmail]);
 
   useEffect(() => {
     if (!pendingRedirect || authLoading || !user) return;
@@ -100,11 +106,11 @@ export default function Cadastro() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="phone">Telefone</Label>
+              <Label htmlFor="phone">WhatsApp</Label>
               <Input
                 id="phone"
                 type="tel"
-                placeholder="5548998385330"
+                placeholder="5548999999999 (com DDD, só números)"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
                 disabled={loading}

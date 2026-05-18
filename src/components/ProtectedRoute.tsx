@@ -10,7 +10,7 @@ interface ProtectedRouteProps {
 }
 
 export default function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
-  const { user, roles, isLoading } = useAuth();
+  const { user, roles, isOwner, isLoading } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -25,8 +25,13 @@ export default function ProtectedRoute({ children, requiredRole }: ProtectedRout
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (requiredRole && !roles.includes(requiredRole)) {
-    return <Navigate to="/" replace />;
+  if (requiredRole) {
+    const hasAccess =
+      roles.includes(requiredRole) ||
+      (requiredRole === "professional" && (roles.includes("admin") || isOwner));
+    if (!hasAccess) {
+      return <Navigate to="/" replace />;
+    }
   }
 
   return <>{children}</>;

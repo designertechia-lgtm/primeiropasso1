@@ -1,41 +1,51 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Leaf } from "lucide-react";
+import { Leaf, Eye, EyeOff } from "lucide-react";
 
 export default function Cadastro() {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [slug, setSlug] = useState("");
   const [loading, setLoading] = useState(false);
+  const [pendingRedirect, setPendingRedirect] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, roles, isLoading: authLoading } = useAuth();
   const refSlug = new URLSearchParams(location.search).get("ref") || "";
+
+  useEffect(() => {
+    if (!pendingRedirect || authLoading || !user) return;
+    navigate("/admin", { replace: true });
+  }, [pendingRedirect, authLoading, user, roles, navigate]);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!slug.trim()) {
-      toast.error("Informe um slug para sua página profissional");
-      return;
-    }
-    setLoading(true);
 
     const normalizedSlug = slug
       .toLowerCase()
       .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[̀-ͯ]/g, "")
       .replace(/[^a-z0-9-]/g, "-")
       .replace(/-+/g, "-")
       .replace(/^-|-$/g, "");
 
-    const { error } = await supabase.auth.signUp({
+    if (!normalizedSlug) {
+      toast.error("Informe um slug válido para sua página profissional");
+      return;
+    }
+
+    setLoading(true);
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -46,16 +56,23 @@ export default function Cadastro() {
 
     if (error) {
       setLoading(false);
-      toast.error("Erro ao cadastrar", { description: error.message });
+      const lower = error.message.toLowerCase();
+      const msg = lower.includes("already registered") || lower.includes("user already")
+        ? "Este e-mail já está cadastrado. Faça login."
+        : error.message;
+      toast.error("Erro ao cadastrar", { description: msg });
       return;
     }
 
-    setLoading(false);
-    toast.success("Conta criada com sucesso!", {
-      description: "Verifique seu e-mail para confirmar o cadastro.",
-    });
-    
-    navigate("/admin");
+    if (!data.session) {
+      setLoading(false);
+      toast.success("Conta criada!", { description: "Faça login para continuar." });
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    toast.success("Conta criada com sucesso!");
+    setPendingRedirect(true);
   };
 
   return (
@@ -72,19 +89,67 @@ export default function Cadastro() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="fullName">Nome completo</Label>
-              <Input id="fullName" placeholder="Seu nome" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+              <Input
+                id="fullName"
+                placeholder="Seu nome"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                disabled={loading}
+                autoComplete="name"
+                required
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="phone">Telefone</Label>
-              <Input id="phone" type="tel" placeholder="5548998385330" value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))} required />
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="5548998385330"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
+                disabled={loading}
+                autoComplete="tel"
+                required
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">E-mail</Label>
-              <Input id="email" type="email" placeholder="seu@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <Input
+                id="email"
+                type="email"
+                placeholder="seu@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={loading}
+                autoComplete="email"
+                required
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Senha</Label>
-              <Input id="password" type="password" placeholder="Mínimo 6 caracteres" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Mínimo 6 caracteres"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={loading}
+                  autoComplete="new-password"
+                  required
+                  minLength={6}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground hover:text-foreground"
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -96,6 +161,7 @@ export default function Cadastro() {
                   placeholder="seu-nome"
                   value={slug}
                   onChange={(e) => setSlug(e.target.value)}
+                  disabled={loading}
                   className="flex-1"
                   required
                 />
@@ -103,8 +169,8 @@ export default function Cadastro() {
             </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-3">
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Criando conta..." : "Cadastrar"}
+            <Button type="submit" className="w-full" disabled={loading || pendingRedirect}>
+              {loading || pendingRedirect ? "Criando conta..." : "Cadastrar"}
             </Button>
             <p className="text-sm text-muted-foreground">
               Já tem conta?{" "}

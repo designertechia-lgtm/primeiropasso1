@@ -39,42 +39,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    let initialLoad = true;
+    let mounted = true;
+    let lastUserId: string | null = null;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!mounted) return;
+      const newUserId = session?.user?.id ?? null;
+      const userChanged = newUserId !== lastUserId;
+
       setSession(session);
       setUser(session?.user ?? null);
+
+      if (!userChanged) return;
+      lastUserId = newUserId;
+
       if (session?.user) {
-        fetchUserData(session.user.id).then(() => {
-          if (initialLoad) {
-            initialLoad = false;
-            setIsLoading(false);
-          }
-        });
+        setIsLoading(true);
+        try {
+          await fetchUserData(session.user.id);
+        } finally {
+          if (mounted) setIsLoading(false);
+        }
       } else {
         setProfile(null);
         setRoles([]);
         setIsOwner(false);
-        if (initialLoad) {
-          initialLoad = false;
-          setIsLoading(false);
-        }
-      }
-    });
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchUserData(session.user.id).then(() => {
-          setIsLoading(false);
-        });
-      } else {
         setIsLoading(false);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signOut = async () => {

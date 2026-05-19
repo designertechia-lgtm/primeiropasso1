@@ -9,6 +9,7 @@ import OwnerRoute from "@/components/OwnerRoute";
 import Index from "./pages/Index.tsx";
 import Login from "./pages/Login.tsx";
 import Cadastro from "./pages/Cadastro.tsx";
+import Reset from "./pages/Reset.tsx";
 import ProfessionalLanding from "./pages/ProfessionalLanding.tsx";
 import ArticlePage from "./pages/ArticlePage.tsx";
 import ArticlesListPage from "./pages/ArticlesListPage.tsx";
@@ -78,6 +79,7 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
             <Route path="/cadastro" element={<Cadastro />} />
+            <Route path="/reset" element={<Reset />} />
             {/* Protected patient routes */}
             <Route path="/minha-conta" element={<PatientRoute><PatientBuscar /></PatientRoute>} />
             <Route path="/minha-conta/agendamentos" element={<PatientRoute><PatientAgendamentos /></PatientRoute>} />

@@ -19,6 +19,18 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const AUTH_INIT_TIMEOUT_MS = 4000;
+
+function clearSupabaseStorage() {
+  try {
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith("sb-"))
+      .forEach((k) => localStorage.removeItem(k));
+  } catch {
+    // localStorage pode estar indisponível (modo privado estrito); ignorar
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -41,8 +53,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
     let lastUserId: string | null = null;
+    let initResolved = false;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const resolveInit = () => {
+      if (initResolved || !mounted) return;
+      initResolved = true;
+      setIsLoading(false);
+    };
+
+    // Safety net: se nada resolver em 4s (token corrompido travando refresh),
+    // libera a UI como deslogada e limpa storage para o próximo carregamento.
+    const safetyTimer = window.setTimeout(() => {
+      if (initResolved || !mounted) return;
+      console.warn("[Auth] init timeout — clearing supabase storage and continuing as anonymous");
+      clearSupabaseStorage();
+      setSession(null);
+      setUser(null);
+      setProfile(null);
+      setRoles([]);
+      setIsOwner(false);
+      resolveInit();
+    }, AUTH_INIT_TIMEOUT_MS);
+
+    const handleSession = async (session: Session | null) => {
       if (!mounted) return;
       const newUserId = session?.user?.id ?? null;
       const userChanged = newUserId !== lastUserId;
@@ -50,32 +83,73 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
 
-      if (!userChanged) return;
+      if (!userChanged) {
+        resolveInit();
+        return;
+      }
       lastUserId = newUserId;
 
       if (session?.user) {
+        // Marca loading enquanto buscamos roles/profile para que consumers
+        // (Login redirect, ProtectedRoute, etc) esperem antes de decidir rota.
         setIsLoading(true);
+        initResolved = false;
         try {
           await fetchUserData(session.user.id);
+        } catch (err) {
+          console.error("[Auth] fetchUserData failed", err);
         } finally {
-          if (mounted) setIsLoading(false);
+          resolveInit();
         }
       } else {
         setProfile(null);
         setRoles([]);
         setIsOwner(false);
-        setIsLoading(false);
+        resolveInit();
       }
+    };
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // Token refresh falhou → JWT corrompido/expirado sem refresh válido.
+      // Limpa storage para que o próximo refresh seja limpo.
+      if (event === "TOKEN_REFRESHED" && !session) {
+        clearSupabaseStorage();
+      }
+      void handleSession(session);
     });
+
+    // Inicialização explícita: não dependemos apenas do INITIAL_SESSION do listener.
+    supabase.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (error) {
+          console.error("[Auth] getSession error", error);
+          clearSupabaseStorage();
+          void handleSession(null);
+          return;
+        }
+        void handleSession(data.session);
+      })
+      .catch((err) => {
+        console.error("[Auth] getSession threw", err);
+        clearSupabaseStorage();
+        void handleSession(null);
+      });
 
     return () => {
       mounted = false;
+      window.clearTimeout(safetyTimer);
       subscription.unsubscribe();
     };
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error("[Auth] signOut error", err);
+    }
+    clearSupabaseStorage();
     setSession(null);
     setUser(null);
     setProfile(null);

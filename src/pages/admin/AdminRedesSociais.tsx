@@ -1,6 +1,6 @@
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Link2, Video, Clapperboard, Drama, Database } from "lucide-react";
+import { FileText, Link2, Video, Clapperboard, Drama, Database, CalendarRange } from "lucide-react";
 import AdminRedesSociaisPosts from "./AdminRedesSociaisPosts";
 import { ConnectedAccounts } from "@/components/dashboard/ConnectedAccounts";
 import AdminArtigos from "./AdminArtigos";
@@ -8,8 +8,9 @@ import AdminVideos from "./AdminVideos";
 import AdminCriarVideo from "./AdminCriarVideo";
 import AdminAvatares from "./AdminAvatares";
 import AdminDocumentos from "./AdminDocumentos";
+import PublicationCalendarTab from "@/components/admin/redes-sociais/PublicationCalendarTab";
 
-const VALID_TABS = ["artigos", "videos", "criar-video", "personagens", "posts", "contas", "rag"] as const;
+const VALID_TABS = ["calendario", "artigos", "videos", "criar-video", "personagens", "posts", "contas", "rag"] as const;
 type TabValue = (typeof VALID_TABS)[number];
 
 export default function AdminRedesSociais() {
@@ -17,10 +18,10 @@ export default function AdminRedesSociais() {
   const tabParam = searchParams.get("tab");
   const activeTab: TabValue = (VALID_TABS as readonly string[]).includes(tabParam ?? "")
     ? (tabParam as TabValue)
-    : "artigos";
+    : "calendario";
 
   const handleTabChange = (value: string) => {
-    if (value === "artigos") {
+    if (value === "calendario") {
       searchParams.delete("tab");
     } else {
       searchParams.set("tab", value);
@@ -32,6 +33,10 @@ export default function AdminRedesSociais() {
     <div className="space-y-4">
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="flex w-full flex-wrap h-auto justify-start gap-1 bg-muted/50 p-1">
+          <TabsTrigger value="calendario" className="gap-2">
+            <CalendarRange className="h-4 w-4" />
+            <span className="hidden sm:inline">Calendário</span>
+          </TabsTrigger>
           <TabsTrigger value="artigos" className="gap-2">
             <FileText className="h-4 w-4" />
             <span className="hidden sm:inline">Artigos</span>
@@ -62,6 +67,9 @@ export default function AdminRedesSociais() {
           </TabsTrigger>
         </TabsList>
 
+        <TabsContent value="calendario" className="mt-4">
+          <PublicationCalendarTab />
+        </TabsContent>
         <TabsContent value="artigos" className="mt-4">
           <AdminArtigos />
         </TabsContent>

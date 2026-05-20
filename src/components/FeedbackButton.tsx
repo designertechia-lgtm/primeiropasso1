@@ -28,18 +28,34 @@ export default function FeedbackButton() {
   const [message, setMessage] = useState("");
   const [nps, setNps] = useState<number | null>(null);
   const [isSending, setIsSending] = useState(false);
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
 
   const handleSubmit = async () => {
     if (!message) {
       toast.error("Por favor, descreva seu feedback.");
       return;
     }
+    if (!user?.id) {
+      toast.error("Você precisa estar logado para enviar feedback.");
+      return;
+    }
 
     setIsSending(true);
     try {
+      const { data: prof, error: profErr } = await supabase
+        .from("professionals")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (profErr) throw profErr;
+      if (!prof?.id) {
+        toast.error("Não encontramos seu cadastro de profissional. Recarregue a página e tente novamente.");
+        return;
+      }
+
       const { error } = await supabase.from("feedbacks").insert({
-        author_id: profile?.id, // Assumes profile.id is the professional_id
+        author_id: prof.id,
         type: type as any,
         message,
         nps_score: nps,

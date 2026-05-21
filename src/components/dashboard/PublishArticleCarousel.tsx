@@ -210,7 +210,7 @@ export default function PublishArticleCarousel({ article, onDismiss }: Props) {
               <Link2 className="h-8 w-8 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">Conecte o Instagram para publicar.</p>
               <Button size="sm" variant="outline" asChild>
-                <a href="/admin/configuracoes">Conectar Instagram</a>
+                <a href="/admin/redes-sociais?tab=contas">Conectar Instagram</a>
               </Button>
             </div>
           )}
@@ -219,7 +219,7 @@ export default function PublishArticleCarousel({ article, onDismiss }: Props) {
             <div className="flex flex-col items-center gap-3 py-2 text-center">
               <p className="text-sm text-amber-700 font-medium">Token expirado — reconecte o Instagram.</p>
               <Button size="sm" variant="outline" asChild>
-                <a href="/admin/configuracoes">Reconectar</a>
+                <a href="/admin/redes-sociais?tab=contas">Reconectar</a>
               </Button>
             </div>
           )}

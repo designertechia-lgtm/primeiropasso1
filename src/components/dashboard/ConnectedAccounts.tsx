@@ -7,8 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import {
-  Instagram, Facebook, Linkedin, AtSign, Link2, Unlink, Loader2, RefreshCw,
+  Instagram, Facebook, Linkedin, AtSign, Link2, Unlink, Loader2, RefreshCw, HelpCircle,
 } from "lucide-react";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 
 type Platform = "instagram" | "facebook" | "threads" | "linkedin";
 
@@ -117,6 +118,7 @@ export function ConnectedAccounts() {
     Icon: typeof Instagram;
     color: string;
     hint: string;
+    requirements: { title: string; steps: string[]; tip?: string };
   }[] = [
     {
       platform: "instagram",
@@ -124,6 +126,15 @@ export function ConnectedAccounts() {
       Icon:     Instagram,
       color:    "text-pink-500",
       hint:     "Faça login com sua conta Instagram Business ou Creator. Não precisa de Facebook.",
+      requirements: {
+        title: "Como conectar o Instagram",
+        steps: [
+          "Sua conta precisa ser Business ou Creator (Profissional). No app: Configurações → Conta → Mudar para conta profissional.",
+          "Clique em \"Conectar\" e faça login direto no Instagram.",
+          "Aceite as permissões — publicar conteúdo, ler insights e gerenciar comentários/DMs.",
+        ],
+        tip: "Não precisa criar Página do Facebook nem vincular nada. Login direto pelo Instagram.",
+      },
     },
     {
       platform: "facebook",
@@ -131,6 +142,16 @@ export function ConnectedAccounts() {
       Icon:     Facebook,
       color:    "text-blue-600",
       hint:     "Conecte uma Página do Facebook que você administra.",
+      requirements: {
+        title: "Como conectar o Facebook",
+        steps: [
+          "Você precisa administrar uma Página do Facebook (não funciona com perfil pessoal).",
+          "Se não tem, crie em facebook.com/pages/create.",
+          "Clique em \"Conectar\" e faça login no Facebook.",
+          "Selecione a Página e aceite as permissões.",
+        ],
+        tip: "Se você tem mais de uma página, hoje conectamos só a primeira. Avise se precisar suportar várias.",
+      },
     },
     {
       platform: "threads",
@@ -138,6 +159,15 @@ export function ConnectedAccounts() {
       Icon:     AtSign,
       color:    "text-neutral-900 dark:text-neutral-100",
       hint:     "Faça login com sua conta Threads (a mesma do Instagram).",
+      requirements: {
+        title: "Como conectar o Threads",
+        steps: [
+          "Você precisa ter conta no Threads (a mesma do seu Instagram).",
+          "Clique em \"Conectar\" e faça login no Threads.",
+          "Aceite as permissões — publicar posts, ler respostas, excluir conteúdo seu.",
+        ],
+        tip: "Threads usa OAuth próprio (separado do Instagram). Limite: 250 posts/24h.",
+      },
     },
     {
       platform: "linkedin",
@@ -145,6 +175,15 @@ export function ConnectedAccounts() {
       Icon:     Linkedin,
       color:    "text-blue-700",
       hint:     "Conecte seu perfil profissional para publicar artigos e vídeos.",
+      requirements: {
+        title: "Como conectar o LinkedIn",
+        steps: [
+          "Tenha um perfil LinkedIn ativo.",
+          "Clique em \"Conectar\" e faça login.",
+          "Aceite a permissão de publicar em seu nome.",
+        ],
+        tip: "Por enquanto, publica apenas no seu perfil pessoal (não em Páginas de empresa).",
+      },
     },
   ];
 
@@ -184,7 +223,7 @@ export function ConnectedAccounts() {
         )}
       </CardHeader>
       <CardContent className="space-y-3">
-        {platforms.map(({ platform, label, Icon, color, hint }) => {
+        {platforms.map(({ platform, label, Icon, color, hint, requirements }) => {
           const account = socialAccounts.find((a) => a.platform === platform);
           const isConnecting = connectingPlatform === platform;
           const days = daysUntil(account?.expires_at ?? null);
@@ -199,7 +238,33 @@ export function ConnectedAccounts() {
               <div className="flex items-center gap-3 min-w-0">
                 <Icon className={`h-5 w-5 shrink-0 ${color}`} />
                 <div className="min-w-0">
-                  <p className="text-sm font-medium">{label}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-medium">{label}</p>
+                    <HoverCard openDelay={150}>
+                      <HoverCardTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={`Como conectar ${label}`}
+                          className="text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          <HelpCircle className="h-3.5 w-3.5" />
+                        </button>
+                      </HoverCardTrigger>
+                      <HoverCardContent className="w-80 text-sm" align="start">
+                        <p className="font-semibold mb-2">{requirements.title}</p>
+                        <ol className="list-decimal list-inside space-y-1 text-xs text-muted-foreground">
+                          {requirements.steps.map((s, i) => (
+                            <li key={i}>{s}</li>
+                          ))}
+                        </ol>
+                        {requirements.tip && (
+                          <p className="mt-2 pt-2 border-t text-xs text-foreground/80">
+                            💡 {requirements.tip}
+                          </p>
+                        )}
+                      </HoverCardContent>
+                    </HoverCard>
+                  </div>
                   {account ? (
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs text-green-600 font-medium">

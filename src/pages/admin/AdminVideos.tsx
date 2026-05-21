@@ -417,80 +417,77 @@ export default function AdminVideos() {
             const isYoutube = /youtube|youtu\.be/i.test((v as any).embed_url ?? "");
             const canPublishToIG = !isYoutube && !!(v as any).embed_url;
             return (
-              <div key={v.id} className="space-y-3 min-w-0">
-                <Card className="overflow-hidden">
-                  <CardContent className="p-4 flex flex-col sm:flex-row gap-4 items-stretch sm:items-start min-w-0">
-                    {/* Linha topo no mobile: thumbnail + info lado a lado */}
-                    <div className="flex gap-4 sm:contents min-w-0">
-                      {/* Thumbnail com play overlay */}
+              <div key={v.id} className="space-y-3">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2 gap-3">
+                    <div className="flex items-center gap-4 min-w-0">
                       <button
-                        className="shrink-0 relative group rounded-lg overflow-hidden w-20 h-20"
+                        className="shrink-0 relative group rounded-lg overflow-hidden h-12 w-12"
                         onClick={() => setPlayerVideo(v)}
                         title="Assistir vídeo"
                       >
                         {(v as any).thumbnail_url ? (
-                          <img src={(v as any).thumbnail_url} alt=""
-                            className="w-20 h-20 object-cover transition-opacity group-hover:opacity-70" />
+                          <img
+                            src={(v as any).thumbnail_url}
+                            alt=""
+                            className="h-12 w-12 object-cover transition-opacity group-hover:opacity-70"
+                          />
                         ) : (
-                          <div className="w-20 h-20 bg-muted flex items-center justify-center">
-                            <Film className="h-7 w-7 text-muted-foreground" />
+                          <div className="h-12 w-12 bg-muted flex items-center justify-center">
+                            <Film className="h-5 w-5 text-muted-foreground" />
                           </div>
                         )}
                         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                          <PlayCircle className="h-9 w-9 text-white drop-shadow-lg" />
+                          <PlayCircle className="h-5 w-5 text-white drop-shadow-lg" />
                         </div>
                       </button>
-
-                      {/* Info */}
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <p className="font-semibold truncate">{v.title}</p>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className={`inline-block text-xs px-2 py-0.5 rounded-full ${v.published ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
-                            {v.published ? "Publicado" : "Rascunho"}
-                          </span>
-                          {(v as any).created_at && (
-                            <span className="text-xs text-muted-foreground">
-                              Criado em {new Date((v as any).created_at).toLocaleString("pt-BR", {
-                                day: "2-digit", month: "2-digit", year: "numeric",
-                                hour: "2-digit", minute: "2-digit",
-                              })}
-                            </span>
+                      <div className="min-w-0">
+                        <CardTitle className="text-lg truncate">{v.title}</CardTitle>
+                        <p className="text-xs text-muted-foreground">
+                          {(v as any).created_at &&
+                            `Criado em ${new Date((v as any).created_at).toLocaleString("pt-BR", {
+                              day: "2-digit", month: "2-digit", year: "numeric",
+                              hour: "2-digit", minute: "2-digit",
+                            })}`}
+                          {(v as any).script_json && (
+                            <span className="ml-2 text-muted-foreground/60">· Roteiro salvo</span>
                           )}
-                        </div>
-                        {(v as any).script_json && (
-                          <p className="text-xs text-muted-foreground">Roteiro salvo ✓</p>
-                        )}
+                        </p>
                       </div>
                     </div>
-
-                    {/* Ações: wrap em mobile, coluna no desktop */}
-                    <div className="flex flex-row flex-wrap gap-1.5 sm:flex-col sm:shrink-0">
-                      {/* Reeditar com IA */}
+                    <div className="flex gap-1 shrink-0">
                       {(v as any).script_json && (
-                        <Button size="sm" variant="outline"
-                          className="gap-1.5 text-xs"
-                          onClick={() => navigate(`/admin/criar-video?edit=${v.id}`)}>
-                          <Wand2 className="h-3.5 w-3.5" /> Reeditar
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Reeditar com IA"
+                          onClick={() => navigate(`/admin/criar-video?edit=${v.id}`)}
+                        >
+                          <Wand2 className="h-4 w-4 text-primary" />
                         </Button>
                       )}
-
-                      {/* Publicar no Instagram (só para vídeos do Storage) */}
                       {canPublishToIG && (
-                        <Button size="sm"
-                          className="gap-1.5 text-xs bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white border-0"
-                          onClick={() => setPublishVideo(v)}>
-                          <Instagram className="h-3.5 w-3.5" /> Publicar
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Publicar no Instagram"
+                          onClick={() => setPublishVideo(v)}
+                        >
+                          <Instagram className="h-4 w-4 text-pink-500" />
                         </Button>
                       )}
-
-                      {/* Editar (trim + thumbnail) */}
-                      <Dialog open={editPanelVideo?.id === v.id}
-                        onOpenChange={(o) => !o && setEditPanelVideo(null)}>
+                      <Dialog
+                        open={editPanelVideo?.id === v.id}
+                        onOpenChange={(o) => !o && setEditPanelVideo(null)}
+                      >
                         <DialogTrigger asChild>
-                          <Button size="sm" variant="outline"
-                            className="gap-1.5 text-xs"
-                            onClick={() => setEditPanelVideo(v)}>
-                            <Scissors className="h-3.5 w-3.5" /> Editar
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Editar trim/thumbnail"
+                            onClick={() => setEditPanelVideo(v)}
+                          >
+                            <Scissors className="h-4 w-4" />
                           </Button>
                         </DialogTrigger>
                         <DialogContent className="max-w-lg">
@@ -506,28 +503,25 @@ export default function AdminVideos() {
                           )}
                         </DialogContent>
                       </Dialog>
-
-                      {/* Metadados */}
-                      <Button size="sm" variant="ghost"
-                        className="gap-1.5 text-xs text-muted-foreground"
-                        onClick={() => openEdit(v)}>
-                        <Pencil className="h-3.5 w-3.5" /> Detalhes
+                      <Button variant="ghost" size="icon" title="Compartilhar" onClick={() => setShareVideo(v)}>
+                        <Share2 className="h-4 w-4 text-muted-foreground" />
                       </Button>
-
-                      {/* Compartilhar */}
-                      <Button size="sm" variant="ghost"
-                        className="gap-1.5 text-xs text-muted-foreground"
-                        onClick={() => setShareVideo(v)}>
-                        <Share2 className="h-3.5 w-3.5" /> Compartilhar
+                      <Button variant="ghost" size="icon" title="Detalhes" onClick={() => openEdit(v)}>
+                        <Pencil className="h-4 w-4" />
                       </Button>
-
-                      {/* Excluir */}
-                      <Button size="sm" variant="ghost"
-                        className="gap-1.5 text-xs text-destructive hover:text-destructive"
-                        onClick={() => handleDelete(v.id)}>
-                        <Trash2 className="h-3.5 w-3.5" /> Excluir
+                      <Button variant="ghost" size="icon" title="Excluir" onClick={() => handleDelete(v.id)}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
+                  </CardHeader>
+                  <CardContent>
+                    <span
+                      className={`text-xs px-2 py-1 rounded-full ${
+                        v.published ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {v.published ? "Publicado" : "Rascunho"}
+                    </span>
                   </CardContent>
                 </Card>
 

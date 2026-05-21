@@ -90,11 +90,12 @@ export default function PublicationCalendarTab() {
           id:    p.id,
           title: (p.description?.trim() || videoMap[p.video_id ?? ""]?.title || "(sem legenda)").slice(0, 80),
           start: p.scheduled_at,
-          backgroundColor: isCanc ? "#9CA3AF" : meta.color,
-          borderColor:     isFail ? "#DC2626" : (isCanc ? "#6B7280" : meta.color),
-          textColor:       "#ffffff",
-          extendedProps:   { post: p },
+          backgroundColor: isCanc ? "#F3F4F6" : "#ffffff",
+          borderColor:     isFail ? "#DC2626" : (isCanc ? "#9CA3AF" : meta.color),
+          textColor:       meta.color,
+          extendedProps:   { post: p, videoMap },
           classNames: [
+            "fc-event-card",
             isDone ? "fc-event-published" : "",
             isCanc ? "fc-event-cancelled" : "",
             isFail ? "fc-event-failed"    : "",
@@ -102,6 +103,41 @@ export default function PublicationCalendarTab() {
         };
       });
   }, [posts, hidden, videoMap]);
+
+  function renderEventContent(arg: any) {
+    const post: CalendarPost = arg.event.extendedProps.post;
+    const map: Record<string, VideoLite> = arg.event.extendedProps.videoMap ?? {};
+    const meta = PLATFORM_META[post.platform];
+    const Icon = PLATFORM_ICONS[post.platform];
+    const video = post.video_id ? map[post.video_id] : null;
+    const title = post.description?.trim() || video?.title || "(sem legenda)";
+    const hh = arg.event.start
+      ? new Date(arg.event.start).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+      : "";
+    return (
+      <div className="flex gap-1.5 items-center w-full overflow-hidden px-1 py-0.5">
+        {video?.thumbnail_url ? (
+          <img
+            src={video.thumbnail_url}
+            alt=""
+            className="w-5 h-5 rounded object-cover shrink-0"
+          />
+        ) : (
+          <div className="w-5 h-5 rounded flex items-center justify-center shrink-0" style={{ background: `${meta.color}22` }}>
+            <Icon className="h-3 w-3" style={{ color: meta.color }} />
+          </div>
+        )}
+        <div className="flex-1 min-w-0 leading-tight">
+          <div className="flex items-center gap-1 text-[10px] font-semibold" style={{ color: meta.color }}>
+            <span>{hh}</span>
+            <span className="opacity-60">·</span>
+            <span className="truncate">{meta.label}</span>
+          </div>
+          <div className="text-[11px] text-foreground truncate font-medium">{title}</div>
+        </div>
+      </div>
+    );
+  }
 
   const grouped = useMemo(() => {
     const now = Date.now();
@@ -264,6 +300,7 @@ export default function PublicationCalendarTab() {
               editable
               eventDrop={handleEventDrop}
               eventDisplay="block"
+              eventContent={renderEventContent}
               dayMaxEvents={3}
               nowIndicator
               firstDay={1}

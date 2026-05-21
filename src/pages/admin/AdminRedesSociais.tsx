@@ -1,7 +1,6 @@
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Link2, Video, Clapperboard, Drama, Database, CalendarRange } from "lucide-react";
-import AdminRedesSociaisPosts from "./AdminRedesSociaisPosts";
+import { FileText, Link2, Video, Clapperboard, Drama, Database, CalendarRange, Bot } from "lucide-react";
 import { ConnectedAccounts } from "@/components/dashboard/ConnectedAccounts";
 import AdminArtigos from "./AdminArtigos";
 import AdminVideos from "./AdminVideos";
@@ -9,8 +8,9 @@ import AdminCriarVideo from "./AdminCriarVideo";
 import AdminAvatares from "./AdminAvatares";
 import AdminDocumentos from "./AdminDocumentos";
 import PublicationCalendarTab from "@/components/admin/redes-sociais/PublicationCalendarTab";
+import AutomacoesTab from "@/components/admin/redes-sociais/AutomacoesTab";
 
-const VALID_TABS = ["calendario", "artigos", "videos", "criar-video", "personagens", "posts", "contas", "rag"] as const;
+const VALID_TABS = ["calendario", "automacoes", "artigos", "videos", "criar-video", "personagens", "contas", "rag"] as const;
 type TabValue = (typeof VALID_TABS)[number];
 
 export default function AdminRedesSociais() {
@@ -37,6 +37,10 @@ export default function AdminRedesSociais() {
             <CalendarRange className="h-4 w-4" />
             <span className="hidden sm:inline">Calendário</span>
           </TabsTrigger>
+          <TabsTrigger value="automacoes" className="gap-2">
+            <Bot className="h-4 w-4" />
+            <span className="hidden sm:inline">Automações</span>
+          </TabsTrigger>
           <TabsTrigger value="artigos" className="gap-2">
             <FileText className="h-4 w-4" />
             <span className="hidden sm:inline">Artigos</span>
@@ -53,10 +57,6 @@ export default function AdminRedesSociais() {
             <Drama className="h-4 w-4" />
             <span className="hidden sm:inline">Personagens</span>
           </TabsTrigger>
-          <TabsTrigger value="posts" className="gap-2">
-            <FileText className="h-4 w-4" />
-            <span className="hidden sm:inline">Posts</span>
-          </TabsTrigger>
           <TabsTrigger value="contas" className="gap-2">
             <Link2 className="h-4 w-4" />
             <span className="hidden sm:inline">Contas Conectadas</span>
@@ -70,6 +70,9 @@ export default function AdminRedesSociais() {
         <TabsContent value="calendario" className="mt-4">
           <PublicationCalendarTab />
         </TabsContent>
+        <TabsContent value="automacoes" className="mt-4">
+          <AutomacoesTab />
+        </TabsContent>
         <TabsContent value="artigos" className="mt-4">
           <AdminArtigos />
         </TabsContent>
@@ -81,9 +84,6 @@ export default function AdminRedesSociais() {
         </TabsContent>
         <TabsContent value="personagens" className="mt-4">
           <AdminAvatares />
-        </TabsContent>
-        <TabsContent value="posts" className="mt-4">
-          <AdminRedesSociaisPosts />
         </TabsContent>
         <TabsContent value="contas" className="mt-4">
           <ConnectedAccounts />

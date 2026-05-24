@@ -37,16 +37,19 @@ export function useSetMyAutoRenew() {
   });
 }
 
-export function useCreditBalance() {
+// Sem argumento: saldo do profissional logado (uso comum).
+// Com professionalId: saldo de outro profissional (super-admin lendo saldo alheio).
+export function useCreditBalance(professionalIdOverride?: string | null) {
   const { data: professional } = useProfessional();
+  const professionalId = professionalIdOverride ?? professional?.id ?? null;
   return useQuery({
-    queryKey: ["credit-balance", professional?.id],
-    enabled: !!professional?.id,
+    queryKey: ["credit-balance", professionalId],
+    enabled: !!professionalId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("credit_balance")
         .select("balance, total_uses, last_purchase_at")
-        .eq("professional_id", professional!.id)
+        .eq("professional_id", professionalId!)
         .maybeSingle();
       if (error) throw error;
       return data ?? { balance: 0, total_uses: 0, last_purchase_at: null };

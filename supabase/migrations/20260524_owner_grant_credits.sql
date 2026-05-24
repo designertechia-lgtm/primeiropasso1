@@ -1,6 +1,6 @@
 -- RPC para super-admin liberar créditos de vídeo IA manualmente
 -- (cortesia, parceria, compensação por falha de geração).
--- Insere uma linha em credit_ledger com type='grant' e amount positivo.
+-- Insere uma linha em credit_ledger com type='bonus' e amount positivo.
 
 CREATE OR REPLACE FUNCTION public.owner_grant_credits(
   p_professional_id uuid,
@@ -30,10 +30,10 @@ BEGIN
   )
   VALUES (
     p_professional_id,
-    'grant',
+    'bonus',
     p_amount,
     COALESCE(NULLIF(btrim(p_reason), ''), 'Crédito manual concedido pelo super-admin'),
-    'grant|' || p_professional_id || '|' || extract(epoch from clock_timestamp())::bigint
+    'bonus|' || p_professional_id || '|' || extract(epoch from clock_timestamp())::bigint
   )
   RETURNING id INTO v_id;
 

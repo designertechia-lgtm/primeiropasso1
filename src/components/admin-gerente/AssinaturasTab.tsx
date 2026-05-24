@@ -14,9 +14,9 @@ import {
   useOwnerGrantManualSubscription,
   useOwnerCancelSubscription,
   useOwnerGrantCredits,
-  useOwnerCreditBalanceFor,
   type OwnerUserRow,
 } from "@/hooks/useOwnerStats";
+import { useCreditBalance } from "@/hooks/useBilling";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -146,7 +146,7 @@ function GrantCreditsDialog({
   onClose: () => void;
 }) {
   const grant = useOwnerGrantCredits();
-  const { data: balance, isLoading: balanceLoading } = useOwnerCreditBalanceFor(
+  const { data: balance, isLoading: balanceLoading } = useCreditBalance(
     user?.professional_id ?? null,
   );
   const [amount, setAmount] = useState<number>(10);

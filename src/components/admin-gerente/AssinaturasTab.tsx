@@ -7,11 +7,14 @@ import {
   XCircle,
   Search,
   RefreshCw,
+  Coins,
 } from "lucide-react";
 import {
   useOwnerListAllUsers,
   useOwnerGrantManualSubscription,
   useOwnerCancelSubscription,
+  useOwnerGrantCredits,
+  useOwnerCreditBalanceFor,
   type OwnerUserRow,
 } from "@/hooks/useOwnerStats";
 import { Button } from "@/components/ui/button";
@@ -133,11 +136,136 @@ function GrantSubscriptionDialog({
   );
 }
 
+function GrantCreditsDialog({
+  user,
+  open,
+  onClose,
+}: {
+  user: OwnerUserRow | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const grant = useOwnerGrantCredits();
+  const { data: balance, isLoading: balanceLoading } = useOwnerCreditBalanceFor(
+    user?.professional_id ?? null,
+  );
+  const [amount, setAmount] = useState<number>(10);
+  const [reason, setReason] = useState<string>("");
+
+  const current = Number(balance?.balance ?? 0);
+  const after = current + (Number.isFinite(amount) ? amount : 0);
+
+  const handleSubmit = async () => {
+    if (!user) return;
+    if (!amount || amount <= 0) {
+      toast.error("Informe um valor positivo");
+      return;
+    }
+    try {
+      await grant.mutateAsync({
+        professional_id: user.professional_id,
+        amount,
+        reason: reason.trim() || null,
+      });
+      toast.success(`+${amount} créditos para ${user.full_name ?? user.email}`);
+      setAmount(10);
+      setReason("");
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao adicionar créditos");
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Adicionar créditos de vídeo</DialogTitle>
+          <DialogDescription>
+            {user ? (
+              <>
+                Concede créditos para <strong>{user.full_name ?? user.email}</strong>{" "}
+                consumir em gerações Premium ou PRO. 1 crédito = R$ 1 de saldo na plataforma.
+              </>
+            ) : null}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-2">
+          <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Saldo atual</span>
+              <span className="font-medium tabular-nums">
+                {balanceLoading ? "…" : current.toLocaleString("pt-BR")}
+              </span>
+            </div>
+            <div className="flex items-center justify-between mt-1">
+              <span className="text-muted-foreground">Após a operação</span>
+              <span className="font-medium tabular-nums text-emerald-600">
+                {after.toLocaleString("pt-BR")}
+              </span>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="grant_credits">Quantidade de créditos</Label>
+            <Input
+              id="grant_credits"
+              type="number"
+              min={1}
+              step="1"
+              value={amount}
+              onChange={(e) => setAmount(Number(e.target.value))}
+            />
+            <div className="flex flex-wrap gap-1.5">
+              {[10, 30, 50, 100].map((v) => (
+                <Button
+                  key={v}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setAmount(v)}
+                >
+                  {v}
+                </Button>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Sugestões: 10 (cortesia), 30 (tester), 50 (compensação), 100 (parceria).
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="grant_reason">Motivo (opcional)</Label>
+            <Input
+              id="grant_reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Ex: tester beta, compensação por falha na geração…"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Fica registrado no extrato (credit_ledger.description).
+            </p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSubmit} disabled={grant.isPending}>
+            {grant.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Adicionar {amount > 0 ? amount : ""} créditos
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function AssinaturasTab() {
   const { data, isLoading } = useOwnerListAllUsers();
   const cancel = useOwnerCancelSubscription();
   const [search, setSearch] = useState("");
   const [grantUser, setGrantUser] = useState<OwnerUserRow | null>(null);
+  const [creditUser, setCreditUser] = useState<OwnerUserRow | null>(null);
 
   const filtered = useMemo(() => {
     if (!data) return [];
@@ -192,7 +320,7 @@ export default function AssinaturasTab() {
               <Users className="h-4 w-4 text-primary" /> Profissionais cadastrados
             </CardTitle>
             <CardDescription>
-              Clique no 🎁 para liberar X dias sem PIX. Clique no ❌ para cancelar.
+              🎁 libera X dias de assinatura sem PIX. 💰 adiciona créditos de vídeo. ❌ cancela.
             </CardDescription>
           </div>
           <div className="relative w-full md:w-64">
@@ -271,9 +399,17 @@ export default function AssinaturasTab() {
                           variant="ghost"
                           size="sm"
                           onClick={() => setGrantUser(u)}
-                          title="Liberar acesso manual"
+                          title="Liberar dias de assinatura (sem PIX)"
                         >
                           <Gift className="h-4 w-4 text-emerald-600" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setCreditUser(u)}
+                          title="Adicionar créditos de vídeo"
+                        >
+                          <Coins className="h-4 w-4 text-amber-600" />
                         </Button>
                         {!u.cancelled_at && u.current_period_end && (
                           <Button
@@ -299,6 +435,12 @@ export default function AssinaturasTab() {
         user={grantUser}
         open={!!grantUser}
         onClose={() => setGrantUser(null)}
+      />
+
+      <GrantCreditsDialog
+        user={creditUser}
+        open={!!creditUser}
+        onClose={() => setCreditUser(null)}
       />
     </div>
   );

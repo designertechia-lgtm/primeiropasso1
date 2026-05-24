@@ -487,3 +487,45 @@ export function useOwnerCancelSubscription() {
     },
   });
 }
+
+export function useOwnerCreditBalanceFor(professional_id: string | null) {
+  return useQuery({
+    queryKey: ["owner-credit-balance", professional_id],
+    enabled: !!professional_id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("credit_balance")
+        .select("balance, total_uses, last_purchase_at")
+        .eq("professional_id", professional_id!)
+        .maybeSingle();
+      if (error) throw error;
+      return data ?? { balance: 0, total_uses: 0, last_purchase_at: null };
+    },
+  });
+}
+
+export function useOwnerGrantCredits() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: {
+      professional_id: string;
+      amount: number;
+      reason?: string | null;
+    }) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc("owner_grant_credits", {
+        p_professional_id: args.professional_id,
+        p_amount: args.amount,
+        p_reason: args.reason ?? null,
+      });
+      if (error) throw error;
+      return data as string;
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["owner-credit-balance", vars.professional_id] });
+      qc.invalidateQueries({ queryKey: ["credit-balance"] });
+      qc.invalidateQueries({ queryKey: ["credit-ledger"] });
+      qc.invalidateQueries({ queryKey: ["owner-credits-by-service"] });
+    },
+  });
+}

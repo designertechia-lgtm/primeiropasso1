@@ -1,4 +1,4 @@
-import { Play, Award, Heart, ShieldCheck } from "lucide-react";
+import { Play, Award, Heart } from "lucide-react";
 import { useState } from "react";
 
 interface AboutSectionProps {
@@ -85,14 +85,14 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
       <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-accent/5 rounded-full blur-3xl translate-y-1/3 -translate-x-1/3 pointer-events-none" />
 
       <div className="container mx-auto px-4 relative z-10">
-        <div className="flex flex-col lg:flex-row gap-16 items-start max-w-6xl mx-auto">
-          
+        <div className="flex flex-col lg:flex-row gap-16 items-stretch max-w-6xl mx-auto">
+
           {/* Media Column (Sticky) */}
-          <div className="w-full lg:w-1/2 relative group lg:sticky lg:top-24">
+          <div className="w-full lg:w-1/2 relative group lg:sticky lg:top-24 flex flex-col">
             {/* Soft decorative border behind */}
             <div className="absolute -inset-4 bg-gradient-to-tr from-primary/20 to-accent/20 rounded-[2.5rem] rotate-3 scale-[0.98] transition-transform duration-500 group-hover:rotate-6 group-hover:scale-100" />
-            
-            <div className="relative rounded-[2rem] overflow-hidden shadow-2xl bg-card aspect-[4/5] lg:aspect-square max-h-[650px] mx-auto">
+
+            <div className="relative rounded-[2rem] overflow-hidden shadow-2xl bg-card flex-1 min-h-[380px] lg:min-h-[500px] mx-auto w-full">
               {isVideoPlaying && aboutVideoUrl ? (
                 isMp4 ? (
                   <video 
@@ -137,18 +137,6 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
                     </div>
                   )}
 
-                  {/* Floating Badge */}
-                  {crp && (
-                    <div className="absolute top-6 right-6 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md p-3 md:p-4 rounded-2xl shadow-lg border border-white/20 dark:border-white/10 flex items-center gap-3 animate-in slide-in-from-top-8 duration-700 delay-300">
-                      <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                        <ShieldCheck className="w-4 h-4 md:w-5 md:h-5 text-primary" />
-                      </div>
-                      <div>
-                        <p className="text-[9px] md:text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Registro Profissional</p>
-                        <p className="text-xs md:text-sm font-bold text-foreground">CRP {crp}</p>
-                      </div>
-                    </div>
-                  )}
                 </>
               )}
             </div>

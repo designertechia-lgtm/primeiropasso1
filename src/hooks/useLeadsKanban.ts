@@ -23,6 +23,8 @@ export interface Lead {
   origin_platform: string;
   created_at: string;
   professional_id: string;
+  /** Informações coletadas pelo agente WhatsApp durante a conversa (chave→valor). */
+  collected_info?: Record<string, string> | null;
 }
 
 export const PIPELINE_COLUMNS: {

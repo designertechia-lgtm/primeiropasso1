@@ -7,7 +7,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Phone, Mail, Bot, MessageSquare, User } from "lucide-react";
+import { Phone, Mail, Bot, MessageSquare, User, ClipboardList } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useChatMessages } from "@/hooks/useChatMessages";
@@ -100,6 +100,29 @@ export function LeadDetailSheet({
               }
             />
           </div>
+
+          {/* Informações coletadas pelo agente */}
+          {lead.collected_info && Object.keys(lead.collected_info).length > 0 && (
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+              <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                <ClipboardList className="h-4 w-4 text-primary" />
+                Informações coletadas
+              </h3>
+              <ul className="space-y-1.5 text-sm">
+                {Object.entries(lead.collected_info).map(([key, value]) => (
+                  <li key={key} className="flex gap-2">
+                    <span className="text-muted-foreground capitalize shrink-0">
+                      {key.replace(/_/g, " ")}:
+                    </span>
+                    <span className="font-medium">{String(value)}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[10px] text-muted-foreground italic pt-1">
+                Coletado automaticamente pelo agente durante a conversa.
+              </p>
+            </div>
+          )}
 
           {/* Conversation history */}
           <div>

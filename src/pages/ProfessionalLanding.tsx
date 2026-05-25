@@ -271,6 +271,9 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         phone={(professional as any).phone ?? undefined}
         email={(professional as any).email ?? undefined}
         instagram={(professional as any).instagram ?? undefined}
+        linkedin={(professional as any).linkedin ?? undefined}
+        tiktok={(professional as any).tiktok ?? undefined}
+        facebook={(professional as any).facebook ?? undefined}
       />
       <LandingFooter professionalName={name} whatsapp={professional.whatsapp ?? undefined} />
     </div>

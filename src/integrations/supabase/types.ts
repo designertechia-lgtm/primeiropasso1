@@ -496,6 +496,7 @@ export type Database = {
           dark_primary_color: string | null
           dark_secondary_color: string | null
           email: string | null
+          facebook: string | null
           font_family: string | null
           font_size_scale: string | null
           full_name: string | null
@@ -525,6 +526,7 @@ export type Database = {
           solution_items: Json | null
           solution_subtitle: string | null
           solution_title: string | null
+          tiktok: string | null
           updated_at: string
           user_id: string
           whatsapp: string | null
@@ -550,6 +552,7 @@ export type Database = {
           dark_primary_color?: string | null
           dark_secondary_color?: string | null
           email?: string | null
+          facebook?: string | null
           font_family?: string | null
           font_size_scale?: string | null
           full_name?: string | null
@@ -579,6 +582,7 @@ export type Database = {
           solution_items?: Json | null
           solution_subtitle?: string | null
           solution_title?: string | null
+          tiktok?: string | null
           updated_at?: string
           user_id: string
           whatsapp?: string | null
@@ -604,6 +608,7 @@ export type Database = {
           dark_primary_color?: string | null
           dark_secondary_color?: string | null
           email?: string | null
+          facebook?: string | null
           font_family?: string | null
           font_size_scale?: string | null
           full_name?: string | null
@@ -633,6 +638,7 @@ export type Database = {
           solution_items?: Json | null
           solution_subtitle?: string | null
           solution_title?: string | null
+          tiktok?: string | null
           updated_at?: string
           user_id?: string
           whatsapp?: string | null

@@ -9,9 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, MessageCircle, Type } from "lucide-react";
+import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
+import { TikTokIcon } from "@/components/icons/TikTokIcon";
 import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import HeroSection from "@/components/landing/HeroSection";
@@ -259,6 +260,9 @@ export default function AdminLandingPage() {
   const [contactPhone, setContactPhone] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactInstagram, setContactInstagram] = useState("");
+  const [contactLinkedin, setContactLinkedin] = useState("");
+  const [contactTiktok, setContactTiktok] = useState("");
+  const [contactFacebook, setContactFacebook] = useState("");
 
   const [activeSection, setActiveSection] = useState<Section>("hero");
   const [saving, setSaving] = useState(false);
@@ -368,6 +372,9 @@ export default function AdminLandingPage() {
     setContactPhone((professional as any).phone || "");
     setContactEmail((professional as any).email || "");
     setContactInstagram((professional as any).instagram || "");
+    setContactLinkedin((professional as any).linkedin || "");
+    setContactTiktok((professional as any).tiktok || "");
+    setContactFacebook((professional as any).facebook || "");
     setIsDirty(false);
     requestAnimationFrame(() => { hasLoaded.current = true; });
   }, [professional]);
@@ -378,7 +385,7 @@ export default function AdminLandingPage() {
   }, [heroTitle, heroSubtitle, heroImageUrl, heroBgUrl, heroBgOpacity, heroBgOverlay, photoUrl, photoStyle, photoFit,
       aboutTitle, bio, aboutImageUrl, aboutVideoUrl, approaches, primaryColor, secondaryColor, bgColor, darkPrimaryColor, darkSecondaryColor, darkBgColor, darkModeEnabled,
       painTitle, painSubtitle, painItems, solutionTitle, solutionSubtitle, solutionItems,
-      fontFamily, headingFontFamily, fontSizeScale, contactTitle, contactSubtitle, contactWhatsapp, contactPhone, contactEmail, contactInstagram]);
+      fontFamily, headingFontFamily, fontSizeScale, contactTitle, contactSubtitle, contactWhatsapp, contactPhone, contactEmail, contactInstagram, contactLinkedin, contactTiktok, contactFacebook]);
 
   // alerta ao fechar/recarregar a aba
   useEffect(() => {
@@ -479,6 +486,9 @@ export default function AdminLandingPage() {
       phone: contactPhone || null,
       email: contactEmail || null,
       instagram: contactInstagram || null,
+      linkedin: contactLinkedin || null,
+      tiktok: contactTiktok || null,
+      facebook: contactFacebook || null,
     } as any).eq("id", professional.id);
     setSaving(false);
     if (error) toast.error("Erro ao salvar");
@@ -635,6 +645,9 @@ export default function AdminLandingPage() {
                 phone={contactPhone || undefined}
                 email={contactEmail || undefined}
                 instagram={contactInstagram || undefined}
+                linkedin={contactLinkedin || undefined}
+                tiktok={contactTiktok || undefined}
+                facebook={contactFacebook || undefined}
               />
             </SectionBlock>
 
@@ -1273,8 +1286,23 @@ export default function AdminLandingPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="contactInstagram" className="flex items-center gap-2"><Instagram className="h-4 w-4 text-pink-500" />Instagram</Label>
+                <Label htmlFor="contactInstagram" className="flex items-center gap-2"><Instagram className="h-4 w-4 text-pink-500" />Instagram <FieldHint text="Apenas o @ (ex: @meuperfil) ou a URL completa." /></Label>
                 <Input id="contactInstagram" value={contactInstagram} onChange={(e) => setContactInstagram(e.target.value)} placeholder="@seuperfil" />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="contactTiktok" className="flex items-center gap-2"><TikTokIcon className="h-4 w-4 text-foreground" />TikTok <FieldHint text="Apenas o @ (ex: @meuperfil) ou a URL completa." /></Label>
+                <Input id="contactTiktok" value={contactTiktok} onChange={(e) => setContactTiktok(e.target.value)} placeholder="@seuperfil" />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="contactLinkedin" className="flex items-center gap-2"><Linkedin className="h-4 w-4 text-blue-600" />LinkedIn <FieldHint text="Cole a URL completa do seu perfil (ex: linkedin.com/in/seuperfil) ou apenas o username." /></Label>
+                <Input id="contactLinkedin" value={contactLinkedin} onChange={(e) => setContactLinkedin(e.target.value)} placeholder="linkedin.com/in/seuperfil" />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="contactFacebook" className="flex items-center gap-2"><Facebook className="h-4 w-4 text-blue-600" />Facebook <FieldHint text="Cole a URL completa da sua página (ex: facebook.com/suapagina) ou apenas o username." /></Label>
+                <Input id="contactFacebook" value={contactFacebook} onChange={(e) => setContactFacebook(e.target.value)} placeholder="facebook.com/suapagina" />
               </div>
 
               <Button onClick={saveContatos} disabled={saving} className="w-full">

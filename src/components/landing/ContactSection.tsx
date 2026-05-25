@@ -1,5 +1,6 @@
-import { MessageCircle, Phone, Mail, Instagram } from "lucide-react";
+import { MessageCircle, Phone, Mail, Instagram, Linkedin, Facebook } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { TikTokIcon } from "@/components/icons/TikTokIcon";
 
 interface ContactSectionProps {
   title?: string;
@@ -8,6 +9,15 @@ interface ContactSectionProps {
   phone?: string;
   email?: string;
   instagram?: string;
+  linkedin?: string;
+  tiktok?: string;
+  facebook?: string;
+}
+
+function buildSocialUrl(value: string, base: string): string {
+  const trimmed = value.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return base + trimmed.replace(/^@/, "");
 }
 
 export default function ContactSection({
@@ -17,12 +27,16 @@ export default function ContactSection({
   phone,
   email,
   instagram,
+  linkedin,
+  tiktok,
+  facebook,
 }: ContactSectionProps) {
   const whatsappLink = whatsapp
     ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent("Olá! Gostaria de agendar um horário.")}`
     : null;
 
-  const hasAnyContact = whatsapp || phone || email || instagram;
+  const hasSecondary = phone || email || instagram || linkedin || tiktok || facebook;
+  const hasAnyContact = whatsapp || hasSecondary;
 
   return (
     <section className="py-16 md:py-24 bg-primary/5">
@@ -48,7 +62,7 @@ export default function ContactSection({
               </Button>
             )}
 
-            {(phone || email || instagram) && (
+            {hasSecondary && (
               <div className="mt-4 flex flex-col items-center gap-2 text-sm text-muted-foreground">
                 {phone && (
                   <a
@@ -70,13 +84,46 @@ export default function ContactSection({
                 )}
                 {instagram && (
                   <a
-                    href={`https://instagram.com/${instagram.replace("@", "")}`}
+                    href={buildSocialUrl(instagram, "https://instagram.com/")}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-2 hover:text-primary transition-colors"
                   >
                     <Instagram className="h-4 w-4" />
-                    {instagram.startsWith("@") ? instagram : `@${instagram}`}
+                    {instagram.startsWith("@") || /^https?:/i.test(instagram) ? instagram : `@${instagram}`}
+                  </a>
+                )}
+                {tiktok && (
+                  <a
+                    href={buildSocialUrl(tiktok, "https://tiktok.com/@")}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 hover:text-primary transition-colors"
+                  >
+                    <TikTokIcon className="h-4 w-4" />
+                    {tiktok.startsWith("@") || /^https?:/i.test(tiktok) ? tiktok : `@${tiktok}`}
+                  </a>
+                )}
+                {linkedin && (
+                  <a
+                    href={buildSocialUrl(linkedin, "https://linkedin.com/in/")}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 hover:text-primary transition-colors"
+                  >
+                    <Linkedin className="h-4 w-4" />
+                    LinkedIn
+                  </a>
+                )}
+                {facebook && (
+                  <a
+                    href={buildSocialUrl(facebook, "https://facebook.com/")}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 hover:text-primary transition-colors"
+                  >
+                    <Facebook className="h-4 w-4" />
+                    Facebook
                   </a>
                 )}
               </div>

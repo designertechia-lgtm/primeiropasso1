@@ -27,5 +27,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-.claude/  
-_docs/ 
+.claude/
+_docs/
+
+# Supabase CLI: cache local de versao + temp files (nao e codigo do projeto)
+supabase/.temp/

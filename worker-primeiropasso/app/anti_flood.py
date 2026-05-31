@@ -2,6 +2,7 @@
 Redis-based debouncing to prevent duplicate processing of rapid messages.
 Same pattern as n8n Wait node.
 """
+# feature: agente-conversa — ver _docs/features/agente-conversa.md
 import redis
 from app.config import get_settings
 

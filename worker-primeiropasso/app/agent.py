@@ -1,4 +1,5 @@
 """OpenAI GPT-4o agent with function calling for the WhatsApp assistant."""
+# feature: agente-conversa — ver _docs/features/agente-conversa.md
 import json
 import logging
 from openai import OpenAI

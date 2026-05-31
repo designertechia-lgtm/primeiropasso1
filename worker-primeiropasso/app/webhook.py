@@ -1,4 +1,5 @@
 """Webhook endpoint for EvolutionAPI events."""
+# feature: agente-conversa — ver _docs/features/agente-conversa.md
 import asyncio
 import logging
 from fastapi import APIRouter, Request, BackgroundTasks

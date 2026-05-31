@@ -5,6 +5,7 @@ Quem confirma e o sistema. Aqui fazemos o parse de data/hora em PT-BR e so
 criamos o agendamento quando ele bate com um slot que REALMENTE existe na
 disponibilidade do profissional — eliminando horario alucinado.
 """
+# feature: agente-conversa — ver _docs/features/agente-conversa.md
 import re
 from datetime import date, datetime, timedelta
 

@@ -5,6 +5,7 @@ spam, prompt injection, mensagens vazias/so-emoji e textos absurdamente longos.
 Mensagens barradas nao chegam ao modelo nem entram no historico de conversa
 (para nao envenenar o contexto).
 """
+# feature: agente-conversa — ver _docs/features/agente-conversa.md
 import re
 
 _EMOJI = re.compile(

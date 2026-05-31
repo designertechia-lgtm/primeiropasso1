@@ -5,6 +5,7 @@ ao contexto do Primeiro Passo (terapeutas / saude mental). Aqui acolhimento vale
 mais do que "empurrar venda": a intencao 'recusa' NAO insiste como no modelo de
 vendas — respeita o limite da pessoa.
 """
+# feature: agente-conversa — ver _docs/features/agente-conversa.md
 import re
 
 

@@ -1,8 +1,10 @@
 """Webhook endpoint for EvolutionAPI events."""
+import asyncio
 import logging
 from fastapi import APIRouter, Request, BackgroundTasks
 from app.flow_control import is_flow_disabled, is_agent_enabled
-from app.anti_flood import should_process
+from app.anti_flood import buffer_message, is_latest, drain_buffer
+from app.config import get_settings
 from app.message_router import route_message
 from app.agent import run_agent
 from app.evolution_api import send_text
@@ -22,10 +24,6 @@ async def _handle_message(instance: str, phone: str, msg_type: str, data: dict):
             logger.info(f"Agent disabled for {phone}, skipping")
             return
 
-        if not should_process(phone):
-            logger.info(f"Anti-flood: skipping duplicate for {phone}")
-            return
-
         pro = get_professional_by_phone(phone)
         if not pro:
             logger.warning(f"No professional found for phone {phone}")
@@ -35,7 +33,20 @@ async def _handle_message(instance: str, phone: str, msg_type: str, data: dict):
         if not text.strip():
             return
 
-        reply = await run_agent(phone, text, pro["id"])
+        # UNIFICACAO DE MENSAGENS (#7): em vez de descartar mensagens rapidas,
+        # acumula no buffer e espera uma janela de silencio. So a ultima task
+        # processa tudo junto — quem o usuario manda em partes vira uma so msg.
+        token = buffer_message(phone, text)
+        await asyncio.sleep(get_settings().ANTI_FLOOD_SECONDS)
+        if not is_latest(phone, token):
+            logger.info(f"Anti-flood: msg de {phone} agregada numa posterior, ignorando esta task")
+            return
+
+        combined = drain_buffer(phone)
+        if not combined.strip():
+            return
+
+        reply = await run_agent(phone, combined, pro["id"])
         if reply:
             await send_text(instance, phone, reply)
 

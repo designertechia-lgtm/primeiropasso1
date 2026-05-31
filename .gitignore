@@ -29,6 +29,7 @@ dist-ssr
 *.sw?
 .claude/
 _docs/
+.obsidian/
 
 # Supabase CLI: cache local de versao + temp files (nao e codigo do projeto)
 supabase/.temp/

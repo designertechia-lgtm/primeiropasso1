@@ -1393,6 +1393,61 @@ async function sendWhatsAppMessage(instanceName: string, remoteJid: string, text
 }
 
 // =============================================
+// SEND AUDIO (G4) — responde com a voz clonada do profissional (ElevenLabs)
+// =============================================
+/**
+ * Gera TTS da resposta com a voz clonada (via elevenlabs-proxy) e envia como
+ * áudio de voz no WhatsApp. Retorna true se enviou; false se deve cair pro texto.
+ */
+async function sendWhatsAppAudio(
+  instanceName: string,
+  remoteJid: string,
+  text: string,
+  voiceId: string,
+): Promise<boolean> {
+  const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
+  const evoKey = Deno.env.get('EVOLUTION_API_KEY')
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEYS') || ''
+  if (!evoUrl || !evoKey || !instanceName || !supabaseUrl) return false
+
+  try {
+    // 1. Texto -> áudio MP3 via elevenlabs-proxy (voz clonada)
+    const ttsRes = await fetch(`${supabaseUrl}/functions/v1/elevenlabs-proxy?action=generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
+      body: JSON.stringify({ text, voice_id: voiceId }),
+    })
+    if (!ttsRes.ok) {
+      console.error(`[Audio] TTS falhou ${ttsRes.status}: ${(await ttsRes.text()).slice(0, 200)}`)
+      return false
+    }
+
+    // 2. MP3 -> base64 pra enviar pela Evolution
+    const buf = new Uint8Array(await ttsRes.arrayBuffer())
+    let binary = ''
+    for (let i = 0; i < buf.length; i++) binary += String.fromCharCode(buf[i])
+    const base64Audio = btoa(binary)
+
+    // 3. Envia como áudio de voz (PTT) no WhatsApp
+    const res = await fetch(`${evoUrl}/message/sendWhatsAppAudio/${instanceName}`, {
+      method: 'POST',
+      headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number: remoteJid, audio: base64Audio, delay: 1200, encoding: true }),
+    })
+    if (!res.ok) {
+      console.error(`[Audio] Evolution sendWhatsAppAudio ${res.status}: ${(await res.text()).slice(0, 200)}`)
+      return false
+    }
+    console.log(`[Audio] ✅ Resposta enviada em áudio (voz clonada)`)
+    return true
+  } catch (e: any) {
+    console.error('[Audio] Erro ao enviar áudio:', e.message)
+    return false
+  }
+}
+
+// =============================================
 // MAIN HANDLER
 // =============================================
 serve(async (req) => {
@@ -1455,8 +1510,17 @@ serve(async (req) => {
       await supabaseAdmin.from('chat_messages').insert({ lead_id, role: 'assistant', content: agentReply })
       await supabaseAdmin.from('leads').update({ last_message_at: new Date().toISOString() }).eq('id', lead_id)
 
-      console.log(`[WhatsApp] Sending message via Evolution...`)
-      await sendWhatsAppMessage(instance_name, remote_jid, agentReply)
+      // G4 — se o profissional ativou resposta em voz clonada, tenta áudio.
+      // Fallback: qualquer falha no TTS/envio cai pro texto (lead nunca fica sem resposta).
+      let enviado = false
+      if (professional.agent_voice_enabled && professional.agent_voice_id) {
+        console.log(`[WhatsApp] Tentando responder em áudio (voz clonada)...`)
+        enviado = await sendWhatsAppAudio(instance_name, remote_jid, agentReply, professional.agent_voice_id)
+      }
+      if (!enviado) {
+        console.log(`[WhatsApp] Sending message via Evolution...`)
+        await sendWhatsAppMessage(instance_name, remote_jid, agentReply)
+      }
     } else {
       console.log(`[AI] Resposta vazia (tool já enviou). Atualizando só last_message_at.`)
       await supabaseAdmin.from('leads').update({ last_message_at: new Date().toISOString() }).eq('id', lead_id)

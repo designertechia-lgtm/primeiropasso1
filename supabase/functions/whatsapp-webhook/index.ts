@@ -123,6 +123,96 @@ async function sendPresence(instanceName: string, remoteJid: string) {
 }
 
 /**
+ * Baixa a mídia (áudio/imagem) de uma mensagem como base64, sob demanda,
+ * via Evolution /chat/getBase64FromMediaMessage. Não depende de webhook base64:true.
+ */
+async function getBase64Media(instanceName: string, messageId?: string): Promise<string | null> {
+  const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
+  const evoKey = Deno.env.get('EVOLUTION_API_KEY')
+  if (!evoUrl || !evoKey || !instanceName || !messageId) return null
+  const res = await fetch(`${evoUrl}/chat/getBase64FromMediaMessage/${instanceName}`, {
+    method: 'POST',
+    headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: { key: { id: messageId } }, convertToMp4: false }),
+  })
+  if (!res.ok) {
+    console.error(`[getBase64Media] Status ${res.status}: ${(await res.text()).slice(0, 200)}`)
+    return null
+  }
+  const data = await res.json()
+  return data?.base64 || null
+}
+
+/**
+ * G1 — Transcreve áudio do WhatsApp com Whisper (OpenAI). Retorna o texto (pt).
+ */
+async function transcreverAudio(instanceName: string, messageId?: string): Promise<string> {
+  const base64 = await getBase64Media(instanceName, messageId)
+  if (!base64) return ''
+  const openaiKey = Deno.env.get('OPENAI_API_KEY')
+  if (!openaiKey) { console.error('[transcreverAudio] OPENAI_API_KEY ausente'); return '' }
+
+  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+  const form = new FormData()
+  form.append('file', new Blob([bytes], { type: 'audio/ogg' }), 'audio.ogg')
+  form.append('model', 'whisper-1')
+  form.append('language', 'pt')
+
+  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${openaiKey}` },
+    body: form,
+  })
+  if (!res.ok) {
+    console.error(`[transcreverAudio] Whisper ${res.status}: ${(await res.text()).slice(0, 200)}`)
+    return ''
+  }
+  const data = await res.json()
+  return (data?.text || '').trim()
+}
+
+/**
+ * G2 — Analisa imagem do WhatsApp com Claude Vision. Retorna descrição em texto.
+ * Inclui a legenda do lead (se houver) pra dar contexto ao agente.
+ */
+async function descreverImagem(instanceName: string, messageId: string | undefined, legenda: string): Promise<string> {
+  const base64 = await getBase64Media(instanceName, messageId)
+  if (!base64) return legenda.trim()
+  const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
+  if (!anthropicKey) { console.error('[descreverImagem] ANTHROPIC_API_KEY ausente'); return legenda.trim() }
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': anthropicKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 300,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+          { type: 'text', text: 'Descreva em português, de forma objetiva, o que aparece nesta imagem que um paciente enviou no WhatsApp. Foque no que for relevante para um atendimento (ex: documento, exame, captura de tela, foto pessoal).' },
+        ],
+      }],
+    }),
+  })
+  if (!res.ok) {
+    console.error(`[descreverImagem] Claude ${res.status}: ${(await res.text()).slice(0, 200)}`)
+    return legenda.trim()
+  }
+  const data = await res.json()
+  const descricao = (data?.content?.[0]?.text || '').trim()
+  // Combina legenda do lead + descrição da IA pro agente ter o contexto completo
+  if (legenda.trim() && descricao) return `[Imagem: ${descricao}] ${legenda.trim()}`
+  if (descricao) return `[Imagem recebida: ${descricao}]`
+  return legenda.trim()
+}
+
+/**
  * Envia menu de botões via Evolution API com as opções iniciais
  */
 async function sendOptionsMenu(instanceName: string, remoteJid: string, professionalName: string) {
@@ -361,8 +451,14 @@ serve(async (req) => {
 
     console.log(`[WEBHOOK] ✅ Passou nos filtros (não é fromMe, não é grupo)`)
 
+    // Dados do remetente (precisamos da instância antes pra baixar mídia)
+    const remoteJid = key.remoteJid
+    const formattedNumber = formatPhoneNumber(remoteJid)
+    const pushName = data.pushName || 'Visitante'
+    const instanceName = body.instance || body.instanceName || ''
+
     // Extrair texto da mensagem (suporta texto simples, botões e templates)
-    const messageText =
+    let messageText =
       message?.conversation ||
       message?.extendedTextMessage?.text ||
       message?.buttonsResponseMessage?.selectedDisplayText ||
@@ -370,21 +466,32 @@ serve(async (req) => {
       message?.listResponseMessage?.singleSelectReply?.selectedRowId ||
       ''
 
+    // G1/G2 — Mídia: se não veio texto mas veio áudio/imagem, transcreve/descreve
+    // (busca o base64 sob demanda na Evolution; não depende de webhook base64:true).
+    if (!messageText.trim() && (message?.audioMessage || message?.imageMessage)) {
+      try {
+        if (message?.audioMessage) {
+          console.log(`[WEBHOOK] 🎙️ Áudio recebido — transcrevendo...`)
+          messageText = await transcreverAudio(instanceName, key?.id)
+        } else if (message?.imageMessage) {
+          console.log(`[WEBHOOK] 🖼️ Imagem recebida — analisando...`)
+          const legenda = message.imageMessage.caption || ''
+          messageText = await descreverImagem(instanceName, key?.id, legenda)
+        }
+      } catch (e) {
+        console.error(`[WEBHOOK] Erro ao processar mídia:`, e instanceof Error ? e.message : String(e))
+      }
+    }
+
     if (!messageText.trim()) {
       console.log(`[WEBHOOK] ⚠️ Ignorado: sem conteúdo de texto`)
-      return new Response(JSON.stringify({ ignored: true, reason: 'no text content (audio/image/etc not yet supported)' }), {
+      return new Response(JSON.stringify({ ignored: true, reason: 'no text content (mídia vazia ou não suportada)' }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
     console.log(`[WEBHOOK] ✅ Mensagem com texto: "${messageText.substring(0, 50)}..."`)
-
-    // Dados do remetente
-    const remoteJid = key.remoteJid
-    const formattedNumber = formatPhoneNumber(remoteJid)
-    const pushName = data.pushName || 'Visitante'
-    const instanceName = body.instance || body.instanceName || ''
 
     console.log(`[DEBUG] Dados extraídos: formattedNumber=${formattedNumber}, pushName=${pushName}, instanceName=${instanceName}`)
 

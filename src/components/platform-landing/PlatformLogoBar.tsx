@@ -23,9 +23,9 @@ export default function PlatformLogoBar() {
           {BADGES.map(({ icon: Icon, label }) => (
             <div
               key={label}
-              className="flex items-center gap-2 text-foreground/70"
+              className="flex items-center gap-2 text-foreground/70 transition-colors hover:text-foreground"
             >
-              <Icon className="h-4 w-4 text-primary" aria-hidden />
+              <Icon className="h-4 w-4 text-primary transition-transform duration-300 group-hover:scale-110" aria-hidden />
               <span className="text-sm font-medium">{label}</span>
             </div>
           ))}
@@ -33,7 +33,7 @@ export default function PlatformLogoBar() {
           {PLATFORMS.map(({ icon: Icon, label }) => (
             <div
               key={label}
-              className="flex items-center gap-2 text-foreground/70"
+              className="flex items-center gap-2 text-foreground/70 transition-colors hover:text-foreground"
             >
               <Icon className="h-4 w-4 text-accent" aria-hidden />
               <span className="text-sm font-medium">{label}</span>

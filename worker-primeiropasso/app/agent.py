@@ -1,8 +1,8 @@
-"""OpenAI GPT-4o agent with function calling for the WhatsApp assistant."""
+"""Claude (Anthropic) agent with tool use for the WhatsApp assistant."""
 # feature: agente-conversa — ver _docs/features/agente-conversa.md
 import json
 import logging
-from openai import OpenAI
+from anthropic import Anthropic
 from app.config import get_settings
 from app.memory import save_message, get_history
 from app.pipeline import advance_stage, touch_last_message
@@ -15,39 +15,35 @@ from app.safety import filtro_hard
 
 logger = logging.getLogger(__name__)
 
+CLAUDE_MODEL = "claude-sonnet-4-6"
+
 # IMPORTANTE: criar_agendamento NAO e exposto como tool do LLM de proposito.
 # Confirmar agendamento e responsabilidade DETERMINISTICA do sistema (scheduling.py),
 # para o modelo nunca inventar/confirmar um horario que nao existe. (falha #1)
 TOOLS = [
     {
-        "type": "function",
-        "function": {
-            "name": "buscar_horarios_disponiveis",
-            "description": "Busca horarios disponiveis do profissional em uma data especifica",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "data": {
-                        "type": "string",
-                        "description": "Data no formato YYYY-MM-DD",
-                    }
-                },
-                "required": ["data"],
+        "name": "buscar_horarios_disponiveis",
+        "description": "Busca horarios disponiveis do profissional em uma data especifica",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "string",
+                    "description": "Data no formato YYYY-MM-DD",
+                }
             },
+            "required": ["data"],
         },
     },
     {
-        "type": "function",
-        "function": {
-            "name": "consultar_base_conhecimento",
-            "description": "Consulta a base de conhecimento do profissional para responder perguntas",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "pergunta": {"type": "string", "description": "Pergunta a buscar"},
-                },
-                "required": ["pergunta"],
+        "name": "consultar_base_conhecimento",
+        "description": "Consulta a base de conhecimento do profissional para responder perguntas",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pergunta": {"type": "string", "description": "Pergunta a buscar"},
             },
+            "required": ["pergunta"],
         },
     },
 ]
@@ -94,7 +90,7 @@ async def run_agent(
         logger.info(f"Mensagem barrada ({motivo}) de {phone}; nao respondida.")
         return ""
 
-    client = OpenAI(api_key=get_settings().OPENAI_API_KEY)
+    client = Anthropic(api_key=get_settings().ANTHROPIC_API_KEY)
     pro = get_professional_config(professional_id)
 
     save_message(phone, "user", text)
@@ -113,45 +109,41 @@ async def run_agent(
     # Classifica intencao para dar objetivo de resposta especifico (#3)
     intencao = classificar(text)
 
-    history = get_history(phone, limit=20)
-    messages = [
-        {"role": "system", "content": build_system_prompt(pro, intencao)},
-        *history,
-    ]
+    system_prompt = build_system_prompt(pro, intencao)
+    # Anthropic: system vai separado; messages so tem user/assistant.
+    messages = get_history(phone, limit=20)
 
-    response = client.chat.completions.create(
-        model="gpt-4o",
+    response = client.messages.create(
+        model=CLAUDE_MODEL,
+        system=system_prompt,
         messages=messages,
         tools=TOOLS,
-        tool_choice="auto",
         max_tokens=300,  # resposta curta (max 3 linhas) (#5)
     )
 
-    msg = response.choices[0].message
+    # Loop de tool use: enquanto o Claude pedir ferramenta, executa e devolve o resultado.
+    while response.stop_reason == "tool_use":
+        messages.append({"role": "assistant", "content": response.content})
+        tool_results = []
+        for block in response.content:
+            if block.type == "tool_use":
+                result = _execute_tool(block.name, block.input, professional_id, phone)
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": json.dumps(result, ensure_ascii=False),
+                })
+        messages.append({"role": "user", "content": tool_results})
 
-    # Handle tool calls
-    while msg.tool_calls:
-        messages.append(msg)
-        for tc in msg.tool_calls:
-            fn_name = tc.function.name
-            args = json.loads(tc.function.arguments)
-            result = _execute_tool(fn_name, args, professional_id, phone)
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tc.id,
-                "content": json.dumps(result, ensure_ascii=False),
-            })
-
-        response = client.chat.completions.create(
-            model="gpt-4o",
+        response = client.messages.create(
+            model=CLAUDE_MODEL,
+            system=system_prompt,
             messages=messages,
             tools=TOOLS,
-            tool_choice="auto",
             max_tokens=300,  # resposta curta (#5)
         )
-        msg = response.choices[0].message
 
-    reply = msg.content or ""
+    reply = "".join(b.text for b in response.content if b.type == "text")
     save_message(phone, "assistant", reply)
     return reply
 

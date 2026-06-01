@@ -127,44 +127,47 @@ Deno.serve(async (req) => {
       });
     }
 
-    const geminiKey = Deno.env.get("GEMINI_API_KEY");
+    const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
     const openaiKey = Deno.env.get("OPENAI_API_KEY");
-    const apiKey = geminiKey || openaiKey;
+    const apiKey = anthropicKey || openaiKey;
 
     if (!apiKey) {
       console.error("Nenhuma API Key encontrada no ambiente.");
-      return new Response(JSON.stringify({ 
-        error: "Configuração incompleta", 
-        details: "As chaves de API (GEMINI_API_KEY ou OPENAI_API_KEY) não foram configuradas nas Secrets do Supabase." 
+      return new Response(JSON.stringify({
+        error: "Configuração incompleta",
+        details: "As chaves de API (ANTHROPIC_API_KEY ou OPENAI_API_KEY) não foram configuradas nas Secrets do Supabase."
       }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Se tivermos GEMINI_API_KEY, usamos Gemini. Senão, tentamos OpenAI como fallback se a chave existir.
-    const isGemini = !!geminiKey;
-    
-    async function callGemini(key: string, prompt: string) {
-      const model = "gemini-1.5-flash";
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
-      
-      const response = await fetch(url, {
+    // Provedor principal: Claude (Anthropic). OpenAI fica como fallback se a chave existir.
+    const isClaude = !!anthropicKey;
+
+    async function callClaude(key: string, prompt: string) {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+        },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.7 }
+          model: "claude-sonnet-4-6",
+          max_tokens: 2048,
+          temperature: 0.7,
+          messages: [{ role: "user", content: prompt }],
         }),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Gemini Error: ${errorText}`);
+        throw new Error(`Claude Error: ${errorText}`);
       }
 
       const data = await response.json();
-      return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
+      return data.content?.[0]?.text?.trim() ?? "";
     }
 
     async function callOpenAI(key: string, prompt: string) {
@@ -194,23 +197,23 @@ Deno.serve(async (req) => {
     const prompt = promptFn(context);
 
     try {
-      if (isGemini) {
-        console.log("Tentando Gemini...");
-        text = await callGemini(geminiKey!, prompt);
+      if (isClaude) {
+        console.log("Tentando Claude...");
+        text = await callClaude(anthropicKey!, prompt);
       } else {
         console.log("Tentando OpenAI...");
         text = await callOpenAI(openaiKey!, prompt);
       }
     } catch (err) {
       console.error("Provedor principal falhou:", err);
-      if (isGemini && openaiKey) {
-        console.log("Gemini falhou, tentando OpenAI como fallback...");
+      if (isClaude && openaiKey) {
+        console.log("Claude falhou, tentando OpenAI como fallback...");
         try {
           text = await callOpenAI(openaiKey, prompt);
         } catch (openaiErr) {
-          const geminiMsg = err instanceof Error ? err.message : String(err);
+          const claudeMsg = err instanceof Error ? err.message : String(err);
           const openaiMsg = openaiErr instanceof Error ? openaiErr.message : String(openaiErr);
-          throw new Error(`Ambos os provedores falharam. Gemini: ${geminiMsg}. OpenAI: ${openaiMsg}`);
+          throw new Error(`Ambos os provedores falharam. Claude: ${claudeMsg}. OpenAI: ${openaiMsg}`);
         }
       } else {
         throw err;

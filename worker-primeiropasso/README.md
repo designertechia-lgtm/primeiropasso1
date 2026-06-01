@@ -89,6 +89,7 @@ pytest
 Veja `.env.example`. Mínimo:
 
 - `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`
-- `OPENAI_API_KEY`
+- `ANTHROPIC_API_KEY` (chat do agente + Vision)
+- `OPENAI_API_KEY` (embeddings/RAG + Whisper/áudio — Anthropic não oferece)
 - `EVOLUTION_API_URL`, `EVOLUTION_API_KEY`
 - `REDIS_URL` (default: `redis://localhost:6379`)

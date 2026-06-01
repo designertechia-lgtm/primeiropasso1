@@ -1,6 +1,7 @@
 """Routes incoming messages by type to the appropriate handler."""
 import httpx
-from openai import OpenAI
+from openai import OpenAI       # Whisper (transcricao de audio) — Anthropic nao oferece
+from anthropic import Anthropic  # Vision (analise de imagem)
 from app.config import get_settings
 
 
@@ -34,23 +35,22 @@ async def process_audio(audio_url: str) -> str:
 
 
 async def process_image(image_url: str, caption: str = "") -> str:
-    """Analyze image with GPT-4o Vision."""
-    client = OpenAI(api_key=get_settings().OPENAI_API_KEY)
-    messages = [
-        {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": caption or "Descreva esta imagem em portugues."},
-                {"type": "image_url", "image_url": {"url": image_url}},
-            ],
-        }
-    ]
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=messages,
+    """Analyze image with Claude Vision."""
+    client = Anthropic(api_key=get_settings().ANTHROPIC_API_KEY)
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
         max_tokens=500,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {"type": "url", "url": image_url}},
+                    {"type": "text", "text": caption or "Descreva esta imagem em portugues."},
+                ],
+            }
+        ],
     )
-    return response.choices[0].message.content or ""
+    return "".join(b.text for b in response.content if b.type == "text")
 
 
 async def route_message(msg_type: str, data: dict) -> str:

@@ -11,23 +11,25 @@ import PlatformPricing from "@/components/platform-landing/PlatformPricing";
 import PlatformFAQ from "@/components/platform-landing/PlatformFAQ";
 import PlatformCTA from "@/components/platform-landing/PlatformCTA";
 import PlatformFooter from "@/components/platform-landing/PlatformFooter";
+import Reveal from "@/components/platform-landing/Reveal";
 
 export default function Index() {
   return (
     <div className="min-h-screen bg-background text-foreground antialiased">
       <PlatformHeader />
       <main>
+        {/* Hero fica sem Reveal: é a primeira dobra, já visível no load. */}
         <PlatformHero />
         <PlatformLogoBar />
-        <PlatformPain />
-        <PlatformSolution />
-        <PlatformAIShowcase />
-        <PlatformHowItWorks />
-        <PlatformFeatureGrid />
-        <PlatformTestimonials />
-        <PlatformPricing />
-        <PlatformFAQ />
-        <PlatformCTA />
+        <Reveal as="section"><PlatformPain /></Reveal>
+        <Reveal as="section"><PlatformSolution /></Reveal>
+        <Reveal as="section"><PlatformAIShowcase /></Reveal>
+        <Reveal as="section"><PlatformHowItWorks /></Reveal>
+        <Reveal as="section"><PlatformFeatureGrid /></Reveal>
+        <Reveal as="section"><PlatformTestimonials /></Reveal>
+        <Reveal as="section"><PlatformPricing /></Reveal>
+        <Reveal as="section"><PlatformFAQ /></Reveal>
+        <Reveal as="section"><PlatformCTA /></Reveal>
       </main>
       <PlatformFooter />
     </div>

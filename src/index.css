@@ -20,7 +20,9 @@
     --popover: 0 0% 100%;
     --popover-foreground: 190 64% 26%;
 
-    --primary: 188 87% 36%;
+    /* Cor principal: verde esmeralda (hue 160, alinhado ao accent).
+       Público neutro/saúde — verde transmite bem-estar e serenidade. */
+    --primary: 160 84% 33%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 187 78% 54%;
@@ -37,18 +39,18 @@
 
     --border: 187 75% 82%;
     --input: 187 75% 82%;
-    --ring: 188 87% 36%;
+    --ring: 160 84% 33%;
 
     --radius: 0.75rem;
 
     --sidebar-background: 184 86% 98%;
     --sidebar-foreground: 190 64% 26%;
-    --sidebar-primary: 188 87% 36%;
+    --sidebar-primary: 160 84% 33%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 188 40% 92%;
     --sidebar-accent-foreground: 190 64% 26%;
     --sidebar-border: 187 75% 82%;
-    --sidebar-ring: 188 87% 36%;
+    --sidebar-ring: 160 84% 33%;
   }
 
   .dark {
@@ -61,7 +63,8 @@
     --popover: 190 45% 13%;
     --popover-foreground: 184 70% 92%;
 
-    --primary: 187 85% 55%;
+    /* Verde esmeralda no dark (hue 160), claro o suficiente pra contraste. */
+    --primary: 160 70% 52%;
     --primary-foreground: 190 50% 10%;
 
     --secondary: 190 30% 22%;
@@ -78,16 +81,16 @@
 
     --border: 190 30% 28%;
     --input: 190 30% 28%;
-    --ring: 187 85% 55%;
+    --ring: 160 70% 52%;
 
     --sidebar-background: 190 50% 10%;
     --sidebar-foreground: 184 70% 92%;
-    --sidebar-primary: 187 85% 55%;
+    --sidebar-primary: 160 70% 52%;
     --sidebar-primary-foreground: 190 50% 10%;
     --sidebar-accent: 190 30% 18%;
     --sidebar-accent-foreground: 184 70% 92%;
     --sidebar-border: 190 30% 22%;
-    --sidebar-ring: 187 85% 55%;
+    --sidebar-ring: 160 70% 52%;
   }
 
   /* Admin scope — Data-Dense Dashboard: Blue + Amber alerts.

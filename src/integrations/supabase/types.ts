@@ -111,6 +111,48 @@ export type Database = {
           },
         ]
       }
+      avatars: {
+        Row: {
+          age: number | null
+          backstory: string | null
+          created_at: string
+          generation_prompt: string | null
+          id: string
+          is_generated: boolean
+          name: string
+          personality: string | null
+          photo_url: string | null
+          professional_id: string
+          style: string | null
+        }
+        Insert: {
+          age?: number | null
+          backstory?: string | null
+          created_at?: string
+          generation_prompt?: string | null
+          id?: string
+          is_generated?: boolean
+          name: string
+          personality?: string | null
+          photo_url?: string | null
+          professional_id: string
+          style?: string | null
+        }
+        Update: {
+          age?: number | null
+          backstory?: string | null
+          created_at?: string
+          generation_prompt?: string | null
+          id?: string
+          is_generated?: boolean
+          name?: string
+          personality?: string | null
+          photo_url?: string | null
+          professional_id?: string
+          style?: string | null
+        }
+        Relationships: []
+      }
       articles: {
         Row: {
           carousel_items: Json | null

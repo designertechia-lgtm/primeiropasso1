@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { useProfessional } from "@/hooks/useProfessional";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,7 +22,7 @@ const STYLES = [
   { id: "minimalista",  label: "Minimalista", emoji: "✏️" },
 ] as const;
 type StyleId = typeof STYLES[number]["id"];
-type PhotoMode = "upload" | "generate" | "profile" | "transform" | null;
+type PhotoMode = "upload" | "generate" | "profile" | "transform" | "clonar" | null;
 
 interface AvatarForm {
   name: string;
@@ -101,23 +102,26 @@ export default function AdminAvatares() {
   const [retryAttempt, setRetryAttempt]     = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileModeIntentRef = useRef<"upload" | "transform">("upload");
+  const cloneInputRef = useRef<HTMLInputElement>(null);
+  const [cloneFiles, setCloneFiles] = useState<File[]>([]);
+  const [appearance, setAppearance]   = useState("");
 
   const slug = professional?.slug ?? "";
 
   const { data: avatars = [], isLoading, isError, error, refetch } = useQuery<Avatar[]>({
-    queryKey: ["avatares", slug],
+    queryKey: ["avatares", professional?.id],
     queryFn: async () => {
-      let res: Response;
-      try {
-        res = await fetch(`${API}/avatares/${slug}`);
-      } catch (e) {
-        throw new Error(await parseError(e));
-      }
-      if (!res.ok) throw new Error(await parseError(null, res));
-      const data = await res.json();
-      return data.avatars ?? [];
+      // Galeria lê direto do Supabase (tabela `avatars`, anon liberado por RLS).
+      // A video-api só é necessária para gerar/transformar foto (criar, estilo, etc.).
+      const { data, error } = await supabase
+        .from("avatars")
+        .select("*")
+        .eq("professional_id", professional!.id)
+        .order("created_at", { ascending: false });
+      if (error) throw new Error(error.message);
+      return (data ?? []) as unknown as Avatar[];
     },
-    enabled: !!slug,
+    enabled: !!professional?.id,
     staleTime: 0,
     refetchOnWindowFocus: true,
   });
@@ -128,6 +132,8 @@ export default function AdminAvatares() {
     setSelectedFile(null);
     setPreviewUrl(null);
     setEditingAvatar(null);
+    setCloneFiles([]);
+    setAppearance("");
   };
 
   const openNew = () => { resetModal(); setOpen(true); };
@@ -327,6 +333,53 @@ export default function AdminAvatares() {
     }
   };
 
+  const handleCloneFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []).slice(0, 4);
+    if (!files.length) return;
+    setCloneFiles(files);
+    setPreviewUrl(URL.createObjectURL(files[0]));
+    setPhotoMode("clonar");
+    e.target.value = "";
+  };
+
+  const handleCloneAvatar = async () => {
+    if (!form.name.trim()) { toast.error("Informe o nome do personagem"); return; }
+    if (cloneFiles.length === 0) { toast.error("Selecione ao menos uma foto de referência"); return; }
+    setSaving(true);
+    setRetryAttempt(0);
+    let lastRes: Response | undefined;
+    try {
+      const fd = new FormData();
+      fd.append("professional_slug", slug);
+      fd.append("name", form.name);
+      fd.append("personality", form.personality);
+      fd.append("backstory", form.backstory);
+      fd.append("style", form.style);
+      fd.append("appearance", appearance);
+      if (form.age) fd.append("age", form.age);
+      cloneFiles.forEach((f) => fd.append("files", f));
+      lastRes = await fetchWithRetry(
+        `${API}/clonar-avatar`,
+        { method: "POST", body: fd },
+        (attempt, max) => {
+          setRetryAttempt(attempt);
+          toast.info(`Servidor ocupado, tentando novamente... (${attempt}/${max})`, { duration: 4000 });
+        },
+      );
+      const data = await lastRes.json();
+      if (!lastRes.ok) throw new Error(data.detail ?? `HTTP ${lastRes.status}`);
+      toast.success(`Avatar "${form.name}" clonado com sucesso!`);
+      setOpen(false);
+      resetModal();
+      await refetch();
+    } catch (e: unknown) {
+      toast.error(await parseError(e, lastRes?.ok === false ? lastRes : undefined), { duration: 6000 });
+    } finally {
+      setSaving(false);
+      setRetryAttempt(0);
+    }
+  };
+
   const handleDelete = async (av: Avatar) => {
     if (!confirm(`Excluir o personagem "${av.name}"?`)) return;
     let res: Response | undefined;
@@ -386,6 +439,26 @@ export default function AdminAvatares() {
                 </span>
               </button>
             )}
+            {/* Opção: clonar pessoa a partir de várias fotos + trocar visual (FLUX Kontext) */}
+            {!editingAvatar && (
+              <button
+                type="button"
+                onClick={() => { cloneInputRef.current?.click(); }}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs border transition-colors text-left ${
+                  photoMode === "clonar"
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "border-primary/40 text-foreground bg-primary/5 hover:bg-primary/10"
+                }`}
+              >
+                <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                <span>
+                  <strong>Clonar pessoa + trocar visual</strong>
+                  <span className={`block ${photoMode === "clonar" ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                    Até 4 fotos da mesma pessoa + texto pra mudar roupa/visual
+                  </span>
+                </span>
+              </button>
+            )}
             {/* Opção 2: Gerar com IA por descrição */}
             <button
               type="button"
@@ -436,6 +509,7 @@ export default function AdminAvatares() {
       </div>
 
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+      <input ref={cloneInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleCloneFilesChange} />
 
       {photoMode === "profile" && professional?.photo_url && (
         <p className="text-xs text-primary">✓ Usando sua foto do perfil</p>
@@ -465,6 +539,32 @@ export default function AdminAvatares() {
       )}
       {photoMode === "transform" && !selectedFile && (
         <p className="text-xs text-muted-foreground">Clique em "Minha foto + IA" para selecionar a foto</p>
+      )}
+      {photoMode === "clonar" && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {cloneFiles.map((f, i) => (
+              <span key={i} className="text-xs bg-muted rounded-full px-2 py-0.5 text-muted-foreground max-w-[140px] truncate">{f.name}</span>
+            ))}
+            <button type="button" className="text-xs text-primary hover:underline" onClick={() => cloneInputRef.current?.click()}>
+              {cloneFiles.length ? "trocar fotos" : "selecionar fotos"}
+            </button>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">
+              O que mudar no visual? <span className="text-muted-foreground">(roupa, cabelo, fundo)</span>
+            </Label>
+            <Textarea
+              rows={2}
+              placeholder="Ex: troque a roupa por um jaleco branco sobre camisa azul, fundo de consultório"
+              value={appearance}
+              onChange={(e) => setAppearance(e.target.value)}
+            />
+          </div>
+          <p className="text-xs text-primary bg-primary/5 rounded-lg px-2.5 py-1.5">
+            ✨ A IA mantém o rosto/identidade das fotos e aplica o estilo <strong>{STYLES.find(s => s.id === form.style)?.label}</strong> + sua instrução (~30s)
+          </p>
+        </div>
       )}
       {photoMode === "generate" && (
         <div className="space-y-1">
@@ -562,6 +662,14 @@ export default function AdminAvatares() {
                   {generating
                     ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{retryAttempt > 0 ? `Servidor ocupado, tentativa ${retryAttempt + 1}/3...` : "Gerando com IA..."}</>
                     : <><Wand2 className="h-4 w-4 mr-2" />{editingAvatar ? "Gerar nova foto e salvar" : "Gerar Avatar com IA"}</>}
+                </Button>
+              ) : photoMode === "clonar" ? (
+                <Button onClick={handleCloneAvatar}
+                  disabled={saving || !form.name.trim() || cloneFiles.length === 0}
+                  className="w-full">
+                  {saving
+                    ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{retryAttempt > 0 ? `Servidor ocupado, tentativa ${retryAttempt + 1}/3...` : "Clonando com IA (~30s)..."}</>
+                    : <><Sparkles className="h-4 w-4 mr-2" />Clonar e criar avatar</>}
                 </Button>
               ) : photoMode === "transform" ? (
                 <Button onClick={handleTransform}

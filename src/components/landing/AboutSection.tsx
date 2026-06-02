@@ -1,3 +1,4 @@
+// feature: identidade-visual — ver _docs/features/identidade-visual.md
 import { Play, Award, Heart } from "lucide-react";
 import { useState } from "react";
 

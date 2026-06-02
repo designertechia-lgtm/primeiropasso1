@@ -285,7 +285,7 @@ export interface Feedback {
   id: string;
   author_id: string | null;
   type: 'bug' | 'sugestao' | 'duvida' | 'elogio' | 'outro';
-  status: 'novo' | 'em_analise' | 'resolvido' | 'arquivado';
+  status: 'novo' | 'em_analise' | 'aprovado' | 'resolvido' | 'arquivado';
   severity: 'baixa' | 'media' | 'alta' | 'critica';
   message: string;
   screenshot_url: string | null;
@@ -335,6 +335,183 @@ export function useUpdateFeedbackStatus() {
         .update({ status, updated_at: new Date().toISOString() })
         .eq("id", id);
       if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["owner-feedbacks"] }),
+  });
+}
+
+// ── Fatia 4b: Auditoria de Feedbacks (IA) ──────────────────────────────────
+
+export interface AuditCluster {
+  label: string;
+  qty: number;
+  type_pred: string;
+  severity_pred: string;
+  feedback_ids: string[];
+  pilar: number;
+  fase: number;
+  relevancia: "alta" | "media" | "baixa";
+}
+
+export interface AuditRecommendation {
+  cluster_label: string;
+  action: "approve" | "discard" | "investigate";
+  target_phase: number;
+  effort: "PP" | "P" | "M" | "G" | "GG";
+  priority: number;
+  rationale: string;
+}
+
+export interface NpsSnapshot {
+  avg: number;
+  promoters: number;
+  neutrals: number;
+  detractors: number;
+  total_with_nps: number;
+}
+
+export interface FeedbackAudit {
+  id: number;
+  created_at: string;
+  created_by: string | null;
+  model: string;
+  feedback_count: number;
+  feedback_ids: string[];
+  summary_md: string;
+  clusters: AuditCluster[];
+  recommendations: AuditRecommendation[];
+  nps_snapshot: NpsSnapshot | null;
+  status: "pending_review" | "acted_on" | "discarded";
+  acted_at: string | null;
+  duration_ms: number | null;
+  cost_usd: number | null;
+}
+
+export function useFeedbacksPendingAuditCount() {
+  return useQuery({
+    queryKey: ["feedbacks-pending-audit"],
+    queryFn: async (): Promise<number> => {
+      const { data, error } = await supabase
+        .from("v_feedbacks_pending_audit")
+        .select("pending_count")
+        .single();
+      if (error) throw error;
+      return (data as any)?.pending_count ?? 0;
+    },
+  });
+}
+
+export function useOwnerAudits() {
+  return useQuery({
+    queryKey: ["owner-audits"],
+    queryFn: async (): Promise<FeedbackAudit[]> => {
+      const { data, error } = await supabase
+        .from("feedback_audits")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as unknown as FeedbackAudit[];
+    },
+  });
+}
+
+export function useRunAudit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("run-feedback-audit", {
+        body: {},
+      });
+      if (error) throw error;
+      return data as {
+        status: "ok" | "no_pending";
+        audit_id?: number;
+        feedback_count?: number;
+        clusters_count?: number;
+        recommendations_count?: number;
+        cost_usd?: number;
+        duration_ms?: number;
+        latest_audit_id?: number | null;
+        message?: string;
+      };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["owner-audits"] });
+      qc.invalidateQueries({ queryKey: ["owner-feedbacks"] });
+      qc.invalidateQueries({ queryKey: ["feedbacks-pending-audit"] });
+    },
+  });
+}
+
+export function useApplyRecommendation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      audit_id,
+      cluster_label,
+      action,
+    }: {
+      audit_id: number;
+      cluster_label: string;
+      action: "approve" | "discard";
+    }) => {
+      const { data, error } = await supabase.rpc("owner_apply_audit_recommendation", {
+        p_audit_id: audit_id,
+        p_cluster_label: cluster_label,
+        p_action: action,
+      });
+      if (error) throw error;
+      return data as number;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["owner-audits"] });
+      qc.invalidateQueries({ queryKey: ["owner-feedbacks"] });
+    },
+  });
+}
+
+export function useCloseAudit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      audit_id,
+      status,
+    }: {
+      audit_id: number;
+      status: "acted_on" | "discarded";
+    }) => {
+      const { error } = await supabase.rpc("owner_close_audit", {
+        p_audit_id: audit_id,
+        p_status: status,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["owner-audits"] }),
+  });
+}
+
+export function useDeleteArchivedFeedback() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.rpc("owner_delete_archived_feedback", {
+        p_id: id,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["owner-feedbacks"] }),
+  });
+}
+
+export function usePurgeArchivedFeedbacks() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (older_than_days = 0) => {
+      const { data, error } = await supabase.rpc("owner_purge_archived_feedbacks", {
+        p_older_than_days: older_than_days,
+      });
+      if (error) throw error;
+      return data as number;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["owner-feedbacks"] }),
   });

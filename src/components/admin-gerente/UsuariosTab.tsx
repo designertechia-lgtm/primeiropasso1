@@ -28,9 +28,9 @@ const SEGMENT_LABELS: Record<string, string> = {
 };
 
 const SEGMENT_COLORS: Record<string, string> = {
-  heavy:    "hsl(142 70% 45%)",
-  medio:    "hsl(38 92% 50%)",
-  dormente: "hsl(220 9% 46%)",
+  heavy:    "hsl(var(--primary))",   // verde do tema (ativo = positivo)
+  medio:    "hsl(38 92% 50%)",       // ambar (atencao)
+  dormente: "hsl(220 9% 46%)",       // cinza (neutro/inativo)
 };
 
 const weekLabel = (iso: string) => {
@@ -138,8 +138,8 @@ export default function UsuariosTab() {
       </div>
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard title="Total cadastrados"  value={totalUsers}    icon={Users}      />
-        <KpiCard title="Ativos (7 dias)"    value={heavyCount}    icon={UserCheck}  color="text-green-500" />
+        <KpiCard title="Total cadastrados"  value={totalUsers}    icon={Users}      color="text-primary" />
+        <KpiCard title="Ativos (7 dias)"    value={heavyCount}    icon={UserCheck}  color="text-primary" />
         <KpiCard title="Médio (30 dias)"    value={medioCount}    icon={Crown}      color="text-amber-500" />
         <KpiCard title="Dormentes (>30d)"   value={dormenteCount} icon={UserX}      color="text-muted-foreground" />
       </div>
@@ -172,7 +172,7 @@ export default function UsuariosTab() {
                     type="monotone"
                     dataKey="cumulative_total"
                     name="Acumulado"
-                    stroke="hsl(142 70% 45%)"
+                    stroke="hsl(var(--secondary))"
                     strokeWidth={2}
                     dot={false}
                     strokeDasharray="4 2"

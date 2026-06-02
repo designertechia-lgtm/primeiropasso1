@@ -99,7 +99,7 @@ export default function AcessoTab() {
         <Card className="md:col-span-2 border-border/50 bg-card/50 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-lg font-medium flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5 text-emerald-500" />
+              <ShieldCheck className="h-5 w-5 text-primary" />
               Usuarios com Acesso Super Admin
             </CardTitle>
             <CardDescription>
@@ -200,7 +200,7 @@ export default function AcessoTab() {
           <Card className="border-border/50 bg-card/50 backdrop-blur-sm h-fit">
             <CardHeader>
               <CardTitle className="text-lg font-medium flex items-center gap-2">
-                <UserPlus className="h-5 w-5 text-blue-500" />
+                <UserPlus className="h-5 w-5 text-primary" />
                 Conceder Acesso
               </CardTitle>
             </CardHeader>

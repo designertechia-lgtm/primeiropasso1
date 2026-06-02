@@ -47,28 +47,28 @@ export default function OverviewTab() {
       value: formatCurrency(currentMrr),
       change: mrrChange,
       icon: TrendingUp,
-      color: "text-emerald-500",
+      color: "text-muted-foreground",
     },
     {
       title: "Assinantes Ativos",
       value: activeSubscribers,
       change: 4.2,
       icon: Users,
-      color: "text-blue-500",
+      color: "text-muted-foreground",
     },
     {
       title: "Churn (30d)",
       value: `${churn30d}%`,
       change: -0.5,
       icon: UserMinus,
-      color: "text-orange-500",
+      color: "text-muted-foreground",
     },
     {
       title: "Inadimplência",
       value: overdueCount,
       change: 12,
       icon: AlertCircle,
-      color: "text-red-500",
+      color: "text-muted-foreground",
     },
   ];
 
@@ -173,7 +173,7 @@ export default function OverviewTab() {
               )}
               
                 <div className="flex items-center gap-4 rounded-lg border border-border/40 p-3 transition-colors hover:bg-muted/50 opacity-60">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/10 text-blue-500">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <MessageSquare className="h-5 w-5" />
                 </div>
                 <div className="flex-1 space-y-1">

@@ -79,47 +79,51 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
   };
 
   return (
-    <section id="about" className="py-20 md:py-32 relative overflow-hidden bg-background">
+    <section id="about" className="scroll-mt-20 py-20 md:py-32 relative overflow-hidden bg-background">
       {/* Decorative background elements */}
       <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-accent/5 rounded-full blur-3xl translate-y-1/3 -translate-x-1/3 pointer-events-none" />
 
       <div className="container mx-auto px-4 relative z-10">
-        <div className="flex flex-col lg:flex-row gap-16 items-stretch max-w-6xl mx-auto">
+        <div className="flex flex-col lg:flex-row gap-16 items-start max-w-6xl mx-auto">
 
           {/* Media Column (Sticky) */}
           <div className="w-full lg:w-1/2 relative group lg:sticky lg:top-24 flex flex-col">
             {/* Soft decorative border behind */}
             <div className="absolute -inset-4 bg-gradient-to-tr from-primary/20 to-accent/20 rounded-[2.5rem] rotate-3 scale-[0.98] transition-transform duration-500 group-hover:rotate-6 group-hover:scale-100" />
 
-            <div className="relative rounded-[2rem] overflow-hidden shadow-2xl bg-card flex-1 min-h-[380px] lg:min-h-[500px] mx-auto w-full">
+            {/* Moldura: o padding (p-3) cria a borda visivel ao redor da imagem,
+                como um porta-retrato. A imagem (h-auto) define a proporcao. */}
+            <div className="relative rounded-2xl shadow-2xl bg-card mx-auto w-full max-w-md p-3">
               {isVideoPlaying && aboutVideoUrl ? (
                 isMp4 ? (
-                  <video 
-                    src={aboutVideoUrl} 
-                    autoPlay 
-                    controls 
-                    className="w-full h-full object-cover"
+                  <video
+                    src={aboutVideoUrl}
+                    autoPlay
+                    controls
+                    className="block w-full h-auto max-h-[70vh]"
                     onEnded={() => setIsVideoPlaying(false)}
                   />
                 ) : (
-                  <iframe
-                    src={getEmbedUrl(aboutVideoUrl)}
-                    className="w-full h-full object-cover"
-                    allow="autoplay; fullscreen; picture-in-picture"
-                    allowFullScreen
-                  ></iframe>
+                  <div className="aspect-video w-full">
+                    <iframe
+                      src={getEmbedUrl(aboutVideoUrl)}
+                      className="w-full h-full"
+                      allow="autoplay; fullscreen; picture-in-picture"
+                      allowFullScreen
+                    ></iframe>
+                  </div>
                 )
               ) : (
                 <>
                   {displayImage ? (
-                    <img 
-                      src={displayImage} 
-                      alt={name} 
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
+                    <img
+                      src={displayImage}
+                      alt={name}
+                      className="block w-full h-auto max-h-[70vh] object-contain rounded-xl transition-transform duration-700 group-hover:scale-[1.02]"
                     />
                   ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-primary/10 to-accent/10 flex items-center justify-center">
+                    <div className="w-full aspect-[4/5] bg-gradient-to-br from-primary/10 to-accent/10 flex items-center justify-center rounded-xl">
                       <Heart className="w-20 h-20 text-primary/30" />
                     </div>
                   )}

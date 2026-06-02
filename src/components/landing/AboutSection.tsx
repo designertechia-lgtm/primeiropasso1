@@ -94,7 +94,7 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
 
             {/* Moldura: o padding (p-3) cria a borda visivel ao redor da imagem,
                 como um porta-retrato. A imagem (h-auto) define a proporcao. */}
-            <div className="relative rounded-2xl shadow-2xl bg-card mx-auto w-full max-w-md p-3">
+            <div className="relative rounded-2xl shadow-2xl shadow-foreground/15 bg-card mx-auto w-full max-w-md p-3">
               {isVideoPlaying && aboutVideoUrl ? (
                 isMp4 ? (
                   <video
@@ -115,23 +115,27 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
                   </div>
                 )
               ) : (
-                <>
+                /* Wrapper que ENVOLVE a imagem: overflow-hidden + rounded-xl
+                   recortam a imagem com cantos arredondados. O wrapper usa
+                   w-fit + h-auto pra COLAR no tamanho real da foto (sem espaco
+                   sobrando), entao o arredondamento aparece na propria foto. */
+                <div className="relative overflow-hidden rounded-xl mx-auto w-fit">
                   {displayImage ? (
                     <img
                       src={displayImage}
                       alt={name}
-                      className="block w-full h-auto max-h-[70vh] object-contain rounded-xl transition-transform duration-700 group-hover:scale-[1.02]"
+                      className="block w-auto h-auto max-h-[70vh] max-w-full object-contain transition-transform duration-700 group-hover:scale-[1.02]"
                     />
                   ) : (
-                    <div className="w-full aspect-[4/5] bg-gradient-to-br from-primary/10 to-accent/10 flex items-center justify-center rounded-xl">
+                    <div className="w-full aspect-[4/5] bg-gradient-to-br from-primary/10 to-accent/10 flex items-center justify-center">
                       <Heart className="w-20 h-20 text-primary/30" />
                     </div>
                   )}
-                  
-                  {/* Video Play Button Overlay */}
+
+                  {/* Video Play Button Overlay — dentro do wrapper, herda o recorte */}
                   {aboutVideoUrl && (
                     <div className="absolute inset-0 bg-black/10 transition-all duration-300 group-hover:bg-black/30 pointer-events-none">
-                      <button 
+                      <button
                         onClick={() => setIsVideoPlaying(true)}
                         className="absolute bottom-6 left-6 w-16 h-16 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-xl text-primary hover:scale-110 transition-transform duration-300 pointer-events-auto"
                         aria-label="Assistir vídeo de apresentação"
@@ -140,8 +144,7 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
                       </button>
                     </div>
                   )}
-
-                </>
+                </div>
               )}
             </div>
           </div>

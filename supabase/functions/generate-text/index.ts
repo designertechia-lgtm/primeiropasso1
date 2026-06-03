@@ -127,95 +127,44 @@ Deno.serve(async (req) => {
       });
     }
 
-    const geminiKey = Deno.env.get("GEMINI_API_KEY");
-    const openaiKey = Deno.env.get("OPENAI_API_KEY");
-    const apiKey = geminiKey || openaiKey;
-
-    if (!apiKey) {
-      console.error("Nenhuma API Key encontrada no ambiente.");
-      return new Response(JSON.stringify({ 
-        error: "Configuração incompleta", 
-        details: "As chaves de API (GEMINI_API_KEY ou OPENAI_API_KEY) não foram configuradas nas Secrets do Supabase." 
+    const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!anthropicKey) {
+      console.error("ANTHROPIC_API_KEY não configurada.");
+      return new Response(JSON.stringify({
+        error: "Configuração incompleta",
+        details: "A chave ANTHROPIC_API_KEY não foi configurada nas Secrets do Supabase.",
       }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Se tivermos GEMINI_API_KEY, usamos Gemini. Senão, tentamos OpenAI como fallback se a chave existir.
-    const isGemini = !!geminiKey;
-    
-    async function callGemini(key: string, prompt: string) {
-      const model = "gemini-1.5-flash";
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
-      
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.7 }
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Gemini Error: ${errorText}`);
-      }
-
-      const data = await response.json();
-      return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
-    }
-
-    async function callOpenAI(key: string, prompt: string) {
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    // LLM do projeto: Claude (Anthropic). Migrado de Gemini/OpenAI — o gemini-1.5-flash foi
+    // descontinuado e o projeto padronizou no Claude (mesma chave das outras edge functions).
+    async function callClaude(key: string, prompt: string): Promise<string> {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${key}`,
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
         },
         body: JSON.stringify({
-          model: "gpt-4o-mini",
+          model: "claude-sonnet-4-6",
+          max_tokens: 2000,
           messages: [{ role: "user", content: prompt }],
-          temperature: 0.7,
         }),
       });
-
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`OpenAI Error: ${errorText}`);
+        throw new Error(`Claude Error: ${errorText}`);
       }
-
       const data = await response.json();
-      return data.choices?.[0]?.message?.content?.trim() ?? "";
+      return (data.content?.[0]?.text ?? "").trim();
     }
 
-    let text = "";
     const prompt = promptFn(context);
-
-    try {
-      if (isGemini) {
-        console.log("Tentando Gemini...");
-        text = await callGemini(geminiKey!, prompt);
-      } else {
-        console.log("Tentando OpenAI...");
-        text = await callOpenAI(openaiKey!, prompt);
-      }
-    } catch (err) {
-      console.error("Provedor principal falhou:", err);
-      if (isGemini && openaiKey) {
-        console.log("Gemini falhou, tentando OpenAI como fallback...");
-        try {
-          text = await callOpenAI(openaiKey, prompt);
-        } catch (openaiErr) {
-          const geminiMsg = err instanceof Error ? err.message : String(err);
-          const openaiMsg = openaiErr instanceof Error ? openaiErr.message : String(openaiErr);
-          throw new Error(`Ambos os provedores falharam. Gemini: ${geminiMsg}. OpenAI: ${openaiMsg}`);
-        }
-      } else {
-        throw err;
-      }
-    }
+    let text = await callClaude(anthropicKey, prompt);
     
     // Remover blocos de código se a IA retornar markdown
     text = text.replace(/```json|```/g, "").trim();

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, type ComponentType } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useProfessional } from "@/hooks/useProfessional";
+import { supabase } from "@/integrations/supabase/client";
 import PublishPanel from "@/components/dashboard/PublishPanel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -328,6 +329,19 @@ export default function AdminEstudioViral() {
   const draftTimer      = useRef<ReturnType<typeof setTimeout> | null>(null);
   const publishTrimRef  = useRef<HTMLDivElement>(null);
 
+  // Estúdio Viral: avatares do profissional + qual é o personagem deste Reels.
+  const [avatars, setAvatars] = useState<{ id: string; name: string; photo_url: string | null }[]>([]);
+  const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!professional?.id) return;
+    (supabase as any)
+      .from("avatars")
+      .select("id,name,photo_url")
+      .eq("professional_id", professional.id)
+      .order("created_at", { ascending: false })
+      .then(({ data }: any) => setAvatars(data ?? []));
+  }, [professional?.id]);
+
   useEffect(() => {
     if (publishTrimData) {
       setTimeout(() => publishTrimRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
@@ -530,6 +544,11 @@ export default function AdminEstudioViral() {
       toast.error("Grave uma amostra de voz antes de gerar o vídeo.");
       return;
     }
+    if (videoModel !== "gratuito" && !selectedAvatarId) {
+      toast.error("Escolha um avatar (personagem) deste Reels antes de gerar.");
+      setStep(2);
+      return;
+    }
 
     setJobStatus({ status: "processing", progress: 0, step: "Iniciando..." });
     startStopwatch(0);
@@ -585,29 +604,20 @@ export default function AdminEstudioViral() {
         voiceId = data.voice_id;
       }
 
-      const res = await fetch(`${API}/gerar-video`, {
+      const res = await fetch(`${API}/estudio-viral/gerar-video`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           professional_slug: professional.slug,
-          video_type: "objetivo_livre",
-          objetivo: objetivo.trim(),
           script,
+          avatar_id: selectedAvatarId,
+          tier: videoModel,            // gratuito | premium | pro
+          motion: "idle",             // "presença" — representa a história, sem lip-sync
           voice: edgeVoice,
           voice_provider: voiceMode,
           elevenlabs_voice_id: voiceId,
           narration_audio_path: narrationPath,
-          // custom_image_paths só faz sentido no Gratuito; Premium/Pro geram
-          // todo o visual via Kling, então omitimos pra não confundir.
-          custom_image_paths: videoModel === "gratuito" ? customImagePaths : undefined,
           format,
-          formato,
-          model: videoModel,
-          visual_style: visualStyle,
-          // estilo_visual: Premium e Pro (motor Kling).
-          // image_style: só Gratuito (filtra busca em Pexels).
-          estilo_visual: videoModel === "gratuito" ? undefined : estiloIA,
-          image_style: videoModel === "gratuito" ? (imageStyle || "realistic") : undefined,
         }),
       });
       const data = await res.json();
@@ -918,6 +928,41 @@ export default function AdminEstudioViral() {
           </div>
         )}
       </div>
+
+      {/* Personagem do Reels (avatar) — Premium/Pro */}
+      {videoModel !== "gratuito" && (
+        <div className="space-y-2">
+          <Label className="text-base font-semibold">Personagem do Reels</Label>
+          {avatars.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Nenhum avatar ainda — crie um na aba <strong>Personagens</strong> primeiro.
+            </p>
+          ) : (
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+              {avatars.map((av) => (
+                <button
+                  key={av.id}
+                  type="button"
+                  onClick={() => setSelectedAvatarId(av.id)}
+                  className={`rounded-xl border-2 overflow-hidden text-left transition-all ${
+                    selectedAvatarId === av.id ? "border-primary ring-2 ring-primary/30" : "border-border hover:border-primary/40"
+                  }`}
+                >
+                  <div className="aspect-square bg-muted">
+                    {av.photo_url
+                      ? <img src={av.photo_url} alt={av.name} className="w-full h-full object-cover" />
+                      : <div className="w-full h-full flex items-center justify-center text-[10px] text-muted-foreground">sem foto</div>}
+                  </div>
+                  <p className="text-xs font-medium truncate px-2 py-1">{av.name}</p>
+                </button>
+              ))}
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">
+            O avatar é animado (presença) representando a história; a narração entra como voz por cima — sem lip-sync.
+          </p>
+        </div>
+      )}
 
       {/* Duração e Plataforma alvo (orientam o agente de roteiro — depois do modelo
          pra que opções de teste 10s/15s apareçam só quando Premium/Pro estiver ativo) */}

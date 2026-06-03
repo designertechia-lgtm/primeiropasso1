@@ -1,8 +1,9 @@
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Link2, Video, Clapperboard, Drama, Database, FileImage } from "lucide-react";
+import { FileText, Link2, Video, Clapperboard, Drama, Database, FileImage, Flame } from "lucide-react";
 import { ConnectedAccounts } from "@/components/dashboard/ConnectedAccounts";
 import AdminArtigos from "./AdminArtigos";
+import AdminEstudioViral from "./AdminEstudioViral";
 import AdminVideos from "./AdminVideos";
 import AdminCriarVideo from "./AdminCriarVideo";
 import AdminAvatares from "./AdminAvatares";
@@ -66,7 +67,23 @@ export default function AdminRedesSociais() {
           <PostsTab />
         </TabsContent>
         <TabsContent value="artigos" className="mt-4">
-          <AdminArtigos />
+          {/* Hub de conteúdo: Artigos (texto/carrossel) + Estúdio Viral (Reels). Componentes SEPARADOS. */}
+          <Tabs defaultValue="escrever" className="w-full">
+            <TabsList className="bg-muted/40">
+              <TabsTrigger value="escrever" className="gap-2">
+                <FileText className="h-4 w-4" /> Artigos
+              </TabsTrigger>
+              <TabsTrigger value="estudio" className="gap-2">
+                <Flame className="h-4 w-4 text-orange-500" /> Estúdio Viral
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="escrever" className="mt-4">
+              <AdminArtigos />
+            </TabsContent>
+            <TabsContent value="estudio" className="mt-4">
+              <AdminEstudioViral />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
         <TabsContent value="videos" className="mt-4">
           <AdminVideos />

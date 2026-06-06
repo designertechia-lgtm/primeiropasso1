@@ -28,23 +28,23 @@ function BillingBanner() {
 
   if (!noSubscription && !isExpired && !isExpiring && !lowCredits) return null;
 
-  const banners: Array<{ bg: string; icon: React.ReactNode; text: string }> = [];
+  const banners: Array<{ variant: 'destructive' | 'warning' | 'info'; icon: React.ReactNode; text: string }> = [];
 
   if (noSubscription) {
     banners.push({
-      bg: "bg-red-600 text-white",
+      variant: "destructive",
       icon: <XCircle className="h-4 w-4 shrink-0" />,
       text: "Você ainda não possui assinatura ativa. Assine via PIX para liberar todos os recursos.",
     });
   } else if (isExpired) {
     banners.push({
-      bg: "bg-red-600 text-white",
+      variant: "destructive",
       icon: <XCircle className="h-4 w-4 shrink-0" />,
       text: "Sua assinatura está vencida. Renove via PIX para continuar usando a plataforma.",
     });
   } else if (isExpiring) {
     banners.push({
-      bg: "bg-yellow-500 text-white",
+      variant: "warning",
       icon: <AlertTriangle className="h-4 w-4 shrink-0" />,
       text: `Sua assinatura vence em ${daysLeft} dia${daysLeft === 1 ? "" : "s"}. Renove para não perder acesso.`,
     });
@@ -52,16 +52,22 @@ function BillingBanner() {
 
   if (lowCredits) {
     banners.push({
-      bg: "bg-amber-500 text-white",
+      variant: "info",
       icon: <Zap className="h-4 w-4 shrink-0" />,
       text: `Saldo de créditos baixo (${bal?.balance ?? 0}). Recarregue para continuar usando IA avançada.`,
     });
   }
 
+  const variantClasses = {
+    destructive: "bg-destructive text-destructive-foreground",
+    warning: "bg-accent text-accent-foreground",
+    info: "bg-primary text-primary-foreground",
+  };
+
   return (
     <>
       {banners.map((b, i) => (
-        <div key={i} className={`${b.bg} px-4 py-2 text-sm flex items-center justify-center gap-2`}>
+        <div key={i} className={`${variantClasses[b.variant]} px-4 py-2 text-sm flex items-center justify-center gap-2`}>
           {b.icon}
           <span>{b.text}</span>
           <Link to="/admin/assinatura" className="underline font-semibold ml-1 whitespace-nowrap">

@@ -5,7 +5,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Send,
-  X,
   Sparkles,
   Bot,
   User,
@@ -16,6 +15,7 @@ import {
   Lightbulb,
   HelpCircle,
   Star,
+  Loader2,
 } from "lucide-react";
 import { useAxelMemory, type AxelMessage } from "@/hooks/useAxelMemory";
 import { useAuth } from "@/hooks/useAuth";
@@ -146,12 +146,17 @@ export default function AxelChat() {
 
   const [input, setInput] = useState("");
   const [feedback, setFeedback] = useState<FeedbackDialogState>(INITIAL_FEEDBACK);
+  const [isProcessing, setIsProcessing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Auto-scroll
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      const viewport = scrollRef.current.querySelector("[data-radix-scroll-area-viewport]") as HTMLElement | null;
+      if (viewport) {
+        viewport.scrollTop = viewport.scrollHeight;
+      }
     }
   }, [messages]);
 
@@ -198,14 +203,29 @@ export default function AxelChat() {
     // Comandos especiais
     if (lower.includes("feedback") || lower.includes("sugestão") || lower.includes("sugestao")) {
       setFeedback((prev) => ({ ...prev, open: true }));
-      return { content: "Clique no botão abaixo para enviar seu feedback! 💬", actions: [{ label: "✍️ Enviar Feedback", action: "open-feedback" }] };
+      return {
+        content: "Clique no botão abaixo para enviar seu feedback! 💬",
+        actions: [{ label: "✍️ Enviar Feedback", action: "open-feedback" }],
+      };
     }
 
-    if (lower.includes("onboarding") || lower.includes("começar") || lower.includes("comecar") || lower.includes("primeiros passos") || lower.includes("iniciar")) {
+    if (
+      lower.includes("onboarding") ||
+      lower.includes("começar") ||
+      lower.includes("comecar") ||
+      lower.includes("primeiros passos") ||
+      lower.includes("iniciar")
+    ) {
       return getOnboardingResponse();
     }
 
-    if (lower.includes("conteudo") || lower.includes("conteúdo") || lower.includes("video") || lower.includes("videos") || lower.includes("marketing")) {
+    if (
+      lower.includes("conteudo") ||
+      lower.includes("conteúdo") ||
+      lower.includes("video") ||
+      lower.includes("videos") ||
+      lower.includes("marketing")
+    ) {
       return getContentCreationResponse();
     }
 
@@ -213,8 +233,16 @@ export default function AxelChat() {
       return { content: "Por nada! 😊 Estou sempre aqui para ajudar. Pode me chamar quando precisar!" };
     }
 
-    if (lower.includes("sim") || lower.includes("quero") || lower.includes("vamos") || lower.includes("bora")) {
-      return { content: "Perfeito! 🚀 O que você gostaria de fazer?\n\n- 🎯 **Onboarding** — Se ainda não completou\n- 📝 **Criar conteúdo** — Vídeos, artigos, posts\n- ❓ **FAQ** — Dúvidas sobre a plataforma\n- 💡 **Feedback** — Sugestões ou reportar problemas" };
+    if (
+      lower.includes("sim") ||
+      lower.includes("quero") ||
+      lower.includes("vamos") ||
+      lower.includes("bora")
+    ) {
+      return {
+        content:
+          "Perfeito! 🚀 O que você gostaria de fazer?\n\n- 🎯 **Onboarding** — Se ainda não completou\n- 📝 **Criar conteúdo** — Vídeos, artigos, posts\n- ❓ **FAQ** — Dúvidas sobre a plataforma\n- 💡 **Feedback** — Sugestões ou reportar problemas",
+      };
     }
 
     // Buscar resposta no FAQ
@@ -223,7 +251,10 @@ export default function AxelChat() {
       if ("actions" in match && Array.isArray(match.actions)) {
         return { content: match.answer, actions: match.actions as any };
       }
-      return { content: match.answer, actions: (match as any).action ? [(match as any).action] : undefined };
+      return {
+        content: match.answer,
+        actions: (match as any).action ? [(match as any).action] : undefined,
+      };
     }
 
     // Fallback
@@ -286,10 +317,11 @@ export default function AxelChat() {
   };
 
   const handleSend = async () => {
-    if (!input.trim()) return;
+    if (!input.trim() || isProcessing) return;
 
     const text = input.trim();
     setInput("");
+    setIsProcessing(true);
 
     // Adicionar mensagem do usuário
     addMessage({ role: "user", content: text });
@@ -308,7 +340,10 @@ export default function AxelChat() {
         content: response.content,
         actions: response.actions,
       });
-    }, 300); // pequeno delay para parecer natural
+      setIsProcessing(false);
+      // Focus back on input
+      inputRef.current?.focus();
+    }, 500 + Math.random() * 400);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -376,136 +411,212 @@ export default function AxelChat() {
     }
   };
 
+  // Formatar timestamp relativo simples
+  const getRelativeTime = (date: Date) => {
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "agora";
+    if (mins < 60) return `${mins}min`;
+    const hours = Math.floor(mins / 60);
+    return `${hours}h`;
+  };
+
   return (
     <>
       {/* Messages */}
-      <ScrollArea className="flex-1 p-4" ref={scrollRef}>
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex gap-2 mb-3 ${
-              msg.role === "axel" ? "justify-start" : "justify-end"
-            }`}
-          >
-            {msg.role === "axel" && (
-              <Avatar className="h-7 w-7 shrink-0 mt-1">
-                <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-500 text-white text-[10px]">
+      <ScrollArea className="flex-1" ref={scrollRef}>
+        <div className="p-3 sm:p-4 space-y-0.5">
+          {messages.map((msg, idx) => {
+            const isAxel = msg.role === "axel";
+            const prevMsg = idx > 0 ? messages[idx - 1] : null;
+            const showAvatar = !prevMsg || prevMsg.role !== msg.role;
+
+            return (
+              <div
+                key={msg.id}
+                className={`flex gap-2 sm:gap-2.5 ${isAxel ? "justify-start" : "justify-end"} ${
+                  showAvatar ? "mt-3 sm:mt-4" : "mt-0.5"
+                }`}
+              >
+                {/* Avatar (Axel side) */}
+                {isAxel && (
+                  <div className={`shrink-0 ${showAvatar ? "opacity-100" : "opacity-0"}`}>
+                    <Avatar className="h-7 w-7 sm:h-8 sm:w-8 ring-2 ring-purple-500/20 ring-offset-1 ring-offset-background">
+                      <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-600 text-white text-[9px] sm:text-[10px] font-bold">
+                        AX
+                      </AvatarFallback>
+                    </Avatar>
+                  </div>
+                )}
+
+                <div className={`max-w-[85%] sm:max-w-[75%] ${!showAvatar && isAxel ? "ml-9 sm:ml-10" : ""} ${!showAvatar && !isAxel ? "mr-9 sm:mr-10" : ""}`}>
+                  {/* Time stamp above first in group */}
+                  {showAvatar && (
+                    <span className={`text-[10px] text-muted-foreground/50 mb-1 block ${isAxel ? "ml-1" : "text-right mr-1"}`}>
+                      {isAxel ? "Axel" : "Você"} • {getRelativeTime(new Date(msg.created_at || Date.now()))}
+                    </span>
+                  )}
+
+                  {/* Message Bubble */}
+                  <div
+                    className={`rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 text-sm leading-relaxed ${
+                      isAxel
+                        ? "bg-white/[0.03] backdrop-blur-md border border-white/10 rounded-tl-md"
+                        : "bg-gradient-to-r from-purple-500 to-blue-600 text-white rounded-tr-md shadow-lg shadow-purple-500/10"
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap break-words text-[13px] sm:text-sm">{msg.content}</p>
+                  </div>
+
+                  {/* Action Buttons */}
+                  {msg.actions && msg.actions.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {msg.actions.map((action, i) => (
+                        <Button
+                          key={i}
+                          variant="outline"
+                          size="sm"
+                          className="text-[11px] sm:text-xs h-7 sm:h-8 gap-1 sm:gap-1.5 rounded-xl bg-white/[0.02] backdrop-blur-md border-white/10 hover:bg-white/10 hover:border-purple-500/30 transition-all duration-200"
+                          onClick={() => handleAction(action)}
+                        >
+                          <ChevronRight className="h-3 w-3 text-purple-400" />
+                          {action.label}
+                        </Button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Avatar (User side) */}
+                {!isAxel && (
+                  <div className={`shrink-0 ${showAvatar ? "opacity-100" : "opacity-0"}`}>
+                    <Avatar className="h-7 w-7 sm:h-8 sm:w-8 ring-2 ring-purple-500/20 ring-offset-1 ring-offset-background">
+                      <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-600 text-white text-[9px] sm:text-[10px]">
+                        <User className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                      </AvatarFallback>
+                    </Avatar>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Quick Actions Grid (shown only when just greeting is present) */}
+          {messages.length === 1 && (
+            <div className="mt-6">
+              <p className="text-[10px] text-muted-foreground/50 text-center mb-3">
+                Ou escolha uma opção rápida:
+              </p>
+              <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
+                <button
+                  onClick={() => {
+                    setInput("quero me ambientar");
+                    handleSend();
+                  }}
+                  className="flex flex-col items-center gap-2 p-4 rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md hover:bg-white/[0.05] hover:border-purple-500/20 transition-all duration-200 group"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
+                    <Sparkles className="h-5 w-5 text-purple-400" />
+                  </div>
+                  <span className="text-xs font-medium">🎯 Me ambientar</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setInput("quero criar conteudo");
+                    handleSend();
+                  }}
+                  className="flex flex-col items-center gap-2 p-4 rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md hover:bg-white/[0.05] hover:border-yellow-500/20 transition-all duration-200 group"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-yellow-500/20 to-orange-500/20 flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
+                    <Lightbulb className="h-5 w-5 text-yellow-400" />
+                  </div>
+                  <span className="text-xs font-medium">📝 Criar conteúdo</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setInput("tenho uma duvida");
+                    handleSend();
+                  }}
+                  className="flex flex-col items-center gap-2 p-4 rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md hover:bg-white/[0.05] hover:border-blue-500/20 transition-all duration-200 group"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
+                    <HelpCircle className="h-5 w-5 text-blue-400" />
+                  </div>
+                  <span className="text-xs font-medium">❓ FAQ</span>
+                </button>
+                <button
+                  onClick={() => handleAction({ label: "Feedback", action: "open-feedback" })}
+                  className="flex flex-col items-center gap-2 p-4 rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md hover:bg-white/[0.05] hover:border-amber-500/20 transition-all duration-200 group"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-500/20 flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
+                    <Star className="h-5 w-5 text-amber-400" />
+                  </div>
+                  <span className="text-xs font-medium">💡 Feedback</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Processing indicator */}
+          {isProcessing && (
+            <div className="flex gap-2 sm:gap-2.5 mt-3 sm:mt-4 justify-start">
+              <Avatar className="h-7 w-7 sm:h-8 sm:w-8 shrink-0 ring-2 ring-purple-500/20 ring-offset-1 ring-offset-background">
+                <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-600 text-white text-[9px] sm:text-[10px] font-bold">
                   AX
                 </AvatarFallback>
               </Avatar>
-            )}
-            <div className="max-w-[85%]">
-              <div
-                className={`rounded-lg px-3 py-2 text-sm ${
-                  msg.role === "axel"
-                    ? "bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950/30 dark:to-blue-950/30 border border-purple-200/50 dark:border-purple-800/30"
-                    : "bg-primary text-primary-foreground"
-                }`}
-              >
-                <p className="whitespace-pre-wrap break-words leading-relaxed">
-                  {msg.content}
-                </p>
-              </div>
-
-              {/* Actions */}
-              {msg.actions && msg.actions.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {msg.actions.map((action, i) => (
-                    <Button
-                      key={i}
-                      variant="outline"
-                      size="sm"
-                      className="text-xs h-7 gap-1 bg-background/80 hover:bg-background"
-                      onClick={() => handleAction(action)}
-                    >
-                      {action.label.includes("✅") || action.label.includes("⬜") ? null : (
-                        <ChevronRight className="h-3 w-3" />
-                      )}
-                      {action.label}
-                    </Button>
-                  ))}
+              <div className="bg-white/[0.03] backdrop-blur-md border border-white/10 rounded-2xl rounded-tl-md px-3 py-2.5 sm:px-4 sm:py-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <span className="w-2 h-2 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <span className="w-2 h-2 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "300ms" }} />
                 </div>
-              )}
+              </div>
             </div>
-            {msg.role === "user" && (
-              <Avatar className="h-7 w-7 shrink-0 mt-1">
-                <AvatarFallback className="bg-primary text-primary-foreground text-[10px]">
-                  <User className="h-3.5 w-3.5" />
-                </AvatarFallback>
-              </Avatar>
-            )}
-          </div>
-        ))}
-
-        {messages.length === 1 && (
-          <div className="grid grid-cols-2 gap-2 mt-4">
-            <Button
-              variant="outline"
-              className="h-auto py-3 flex-col gap-1 text-xs bg-background/50 hover:bg-background"
-              onClick={() => {
-                setInput("quero me ambientar");
-                handleSend();
-              }}
-            >
-              <Sparkles className="h-4 w-4 text-purple-500" />
-              <span>🎯 Me ambientar</span>
-            </Button>
-            <Button
-              variant="outline"
-              className="h-auto py-3 flex-col gap-1 text-xs bg-background/50 hover:bg-background"
-              onClick={() => {
-                setInput("quero criar conteudo");
-                handleSend();
-              }}
-            >
-              <Lightbulb className="h-4 w-4 text-yellow-500" />
-              <span>📝 Criar conteúdo</span>
-            </Button>
-            <Button
-              variant="outline"
-              className="h-auto py-3 flex-col gap-1 text-xs bg-background/50 hover:bg-background"
-              onClick={() => {
-                setInput("tenho uma duvida");
-                handleSend();
-              }}
-            >
-              <HelpCircle className="h-4 w-4 text-blue-500" />
-              <span>❓ FAQ</span>
-            </Button>
-            <Button
-              variant="outline"
-              className="h-auto py-3 flex-col gap-1 text-xs bg-background/50 hover:bg-background"
-              onClick={() => handleAction({ label: "Feedback", action: "open-feedback" })}
-            >
-              <Star className="h-4 w-4 text-amber-500" />
-              <span>💡 Feedback</span>
-            </Button>
-          </div>
-        )}
+          )}
+        </div>
       </ScrollArea>
 
-      {/* Input */}
-      <div className="border-t p-3">
-        <div className="flex gap-2">
-          <Input
-            placeholder="Digite sua mensagem..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className="flex-1 h-9 text-sm"
-          />
-          <Button size="icon" className="h-9 w-9 shrink-0" onClick={handleSend} disabled={!input.trim()}>
-            <Send className="h-4 w-4" />
+      {/* Input Area */}
+      <div className="border-t border-white/5 p-2.5 sm:p-3 bg-white/[0.01] backdrop-blur-xl safe-bottom">
+        <div className="flex gap-2 items-center">
+          <div className="flex-1 relative">
+            <Input
+              ref={inputRef}
+              placeholder="Digite sua mensagem..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="h-10 text-sm bg-white/5 border-white/10 rounded-xl focus:border-purple-500/50 focus:ring-purple-500/20 transition-all pr-4 placeholder:text-xs sm:placeholder:text-sm"
+              disabled={isProcessing}
+            />
+          </div>
+          <Button
+            size="icon"
+            className="h-10 w-10 shrink-0 rounded-xl bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-400 hover:to-blue-500 shadow-lg shadow-purple-500/20 transition-all duration-200 active:scale-95"
+            onClick={handleSend}
+            disabled={!input.trim() || isProcessing}
+          >
+            {isProcessing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
           </Button>
         </div>
-        <div className="flex items-center justify-between mt-1.5">
+        <div className="flex items-center justify-between mt-1.5 sm:mt-2 px-1">
           <button
             onClick={clearConversation}
-            className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+            className="text-[9px] sm:text-[10px] text-muted-foreground/40 hover:text-muted-foreground transition-colors flex items-center gap-1"
           >
+            <span className="inline-block w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-muted-foreground/20" />
             Limpar conversa
           </button>
-          <span className="text-[10px] text-muted-foreground/30">🤖 Axel v1.0</span>
+          <span className="text-[9px] sm:text-[10px] text-muted-foreground/30 flex items-center gap-1">
+            <Sparkles className="h-2.5 w-2.5" />
+            Axel IA
+          </span>
         </div>
       </div>
 
@@ -514,22 +625,28 @@ export default function AxelChat() {
         open={feedback.open}
         onOpenChange={(open) => setFeedback((prev) => ({ ...prev, open }))}
       >
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-[450px] backdrop-blur-2xl bg-white/[0.03] border-white/10 shadow-2xl">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-400 via-pink-500 to-amber-400" />
           <DialogHeader>
-            <DialogTitle className="font-serif text-xl">💡 Como podemos melhorar?</DialogTitle>
+            <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                <Star className="h-4 w-4 text-white" />
+              </div>
+              Como podemos melhorar?
+            </DialogTitle>
             <DialogDescription>
               Sua opinião é fundamental para evoluirmos a plataforma.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 py-3">
             <div className="space-y-2">
               <label className="text-sm font-medium">Tipo de Feedback</label>
               <Select
                 value={feedback.type}
                 onValueChange={(v) => setFeedback((prev) => ({ ...prev, type: v }))}
               >
-                <SelectTrigger>
+                <SelectTrigger className="bg-white/5 border-white/10 rounded-xl">
                   <SelectValue placeholder="Selecione o tipo" />
                 </SelectTrigger>
                 <SelectContent>
@@ -550,7 +667,7 @@ export default function AxelChat() {
                 onChange={(e) =>
                   setFeedback((prev) => ({ ...prev, message: e.target.value }))
                 }
-                className="min-h-[100px]"
+                className="min-h-[100px] bg-white/5 border-white/10 rounded-xl resize-none focus:border-purple-500/50"
               />
             </div>
 
@@ -563,10 +680,10 @@ export default function AxelChat() {
                   <button
                     key={i}
                     onClick={() => setFeedback((prev) => ({ ...prev, nps: i }))}
-                    className={`flex-1 h-8 text-[10px] rounded transition-colors ${
+                    className={`flex-1 h-9 text-xs rounded-xl transition-all duration-200 ${
                       feedback.nps === i
-                        ? "bg-primary text-primary-foreground font-bold"
-                        : "bg-muted hover:bg-muted/80"
+                        ? "bg-gradient-to-r from-purple-500 to-blue-600 text-white font-bold shadow-lg shadow-purple-500/20 scale-105"
+                        : "bg-white/5 hover:bg-white/10 text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     {i}
@@ -578,12 +695,15 @@ export default function AxelChat() {
 
           <DialogFooter>
             <Button
-              className="w-full gap-2"
+              className="w-full gap-2 rounded-xl bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-400 hover:to-blue-500 shadow-lg shadow-purple-500/20"
               onClick={handleSubmitFeedback}
               disabled={feedback.sending}
             >
               {feedback.sending ? (
-                "Enviando..."
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Enviando...
+                </>
               ) : (
                 <>
                   <Send className="h-4 w-4" />

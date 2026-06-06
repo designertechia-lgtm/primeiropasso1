@@ -25,6 +25,8 @@ export interface Lead {
   professional_id: string;
   /** Informações coletadas pelo agente WhatsApp durante a conversa (chave→valor). */
   collected_info?: Record<string, string> | null;
+  /** URL cacheada da foto de perfil do WhatsApp (obtida via Evolution API). */
+  avatar_url?: string | null;
 }
 
 export const PIPELINE_COLUMNS: {

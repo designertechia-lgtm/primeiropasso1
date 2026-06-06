@@ -23,21 +23,14 @@ export function useUpdateLeadStage() {
     onMutate: async ({ leadId, newStage }) => {
       await queryClient.cancelQueries({ queryKey: ["kanban-leads"] });
       const prev = queryClient.getQueryData<Lead[]>(["kanban-leads"]);
-
       queryClient.setQueriesData<Lead[]>(
         { queryKey: ["kanban-leads"] },
-        (old) =>
-          old?.map((l) =>
-            l.id === leadId ? { ...l, pipeline_stage: newStage } : l
-          )
+        (old) => old?.map((l) => (l.id === leadId ? { ...l, pipeline_stage: newStage } : l))
       );
-
       return { prev };
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) {
-        queryClient.setQueriesData({ queryKey: ["kanban-leads"] }, ctx.prev);
-      }
+      if (ctx?.prev) queryClient.setQueriesData({ queryKey: ["kanban-leads"] }, ctx.prev);
       toast.error("Erro ao mover lead");
     },
     onSettled: () => {
@@ -64,13 +57,15 @@ export function useToggleAgentEnabled() {
       if (error) throw error;
     },
     onMutate: async ({ leadId, enabled }) => {
+      // Atualizar cache do kanban
       await queryClient.cancelQueries({ queryKey: ["kanban-leads"] });
       queryClient.setQueriesData<Lead[]>(
         { queryKey: ["kanban-leads"] },
-        (old) =>
-          old?.map((l) =>
-            l.id === leadId ? { ...l, agent_enabled: enabled } : l
-          )
+        (old) => old?.map((l) => (l.id === leadId ? { ...l, agent_enabled: enabled } : l))
+      );
+      // Atualizar cache do lead individual (chat)
+      queryClient.setQueryData(["lead", leadId], (old: Lead | undefined) =>
+        old ? { ...old, agent_enabled: enabled } : old
       );
     },
     onError: () => {
@@ -79,6 +74,8 @@ export function useToggleAgentEnabled() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["kanban-leads"] });
+      // Força refetch do lead individual para sincronizar switch
+      queryClient.invalidateQueries({ queryKey: ["lead"] });
     },
   });
 }

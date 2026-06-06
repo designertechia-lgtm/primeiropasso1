@@ -36,13 +36,13 @@ import AdminClientes from "./pages/admin/AdminClientes.tsx";
 import AdminAssinatura from "./pages/admin/AdminAssinatura.tsx";
 import AdminGerente from "./pages/admin/AdminGerente.tsx";
 import AdminFeedback from "./pages/admin/AdminFeedback.tsx";
+import AdminAxelChat from "./pages/admin/AdminAxelChat.tsx";
 
 import PatientBuscar from "./pages/paciente/PatientBuscar.tsx";
 import PatientAgendamentos from "./pages/paciente/PatientAgendamentos.tsx";
 import PatientAgendar from "./pages/paciente/PatientAgendar.tsx";
 import PatientPerfil from "./pages/paciente/PatientPerfil.tsx";
 import FaviconUpdater from "./components/FaviconUpdater.tsx";
-import FeedbackButton from "./components/FeedbackButton.tsx";
 import AppAnnouncements from "./components/AppAnnouncements.tsx";
 
 const queryClient = new QueryClient();
@@ -73,7 +73,6 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <FaviconUpdater />
-          <FeedbackButton />
           <AppAnnouncements />
           <Routes>
             <Route path="/" element={<Index />} />
@@ -105,6 +104,7 @@ const App = () => (
             <Route path="/admin/avatares" element={<Navigate to="/admin/redes-sociais?tab=personagens" replace />} />
             <Route path="/admin/assinatura" element={<AdminRoute><AdminAssinatura /></AdminRoute>} />
             <Route path="/admin/feedback" element={<AdminRoute><AdminFeedback /></AdminRoute>} />
+            <Route path="/admin/chat" element={<AdminRoute><AdminAxelChat /></AdminRoute>} />
             <Route path="/admin-gerente" element={<OwnerOnlyRoute><AdminGerente /></OwnerOnlyRoute>} />
             <Route path="/admin-proprietario" element={<Navigate to="/admin-gerente" replace />} />
 

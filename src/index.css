@@ -1,48 +1,33 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Lato:wght@400;700&family=Lora:wght@400;500;600;700&family=Merriweather:wght@400;700&family=Montserrat:wght@400;500;600;700&family=Open+Sans:wght@400;600;700&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Poppins:wght@400;500;600;700&family=Raleway:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&family=Roboto:wght@300;400;500;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  /* Brand Primeiro Passo — Calm Cyan + Health Green
-     Aplicado em landing pública e como base do admin (.theme-admin sobrescreve) */
   :root {
     --font-heading: 'Lora', Georgia, serif;
-    --font-body: 'Raleway', system-ui, sans-serif;
-
+    --font-body: 'Roboto', system-ui, sans-serif;
     --background: 184 86% 96%;
     --foreground: 190 64% 26%;
-
     --card: 0 0% 100%;
     --card-foreground: 190 64% 26%;
-
     --popover: 0 0% 100%;
     --popover-foreground: 190 64% 26%;
-
-    /* Cor principal: verde esmeralda (hue 160, alinhado ao accent).
-       Público neutro/saúde — verde transmite bem-estar e serenidade. */
     --primary: 160 84% 33%;
     --primary-foreground: 0 0% 100%;
-
     --secondary: 187 78% 54%;
     --secondary-foreground: 190 64% 18%;
-
     --muted: 188 40% 92%;
     --muted-foreground: 190 30% 38%;
-
     --accent: 160 84% 31%;
     --accent-foreground: 0 0% 100%;
-
     --destructive: 0 73% 50%;
     --destructive-foreground: 0 0% 100%;
-
     --border: 187 75% 82%;
     --input: 187 75% 82%;
     --ring: 160 84% 33%;
-
     --radius: 0.75rem;
-
     --sidebar-background: 184 86% 98%;
     --sidebar-foreground: 190 64% 26%;
     --sidebar-primary: 160 84% 33%;
@@ -56,33 +41,23 @@
   .dark {
     --background: 190 50% 10%;
     --foreground: 184 70% 92%;
-
     --card: 190 45% 13%;
     --card-foreground: 184 70% 92%;
-
     --popover: 190 45% 13%;
     --popover-foreground: 184 70% 92%;
-
-    /* Verde esmeralda no dark (hue 160), claro o suficiente pra contraste. */
     --primary: 160 70% 52%;
     --primary-foreground: 190 50% 10%;
-
     --secondary: 190 30% 22%;
     --secondary-foreground: 184 70% 92%;
-
     --muted: 190 30% 18%;
     --muted-foreground: 184 25% 65%;
-
     --accent: 160 70% 45%;
     --accent-foreground: 190 50% 10%;
-
     --destructive: 0 62% 45%;
     --destructive-foreground: 184 70% 92%;
-
     --border: 190 30% 28%;
     --input: 190 30% 28%;
     --ring: 160 70% 52%;
-
     --sidebar-background: 190 50% 10%;
     --sidebar-foreground: 184 70% 92%;
     --sidebar-primary: 160 70% 52%;
@@ -93,38 +68,26 @@
     --sidebar-ring: 160 70% 52%;
   }
 
-  /* Admin scope — Data-Dense Dashboard: Blue + Amber alerts.
-     Aplicado via classe no DashboardLayout. themeVars inline per-tenant
-     (buildProfessionalThemeVars) vencem essas vars quando o pro customiza. */
   .theme-admin {
     --background: 160 30% 97%;
     --foreground: 165 40% 20%;
-
     --card: 0 0% 100%;
     --card-foreground: 165 40% 20%;
-
     --popover: 0 0% 100%;
     --popover-foreground: 165 40% 20%;
-
     --primary: 160 84% 30%;
     --primary-foreground: 0 0% 100%;
-
     --secondary: 160 60% 45%;
     --secondary-foreground: 165 40% 16%;
-
     --muted: 160 25% 93%;
     --muted-foreground: 165 18% 40%;
-
     --accent: 33 92% 44%;
     --accent-foreground: 0 0% 100%;
-
     --destructive: 0 73% 50%;
     --destructive-foreground: 0 0% 100%;
-
     --border: 160 30% 88%;
     --input: 160 30% 88%;
     --ring: 160 84% 30%;
-
     --sidebar-background: 165 40% 12%;
     --sidebar-foreground: 160 30% 92%;
     --sidebar-primary: 160 70% 48%;
@@ -135,36 +98,26 @@
     --sidebar-ring: 160 70% 48%;
   }
 
-  .theme-admin.dark,
-  .dark .theme-admin {
+  .theme-admin.dark, .dark .theme-admin {
     --background: 165 40% 8%;
     --foreground: 160 30% 94%;
-
     --card: 165 38% 12%;
     --card-foreground: 160 30% 94%;
-
     --popover: 165 38% 12%;
     --popover-foreground: 160 30% 94%;
-
     --primary: 160 70% 50%;
     --primary-foreground: 165 47% 8%;
-
     --secondary: 160 35% 22%;
     --secondary-foreground: 160 30% 92%;
-
     --muted: 165 30% 18%;
     --muted-foreground: 160 20% 65%;
-
     --accent: 33 85% 55%;
     --accent-foreground: 222 47% 11%;
-
     --destructive: 0 62% 50%;
     --destructive-foreground: 210 40% 96%;
-
     --border: 165 28% 24%;
     --input: 165 28% 24%;
     --ring: 160 70% 50%;
-
     --sidebar-background: 165 45% 7%;
     --sidebar-foreground: 160 30% 92%;
     --sidebar-primary: 160 70% 50%;
@@ -177,21 +130,11 @@
 }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
-
-  body {
-    @apply bg-background text-foreground;
-    font-family: var(--font-body, 'Raleway', system-ui, sans-serif);
-  }
-
-  h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-heading, 'Lora', Georgia, serif);
-  }
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground; font-family: var(--font-body, 'Roboto', system-ui, sans-serif); }
+  h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading, 'Lora', Georgia, serif); }
 }
 
-/* FullCalendar Theme */
 .fc-wrapper .fc {
   --fc-border-color: hsl(var(--border));
   --fc-button-bg-color: hsl(var(--primary));
@@ -205,73 +148,16 @@
   --fc-page-bg-color: transparent;
   --fc-neutral-bg-color: hsl(var(--muted));
   --fc-event-border-color: transparent;
-  font-family: var(--font-body, 'Raleway', sans-serif);
+  font-family: var(--font-body, 'Roboto', sans-serif);
 }
-
-.fc-wrapper .fc .fc-toolbar-title {
-  font-family: var(--font-heading, 'Lora', serif);
-  font-size: 1.15rem;
-  font-weight: 600;
-  color: hsl(var(--foreground));
-}
-
-.fc-wrapper .fc .fc-button {
-  font-size: 0.8rem;
-  padding: 0.35rem 0.75rem;
-  border-radius: var(--radius);
-  font-weight: 500;
-  text-transform: capitalize;
-}
-
-.fc-wrapper .fc .fc-col-header-cell {
-  background: hsl(var(--muted));
-  font-weight: 500;
-  font-size: 0.8rem;
-  padding: 0.5rem 0;
-}
-
-.fc-wrapper .fc .fc-col-header-cell-cushion {
-  color: hsl(var(--foreground));
-  text-decoration: none;
-}
-
-.fc-wrapper .fc .fc-timegrid-slot-label-cushion {
-  font-size: 0.75rem;
-  color: hsl(var(--muted-foreground));
-}
-
-.fc-wrapper .fc .fc-event {
-  border-radius: calc(var(--radius) - 4px);
-  font-size: 0.78rem;
-  padding: 2px 4px;
-  cursor: pointer;
-}
-
-.fc-wrapper .fc .fc-timegrid-event .fc-event-main {
-  padding: 2px 4px;
-}
-
-.fc-wrapper .fc .fc-daygrid-day-number,
-.fc-wrapper .fc .fc-timegrid-axis-cushion {
-  color: hsl(var(--muted-foreground));
-  font-size: 0.75rem;
-}
-
-.fc-wrapper .fc .fc-scrollgrid {
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
-.fc-wrapper .fc td, .fc-wrapper .fc th {
-  border-color: hsl(var(--border));
-}
-
-@media (max-width: 640px) {
-  .fc-wrapper .fc .fc-toolbar {
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  .fc-wrapper .fc .fc-toolbar-title {
-    font-size: 1rem;
-  }
-}
+.fc-wrapper .fc .fc-toolbar-title { font-family: var(--font-heading, 'Lora', serif); font-size: 1.15rem; font-weight: 600; color: hsl(var(--foreground)); }
+.fc-wrapper .fc .fc-button { font-size: 0.8rem; padding: 0.35rem 0.75rem; border-radius: var(--radius); font-weight: 500; text-transform: capitalize; }
+.fc-wrapper .fc .fc-col-header-cell { background: hsl(var(--muted)); font-weight: 500; font-size: 0.8rem; padding: 0.5rem 0; }
+.fc-wrapper .fc .fc-col-header-cell-cushion { color: hsl(var(--foreground)); text-decoration: none; }
+.fc-wrapper .fc .fc-timegrid-slot-label-cushion { font-size: 0.75rem; color: hsl(var(--muted-foreground)); }
+.fc-wrapper .fc .fc-event { border-radius: calc(var(--radius) - 4px); font-size: 0.78rem; padding: 2px 4px; cursor: pointer; }
+.fc-wrapper .fc .fc-timegrid-event .fc-event-main { padding: 2px 4px; }
+.fc-wrapper .fc .fc-daygrid-day-number, .fc-wrapper .fc .fc-timegrid-axis-cushion { color: hsl(var(--muted-foreground)); font-size: 0.75rem; }
+.fc-wrapper .fc .fc-scrollgrid { border-radius: var(--radius); overflow: hidden; }
+.fc-wrapper .fc td, .fc-wrapper .fc th { border-color: hsl(var(--border)); }
+@media (max-width: 640px) { .fc-wrapper .fc .fc-toolbar { flex-direction: column; gap: 0.5rem; } .fc-wrapper .fc .fc-toolbar-title { font-size: 1rem; } }

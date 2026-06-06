@@ -4,6 +4,11 @@ const SUPABASE_URL       = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY  = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE_KEY        = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const META_APP_ID        = Deno.env.get("META_APP_ID") ?? "";
+// Cada produto Meta usa o App ID do SEU próprio app — Instagram, Facebook e Threads
+// têm IDs distintos. Caem em META_APP_ID se a variável específica não estiver setada.
+const INSTAGRAM_APP_ID   = Deno.env.get("INSTAGRAM_APP_ID") ?? META_APP_ID;
+const FACEBOOK_APP_ID    = Deno.env.get("FACEBOOK_APP_ID")  ?? META_APP_ID;
+const THREADS_APP_ID     = Deno.env.get("THREADS_APP_ID")   ?? META_APP_ID;
 const LINKEDIN_CLIENT_ID = Deno.env.get("LINKEDIN_CLIENT_ID") ?? "";
 
 const REDIRECT_BASE = `${SUPABASE_URL}/functions/v1`;
@@ -44,10 +49,10 @@ Deno.serve(async (req) => {
   let url: string;
 
   if (platform === "meta" || platform === "instagram") {
-    if (!META_APP_ID) return jsonError("META_APP_ID não configurado", 500);
+    if (!INSTAGRAM_APP_ID) return jsonError("INSTAGRAM_APP_ID não configurado", 500);
     const params = new URLSearchParams({
       force_reauth:  "true",
-      client_id:     META_APP_ID,
+      client_id:     INSTAGRAM_APP_ID,
       redirect_uri:  `${REDIRECT_BASE}/oauth-meta-callback`,
       response_type: "code",
       scope: [
@@ -62,9 +67,9 @@ Deno.serve(async (req) => {
     url = `https://www.instagram.com/oauth/authorize?${params}`;
 
   } else if (platform === "facebook") {
-    if (!META_APP_ID) return jsonError("META_APP_ID não configurado", 500);
+    if (!FACEBOOK_APP_ID) return jsonError("FACEBOOK_APP_ID não configurado", 500);
     const params = new URLSearchParams({
-      client_id:     META_APP_ID,
+      client_id:     FACEBOOK_APP_ID,
       redirect_uri:  `${REDIRECT_BASE}/oauth-facebook-callback`,
       response_type: "code",
       scope: [
@@ -80,9 +85,9 @@ Deno.serve(async (req) => {
     url = `https://www.facebook.com/v21.0/dialog/oauth?${params}`;
 
   } else if (platform === "threads") {
-    if (!META_APP_ID) return jsonError("META_APP_ID não configurado", 500);
+    if (!THREADS_APP_ID) return jsonError("THREADS_APP_ID não configurado", 500);
     const params = new URLSearchParams({
-      client_id:     META_APP_ID,
+      client_id:     THREADS_APP_ID,
       redirect_uri:  `${REDIRECT_BASE}/oauth-threads-callback`,
       response_type: "code",
       scope: [

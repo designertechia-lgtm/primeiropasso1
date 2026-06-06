@@ -1,19 +1,34 @@
 // Callback OAuth do Threads. Troca code por token short-lived, depois long-lived (60d),
 // busca /me e salva em social_accounts como platform='threads'.
-const META_APP_ID     = Deno.env.get("META_APP_ID")!;
-const META_APP_SECRET = Deno.env.get("META_APP_SECRET")!;
+// Threads tem app/credenciais próprios. Fallback p/ META_APP_* preserva o
+// comportamento atual se THREADS_APP_* não estiver setado.
+const META_APP_ID     = Deno.env.get("THREADS_APP_ID")     ?? Deno.env.get("META_APP_ID")!;
+const META_APP_SECRET = Deno.env.get("THREADS_APP_SECRET") ?? Deno.env.get("META_APP_SECRET")!;
 const SUPABASE_URL    = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY     = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const REDIRECT_URI    = `${SUPABASE_URL}/functions/v1/oauth-threads-callback`;
 
+// Converte erros crus da Meta em mensagens acionáveis em PT-BR.
+function friendlyError(raw: string): string {
+  const e = (raw || "").toLowerCase();
+  if (e.includes("redirect"))
+    return "Erro de configuração do app (redirect_uri). Avise o suporte.";
+  if (e.includes("not available") || e.includes("indispon") || e.includes("development"))
+    return "O app ainda está em revisão pela Meta. Por enquanto, só contas adicionadas como testadoras conseguem conectar.";
+  if (e.includes("expired") || e.includes("expirou"))
+    return "A sessão de conexão expirou. Clique em Conectar e tente novamente.";
+  return (raw || "Falha na autenticação. Tente novamente.").replace(/^Error:\s*/i, "");
+}
+
 function htmlPage(success: boolean, error?: string): string {
+  const friendly = success ? "" : friendlyError(error ?? "");
   const message = success
     ? `<p style="color:#16a34a;font-size:1.1rem;margin:0">✓ Threads conectado!</p>`
-    : `<p style="color:#dc2626;font-size:1rem;margin:0">Erro: ${error ?? "Falha na autenticação"}</p>`;
+    : `<p style="color:#dc2626;font-size:1rem;margin:0">Erro: ${friendly}</p>`;
   const payload = JSON.stringify({
     type:     success ? "OAUTH_SUCCESS" : "OAUTH_ERROR",
     platform: "threads",
-    error:    error ?? null,
+    error:    success ? null : friendly,
   });
   return `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8"><title>Conectando Threads...</title>

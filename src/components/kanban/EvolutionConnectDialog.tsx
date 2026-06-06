@@ -49,6 +49,7 @@ export function EvolutionConnectDialog({
   };
 
   const currentStatus = status.data?.status;
+  const instanceName = status.data?.instance_name;
   const isCreating = createInstance.isPending;
   const isLoggingOut = logoutInstance.isPending;
 
@@ -124,7 +125,12 @@ export function EvolutionConnectDialog({
               </div>
               <div>
                 <h4 className="font-medium text-foreground">WhatsApp Conectado!</h4>
-                <p className="text-sm text-muted-foreground">
+                {instanceName && (
+                  <p className="text-xs text-muted-foreground font-mono mt-1 bg-muted/50 px-2 py-0.5 rounded">
+                    Instância: {instanceName}
+                  </p>
+                )}
+                <p className="text-sm text-muted-foreground mt-2">
                   Sua instância está ativa e o Agente IA já pode responder mensagens.
                 </p>
               </div>

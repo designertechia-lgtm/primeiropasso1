@@ -5,12 +5,12 @@ import { useEffect } from "react";
 export interface ChatMessage {
   id: string;
   lead_id: string;
-  role: "user" | "assistant" | "system";
+  role: "user" | "assistant" | "system" | "professional";
   content: string;
   created_at: string;
 }
 
-export function useChatMessages(leadId: string | null) {
+export function useChatMessages(leadId: string | null, channelScope: string = "default") {
   const queryClient = useQueryClient();
 
   const query = useQuery({
@@ -27,12 +27,11 @@ export function useChatMessages(leadId: string | null) {
     enabled: !!leadId,
   });
 
-  // Realtime: escutar novas mensagens
   useEffect(() => {
     if (!leadId) return;
 
     const channel = supabase
-      .channel(`chat-messages-${leadId}`)
+      .channel(`chat-messages-${channelScope}-${leadId}`)
       .on(
         "postgres_changes",
         {
@@ -50,7 +49,7 @@ export function useChatMessages(leadId: string | null) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [leadId, queryClient]);
+  }, [leadId, queryClient, channelScope]);
 
   return query;
 }

@@ -9,6 +9,7 @@ import { buildProfessionalThemeVars } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import { useSubscription, useCreditBalance } from "@/hooks/useBilling";
 import { differenceInDays, parseISO } from "date-fns";
+import AdminChatFloat from "@/components/admin/AdminChatFloat";
 
 const LOW_CREDIT_THRESHOLD = 10;
 
@@ -145,6 +146,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             {children}
           </main>
         </div>
+        <AdminChatFloat />
       </div>
     </SidebarProvider>
   );

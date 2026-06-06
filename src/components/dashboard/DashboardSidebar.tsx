@@ -14,6 +14,7 @@ import {
   CreditCard,
   Crown,
   MessageSquare,
+  Sparkles,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -57,7 +58,7 @@ const sections = [
     items: [
       { title: "Assinatura", url: "/admin/assinatura", icon: CreditCard },
       { title: "Configurações", url: "/admin/configuracoes", icon: Settings },
-      { title: "Feedback", url: "/admin/feedback", icon: MessageSquare },
+      { title: "Chat Axel", url: "/admin/chat", icon: Sparkles },
     ]
   }
 ];

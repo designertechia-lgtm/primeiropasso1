@@ -5,6 +5,7 @@ export type EvolutionStatus = "open" | "close" | "connecting" | "not_created" | 
 
 interface EvolutionResponse {
   status?: EvolutionStatus;
+  instance_name?: string;
   qrcode?: string;
   base64?: string;
   error?: string;
@@ -24,8 +25,6 @@ export function useEvolutionInstance() {
       return data as EvolutionResponse;
     },
     refetchInterval: (query) => {
-      // Se não estiver criado, não precisa ficar chamando repetidamente,
-      // se estiver connecting ou close (aguardando qrcode), chama a cada 5s
       const st = query.state.data?.status;
       if (st === "connecting" || st === "close") return 5000;
       return false;
@@ -56,9 +55,8 @@ export function useEvolutionInstance() {
       if (data?.error) throw new Error(data.error);
       return data as EvolutionResponse;
     },
-    // Só buscar o QR code se o status for de não conectado
     enabled: statusQuery.data?.status === "close" || statusQuery.data?.status === "connecting",
-    refetchInterval: 10000, // Atualiza QR Code a cada 10s caso expire
+    refetchInterval: 10000,
   });
 
   const logoutMutation = useMutation({

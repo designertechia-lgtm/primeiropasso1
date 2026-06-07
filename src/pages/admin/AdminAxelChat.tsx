@@ -122,7 +122,7 @@ function AxelTab() {
         </Badge>
       </div>
       <div className="flex-1 flex flex-col overflow-hidden">
-        <AxelChat />
+        <AxelChat isDedicatedPage />
       </div>
     </div>
   );

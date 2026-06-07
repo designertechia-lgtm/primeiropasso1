@@ -12,7 +12,16 @@ import {
   HelpCircle,
   Star,
   Loader2,
+  Settings,
+  Trash2,
+  Shield,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useNavigate } from "react-router-dom";
 import { useAxelMemory } from "@/hooks/useAxelMemory";
 import { useAuth } from "@/hooks/useAuth";
@@ -71,7 +80,7 @@ interface AxelResponse {
   openFeedback?: boolean;
 }
 
-export default function AxelChat() {
+export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?: boolean }) {
   const {
     memory,
     messages,
@@ -580,27 +589,35 @@ export default function AxelChat() {
           </Button>
         </div>
         <div className="flex items-center justify-between mt-1.5 sm:mt-2 px-1">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={clearConversation}
-              className="text-[9px] sm:text-[10px] text-muted-foreground/40 hover:text-muted-foreground transition-colors flex items-center gap-1"
-            >
-              <span className="inline-block w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-muted-foreground/20" />
-              Limpar conversa
-            </button>
-            <button
-              onClick={() => {
-                if (isResettingMemory) return;
-                resetMemory();
-                toast.success("Memória limpa (LGPD). O Axel vai te reconhecer como novo.");
-              }}
-              disabled={isResettingMemory}
-              className="text-[9px] sm:text-[10px] text-muted-foreground/40 hover:text-red-400 transition-colors flex items-center gap-1"
-            >
-              <span className="inline-block w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-red-500/20" />
-              {isResettingMemory ? "Limpando..." : "Limpar memória"}
-            </button>
-          </div>
+          {isDedicatedPage ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="text-[10px] text-muted-foreground/30 hover:text-muted-foreground/60 transition-colors">
+                  <Settings className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                <DropdownMenuItem onClick={clearConversation} className="text-xs gap-2 cursor-pointer">
+                  <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  Limpar conversa
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (isResettingMemory) return;
+                    resetMemory();
+                    toast.success("Memória limpa (LGPD). O Axel vai te reconhecer como novo.");
+                  }}
+                  disabled={isResettingMemory}
+                  className="text-xs gap-2 cursor-pointer"
+                >
+                  <Shield className="h-3.5 w-3.5 text-destructive/60" />
+                  {isResettingMemory ? "Limpando..." : "Limpar memória (LGPD)"}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <span />
+          )}
           <span className="text-[9px] sm:text-[10px] text-muted-foreground/30 flex items-center gap-1">
             <Sparkles className="h-2.5 w-2.5" />
             Axel IA

@@ -36,6 +36,17 @@ class SearchRequest(BaseModel):
     match_count: int = Field(default=5, ge=1, le=20)
 
 
+class IngestTextRequest(BaseModel):
+    """Payload para ingerir texto puro (markdown, string) sem precisar de PDF.
+
+    Usado pelo painel de gestão da base de conhecimento global (admin-gerente)
+    e para ingerir o conhecimento.md do produto."""
+    text: str = Field(min_length=10, max_length=500_000)
+    file_name: str = Field(default="conhecimento.md")
+    professional_id: str | None = None  # se None, usa a base global (UUID sentinela)
+    document_id: str | None = None       # se None, gera um novo UUID
+
+
 def _ingest_in_background(payload: IngestRequest) -> None:
     """Executa o ingest e captura exceções pra não derrubar o BackgroundTasks runner."""
     try:
@@ -84,6 +95,47 @@ async def search(payload: SearchRequest) -> dict:
         match_count=payload.match_count,
     )
     return {"chunks": chunks, "count": len(chunks)}
+
+
+
+@router.post("/ingest-text")
+async def ingest_text(payload: IngestTextRequest, bg: BackgroundTasks) -> dict:
+    """Ingere texto puro (markdown) — usado pela base global e painel de gestão."""
+    from app.rag_ingest import ingest_text
+    bg.add_task(_ingest_text_in_background, payload)
+    return {"status": "accepted", "file_name": payload.file_name}
+
+
+def _ingest_text_in_background(payload: IngestTextRequest) -> None:
+    """Executa o ingest de texto em background."""
+    try:
+        from app.rag_ingest import ingest_text
+        ingest_text(
+            text=payload.text,
+            file_name=payload.file_name,
+            professional_id=payload.professional_id,
+            document_id=payload.document_id,
+        )
+    except Exception:
+        logger.exception("rag_ingest_text_failed", extra={"file_name": payload.file_name})
+
+
+@router.post("/ingest-text/sync")
+async def ingest_text_sync(payload: IngestTextRequest) -> dict:
+    """Versão sync do ingest-text — debug/teste."""
+    from app.rag_ingest import ingest_text
+    try:
+        return ingest_text(
+            text=payload.text,
+            file_name=payload.file_name,
+            professional_id=payload.professional_id,
+            document_id=payload.document_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("rag_ingest_text_sync_failed")
+        raise HTTPException(status_code=500, detail=f"Ingest text failed: {e}")
 
 
 @router.delete("/documents/{document_id}")

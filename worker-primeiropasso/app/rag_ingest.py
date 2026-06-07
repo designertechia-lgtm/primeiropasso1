@@ -161,6 +161,87 @@ def ingest_document(
     }
 
 
+def ingest_text(
+    *,
+    text: str,
+    file_name: str = "conhecimento.md",
+    professional_id: str | None = None,
+    document_id: str | None = None,
+) -> dict[str, Any]:
+    """Pipeline de ingest para texto puro (markdown/string) — sem PDF.
+
+    Usado para:
+    - Ingerir a base de conhecimento GLOBAL do produto (UUID sentinela)
+    - Painel de gestão da base no /admin-gerente (editar markdown + re-ingestar)
+
+    Se document_id não for informado, gera um novo UUID.
+    Se professional_id não for informado, usa "00000000-0000-0000-0000-000000000000" (base global).
+    """
+    import uuid
+
+    settings = get_settings()
+    supabase = get_supabase()
+
+    effective_doc_id = document_id or str(uuid.uuid4())
+    effective_pro_id = professional_id or "00000000-0000-0000-0000-000000000000"
+
+    logger.info(
+        "rag_ingest_text_start",
+        extra={
+            "document_id": effective_doc_id,
+            "file_name": file_name,
+            "text_len": len(text),
+        },
+    )
+
+    if not text.strip():
+        raise ValueError("Text content is empty")
+
+    chunks = _chunk_text(text)
+    if not chunks:
+        raise ValueError("Chunking produced zero chunks")
+
+    openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    embeddings = _embed_batch(openai_client, chunks)
+    if len(embeddings) != len(chunks):
+        raise RuntimeError(
+            f"Embedding count mismatch: {len(embeddings)} vs {len(chunks)} chunks"
+        )
+
+    rows: list[dict[str, Any]] = []
+    for chunk, embedding in zip(chunks, embeddings):
+        data_field = f"Documento_id:{effective_doc_id}, file_name:{file_name}. {chunk}"
+        metadata: dict[str, Any] = {
+            "data": data_field,
+            "document_id": effective_doc_id,
+            "file_name": file_name,
+            "professional_id": effective_pro_id,
+        }
+        rows.append({"content": chunk, "embedding": embedding, "metadata": metadata})
+
+    # Remove chunks antigos do mesmo document_id (re-ingest idempotente)
+    try:
+        delete_document_chunks(effective_doc_id)
+    except Exception:
+        logger.warning(
+            "delete_old_chunks_failed",
+            extra={"document_id": effective_doc_id},
+        )
+
+    insert_result = supabase.table("documents").insert(rows).execute()
+    chunks_inserted = len(insert_result.data or [])
+    logger.info(
+        "rag_ingest_text_done",
+        extra={"document_id": effective_doc_id, "chunks_inserted": chunks_inserted},
+    )
+
+    return {
+        "status": "completed",
+        "document_id": effective_doc_id,
+        "chunks_inserted": chunks_inserted,
+    }
+
+
 def delete_document_chunks(document_id: str) -> int:
     """Remove todos os chunks de um documento da tabela `documents`."""
     supabase = get_supabase()

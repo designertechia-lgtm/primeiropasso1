@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   Globe,
   KeyRound,
+  BookOpen,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import ReceitaTab from "@/components/admin-gerente/ReceitaTab";
@@ -21,6 +22,7 @@ import FeedbackTab from "@/components/admin-gerente/FeedbackTab";
 import AcessoTab from "@/components/admin-gerente/AcessoTab";
 import LandingOficialTab from "@/components/admin-gerente/LandingOficialTab";
 import AssinaturasTab from "@/components/admin-gerente/AssinaturasTab";
+import ConhecimentoTab from "@/components/admin-gerente/ConhecimentoTab";
 
 const VALID_TABS = [
   "overview",
@@ -32,6 +34,7 @@ const VALID_TABS = [
   "acesso",
   "assinaturas",
   "landing-oficial",
+  "conhecimento",
 ] as const;
 type TabValue = (typeof VALID_TABS)[number];
 
@@ -102,6 +105,10 @@ export default function AdminGerente() {
             <Globe className="h-4 w-4" />
             <span className="hidden sm:inline">Landing</span>
           </TabsTrigger>
+          <TabsTrigger value="conhecimento" className="gap-2">
+            <BookOpen className="h-4 w-4" />
+            <span className="hidden sm:inline">Conhecimento</span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
@@ -138,6 +145,10 @@ export default function AdminGerente() {
 
         <TabsContent value="landing-oficial" className="mt-6">
           <LandingOficialTab />
+        </TabsContent>
+
+        <TabsContent value="conhecimento" className="mt-6">
+          <ConhecimentoTab />
         </TabsContent>
       </Tabs>
     </div>

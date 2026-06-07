@@ -6,19 +6,17 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Send,
   Sparkles,
-  Bot,
   User,
-  ThumbsUp,
-  MessageSquare,
   ChevronRight,
-  CheckCircle2,
   Lightbulb,
   HelpCircle,
   Star,
   Loader2,
 } from "lucide-react";
-import { useAxelMemory, type AxelMessage } from "@/hooks/useAxelMemory";
+import { useNavigate } from "react-router-dom";
+import { useAxelMemory } from "@/hooks/useAxelMemory";
 import { useAuth } from "@/hooks/useAuth";
+
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
@@ -37,84 +35,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-
-// Conhecimento embutido do Axel (baseado nos arquivos .md)
-const FAQ = [
-  {
-    keywords: ["agenda", "horario", "disponibilidade", "consultas", "agendar"],
-    answer:
-      "📅 A **Agenda** é onde você gerencia seus horários e consultas. Vou te mostrar o caminho:\n\n**Passo 1:** Vá em `/admin/agenda`\n**Passo 2:** Na aba \"Disponibilidade\", configure seus horários semanais\n**Passo 3:** Os pacientes podem agendar online nos horários disponíveis\n\nQuer que eu te leve até lá agora? 👇",
-    action: { label: "Ir para Agenda", href: "/admin/agenda" },
-  },
-  {
-    keywords: ["cliente", "paciente", "lead", "crm", "pipeline", "kanban"],
-    answer:
-      "👥 O **CRM de Clientes** organiza seus pacientes em etapas:\n\n**Pipeline:** `Novo → Em Conversa → Proposta Feita → Agendado → Cliente Ativo → Inativo`\n\nVocê pode:\n- Arrastar cards entre as colunas\n- Clicar em um card para ver detalhes e conversas\n- Ativar/desativar o Agente IA para cada lead\n\nQuer acessar? 👇",
-    action: { label: "Ir para Clientes", href: "/admin/clientes" },
-  },
-  {
-    keywords: ["video", "videos", "conteudo", "conteúdo", "criar", "publicar"],
-    answer:
-      "🎬 Na seção de **Redes Sociais** você pode criar e gerenciar conteúdo:\n\n- **Artigos:** Posts com carrossel de imagens\n- **Vídeos:** Conteúdo em vídeo terapêutico\n- **Estúdio Viral:** Criação rápida de conteúdo\n- **Personagens/Avatares:** Avatares IA para vídeos\n\nQuer explorar as opções? 👇",
-    action: { label: "Ir para Redes Sociais", href: "/admin/redes-sociais" },
-  },
-  {
-    keywords: ["perfil", "foto", "crp", "bio", "informacoes", "informações"],
-    answer:
-      "👤 O **Perfil** é onde você cadastra suas informações profissionais:\n\n- Nome, CRP, e-mail, telefone\n- Foto profissional\n- Biografia e abordagens terapêuticas\n- Links para redes sociais (Instagram, Facebook, LinkedIn)\n- Personalização de cores e fontes\n\nVamos completar seu perfil? 👇",
-    action: { label: "Ir para Perfil", href: "/admin/perfil" },
-  },
-  {
-    keywords: ["landing", "pagina", "página", "site", "publico", "público"],
-    answer:
-      "🎨 Sua **Landing Page** é a página pública que seus pacientes veem! Ela inclui:\n\n- Hero com sua foto e chamada\n- Seção explicando como você ajuda\n- Biografia e abordagens\n- Preços e serviços\n- Botão de agendamento online\n\nQue tal dar uma olhada e personalizar? 👇",
-    action: { label: "Ir para Landing Page", href: "/admin/landing" },
-  },
-  {
-    keywords: ["assinatura", "plano", "pagar", "pagamento", "pix", "credito", "crédito"],
-    answer:
-      "💳 Na página de **Assinatura** você gerencia:\n\n- Seu plano atual\n- Pagamento via PIX\n- Saldo de créditos para usar IA avançada\n- Histórico de pagamentos\n\nPara manter tudo funcionando, é importante manter a assinatura ativa! 👇",
-    action: { label: "Ir para Assinatura", href: "/admin/assinatura" },
-  },
-  {
-    keywords: ["feedback", "sugestao", "sugestão", "bug", "problema", "melhoria", "opiniao", "opinião"],
-    answer:
-      "💡 Sua opinião é muito importante! Que tipo de feedback você gostaria de dar?\n\nClique no botão abaixo para abrir o formulário 👇",
-    action: { label: "✍️ Enviar Feedback", action: "open-feedback" },
-  },
-  {
-    keywords: ["whatsapp", "zap", "conectar", "evolution", "integracao", "integração"],
-    answer:
-      "📱 O **WhatsApp** é integrado via Evolution API. Para conectar:\n\n1. Vá em `/admin/clientes`\n2. Clique no botão **\"WhatsApp\"** no topo\n3. Escaneie o QR Code com seu WhatsApp\n4. Pronto! Leads podem conversar com você pelo Zap\n\nQuer configurar agora? 👇",
-    action: { label: "Configurar WhatsApp", href: "/admin/clientes" },
-  },
-  {
-    keywords: ["teleconsulta", "videochamada", "online", "remoto", "consulta online"],
-    answer:
-      "📹 A **Teleconsulta** é feita diretamente pela plataforma!\n\n- Videochamada integrada sem precisar de Zoom/Google Meet\n- Link automático gerado para cada consulta\n- Disponível tanto para você quanto para o paciente\n\nFunciona direto da **Agenda**! 👇",
-    action: { label: "Ver Agenda", href: "/admin/agenda" },
-  },
-];
-
-// Respostas de saudação/fallback
-const GREETINGS = [
-  {
-    keywords: ["oi", "olá", "ola", "hey", "bom dia", "boa tarde", "boa noite", "hello", "start"],
-    answer:
-      "Olá! 👋 Eu sou o **Axel**, seu assistente pessoal do PrimeiroPasso!\n\nEstou aqui para te ajudar com:\n\n🚀 **Ambientação** — Te guiar pela plataforma\n📝 **Conteúdo** — Criar vídeos e materiais de marketing\n❓ **Dúvidas** — Explicar funcionalidades\n💡 **Feedback** — Ouvir suas sugestões\n\nPor onde você gostaria de começar?",
-    actions: [
-      { label: "🚀 Quero me ambientar", action: "onboarding" },
-      { label: "📝 Criar conteúdo", action: "content-creation" },
-      { label: "❓ Tirar dúvidas", action: "faq" },
-      { label: "💡 Dar feedback", action: "open-feedback" },
-    ],
-  },
-];
-
-const FALLBACK_RESPONSES = [
-  "Hmm, não tenho certeza sobre isso ainda. 🤔\n\nPosso te ajudar com:\n- 🚀 **Ambientação** na plataforma\n- 📝 **Criação de conteúdo**\n- ❓ **FAQ** sobre funcionalidades\n- 💡 **Feedback**\n\nOu se preferir, pode falar com o suporte diretamente!",
-  "Desculpa, não encontrei uma resposta para isso. 😅\n\nQue tal explorarmos uma dessas opções?\n- 🚀 Tour guiado pela plataforma\n- 📝 Ajuda para criar conteúdo\n- ❓ Dúvidas comuns\n- 💡 Enviar feedback",
-];
+import { resolveIntent } from "@/lib/axel/intentEngine";
+import {
+  ALL_INTENTS,
+  GREETING_INTENT,
+  CONTENT_MENU,
+  FALLBACK_RESPONSES,
+  FALLBACK_ACTIONS,
+  FAQ_MENU_TEXT,
+  FAQ_MENU_FOLLOWUPS,
+  type KbAction,
+} from "@/lib/axel/knowledgeBase";
 
 type FeedbackDialogState = {
   open: boolean;
@@ -132,219 +63,229 @@ const INITIAL_FEEDBACK: FeedbackDialogState = {
   sending: false,
 };
 
+/** Resposta gerada pelo Axel. */
+interface AxelResponse {
+  content: string;
+  actions?: KbAction[];
+  followUps?: string[];
+  openFeedback?: boolean;
+}
+
 export default function AxelChat() {
   const {
     memory,
     messages,
+    onboarding,
+    greetingType,
     addMessage,
     clearConversation,
+    resetMemory,
     markFirstContact,
     incrementInteraction,
-    updateMemory,
+    getMemoryGreeting,
+    isResettingMemory,
   } = useAxelMemory();
   const { profile } = useAuth();
+  const navigate = useNavigate();
 
   const [input, setInput] = useState("");
+
   const [feedback, setFeedback] = useState<FeedbackDialogState>(INITIAL_FEEDBACK);
   const [isProcessing, setIsProcessing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const firstName = memory.name ? memory.name.split(" ")[0] : "";
+
   // Auto-scroll
   useEffect(() => {
     if (scrollRef.current) {
-      const viewport = scrollRef.current.querySelector("[data-radix-scroll-area-viewport]") as HTMLElement | null;
-      if (viewport) {
-        viewport.scrollTop = viewport.scrollHeight;
-      }
+      const viewport = scrollRef.current.querySelector(
+        "[data-radix-scroll-area-viewport]"
+      ) as HTMLElement | null;
+      if (viewport) viewport.scrollTop = viewport.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, isProcessing]);
 
-  // Mensagem de boas-vindas na primeira interação
+  // Mensagem de boas-vindas contextual com memória (Fase 2)
   useEffect(() => {
-    if (messages.length === 0) {
-      const greeting = GREETINGS[0];
-      const personalizedGreeting = memory.name
-        ? greeting.answer.replace("Olá!", `Olá **${memory.name.split(" ")[0]}!`)
-        : greeting.answer;
+    if (messages.length > 0) return;
 
-      addMessage({
-        role: "axel",
-        content: personalizedGreeting,
-        actions: greeting.actions,
-      });
-    }
-  }, []);
+    const content = getMemoryGreeting();
+    addMessage({ role: "axel", content, actions: GREETING_INTENT.actions });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [greetingType]);
 
-  // Encontrar resposta baseada em keywords
-  const findResponse = (text: string) => {
-    const lower = text.toLowerCase();
+  /** Sugere o próximo passo pendente de onboarding (para saudação de retorno). */
+  function onboardingNudge(): string {
+    if (!onboarding.loaded || onboarding.progress === 100) return "";
+    const next = nextOnboardingStep();
+    if (!next) return "";
+    return `\n\nSua ambientação está em ${onboarding.progress}%. Que tal o próximo passo: ${next.label}?`;
+  }
 
-    // Verificar saudações primeiro
-    for (const g of GREETINGS) {
-      if (g.keywords.some((kw) => lower.includes(kw))) {
-        return g;
-      }
-    }
 
-    // Verificar FAQ
-    for (const item of FAQ) {
-      if (item.keywords.some((kw) => lower.includes(kw))) {
-        return item;
-      }
-    }
+  // ==================== ONBOARDING ====================
+  function onboardingChecklist() {
+    return [
+      { label: "Perfil completo", done: onboarding.profileComplete, href: "/admin/perfil" },
+      { label: "Agenda configurada", done: onboarding.agendaConfigured, href: "/admin/agenda" },
+      { label: "Landing personalizada", done: onboarding.landingPublished, href: "/admin/landing" },
+      { label: "WhatsApp conectado", done: onboarding.whatsappConnected, href: "/admin/clientes" },
+      { label: "Primeiro conteúdo criado", done: onboarding.firstContentCreated, href: "/admin/redes-sociais" },
+      { label: "Assinatura ativa", done: onboarding.subscriptionActive, href: "/admin/assinatura" },
+    ];
+  }
 
-    return null;
-  };
+  function nextOnboardingStep() {
+    return onboardingChecklist().find((c) => !c.done) ?? null;
+  }
 
-  const processUserMessage = (text: string) => {
-    const lower = text.toLowerCase();
-
-    // Comandos especiais
-    if (lower.includes("feedback") || lower.includes("sugestão") || lower.includes("sugestao")) {
-      setFeedback((prev) => ({ ...prev, open: true }));
-      return {
-        content: "Clique no botão abaixo para enviar seu feedback! 💬",
-        actions: [{ label: "✍️ Enviar Feedback", action: "open-feedback" }],
-      };
-    }
-
-    if (
-      lower.includes("onboarding") ||
-      lower.includes("começar") ||
-      lower.includes("comecar") ||
-      lower.includes("primeiros passos") ||
-      lower.includes("iniciar")
-    ) {
-      return getOnboardingResponse();
-    }
-
-    if (
-      lower.includes("conteudo") ||
-      lower.includes("conteúdo") ||
-      lower.includes("video") ||
-      lower.includes("videos") ||
-      lower.includes("marketing")
-    ) {
-      return getContentCreationResponse();
-    }
-
-    if (lower.includes("obrigado") || lower.includes("valeu") || lower.includes("brigado")) {
-      return { content: "Por nada! 😊 Estou sempre aqui para ajudar. Pode me chamar quando precisar!" };
-    }
-
-    if (
-      lower.includes("sim") ||
-      lower.includes("quero") ||
-      lower.includes("vamos") ||
-      lower.includes("bora")
-    ) {
+  function getOnboardingResponse(): AxelResponse {
+    if (!onboarding.loaded) {
       return {
         content:
-          "Perfeito! 🚀 O que você gostaria de fazer?\n\n- 🎯 **Onboarding** — Se ainda não completou\n- 📝 **Criar conteúdo** — Vídeos, artigos, posts\n- ❓ **FAQ** — Dúvidas sobre a plataforma\n- 💡 **Feedback** — Sugestões ou reportar problemas",
+          "Deixa eu verificar seu progresso de ambientação, um instante.\n\nEnquanto isso, me diz: você quer configurar a plataforma ou já partir para criar conteúdo?",
+        actions: [
+          { label: "Configurar plataforma", href: "/admin/perfil" },
+          { label: "Criar conteúdo", action: "content-creation" },
+        ],
       };
+
     }
 
-    // Buscar resposta no FAQ
-    const match = findResponse(text);
-    if (match) {
-      if ("actions" in match && Array.isArray(match.actions)) {
-        return { content: match.answer, actions: match.actions as any };
-      }
-      return {
-        content: match.answer,
-        actions: (match as any).action ? [(match as any).action] : undefined,
-      };
-    }
-
-    // Fallback
-    const fb = FALLBACK_RESPONSES[Math.floor(Math.random() * FALLBACK_RESPONSES.length)];
-    return { content: fb };
-  };
-
-  const getOnboardingResponse = () => {
-    const checklist = [
-      { label: "Perfil completo", done: memory.profileComplete, href: "/admin/perfil" },
-      { label: "Agenda configurada", done: memory.agendaConfigured, href: "/admin/agenda" },
-      { label: "Landing Page publicada", done: memory.landingPublished, href: "/admin/landing" },
-      { label: "WhatsApp conectado", done: memory.whatsappConnected, href: "/admin/clientes" },
-      { label: "Primeiro conteúdo criado", done: memory.firstContentCreated, href: "/admin/redes-sociais" },
-      { label: "Assinatura ativa", done: memory.subscriptionActive, href: "/admin/assinatura" },
-    ];
-
-    const doneCount = checklist.filter((c) => c.done).length;
-    const totalCount = checklist.length;
-    const progress = Math.round((doneCount / totalCount) * 100);
+    const checklist = onboardingChecklist();
+    const { doneCount, totalCount, progress } = onboarding;
 
     let items = "";
     checklist.forEach((item) => {
-      items += `\n${item.done ? "✅" : "⬜"} **${item.label}**`;
-      if (!item.done) {
-        items += ` — [Ir →](${item.href})`;
-      }
+      items += `\n${item.done ? "✅" : "⬜"} ${item.label}`;
     });
 
-    const content =
-      progress === 100
-        ? `🎉 **Parabéns!** Você completou todos os passos de ambientação!\n\nDeseja explorar outras funcionalidades ou tem alguma dúvida?`
-        : `🎯 **Seu Progresso: ${progress}%**\n\nAqui está o checklist de ambientação:${items}\n\n${
-            doneCount === 0
-              ? "Que tal começarmos pelo **Perfil**? É rapidinho!"
-              : `Faltam ${totalCount - doneCount} passo(s). Vamos continuar?`
-          }\n\nMarque os itens como concluídos que eu acompanho seu progresso! 🚀`;
-
-    const undoneItem = checklist.find((c) => !c.done);
-    const actions = undoneItem
-      ? [{ label: `➡️ ${undoneItem.label}`, href: undoneItem.href }]
-      : [{ label: "📝 Criar conteúdo agora", action: "content-creation" }];
-
-    if (actions.length > 0) {
-      return { content, actions };
+    if (progress === 100) {
+      return {
+        content: `🎉 Parabéns${firstName ? `, ${firstName}` : ""}! Você concluiu toda a ambientação.${items}\n\nAgora bora dar atenção ao seu marketing? Posso te ajudar a criar conteúdo.`,
+        actions: [{ label: "Criar conteúdo agora", action: "content-creation" }],
+        followUps: ["Ideias de tema para vídeo", "Como personalizar minha Landing?"],
+      };
     }
-    return { content };
-  };
 
-  const getContentCreationResponse = () => {
+    const next = nextOnboardingStep()!;
+    const content =
+      `Sua ambientação: ${progress}% (${doneCount}/${totalCount})\n${items}\n\n` +
+      (doneCount === 0
+        ? "Vamos começar pelo Perfil? É rapidinho e dá a base pra todo o resto."
+        : `Faltam ${totalCount - doneCount} passo(s). Sugiro seguir por: ${next.label}.`);
+
     return {
-      content:
-        "📝 **Produção de Conteúdo — Como posso ajudar?**\n\nTenho algumas ideias para você:\n\n🎬 **Vídeos** — Roteiros para vídeos terapêuticos\n📄 **Artigos** — Posts para seu blog/site\n📱 **Redes Sociais** — Estratégias de conteúdo\n🎨 **Estúdio Viral** — Conteúdo de impacto rápido\n\nO que te interessa mais? 👇",
-      actions: [
-        { label: "🎬 Criar vídeo", href: "/admin/redes-sociais?tab=criar-video" },
-        { label: "📄 Escrever artigo", href: "/admin/redes-sociais?tab=artigos" },
-        { label: "📱 Redes Sociais", href: "/admin/redes-sociais" },
-      ],
+      content,
+      actions: [{ label: `Ir para: ${next.label}`, href: next.href }],
+      followUps: ["O que falta para 100%?", "Pular para criar conteúdo"],
     };
+  }
+
+
+  // ==================== GERAÇÃO DE RESPOSTA ====================
+  function generateResponse(text: string): AxelResponse {
+    const match = resolveIntent(text, ALL_INTENTS);
+
+    if (!match) {
+      const fb = FALLBACK_RESPONSES[Math.floor(Math.random() * FALLBACK_RESPONSES.length)];
+      return { content: fb, actions: FALLBACK_ACTIONS };
+    }
+
+    const intent = match.intent;
+
+    switch (intent.category) {
+      case "onboarding":
+        return getOnboardingResponse();
+
+      case "content":
+        return {
+          content: CONTENT_MENU.content,
+          actions: CONTENT_MENU.actions,
+          followUps: CONTENT_MENU.followUps,
+        };
+
+      case "feedback":
+        return {
+          content: intent.answer,
+          actions: intent.actions,
+          openFeedback: true,
+        };
+
+      case "greeting": {
+        const content = firstName
+          ? intent.answer.replace("Olá!", `Olá, ${firstName}!`)
+          : intent.answer;
+
+        return { content, actions: intent.actions };
+      }
+
+      default:
+        return {
+          content: intent.answer,
+          actions: intent.actions,
+          followUps: intent.followUps,
+        };
+    }
+  }
+
+  // ==================== ENVIO ====================
+  /**
+   * Fallback por regras (motor de intenção local). Usado quando o agente de IA
+   * (edge function axel-agent) falha, não está configurado, ou retorna fallback.
+   */
+  const runRulesFallback = (text: string) => {
+    const res = generateResponse(text);
+    if (res.openFeedback) {
+      setFeedback((prev) => ({ ...prev, open: true }));
+    }
+    addMessage({
+      role: "axel",
+      content: res.content,
+      actions: res.actions,
+      followUps: res.followUps,
+    });
   };
 
-  const handleSend = async () => {
-    if (!input.trim() || isProcessing) return;
+  const sendMessage = async (raw: string) => {
+    const text = raw.trim();
+    if (!text || isProcessing) return;
 
-    const text = input.trim();
     setInput("");
     setIsProcessing(true);
 
-    // Adicionar mensagem do usuário
     addMessage({ role: "user", content: text });
     incrementInteraction();
+    if (!memory.firstContactDone) markFirstContact();
 
-    // Registrar primeiro contato
-    if (!memory.firstContactDone) {
-      markFirstContact();
-    }
-
-    // Processar resposta
-    setTimeout(() => {
-      const response = processUserMessage(text);
-      addMessage({
-        role: "axel",
-        content: response.content,
-        actions: response.actions,
+    try {
+      // Tenta o agente de IA (Claude + memória + RAG do produto) primeiro.
+      const { data, error } = await supabase.functions.invoke("axel-agent", {
+        body: { message: text },
       });
+
+      const reply = (data as { reply?: string; fallback?: boolean } | null)?.reply;
+      const wantsFallback = (data as { fallback?: boolean } | null)?.fallback;
+
+      if (!error && reply && !wantsFallback) {
+        addMessage({ role: "axel", content: reply });
+      } else {
+        // IA indisponível/erro → motor por regras (não quebra a experiência).
+        runRulesFallback(text);
+      }
+    } catch (err) {
+      console.error("[AxelChat] axel-agent indisponível, usando fallback:", err);
+      runRulesFallback(text);
+    } finally {
       setIsProcessing(false);
-      // Focus back on input
       inputRef.current?.focus();
-    }, 500 + Math.random() * 400);
+    }
   };
+
+
+  const handleSend = () => sendMessage(input);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -353,27 +294,37 @@ export default function AxelChat() {
     }
   };
 
-  const handleAction = (action: { label: string; href?: string; action?: string }) => {
+  const handleAction = (action: KbAction) => {
     if (action.href) {
-      window.location.href = action.href;
+      // Navegação interna do SPA (sem recarregar a página)
+      if (action.href.startsWith("/")) {
+        navigate(action.href);
+      } else {
+        window.open(action.href, "_blank", "noopener,noreferrer");
+      }
+      return;
     }
-    if (action.action === "open-feedback") {
-      setFeedback((prev) => ({ ...prev, open: true }));
-    }
-    if (action.action === "onboarding") {
-      const response = getOnboardingResponse();
-      addMessage({ role: "axel", content: response.content, actions: response.actions });
-    }
-    if (action.action === "content-creation") {
-      const response = getContentCreationResponse();
-      addMessage({ role: "axel", content: response.content, actions: response.actions });
-    }
-    if (action.action === "faq") {
-      addMessage({
-        role: "axel",
-        content:
-          "❓ **FAQ — Dúvidas Frequentes**\n\nPergunte sobre qualquer funcionalidade:\n\n📅 **Agenda** — Horários, consultas, bloqueios\n👥 **Clientes** — CRM, leads, pipeline\n📝 **Conteúdo** — Artigos, vídeos, posts\n👤 **Perfil** — Informações, foto, redes sociais\n🎨 **Landing Page** — Página profissional\n💳 **Assinatura** — Planos, pagamentos, créditos\n📱 **WhatsApp** — Conexão e integração\n📹 **Teleconsulta** — Videochamadas\n\nÉ só perguntar! 😊",
-      });
+
+    switch (action.action) {
+      case "open-feedback":
+        setFeedback((prev) => ({ ...prev, open: true }));
+        break;
+      case "onboarding": {
+        const res = getOnboardingResponse();
+        addMessage({ role: "axel", content: res.content, actions: res.actions, followUps: res.followUps });
+        break;
+      }
+      case "content-creation":
+        addMessage({
+          role: "axel",
+          content: CONTENT_MENU.content,
+          actions: CONTENT_MENU.actions,
+          followUps: CONTENT_MENU.followUps,
+        });
+        break;
+      case "faq":
+        addMessage({ role: "axel", content: FAQ_MENU_TEXT, followUps: FAQ_MENU_FOLLOWUPS });
+        break;
     }
   };
 
@@ -396,12 +347,14 @@ export default function AxelChat() {
 
       if (error) throw error;
 
-      toast.success("Feedback enviado com sucesso! Obrigado! 💜");
+      toast.success("Feedback enviado com sucesso. Obrigado! 💜");
       addMessage({
         role: "axel",
         content:
-          "Recebi seu feedback! Muito obrigado por compartilhar sua opinião. 💜\n\nIsso me ajuda a melhorar cada vez mais para oferecer uma experiência incrível para você.\n\nTem mais alguma coisa em que posso ajudar? 😊",
+          "Recebi seu feedback, muito obrigado por compartilhar. Isso me ajuda a melhorar cada vez mais.\n\nTem mais alguma coisa em que posso ajudar?",
+        followUps: ["Ver meu progresso de ambientação", "Criar um conteúdo"],
       });
+
       setFeedback(INITIAL_FEEDBACK);
     } catch (error) {
       console.error(error);
@@ -411,10 +364,9 @@ export default function AxelChat() {
     }
   };
 
-  // Formatar timestamp relativo simples
+  // Timestamp relativo simples
   const getRelativeTime = (date: Date) => {
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
+    const diff = Date.now() - date.getTime();
     const mins = Math.floor(diff / 60000);
     if (mins < 1) return "agora";
     if (mins < 60) return `${mins}min`;
@@ -450,11 +402,20 @@ export default function AxelChat() {
                   </div>
                 )}
 
-                <div className={`max-w-[85%] sm:max-w-[75%] ${!showAvatar && isAxel ? "ml-9 sm:ml-10" : ""} ${!showAvatar && !isAxel ? "mr-9 sm:mr-10" : ""}`}>
+                <div
+                  className={`max-w-[85%] sm:max-w-[75%] ${!showAvatar && isAxel ? "ml-9 sm:ml-10" : ""} ${
+                    !showAvatar && !isAxel ? "mr-9 sm:mr-10" : ""
+                  }`}
+                >
                   {/* Time stamp above first in group */}
                   {showAvatar && (
-                    <span className={`text-[10px] text-muted-foreground/50 mb-1 block ${isAxel ? "ml-1" : "text-right mr-1"}`}>
-                      {isAxel ? "Axel" : "Você"} • {getRelativeTime(new Date(msg.created_at || Date.now()))}
+                    <span
+                      className={`text-[10px] text-muted-foreground/50 mb-1 block ${
+                        isAxel ? "ml-1" : "text-right mr-1"
+                      }`}
+                    >
+                      {isAxel ? "Axel" : "Você"} •{" "}
+                      {getRelativeTime(new Date(msg.created_at || Date.now()))}
                     </span>
                   )}
 
@@ -466,7 +427,9 @@ export default function AxelChat() {
                         : "bg-gradient-to-r from-purple-500 to-blue-600 text-white rounded-tr-md shadow-lg shadow-purple-500/10"
                     }`}
                   >
-                    <p className="whitespace-pre-wrap break-words text-[13px] sm:text-sm">{msg.content}</p>
+                    <p className="whitespace-pre-wrap break-words text-[13px] sm:text-sm">
+                      {msg.content}
+                    </p>
                   </div>
 
                   {/* Action Buttons */}
@@ -483,6 +446,22 @@ export default function AxelChat() {
                           <ChevronRight className="h-3 w-3 text-purple-400" />
                           {action.label}
                         </Button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Follow-up suggestion chips */}
+                  {isAxel && msg.followUps && msg.followUps.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {msg.followUps.map((q, i) => (
+                        <button
+                          key={i}
+                          onClick={() => sendMessage(q)}
+                          disabled={isProcessing}
+                          className="text-[10px] sm:text-[11px] px-2.5 py-1 rounded-full border border-purple-500/20 bg-purple-500/5 text-purple-200/90 hover:bg-purple-500/15 hover:border-purple-500/40 transition-all duration-200 disabled:opacity-40"
+                        >
+                          {q}
+                        </button>
                       ))}
                     </div>
                   )}
@@ -510,40 +489,34 @@ export default function AxelChat() {
               </p>
               <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
                 <button
-                  onClick={() => {
-                    setInput("quero me ambientar");
-                    handleSend();
-                  }}
+                  onClick={() => handleAction({ label: "Onboarding", action: "onboarding" })}
                   className="flex flex-col items-center gap-2 p-4 rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md hover:bg-white/[0.05] hover:border-purple-500/20 transition-all duration-200 group"
                 >
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
                     <Sparkles className="h-5 w-5 text-purple-400" />
                   </div>
-                  <span className="text-xs font-medium">🎯 Me ambientar</span>
+                  <span className="text-xs font-medium">Me ambientar</span>
+
                 </button>
                 <button
-                  onClick={() => {
-                    setInput("quero criar conteudo");
-                    handleSend();
-                  }}
+                  onClick={() => handleAction({ label: "Conteúdo", action: "content-creation" })}
                   className="flex flex-col items-center gap-2 p-4 rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md hover:bg-white/[0.05] hover:border-yellow-500/20 transition-all duration-200 group"
                 >
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-yellow-500/20 to-orange-500/20 flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
                     <Lightbulb className="h-5 w-5 text-yellow-400" />
                   </div>
-                  <span className="text-xs font-medium">📝 Criar conteúdo</span>
+                  <span className="text-xs font-medium">Criar conteúdo</span>
+
                 </button>
                 <button
-                  onClick={() => {
-                    setInput("tenho uma duvida");
-                    handleSend();
-                  }}
+                  onClick={() => handleAction({ label: "FAQ", action: "faq" })}
                   className="flex flex-col items-center gap-2 p-4 rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md hover:bg-white/[0.05] hover:border-blue-500/20 transition-all duration-200 group"
                 >
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
                     <HelpCircle className="h-5 w-5 text-blue-400" />
                   </div>
-                  <span className="text-xs font-medium">❓ FAQ</span>
+                  <span className="text-xs font-medium">FAQ</span>
+
                 </button>
                 <button
                   onClick={() => handleAction({ label: "Feedback", action: "open-feedback" })}
@@ -552,7 +525,8 @@ export default function AxelChat() {
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-500/20 flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
                     <Star className="h-5 w-5 text-amber-400" />
                   </div>
-                  <span className="text-xs font-medium">💡 Feedback</span>
+                  <span className="text-xs font-medium">Feedback</span>
+
                 </button>
               </div>
             </div>
@@ -606,13 +580,27 @@ export default function AxelChat() {
           </Button>
         </div>
         <div className="flex items-center justify-between mt-1.5 sm:mt-2 px-1">
-          <button
-            onClick={clearConversation}
-            className="text-[9px] sm:text-[10px] text-muted-foreground/40 hover:text-muted-foreground transition-colors flex items-center gap-1"
-          >
-            <span className="inline-block w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-muted-foreground/20" />
-            Limpar conversa
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={clearConversation}
+              className="text-[9px] sm:text-[10px] text-muted-foreground/40 hover:text-muted-foreground transition-colors flex items-center gap-1"
+            >
+              <span className="inline-block w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-muted-foreground/20" />
+              Limpar conversa
+            </button>
+            <button
+              onClick={() => {
+                if (isResettingMemory) return;
+                resetMemory();
+                toast.success("Memória limpa (LGPD). O Axel vai te reconhecer como novo.");
+              }}
+              disabled={isResettingMemory}
+              className="text-[9px] sm:text-[10px] text-muted-foreground/40 hover:text-red-400 transition-colors flex items-center gap-1"
+            >
+              <span className="inline-block w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-red-500/20" />
+              {isResettingMemory ? "Limpando..." : "Limpar memória"}
+            </button>
+          </div>
           <span className="text-[9px] sm:text-[10px] text-muted-foreground/30 flex items-center gap-1">
             <Sparkles className="h-2.5 w-2.5" />
             Axel IA

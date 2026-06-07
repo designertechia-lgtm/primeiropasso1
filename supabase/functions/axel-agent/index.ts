@@ -61,6 +61,52 @@ const tools = [
       required: ["chave", "valor"],
     },
   },
+  {
+    name: "sugerir_dados_perfil",
+    description:
+      "Gera SUGESTÕES de conteúdo para o perfil/landing do profissional (bio, hero_title, hero_subtitle, pain_title, pain_subtitle, pain_items, solution_title, solution_subtitle, solution_items). Use SOMENTE quando o profissional pedir 'melhore minha bio', 'crie um título pra minha landing', 'sugira dores/problemas', etc. PRIMEIRO chame esta tool, mostre o resultado e PEÇA CONFIRMAÇÃO antes de chamar atualizar_perfil ou gerar_landing.",
+    input_schema: {
+      type: "object",
+      properties: {
+        campo: { type: "string", description: "Campo a gerar: 'bio', 'hero_title', 'hero_subtitle', 'pain_title', 'pain_subtitle', 'pain_items', 'solution_title', 'solution_subtitle', 'solution_items'." },
+      },
+      required: ["campo"],
+    },
+  },
+  {
+    name: "atualizar_perfil",
+    description:
+      "APLICA um texto gerado no perfil do profissional (grava no banco). SÓ CHAME depois que o profissional CONFIRMAR explicitamente ('sim', 'aplica', 'pode salvar', 'gostei'). NUNCA grave sem confirmação.",
+    input_schema: {
+      type: "object",
+      properties: {
+        campo: { type: "string", description: "Campo a atualizar: 'bio', 'hero_title', 'hero_subtitle', 'pain_title', 'pain_subtitle', 'pain_items', 'solution_title', 'solution_subtitle', 'solution_items'." },
+        valor: { type: "string", description: "Texto gerado (JSON string para pain_items e solution_items)." },
+      },
+      required: ["campo", "valor"],
+    },
+  },
+  {
+    name: "gerar_landing",
+    description:
+      "Gera TODAS as seções da Landing Page de uma vez (hero_title, hero_subtitle, pain_title, pain_subtitle, pain_items, solution_title, solution_subtitle, solution_items). Chame quando o profissional pedir 'crie minha landing', 'monte a landing page'. PRIMEIRO chame esta tool, mostre o preview e PEÇA CONFIRMAÇÃO antes de aplicar.",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "criar_artigo",
+    description:
+      "Cria um artigo + carrossel de imagens para o profissional. Gera título, conteúdo (legenda Instagram) e slides do carrossel com sugestões de imagem. Chame quando o profissional pedir 'crie um artigo', 'quero postar sobre ansiedade', 'sugira um post'. ANTES de chamar, avise que isso consome créditos da plataforma. Se o profissional não tiver créditos suficientes, a tool retornará erro.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tema: { type: "string", description: "Tema sugerido pelo profissional (opcional). Ex.: 'ansiedade no trabalho', 'autoestima', 'como lidar com estresse'. Se vazio, a IA escolhe um tema relevante." },
+      },
+      required: [],
+    },
+  },
 ]
 
 // =============================================
@@ -229,6 +275,235 @@ async function handleToolCall(
     }
     console.log(`[salvar_memoria] ${chave}=${valor}`)
     return { sucesso: true, chave, valor }
+  }
+
+  // ============ FASE 3 — TOOLS DE EXECUÇÃO ============
+
+  if (toolName === "sugerir_dados_perfil" || toolName === "gerar_landing") {
+    const campo = toolName === "gerar_landing" ? null : (args.campo || "").toString().trim()
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || ""
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+
+    // Busca dados do profissional para contexto
+    const { data: prof } = await supabaseAdmin
+      .from("professionals")
+      .select("full_name, crp, category, category_custom")
+      .eq("id", professionalId)
+      .maybeSingle()
+
+    const ctx = {
+      name: prof?.full_name || "Profissional",
+      crp: prof?.crp,
+      specialty: prof?.category || prof?.category_custom || "",
+    }
+
+    if (toolName === "gerar_landing") {
+      // Gera todas as 9 seções da landing em paralelo
+      const campos = ["hero_title", "hero_subtitle", "pain_title", "pain_subtitle", "pain_items", "solution_title", "solution_subtitle", "solution_items", "bio"]
+      const resultados: Record<string, any> = {}
+      for (const c of campos) {
+        try {
+          const res = await fetch(`${supabaseUrl}/functions/v1/generate-text`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${anonKey}` },
+            body: JSON.stringify({ field: c, context: ctx }),
+          })
+          if (res.ok) {
+            const data = await res.json()
+            resultados[c] = data.result || data.error || "erro ao gerar"
+          } else {
+            resultados[c] = `erro ${res.status}`
+          }
+        } catch (e: any) {
+          resultados[c] = `erro: ${e.message}`
+        }
+      }
+      return {
+        ...resultados,
+        instrucao: "MOSTRE esse preview para o profissional de forma organizada. Pergunte se ele quer aplicar na landing (use atualizar_perfil para cada campo) ou ajustar algo específico. NÃO aplique automaticamente — espere a confirmação EXPLÍCITA dele.",
+      }
+    }
+
+    if (!campo) return { erro: "campo obrigatório para sugerir_dados_perfil" }
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/generate-text`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${anonKey}` },
+        body: JSON.stringify({ field: campo, context: ctx }),
+      })
+      if (!res.ok) {
+        return { erro: `generate-text retornou ${res.status}`, instrucao: "Avise o profissional que houve um erro técnico e peça pra tentar de novo." }
+      }
+      const data = await res.json()
+      const resultado = data.result || data.error || "erro ao gerar"
+      return {
+        campo,
+        resultado,
+        instrucao: "MOSTRE o resultado para o profissional. Pergunte se ele quer APLICAR (chame atualizar_perfil com o campo e valor). NÃO aplique automaticamente — espere a confirmação EXPLÍCITA dele.",
+      }
+    } catch (e: any) {
+      return { erro: e.message, instrucao: "Avise o profissional que houve um erro técnico ao gerar conteúdo." }
+    }
+  }
+
+  if (toolName === "atualizar_perfil") {
+    const campo = (args.campo || "").toString().trim()
+    const valor = (args.valor ?? "").toString().trim()
+    if (!campo || !valor) return { erro: "campo e valor são obrigatórios" }
+
+    // Campos diretos na tabela professionals
+    const camposDiretos = ["bio", "hero_title", "hero_subtitle", "pain_title", "pain_subtitle", "solution_title", "solution_subtitle"]
+    if (camposDiretos.includes(campo)) {
+      const payload: any = { [campo]: valor }
+      const { error } = await supabaseAdmin
+        .from("professionals")
+        .update(payload)
+        .eq("id", professionalId)
+      if (error) {
+        console.error("[atualizar_perfil] erro:", error.message)
+        return { erro: error.message, instrucao: "Avise o profissional que houve erro ao salvar. Peça pra tentar de novo." }
+      }
+      console.log(`[atualizar_perfil] ${campo} atualizado para ${professionalId}`)
+      return { sucesso: true, campo, instrucao: "Confirme pro profissional que o campo foi salvo com sucesso. Pergunte se ele quer ajustar mais alguma coisa." }
+    }
+
+    // Campos JSON (pain_items, solution_items)
+    if (campo === "pain_items" || campo === "solution_items") {
+      try {
+        const parsed = JSON.parse(valor)
+        if (!Array.isArray(parsed)) return { erro: "valor deve ser um array JSON" }
+        const payload: any = { [campo]: parsed }
+        const { error } = await supabaseAdmin
+          .from("professionals")
+          .update(payload)
+          .eq("id", professionalId)
+        if (error) {
+          console.error("[atualizar_perfil] erro:", error.message)
+          return { erro: error.message, instrucao: "Avise o profissional que houve erro ao salvar." }
+        }
+        console.log(`[atualizar_perfil] ${campo} atualizado (${parsed.length} itens)`)
+        return { sucesso: true, campo, itens: parsed.length, instrucao: "Confirme pro profissional que o campo foi salvo com sucesso." }
+      } catch {
+        return { erro: "valor deve ser um JSON válido (array)", instrucao: "Peça pro profissional tentar de novo — o formato do JSON estava inválido." }
+      }
+    }
+
+    return { erro: `campo desconhecido: ${campo}` }
+  }
+
+  if (toolName === "criar_artigo") {
+    const tema = (args.tema || "").toString().trim()
+
+    // 1. Verifica créditos do profissional
+    let creditos = 0
+    try {
+      const { data: bal } = await supabaseAdmin
+        .from("credit_balances")
+        .select("balance")
+        .eq("professional_id", professionalId)
+        .maybeSingle()
+      creditos = (bal as any)?.balance ?? 0
+    } catch (_) { /* tabela pode não existir */ }
+
+    const CUSTO_ARTIGO = 1 // 1 crédito por artigo
+    if (creditos < CUSTO_ARTIGO) {
+      return {
+        erro: "creditos_insuficientes",
+        creditos_disponiveis: creditos,
+        custo: CUSTO_ARTIGO,
+        instrucao: "Avise o profissional que ele não tem créditos suficientes. Ele precisa de 1 crédito para criar um artigo. Sugira recarregar em /admin/assinatura.",
+      }
+    }
+
+    // 2. Busca dados do profissional
+    const { data: prof } = await supabaseAdmin
+      .from("professionals")
+      .select("full_name, crp, category, category_custom")
+      .eq("id", professionalId)
+      .maybeSingle()
+
+    // 3. Busca títulos existentes para evitar duplicação
+    const { data: existingArticles } = await supabaseAdmin
+      .from("articles")
+      .select("title, cover_url")
+      .eq("professional_id", professionalId)
+      .order("created_at", { ascending: false })
+      .limit(20)
+    const existingTitles = (existingArticles || []).map((a: any) => a.title).filter(Boolean)
+    const existingCoverUrls = (existingArticles || []).map((a: any) => a.cover_url).filter(Boolean)
+
+    // 4. Chama generate-text para criar o artigo
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || ""
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+
+    try {
+      const ctx: any = {
+        name: prof?.full_name || "Profissional",
+        crp: prof?.crp,
+        specialty: prof?.category || prof?.category_custom || "",
+        existing_titles: existingTitles,
+        existing_cover_urls: existingCoverUrls,
+        existing_carousel_urls: [],
+      }
+      if (tema) ctx.topic = tema
+
+      const res = await fetch(`${supabaseUrl}/functions/v1/generate-text`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${anonKey}` },
+        body: JSON.stringify({ field: "article_with_carousel", context: ctx }),
+      })
+      if (!res.ok) {
+        return { erro: `generate-text retornou ${res.status}`, instrucao: "Avise o profissional que houve erro ao gerar o artigo." }
+      }
+      const data = await res.json()
+      const artigo = data.result
+
+      if (!artigo || !artigo.title) {
+        return { erro: "resposta vazia da IA", instrucao: "Avise o profissional que a geração falhou. Peça pra tentar com outro tema." }
+      }
+
+      // 5. Debita crédito
+      try {
+        await supabaseAdmin
+          .from("credit_balances")
+          .update({ balance: creditos - CUSTO_ARTIGO })
+          .eq("professional_id", professionalId)
+      } catch (_) { /* non-blocking */ }
+
+      // 6. Salva o artigo no banco
+      const carouselItems = artigo.carousel_items || []
+      const { data: inserted, error: insertErr } = await supabaseAdmin
+        .from("articles")
+        .insert({
+          professional_id: professionalId,
+          title: artigo.title,
+          content: artigo.content || "",
+          cover_url: artigo.cover_image_url || "",
+          carousel: carouselItems.map((item: any) => ({
+            image_url: item.image_url || "",
+            caption: item.caption || "",
+          })),
+          status: "published",
+        })
+        .select("id")
+        .single()
+
+      if (insertErr) {
+        console.error("[criar_artigo] erro insert:", insertErr.message)
+        return { erro: insertErr.message, instrucao: "Avise o profissional que houve erro ao salvar o artigo." }
+      }
+
+      console.log(`[criar_artigo] artigo ${inserted?.id} criado, crédito debitado`)
+      return {
+        sucesso: true,
+        artigo_id: inserted?.id,
+        titulo: artigo.title,
+        creditos_restantes: creditos - CUSTO_ARTIGO,
+        instrucao: "Confirme pro profissional que o artigo foi criado com sucesso. Informe o título, o ID e os créditos restantes. Ele pode ver o artigo em /admin/redes-sociais.",
+      }
+    } catch (e: any) {
+      return { erro: e.message, instrucao: "Avise o profissional que houve erro técnico ao gerar o artigo." }
+    }
   }
 
   return { erro: "Ferramenta desconhecida" }

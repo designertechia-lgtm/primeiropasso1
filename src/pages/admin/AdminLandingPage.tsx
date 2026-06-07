@@ -9,8 +9,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type } from "lucide-react";
+import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, LayoutTemplate, Check, ChevronDown } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
+import { LANDING_TEMPLATES, type LandingTemplate } from "@/data/landingTemplates";
 import { FieldHint } from "@/components/ui/FieldHint";
 import { TikTokIcon } from "@/components/icons/TikTokIcon";
 import { Slider } from "@/components/ui/slider";
@@ -268,8 +269,13 @@ export default function AdminLandingPage() {
   const [saving, setSaving] = useState(false);
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [appliedTemplateId, setAppliedTemplateId] = useState<string | null>(null);
+  const [mobileView, setMobileView] = useState<"editor" | "preview">("editor");
   const hasLoaded = useRef(false);
+
   const navigate = useNavigate();
+
 
   const DEFAULT_PAIN_ITEMS = [
     { text: "Pensamentos acelerados que não param" },
@@ -515,7 +521,47 @@ export default function AdminLandingPage() {
     }
   };
 
+  // ── aplicar um modelo pronto (preenche textos + cores + fontes) ──
+  const applyTemplate = (tpl: LandingTemplate) => {
+    const hasContent = heroTitle || painTitle || solutionTitle || bio || aboutTitle;
+    if (hasContent && !window.confirm(
+      `Aplicar o modelo "${tpl.name}"?\n\nIsso substituirá os textos, as cores e as fontes atuais.\nSuas imagens, abordagens e contatos serão mantidos.`
+    )) return;
+
+    // textos
+    setHeroTitle(tpl.hero.title);
+    setHeroSubtitle(tpl.hero.subtitle);
+    setPainTitle(tpl.pain.title);
+    setPainSubtitle(tpl.pain.subtitle);
+    setPainItems(tpl.pain.items);
+    setSolutionTitle(tpl.solution.title);
+    setSolutionSubtitle(tpl.solution.subtitle);
+    setSolutionItems(tpl.solution.items);
+    setAboutTitle(tpl.about.title);
+    setContactTitle(tpl.contact.title);
+    setContactSubtitle(tpl.contact.subtitle);
+
+    // cores (secundária e fundo derivadas da principal)
+    const dv = deriveColors(tpl.primaryColor);
+    setPrimaryColor(tpl.primaryColor);
+    setSecondaryColor(dv.secondary);
+    setBgColor(dv.background);
+
+    // tipografia
+    setHeadingFontFamily(tpl.headingFont);
+    setFontFamily(tpl.bodyFont);
+    setFontSizeScale(tpl.fontSize);
+
+    setAppliedTemplateId(tpl.id);
+    setShowTemplates(false);
+    toast.success(`Modelo "${tpl.name}" aplicado!`, {
+      description: "Revise cada aba e clique em salvar para publicar as mudanças.",
+      duration: 6000,
+    });
+  };
+
   const PHOTO_STYLES = [
+
     { value: "portrait",   label: "Retrato",    desc: "Flexível",   shape: "rounded-[2rem]", aspect: "aspect-auto",   previewAspect: "aspect-[3/4]" },
     { value: "horizontal", label: "Horizontal", desc: "Formato 3:2", shape: "rounded-[2rem]", aspect: "aspect-[3/2]",  previewAspect: "aspect-[3/2]" },
     { value: "square",     label: "Quadrado",   desc: "Formato 1:1", shape: "rounded-[2rem]", aspect: "aspect-square", previewAspect: "aspect-square" },
@@ -529,16 +575,46 @@ export default function AdminLandingPage() {
     horizontal: { shape: "rounded-[2rem]", aspect: "aspect-[3/2]"  },
   };
 
+  // seleciona uma seção e, no mobile, leva o usuário direto ao editor
+  const selectSection = (s: Section) => {
+    setActiveSection(s);
+    setMobileView("editor");
+  };
+
   const name = (professional as any)?.full_name || "";
   const crp  = professional?.crp || "";
 
   if (isLoading) return <div className="animate-pulse text-muted-foreground">Carregando...</div>;
 
+
   return (
-    <div className="flex h-[calc(100vh-4rem)] overflow-hidden">
+    <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)] overflow-hidden">
+
+      {/* ── alternador mobile (Editar / Visualizar) ── */}
+      <div className="lg:hidden flex shrink-0 border-b bg-background">
+        <button
+          type="button"
+          onClick={() => setMobileView("editor")}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium border-b-2 transition-colors ${
+            mobileView === "editor" ? "border-primary text-primary" : "border-transparent text-muted-foreground"
+          }`}
+        >
+          <Pencil className="h-4 w-4" /> Editar
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileView("preview")}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium border-b-2 transition-colors ${
+            mobileView === "preview" ? "border-primary text-primary" : "border-transparent text-muted-foreground"
+          }`}
+        >
+          <Layout className="h-4 w-4" /> Visualizar
+        </button>
+      </div>
 
       {/* ── Preview ───────────────────────────────────────── */}
-      <div className="w-[58%] overflow-y-auto border-r">
+      <div className={`${mobileView === "preview" ? "flex" : "hidden"} lg:flex flex-col w-full lg:w-[58%] flex-1 lg:flex-none min-h-0 overflow-y-auto border-r`}>
+
         <div className="flex items-center justify-between px-3 py-2 bg-muted/30 border-b">
           <span className="text-xs text-muted-foreground">Clique em uma seção para editar</span>
           {professional?.slug && (
@@ -565,7 +641,7 @@ export default function AdminLandingPage() {
           fontFamily, fontSizeScale, headingFontFamily) } as React.CSSProperties}>
           <div className="bg-background text-foreground" style={{ pointerEvents: "auto" }}>
 
-            <SectionBlock label="Hero" icon={Layout} active={activeSection === "hero"} onClick={() => setActiveSection("hero")}>
+            <SectionBlock label="Hero" icon={Layout} active={activeSection === "hero"} onClick={() => selectSection("hero")}>
               <HeroSection
                 title={heroTitle}
                 subtitle={heroSubtitle}
@@ -581,7 +657,7 @@ export default function AdminLandingPage() {
               />
             </SectionBlock>
 
-            <SectionBlock label="Dores" icon={AlertCircle} active={activeSection === "dores"} onClick={() => setActiveSection("dores")}>
+            <SectionBlock label="Dores" icon={AlertCircle} active={activeSection === "dores"} onClick={() => selectSection("dores")}>
               <PainSection
                 title={painTitle || undefined}
                 subtitle={painSubtitle || undefined}
@@ -589,7 +665,7 @@ export default function AdminLandingPage() {
               />
             </SectionBlock>
 
-            <SectionBlock label="Solução" icon={Lightbulb} active={activeSection === "solucao"} onClick={() => setActiveSection("solucao")}>
+            <SectionBlock label="Solução" icon={Lightbulb} active={activeSection === "solucao"} onClick={() => selectSection("solucao")}>
               <SolutionSection
                 title={solutionTitle || undefined}
                 subtitle={solutionSubtitle || undefined}
@@ -597,7 +673,7 @@ export default function AdminLandingPage() {
               />
             </SectionBlock>
 
-            <SectionBlock label="Sobre" icon={BookOpen} active={activeSection === "sobre"} onClick={() => setActiveSection("sobre")}>
+            <SectionBlock label="Sobre" icon={BookOpen} active={activeSection === "sobre"} onClick={() => selectSection("sobre")}>
               <AboutSection
                 title={aboutTitle || undefined}
                 name={name}
@@ -610,7 +686,7 @@ export default function AdminLandingPage() {
               />
             </SectionBlock>
 
-            <SectionBlock label="Cores" icon={Palette} active={activeSection === "cores"} onClick={() => setActiveSection("cores")}>
+            <SectionBlock label="Cores" icon={Palette} active={activeSection === "cores"} onClick={() => selectSection("cores")}>
               <div className="py-16 px-8 flex flex-col items-center gap-8 bg-background">
                 <p className="text-sm font-medium text-muted-foreground uppercase tracking-widest">Paleta ativa ({previewMode === "dark" ? "Escuro" : "Claro"})</p>
                 <div className="flex gap-6">
@@ -637,7 +713,7 @@ export default function AdminLandingPage() {
               </div>
             </SectionBlock>
 
-            <SectionBlock label="Contatos" icon={MessageCircle} active={activeSection === "contatos"} onClick={() => setActiveSection("contatos")}>
+            <SectionBlock label="Contatos" icon={MessageCircle} active={activeSection === "contatos"} onClick={() => selectSection("contatos")}>
               <ContactSection
                 title={contactTitle || undefined}
                 subtitle={contactSubtitle || undefined}
@@ -656,7 +732,8 @@ export default function AdminLandingPage() {
       </div>
 
       {/* ── Editor panel ──────────────────────────────────── */}
-      <div className="w-[42%] overflow-y-auto">
+      <div className={`${mobileView === "editor" ? "block" : "hidden"} lg:block w-full lg:w-[42%] flex-1 lg:flex-none min-h-0 overflow-y-auto`}>
+
 
         {/* ── banner alterações não salvas ── */}
         {isDirty && (
@@ -696,8 +773,63 @@ export default function AdminLandingPage() {
           </div>
         )}
 
+        {/* ── seletor de modelos prontos ── */}
+        <div className="mx-4 mt-3">
+          <button
+            type="button"
+            onClick={() => setShowTemplates((v) => !v)}
+            className="flex w-full items-center gap-3 rounded-xl border border-primary/30 bg-gradient-to-r from-primary/10 to-primary/5 px-4 py-3 text-left transition-colors hover:from-primary/15"
+          >
+            <LayoutTemplate className="h-5 w-5 text-primary flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-foreground">Começar com um modelo</p>
+              <p className="text-xs text-muted-foreground">Preencha textos, cores e fontes em 1 clique</p>
+            </div>
+            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showTemplates ? "rotate-180" : ""}`} />
+          </button>
+
+          {showTemplates && (
+            <div className="mt-2 grid grid-cols-1 gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+              {LANDING_TEMPLATES.map((tpl) => {
+                const dv = deriveColors(tpl.primaryColor);
+                const isApplied = appliedTemplateId === tpl.id;
+                return (
+                  <button
+                    key={tpl.id}
+                    type="button"
+                    onClick={() => applyTemplate(tpl)}
+                    className={`group flex items-center gap-3 rounded-xl border-2 p-3 text-left transition-all hover:shadow-md ${
+                      isApplied ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
+                    }`}
+                  >
+                    {/* mini swatch de cores */}
+                    <div className="flex h-12 w-12 flex-shrink-0 flex-col overflow-hidden rounded-lg border shadow-sm">
+                      <div className="flex-1" style={{ background: tpl.primaryColor }} />
+                      <div className="flex h-1/2">
+                        <div className="flex-1" style={{ background: dv.secondary }} />
+                        <div className="flex-1" style={{ background: dv.background }} />
+                      </div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                        {tpl.name}
+                        {isApplied && <Check className="h-3.5 w-3.5 text-primary" />}
+                      </p>
+                      <p className="text-xs text-muted-foreground leading-snug line-clamp-2">{tpl.description}</p>
+                    </div>
+                  </button>
+                );
+              })}
+              <p className="px-1 text-[11px] text-muted-foreground leading-relaxed">
+                Aplicar um modelo substitui os textos, cores e fontes — suas imagens, abordagens e contatos são mantidos. Lembre de <strong>salvar cada aba</strong> depois.
+              </p>
+            </div>
+          )}
+        </div>
+
         {/* section tabs */}
         <div className="flex flex-wrap border-b sticky top-0 bg-background z-10">
+
           {([
             { id: "hero",     label: "Hero",     icon: Layout        },
             { id: "dores",    label: "Dores",    icon: AlertCircle   },

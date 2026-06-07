@@ -33,3 +33,8 @@ _docs/
 
 # Supabase CLI: cache local de versao + temp files (nao e codigo do projeto)
 supabase/.temp/
+
+# Python (worker-primeiropasso): bytecode cache
+__pycache__/
+*.pyc
+*.pyo

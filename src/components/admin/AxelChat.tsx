@@ -596,7 +596,11 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
                   <Settings className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-48">
+              <DropdownMenuContent align="start" className="w-52">
+                <DropdownMenuItem onClick={() => navigate("/admin/configuracoes")} className="text-xs gap-2 cursor-pointer">
+                  <Settings className="h-3.5 w-3.5 text-muted-foreground" />
+                  Preferências do agente
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={clearConversation} className="text-xs gap-2 cursor-pointer">
                   <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                   Limpar conversa

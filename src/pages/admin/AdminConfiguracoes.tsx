@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { FieldHint } from "@/components/ui/FieldHint";
 
@@ -58,6 +60,14 @@ export default function AdminConfiguracoes() {
 
   const [saving, setSaving] = useState(false);
 
+  // Preferências do agente (whatsapp-agent) — professionals.agent_preferences (jsonb)
+  const TONE_PRESETS = ["Acolhedor", "Direto", "Formal", "Descontraído"];
+  const [agentEnabled, setAgentEnabled] = useState(true);
+  const [agentReminders, setAgentReminders] = useState(true);
+  const [agentSatisfaction, setAgentSatisfaction] = useState(true);
+  const [agentTone, setAgentTone] = useState("");
+  const [agentPhrases, setAgentPhrases] = useState("");
+
   // Status colors
   const [colorStatusPending, setColorStatusPending] = useState("#EAB308");
   const [colorStatusConfirmed, setColorStatusConfirmed] = useState("#22C55E");
@@ -74,6 +84,13 @@ export default function AdminConfiguracoes() {
       setColorStatusCancelled((professional as any).color_status_cancelled || "#EF4444");
       setColorPaymentPending((professional as any).color_payment_pending || "#F97316");
       setColorPaymentPaid((professional as any).color_payment_paid || "#10B981");
+
+      const ap = ((professional as any).agent_preferences || {}) as Record<string, any>;
+      setAgentEnabled(ap.enabled !== false);            // default ligado
+      setAgentReminders(ap.reminders !== false);        // default ligado
+      setAgentSatisfaction(ap.satisfaction !== false);  // default ligado
+      setAgentTone(ap.tone || "");
+      setAgentPhrases(ap.preferred_phrases || "");
     }
   }, [professional]);
 
@@ -87,6 +104,13 @@ export default function AdminConfiguracoes() {
       color_status_cancelled: colorStatusCancelled,
       color_payment_pending: colorPaymentPending,
       color_payment_paid: colorPaymentPaid,
+      agent_preferences: {
+        enabled: agentEnabled,
+        reminders: agentReminders,
+        satisfaction: agentSatisfaction,
+        tone: agentTone.trim(),
+        preferred_phrases: agentPhrases.trim(),
+      },
     } as any).eq("id", professional.id);
 
     setSaving(false);
@@ -160,6 +184,80 @@ export default function AdminConfiguracoes() {
                 </span>
               ))}
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Agente de Atendimento (WhatsApp)</CardTitle>
+          <p className="text-sm text-muted-foreground">Como o agente que conversa com seus clientes no WhatsApp deve se comportar.</p>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {/* Master switch */}
+          <div className="flex items-center justify-between gap-4 p-3 rounded-lg border">
+            <div>
+              <Label className="text-sm font-medium">Agente ligado</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">Desligado, o agente não responde mensagens, nem envia lembretes ou pesquisa de satisfação.</p>
+            </div>
+            <Switch checked={agentEnabled} onCheckedChange={setAgentEnabled} />
+          </div>
+
+          {/* Sub-toggles (dependem do master) */}
+          <div className={`space-y-3 ${agentEnabled ? "" : "opacity-50 pointer-events-none"}`}>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <Label className="text-sm">Lembretes de consulta</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">Avisa o cliente 24h e 1h antes do atendimento.</p>
+              </div>
+              <Switch checked={agentReminders} onCheckedChange={setAgentReminders} disabled={!agentEnabled} />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <Label className="text-sm">Pesquisa de satisfação (pós-atendimento)</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">30 min após o atendimento, pergunta como foi e atualiza o status do cliente.</p>
+              </div>
+              <Switch checked={agentSatisfaction} onCheckedChange={setAgentSatisfaction} disabled={!agentEnabled} />
+            </div>
+          </div>
+
+          {/* Tom de voz: presets + livre */}
+          <div className={`space-y-2 ${agentEnabled ? "" : "opacity-50 pointer-events-none"}`}>
+            <Label className="text-sm">Tom de voz</Label>
+            <div className="flex flex-wrap gap-2">
+              {TONE_PRESETS.map((t) => (
+                <Button
+                  key={t}
+                  type="button"
+                  size="sm"
+                  variant={agentTone === t ? "default" : "outline"}
+                  onClick={() => setAgentTone(t)}
+                  disabled={!agentEnabled}
+                >
+                  {t}
+                </Button>
+              ))}
+            </div>
+            <Input
+              value={agentTone}
+              onChange={(e) => setAgentTone(e.target.value)}
+              placeholder="Ou descreva com suas palavras (ex.: acolhedor mas objetivo, sem formalidade)"
+              disabled={!agentEnabled}
+              className="text-sm"
+            />
+          </div>
+
+          {/* Frases preferidas */}
+          <div className={`space-y-2 ${agentEnabled ? "" : "opacity-50 pointer-events-none"}`}>
+            <Label className="text-sm">Frases que você gosta</Label>
+            <Textarea
+              value={agentPhrases}
+              onChange={(e) => setAgentPhrases(e.target.value)}
+              placeholder="Expressões/saudações que combinam com você, uma por linha. Ex.: Conta comigo! / Fico à disposição, tá?"
+              disabled={!agentEnabled}
+              className="min-h-[80px] text-sm"
+            />
+            <p className="text-[11px] text-muted-foreground">O agente usa essas frases com naturalidade, sem forçar.</p>
           </div>
         </CardContent>
       </Card>

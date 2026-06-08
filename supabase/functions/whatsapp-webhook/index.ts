@@ -367,6 +367,15 @@ serve(async (req) => {
       message?.extendedTextMessage?.text ||
       message?.buttonsResponseMessage?.selectedDisplayText ||
       message?.templateButtonReplyMessage?.selectedDisplayText ||
+      message?.listResponseMessage?.title ||
+      message?.listResponseMessage?.singleSelectReply?.selectedRowId ||
+      ''
+
+    // click_id estruturado (id do botão / rowId da lista) — usado pelo roteamento
+    // determinístico de agendamento. Tem prioridade sobre o texto no parseChoice do scheduler.
+    const clickId =
+      message?.buttonsResponseMessage?.selectedButtonId ||
+      message?.templateButtonReplyMessage?.selectedId ||
       message?.listResponseMessage?.singleSelectReply?.selectedRowId ||
       ''
 
@@ -398,7 +407,7 @@ serve(async (req) => {
     console.log(`[DEBUG] Buscando profissional com instanceName="${instanceName}"...`)
     const { data: professional, error: proError } = await supabaseAdmin
       .from('professionals')
-      .select('id, full_name, bio, approaches, whatsapp, price_first_session, price_min, price_max, agent_system_prompt, evolution_instance_name')
+      .select('id, full_name, bio, approaches, whatsapp, price_first_session, price_min, price_max, agent_system_prompt, evolution_instance_name, agent_preferences')
       .eq('evolution_instance_name', instanceName)
       .maybeSingle()
 
@@ -413,6 +422,17 @@ serve(async (req) => {
     }
 
     console.log(`[DEBUG] ✅ Profissional encontrado: ${professional.id}`)
+
+    // 1.5. Master switch do agente (Configurações → Agente de Atendimento).
+    //      Off = o agente não responde (nem scheduler nem LLM). Lembrete e pós-atendimento
+    //      já são desligados nos crons pela mesma preferência (agent_preferences.enabled).
+    if ((professional as any).agent_preferences?.enabled === false) {
+      console.log('[WEBHOOK] Agente desligado (master) para este profissional — ignorando mensagem.')
+      return new Response(JSON.stringify({ ignored: true, reason: 'agent_master_disabled' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
 
     // 2. Upsert do lead (criar se não existe, atualizar se existe)
     const { data: existingLead } = await supabaseAdmin
@@ -600,110 +620,9 @@ serve(async (req) => {
       }
     }
 
-    // 3.4. DETECÇÃO DE CLIQUES NO FLUXO DE AGENDAMENTO — atualiza booking_state
-    //      no banco pra que as tools do agente recebam contexto explícito do estado.
-    //      Evita o agente entrar em loop ao re-perguntar dia/horário já escolhidos.
-    {
-      const txt = messageText.trim()
-
-      // Match de DIA (formato "Seg 18/05", "Ter 19/05", etc — gerado pelo agente)
-      const diaMatch = txt.match(/^(Seg|Ter|Qua|Qui|Sex|Sáb|Sab|Dom)\s+(\d{1,2})\/(\d{1,2})$/i)
-      if (diaMatch) {
-        const dd = diaMatch[2].padStart(2, '0')
-        const mm = diaMatch[3].padStart(2, '0')
-        const year = new Date().getFullYear()
-        const isoDate = `${year}-${mm}-${dd}`
-        await supabaseAdmin.from('leads').update({
-          booking_state: {
-            stage: 'day_picked',
-            selected_date: isoDate,
-            selected_day_label: txt,
-            selected_time: null,
-            updated_at: new Date().toISOString(),
-          },
-        }).eq('id', leadId)
-        console.log(`[booking_state] day_picked: ${isoDate}`)
-      }
-
-      // Match de HORÁRIO (formato "HH:MM")
-      else if (/^\d{1,2}:\d{2}$/.test(txt)) {
-        const { data: leadNow } = await supabaseAdmin
-          .from('leads')
-          .select('booking_state')
-          .eq('id', leadId)
-          .single()
-        const prev = (leadNow?.booking_state as any) || {}
-        await supabaseAdmin.from('leads').update({
-          booking_state: {
-            ...prev,
-            stage: 'time_picked',
-            selected_time: txt.padStart(5, '0'),
-            updated_at: new Date().toISOString(),
-          },
-        }).eq('id', leadId)
-        console.log(`[booking_state] time_picked: ${txt}`)
-      }
-
-      // Match de CONFIRMAÇÃO ("Confirmar", "Confirmar ✅", etc)
-      else if (/^confirmar(\s|$)/i.test(txt) || txt === 'Confirmar ✅') {
-        const { data: leadNow } = await supabaseAdmin
-          .from('leads')
-          .select('booking_state')
-          .eq('id', leadId)
-          .single()
-        const prev = (leadNow?.booking_state as any) || {}
-        await supabaseAdmin.from('leads').update({
-          booking_state: {
-            ...prev,
-            stage: 'awaiting_confirm',
-            updated_at: new Date().toISOString(),
-          },
-        }).eq('id', leadId)
-        console.log('[booking_state] awaiting_confirm')
-      }
-
-      // Match de REMARCAR — reseta o estado
-      else if (/^remarcar/i.test(txt)) {
-        await supabaseAdmin.from('leads').update({
-          booking_state: {
-            stage: 'awaiting_day',
-            selected_date: null,
-            selected_time: null,
-            updated_at: new Date().toISOString(),
-          },
-        }).eq('id', leadId)
-        console.log('[booking_state] reset → awaiting_day')
-      }
-
-      // Match de CANCELAR — limpa o estado
-      else if (/^cancelar/i.test(txt)) {
-        await supabaseAdmin.from('leads').update({
-          booking_state: { stage: 'cancelled', updated_at: new Date().toISOString() },
-        }).eq('id', leadId)
-        console.log('[booking_state] cancelled')
-      }
-
-      // Texto livre — tenta extrair data/hora natural ("hoje 18h", "dia 19 às 17:00")
-      else {
-        const parsed = parseUserIntent(txt)
-        if (parsed) {
-          const { data: leadNow } = await supabaseAdmin
-            .from('leads')
-            .select('booking_state')
-            .eq('id', leadId)
-            .single()
-          const prev = (leadNow?.booking_state as any) || {}
-          await supabaseAdmin.from('leads').update({
-            booking_state: {
-              ...prev,
-              parsed_intent: parsed,
-              updated_at: new Date().toISOString(),
-            },
-          }).eq('id', leadId)
-          console.log(`[booking_state] parsed_intent: date=${parsed.date} time=${parsed.time}`)
-        }
-      }
-    }
+    // 3.4. (REMOVIDO) A detecção manual de cliques que escrevia booking_state foi
+    //      movida pro whatsapp-scheduler, que passou a ser a fonte de verdade do
+    //      agendamento (máquina de estados determinística). Ver bloco 3.65 abaixo.
 
     // 3.5. ORQUESTRAÇÃO DE ESTADO — agente Sonnet só é chamado quando o fluxo
     //      decide que é hora. Webhook gerencia bloqueios, buffer e expiração.
@@ -829,6 +748,140 @@ serve(async (req) => {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
+    }
+
+    // 3.64. RESPOSTA À PESQUISA DE SATISFAÇÃO (pós-atendimento, caso H)
+    //        Clique sat:<nota>:<appointment_id>. Registra a nota, marca o lead ativo
+    //        e oferece reagendar. Não cai no scheduler/agent.
+    if (clickId && clickId.startsWith('sat:')) {
+      const [, nota, apptId] = clickId.split(':')
+      console.log(`[FLUXO] satisfação nota=${nota} appt=${apptId || '-'}`)
+      const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
+      const evoKey = Deno.env.get('EVOLUTION_API_KEY')
+      const sendText = async (text: string) => {
+        if (!evoUrl || !evoKey) return
+        await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
+          method: 'POST',
+          headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ number: remoteJid, text }),
+        }).catch((e: any) => console.error('[satisfação] envio erro:', e.message))
+      }
+
+      if (nota === 'skip') {
+        await sendText('Tranquilo! Quando quiser marcar a próxima, é só chamar. 🙌')
+        await supabaseAdmin.from('chat_messages').insert({ lead_id: leadId, role: 'assistant', content: '[Satisfação: reoferta dispensada]', processed: true })
+        return new Response(JSON.stringify({ success: true, action: 'satisfaction_skip' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      }
+
+      // Registra a nota; respondeu = lead engajado → 'cliente_ativo'. Limpa o
+      // booking_state pra a reoferta iniciar um agendamento novo e limpo.
+      if (apptId) {
+        await supabaseAdmin.from('appointment_reminders')
+          .update({ patient_response: nota, response_at: new Date().toISOString() })
+          .eq('appointment_id', apptId).eq('kind', 'satisfaction')
+      }
+      await supabaseAdmin.from('leads')
+        .update({ pipeline_stage: 'cliente_ativo', booking_state: {} })
+        .eq('id', leadId)
+
+      const agradece = nota === 'ruim'
+        ? 'Obrigado pela sinceridade! Vou passar seu retorno pro profissional. 🙏'
+        : 'Que bom que você gostou! 😊'
+      let sentOk = false
+      if (evoUrl && evoKey) {
+        try {
+          const res = await fetch(`${evoUrl}/message/sendButtons/${instanceName}`, {
+            method: 'POST',
+            headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              number: remoteJid,
+              title: agradece,
+              description: 'Quer já deixar a próxima marcada?',
+              footer: 'Atendimento Virtual',
+              buttons: [
+                { type: 'reply', displayText: 'Agendar próxima', id: 'opt_agendar' },
+                { type: 'reply', displayText: 'Agora não',       id: 'sat:skip' },
+              ],
+            }),
+          })
+          sentOk = res.ok
+        } catch (e: any) { console.error('[satisfação] botões erro:', e.message) }
+      }
+      if (!sentOk) await sendText(`${agradece}\n\nQuer já deixar a próxima marcada? Responda *agendar* pra ver os horários.`)
+
+      await supabaseAdmin.from('chat_messages').insert({ lead_id: leadId, role: 'assistant', content: `[Satisfação registrada: ${nota}]`, processed: true })
+      return new Response(JSON.stringify({ success: true, action: 'satisfaction', nota }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+
+    // 3.65. ROTEAMENTO DETERMINÍSTICO DE AGENDAMENTO → whatsapp-scheduler
+    //        O motor (código, não LLM) cuida de oferecer dias/horários, confirmar e
+    //        criar/remarcar/cancelar. Dispara por: estado de agendamento ativo, clique
+    //        estruturado (day:/time:/act:), opção de menu, intenção temporal ou regex gatilho.
+    //        Responde imediatamente (sem debounce, sem chamar o agent).
+    {
+      const { data: leadBooking } = await supabaseAdmin
+        .from('leads')
+        .select('booking_state')
+        .eq('id', leadId)
+        .maybeSingle()
+      const stage = (leadBooking?.booking_state as any)?.stage || ''
+      const inSchedulingFlow = ['choosing_day', 'choosing_time', 'confirming'].includes(stage)
+      const isDone = stage === 'done'
+
+      const isStructuredClick = !!clickId &&
+        (clickId.startsWith('day:') || clickId.startsWith('time:') || clickId.startsWith('act:'))
+      const isMenuAgendar = clickId === 'opt_agendar' || clickId === 'opt_agenda'
+        || messageText.trim() === 'Agendar um horário' || messageText.trim() === 'Conferir agenda'
+      const parsedIntent = parseUserIntent(messageText)
+      const regexGatilho = /\b(agendar|marcar|remarcar)\b/i.test(messageText)
+        || /\bhor[áa]rios?\b/i.test(messageText) || /tem\s+hor[áa]rio/i.test(messageText)
+      // comando EXPLÍCITO de ação de agenda no INÍCIO da msg (evita menção casual virar roteamento)
+      const cmdAgenda = /^\s*(remarcar|cancelar|reagendar|desmarcar)\b/i.test(messageText.trim())
+
+      let shouldRouteToScheduler: boolean
+      if (inSchedulingFlow || isStructuredClick) {
+        shouldRouteToScheduler = true            // meio do fluxo ou clique estruturado → sempre scheduler
+      } else if (isDone) {
+        // já agendado: CONVERSA vai pro agent; scheduler só se clicar menu de agenda
+        // ou der comando explícito (remarcar/cancelar/reagendar) no início da mensagem
+        shouldRouteToScheduler = isMenuAgendar || cmdAgenda
+      } else {
+        // sem agendamento ativo: gatilhos de início de agendamento
+        shouldRouteToScheduler = isMenuAgendar || regexGatilho
+          || (!!parsedIntent && !!(parsedIntent.date || parsedIntent.time))
+      }
+
+      if (shouldRouteToScheduler) {
+        console.log(`[FLUXO] → whatsapp-scheduler (stage=${stage || '-'}, click=${clickId || '-'})`)
+        await sendPresence(instanceName, remoteJid)
+        const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEYS') || ''
+        const schedulerUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/whatsapp-scheduler`
+        try {
+          const schedRes = await fetch(schedulerUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
+            body: JSON.stringify({
+              lead_id: leadId,
+              professional_id: professional.id,
+              instance_name: instanceName,
+              remote_jid: remoteJid,
+              lead_name: pushName,
+              message: messageText,
+              click_id: clickId || null,
+              parsed_intent: parsedIntent,
+              action: isMenuAgendar ? 'start' : null,
+            }),
+          })
+          const schedJson = await schedRes.json().catch(() => ({}))
+          return new Response(JSON.stringify({ success: true, action: 'scheduler', result: schedJson }), {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        } catch (e: any) {
+          console.error('[FLUXO] Erro ao chamar scheduler:', e.message)
+          // Em falha do scheduler, cai no fluxo do agent como rede de segurança.
+        }
+      }
     }
 
     // 3.7. Mostrar "digitando" enquanto o agente processa

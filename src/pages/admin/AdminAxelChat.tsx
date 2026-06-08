@@ -34,6 +34,8 @@ import {
   ChevronDown,
   Filter,
   ArrowUp,
+  MoreVertical,
+  Trash2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -49,6 +51,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { Lead } from "@/hooks/useLeadsKanban";
 import { useToggleAgentEnabled } from "@/hooks/useUpdateLeadStage";
 import { useWhatsAppAvatar } from "@/hooks/useWhatsAppAvatar";
@@ -153,7 +171,7 @@ function LeadsTab() {
       {/* Chat area */}
       <div className={`flex-1 min-w-0 ${!selectedLeadId ? "hidden sm:block" : ""}`}>
         {selectedLeadId ? (
-          <LeadChat leadId={selectedLeadId} />
+          <LeadChat leadId={selectedLeadId} onDeleted={() => setSelectedLeadId(null)} />
         ) : (
           <div className="h-full hidden sm:flex items-center justify-center rounded-lg sm:rounded-xl border border-white/10 bg-gradient-to-br from-background via-background to-emerald-950/5 backdrop-blur-sm shadow-lg">
             <div className="text-center p-6">
@@ -272,10 +290,12 @@ function LeadList({ onSelect, selectedId }: { onSelect: (id: string) => void; se
 }
 
 // ==================== LEAD CHAT ====================
-function LeadChat({ leadId }: { leadId: string }) {
+function LeadChat({ leadId, onDeleted }: { leadId: string; onDeleted?: () => void }) {
   const queryClient = useQueryClient();
   const [messageText, setMessageText] = useState("");
   const [sending, setSending] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<null | "messages" | "lead">(null);
+  const [deleting, setDeleting] = useState(false);
   const toggleAgent = useToggleAgentEnabled();
   const sendWhatsApp = useSendWhatsApp();
   const { data: professional } = useProfessional();
@@ -320,6 +340,37 @@ function LeadChat({ leadId }: { leadId: string }) {
   const { data: avatarData } = useWhatsAppAvatar(leadId, lead?.whatsapp, lead?.avatar_url);
   const headerAvatarSrc = avatarData?.pictureUrl || lead?.avatar_url || null;
 
+  const handleClearMessages = async () => {
+    setDeleting(true);
+    try {
+      const { error } = await supabase.rpc("owner_clear_lead_messages" as any, { p_lead_id: leadId });
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["chat-messages", leadId] });
+      toast.success("Mensagens apagadas.");
+    } catch (e: any) {
+      toast.error("Erro ao apagar mensagens", { description: e.message });
+    } finally {
+      setDeleting(false);
+      setConfirmAction(null);
+    }
+  };
+
+  const handleDeleteLead = async () => {
+    setDeleting(true);
+    try {
+      const { error } = await supabase.rpc("owner_delete_lead" as any, { p_lead_id: leadId });
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["axel-chat-leads"] });
+      toast.success("Lead apagado.");
+      onDeleted?.();
+    } catch (e: any) {
+      toast.error("Erro ao apagar lead", { description: e.message });
+    } finally {
+      setDeleting(false);
+      setConfirmAction(null);
+    }
+  };
+
   if (!lead) return null;
 
   return (
@@ -344,6 +395,23 @@ function LeadChat({ leadId }: { leadId: string }) {
             <Switch checked={lead.agent_enabled} onCheckedChange={(checked) => toggleAgent.mutate({ leadId: lead.id, enabled: checked })} className="scale-75 data-[state=checked]:bg-emerald-500" />
           </div>
           <Badge className="bg-white/5 border-white/10 text-[10px] sm:text-xs capitalize px-1.5 py-0">{lead.pipeline_stage?.replace(/_/g, " ")}</Badge>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="text-muted-foreground/60 hover:text-foreground transition-colors p-1 rounded-md hover:bg-white/5" aria-label="Ações do lead">
+                <MoreVertical className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={() => setConfirmAction("messages")} className="text-xs gap-2 cursor-pointer">
+                <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                Apagar mensagens
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setConfirmAction("lead")} className="text-xs gap-2 cursor-pointer text-destructive focus:text-destructive">
+                <Trash2 className="h-3.5 w-3.5" />
+                Apagar lead
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -377,6 +445,7 @@ function LeadChat({ leadId }: { leadId: string }) {
                 <div key={msg.id} className={`flex gap-2 ${isUser ? "justify-start" : "justify-end"}`}>
                   {isUser && (
                     <Avatar className="h-7 w-7 sm:h-8 sm:w-8 shrink-0 ring-1 ring-white/10">
+                      {headerAvatarSrc ? <AvatarImage src={headerAvatarSrc} alt={lead.name} className="object-cover" /> : null}
                       <AvatarFallback className="text-[10px] sm:text-xs bg-gradient-to-br from-emerald-400 to-teal-500 text-white"><User className="h-3 w-3 sm:h-3.5 sm:w-3.5" /></AvatarFallback>
                     </Avatar>
                   )}
@@ -423,6 +492,31 @@ function LeadChat({ leadId }: { leadId: string }) {
           </Button>
         </div>
       </div>
+
+      <AlertDialog open={confirmAction !== null} onOpenChange={(o) => { if (!o) setConfirmAction(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmAction === "lead" ? "Apagar este lead?" : "Apagar as mensagens?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction === "lead"
+                ? `Isso remove ${lead.name} de vez: a conversa, o agendamento vinculado e os lembretes. Não dá pra desfazer.`
+                : `Isso apaga todo o histórico de conversa com ${lead.name}. Não dá pra desfazer.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              onClick={(e) => { e.preventDefault(); if (confirmAction === "lead") { handleDeleteLead(); } else { handleClearMessages(); } }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "Apagando..." : confirmAction === "lead" ? "Apagar lead" : "Apagar mensagens"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

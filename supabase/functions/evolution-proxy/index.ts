@@ -65,7 +65,7 @@ serve(async (req) => {
       throw new Error(`Nenhum perfil de profissional encontrado para o usuário: ${user.id}`)
     }
 
-    const { action } = await req.json()
+    const { action, number } = await req.json()
     const evoUrl = Deno.env.get('EVOLUTION_API_URL')
     const evoKey = Deno.env.get('EVOLUTION_API_KEY')
 
@@ -248,6 +248,29 @@ serve(async (req) => {
       }
 
       return new Response(JSON.stringify({ status: 'webhook_set' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+
+    if (action === 'profile-picture') {
+      if (!pro.evolution_instance_name || !number) {
+        return new Response(JSON.stringify({ pictureUrl: null, name: null }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      }
+      // Evolution (Baileys): POST /chat/fetchProfilePictureUrl/{instance} { number } -> { wuid, profilePictureUrl }
+      const res = await fetch(`${evoUrl}/chat/fetchProfilePictureUrl/${pro.evolution_instance_name}`, {
+        method: 'POST',
+        headers: evoHeaders,
+        body: JSON.stringify({ number }),
+      })
+      if (!res.ok) {
+        const raw = await res.text().catch(() => '')
+        console.warn(`[profile-picture] Evolution status ${res.status}: ${raw.slice(0, 200)}`)
+        return new Response(JSON.stringify({ pictureUrl: null, name: null, raw: { status: res.status } }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      }
+      const data = await res.json().catch(() => ({}))
+      return new Response(JSON.stringify({
+        pictureUrl: (data as any)?.profilePictureUrl || null,
+        name: (data as any)?.name || null,
+        raw: data,
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
     throw new Error("Ação inválida solicitada.")

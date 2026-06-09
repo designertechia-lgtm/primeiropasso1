@@ -8,12 +8,15 @@ import {
   Search,
   RefreshCw,
   Coins,
+  Trash2,
+  AlertTriangle,
 } from "lucide-react";
 import {
   useOwnerListAllUsers,
   useOwnerGrantManualSubscription,
   useOwnerCancelSubscription,
   useOwnerGrantCredits,
+  useOwnerDeleteProfessional,
   type OwnerUserRow,
 } from "@/hooks/useOwnerStats";
 import { useCreditBalance } from "@/hooks/useBilling";
@@ -260,12 +263,112 @@ function GrantCreditsDialog({
   );
 }
 
+function DeleteProfessionalDialog({
+  user,
+  open,
+  onClose,
+}: {
+  user: OwnerUserRow | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const del = useOwnerDeleteProfessional();
+  const [confirmText, setConfirmText] = useState("");
+
+  // Reseta o campo ao trocar de usuário/fechar.
+  const target = user?.email ?? "";
+  const canDelete = confirmText.trim().toLowerCase() === target.toLowerCase() && target !== "";
+
+  const handleClose = () => {
+    setConfirmText("");
+    onClose();
+  };
+
+  const handleSubmit = async () => {
+    if (!user || !canDelete) return;
+    try {
+      const res = await del.mutateAsync(user.professional_id);
+      const pix = res?.deleted_pix_payments ?? 0;
+      toast.success(
+        `Conta de ${user.full_name ?? user.email} apagada definitivamente` +
+          (pix > 0 ? ` (${pix} pagamento${pix !== 1 ? "s" : ""} PIX removido${pix !== 1 ? "s" : ""})` : ""),
+      );
+      handleClose();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erro ao apagar profissional";
+      const friendly =
+        msg.includes("cannot_delete_self")
+          ? "Você não pode apagar a própria conta."
+          : msg.includes("cannot_delete_super_admin")
+          ? "Este usuário tem acesso super-admin ativo. Revogue o acesso na aba Acesso antes de apagar."
+          : msg.includes("professional_not_found")
+          ? "Profissional não encontrado (talvez já tenha sido removido)."
+          : msg;
+      toast.error(friendly);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-destructive">
+            <AlertTriangle className="h-5 w-5" /> Apagar profissional definitivamente
+          </DialogTitle>
+          <DialogDescription asChild>
+            <div className="space-y-3 pt-1">
+              <p>
+                Esta ação é <strong>irreversível</strong>. A conta de{" "}
+                <strong>{user?.full_name ?? user?.email}</strong> e <strong>todos</strong> os dados
+                vinculados serão apagados para sempre:
+              </p>
+              <ul className="list-disc pl-5 text-xs text-muted-foreground space-y-0.5">
+                <li>login (auth) e perfil profissional</li>
+                <li>assinatura, créditos e histórico de pagamentos PIX</li>
+                <li>leads, conversas, agendamentos e disponibilidade</li>
+                <li>posts sociais, vídeos, artigos e memória do Axel</li>
+              </ul>
+              <p className="text-xs">
+                Se a intenção é só suspender o acesso, use <strong>Cancelar assinatura</strong> (❌)
+                em vez disto.
+              </p>
+            </div>
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2 py-1">
+          <Label htmlFor="confirm_delete">
+            Para confirmar, digite o e-mail{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">{target}</code>
+          </Label>
+          <Input
+            id="confirm_delete"
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder={target}
+            autoComplete="off"
+          />
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={handleClose}>
+            Cancelar
+          </Button>
+          <Button variant="destructive" onClick={handleSubmit} disabled={!canDelete || del.isPending}>
+            {del.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+            Apagar definitivamente
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function AssinaturasTab() {
   const { data, isLoading } = useOwnerListAllUsers();
   const cancel = useOwnerCancelSubscription();
   const [search, setSearch] = useState("");
   const [grantUser, setGrantUser] = useState<OwnerUserRow | null>(null);
   const [creditUser, setCreditUser] = useState<OwnerUserRow | null>(null);
+  const [deleteUser, setDeleteUser] = useState<OwnerUserRow | null>(null);
 
   const filtered = useMemo(() => {
     if (!data) return [];
@@ -320,7 +423,7 @@ export default function AssinaturasTab() {
               <Users className="h-4 w-4 text-primary" /> Profissionais cadastrados
             </CardTitle>
             <CardDescription>
-              🎁 libera X dias de assinatura sem PIX. 💰 adiciona créditos de vídeo. ❌ cancela.
+              🎁 libera X dias de assinatura sem PIX. 💰 adiciona créditos de vídeo. ❌ cancela. 🗑️ apaga a conta.
             </CardDescription>
           </div>
           <div className="relative w-full md:w-64">
@@ -421,6 +524,14 @@ export default function AssinaturasTab() {
                             <XCircle className="h-4 w-4 text-destructive" />
                           </Button>
                         )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setDeleteUser(u)}
+                          title="Apagar profissional definitivamente"
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -441,6 +552,12 @@ export default function AssinaturasTab() {
         user={creditUser}
         open={!!creditUser}
         onClose={() => setCreditUser(null)}
+      />
+
+      <DeleteProfessionalDialog
+        user={deleteUser}
+        open={!!deleteUser}
+        onClose={() => setDeleteUser(null)}
       />
     </div>
   );

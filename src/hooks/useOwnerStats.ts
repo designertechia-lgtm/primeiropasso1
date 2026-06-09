@@ -488,6 +488,31 @@ export function useOwnerCancelSubscription() {
   });
 }
 
+export interface OwnerDeleteProfessionalResult {
+  deleted_user_id: string;
+  deleted_email: string | null;
+  deleted_pix_payments: number;
+}
+
+export function useOwnerDeleteProfessional() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (professional_id: string) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc("owner_delete_professional", {
+        p_professional_id: professional_id,
+      });
+      if (error) throw error;
+      return data as OwnerDeleteProfessionalResult;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["owner-list-all-users"] });
+      qc.invalidateQueries({ queryKey: ["owner-mrr"] });
+      qc.invalidateQueries({ queryKey: ["owner-sub-status"] });
+    },
+  });
+}
+
 export function useOwnerGrantCredits() {
   const qc = useQueryClient();
   return useMutation({

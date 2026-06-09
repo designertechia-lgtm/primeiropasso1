@@ -14,7 +14,15 @@ interface SolutionItem { title: string; desc: string; }
 interface SolutionSectionProps {
   title?: string;
   subtitle?: string;
-  items?: SolutionItem[];
+  // Tolera [{title,desc}] (editor) e ["texto"] (formato cru do gerador) — nunca quebra.
+  items?: Array<SolutionItem | string>;
+}
+
+function itemTitle(s: SolutionItem | string): string {
+  return typeof s === "string" ? s : (s?.title ?? "");
+}
+function itemDesc(s: SolutionItem | string): string {
+  return typeof s === "string" ? "" : (s?.desc ?? "");
 }
 
 // Palavras-chave positivas para destacar em negrito
@@ -26,7 +34,7 @@ const solutionKeywords = [
 ];
 
 const renderWithHighlights = (text: string) => {
-  let parts = text.split(/(\*\*.*?\*\*)/g);
+  let parts = (text ?? "").split(/(\*\*.*?\*\*)/g);
   
   return parts.map((part, i) => {
     if (part.startsWith("**") && part.endsWith("**")) {
@@ -94,11 +102,11 @@ export default function SolutionSection({ title, subtitle, items }: SolutionSect
                 </div>
                 
                 <h3 className="font-serif text-2xl font-bold text-foreground mb-4 z-10 group-hover:text-primary transition-colors duration-300">
-                  {s.title}
+                  {itemTitle(s)}
                 </h3>
-                
+
                 <p className="text-foreground/80 text-base md:text-lg leading-relaxed z-10">
-                  {renderWithHighlights(s.desc)}
+                  {renderWithHighlights(itemDesc(s))}
                 </p>
               </div>
             );

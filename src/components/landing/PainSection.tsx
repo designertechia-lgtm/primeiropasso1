@@ -15,7 +15,13 @@ interface PainItem { text: string; }
 interface PainSectionProps {
   title?: string;
   subtitle?: string;
-  items?: PainItem[];
+  // Tolera tanto [{text}] (formato do editor) quanto ["texto"] (formato cru do gerador).
+  items?: Array<PainItem | string>;
+}
+
+// Extrai o texto de um item seja ele objeto {text} ou string crua — nunca quebra.
+function itemText(s: PainItem | string): string {
+  return typeof s === "string" ? s : (s?.text ?? "");
 }
 
 // Palavras-chave de dor para destacar em negrito
@@ -26,7 +32,7 @@ const painKeywords = [
 ];
 
 const renderWithHighlights = (text: string) => {
-  let parts = text.split(/(\*\*.*?\*\*)/g);
+  let parts = (text ?? "").split(/(\*\*.*?\*\*)/g);
   
   return parts.map((part, i) => {
     if (part.startsWith("**") && part.endsWith("**")) {
@@ -94,7 +100,7 @@ export default function PainSection({ title, subtitle, items }: PainSectionProps
                   </div>
                   
                   <p className="text-foreground/80 text-base md:text-lg leading-relaxed mt-2">
-                    {renderWithHighlights(s.text)}
+                    {renderWithHighlights(itemText(s))}
                   </p>
                 </div>
               </div>

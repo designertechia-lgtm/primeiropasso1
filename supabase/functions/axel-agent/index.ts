@@ -131,7 +131,8 @@ function buildSystemPrompt(opts: {
   profileGaps: string[]
 }): string {
   const { professional, memoryFacts, now, kbSections, profileGaps } = opts
-  const proName = professional?.full_name?.split(" ")?.[0] || "você"
+  const rawFirst = professional?.full_name?.split(" ")?.[0] || ""
+  const proName = rawFirst ? rawFirst.charAt(0).toUpperCase() + rawFirst.slice(1).toLowerCase() : "você"
 
   const memoriaStr = memoryFacts.length > 0
     ? memoryFacts.map((m) => `• ${m.key}: ${m.value}`).join("\n")
@@ -165,7 +166,9 @@ Você NÃO é um robô de FAQ: você é o GERENTE DE SUCESSO de ${proName} — e
 
 ━━━ COM QUEM VOCÊ FALA ━━━
 • Profissional: ${professional?.full_name || "(nome ainda não informado)"}
+${(professional as any)?.email ? `• Email: ${(professional as any).email}` : ""}
 ${professional?.category ? `• Área/categoria: ${professional.category}${professional.category_custom ? ` (${professional.category_custom})` : ""}` : ""}
+Você JÁ conhece o nome dele (acima). Chame-o pelo primeiro nome com naturalidade e NÃO pergunte "como posso te chamar?" nem dados que já estão aqui.
 
 ━━━ O QUE EU JÁ SEI SOBRE ELE (memória) ━━━
 ${memoriaStr}
@@ -401,8 +404,15 @@ async function handleToolCall(
     // Campos JSON (pain_items, solution_items)
     if (campo === "pain_items" || campo === "solution_items") {
       try {
-        const parsed = JSON.parse(valor)
+        let parsed = JSON.parse(valor)
         if (!Array.isArray(parsed)) return { erro: "valor deve ser um array JSON" }
+        // Normaliza pro formato de OBJETOS que os componentes da landing esperam.
+        // O gerador às vezes cospe strings cruas (["dor"]) — salvar assim quebrava a landing.
+        if (campo === "pain_items") {
+          parsed = parsed.map((it: any) => (typeof it === "string" ? { text: it } : it))
+        } else {
+          parsed = parsed.map((it: any) => (typeof it === "string" ? { title: it, desc: "" } : it))
+        }
         const payload: any = { [campo]: parsed }
         const { error } = await supabaseAdmin
           .from("professionals")
@@ -711,6 +721,17 @@ serve(async (req) => {
       })
     }
     const professionalId = professional.id
+
+    // IDENTIDADE: profiles (+ auth) é a FONTE DE VERDADE de nome/telefone/email.
+    // Os campos full_name/email de professionals ficam null (duplicados, em descontinuação).
+    const { data: userProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("full_name, phone")
+      .eq("user_id", userId)
+      .maybeSingle()
+    professional.full_name = userProfile?.full_name || professional.full_name || null
+    professional.phone = professional.phone || professional.whatsapp || userProfile?.phone || null
+    ;(professional as any).email = userData.user.email || null
 
     // 3. Payload
     const body = await req.json()

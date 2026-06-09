@@ -118,6 +118,19 @@ const tools = [
       required: ["rota", "titulo"],
     },
   },
+  {
+    name: "salvar_dado_cadastro",
+    description:
+      "GRAVA no perfil um dado factual que o profissional informou: o NOME dele ou a ATIVIDADE/profissão/área de atuação. CHAME SEMPRE que ele disser ou corrigir o nome ('na verdade meu nome é Carlos', 'está errado, é X') OU disser o que faz ('sou desenvolvedor React', 'trabalho com criação de produtos digitais', 'sou nutricionista'). Grava direto, sem precisar gerar nada antes. É isso que faz o site (e a geração de landing/conteúdo) refletir quem ele é de verdade — NÃO deixe a atividade só na conversa. Depois confirme em 1 frase.",
+    input_schema: {
+      type: "object",
+      properties: {
+        campo: { type: "string", description: "'nome' (nome do profissional) ou 'atividade' (profissão / área / o que ele faz)." },
+        valor: { type: "string", description: "O valor a gravar. Ex.: 'Carlos Carneiro' ou 'Desenvolvedor React, criação de produtos digitais'." },
+      },
+      required: ["campo", "valor"],
+    },
+  },
 ]
 
 // =============================================
@@ -178,6 +191,7 @@ ${gapsStr}
 Como descobrir SEM interrogatório:
 • Embrulhe a descoberta numa entrega de valor ("pra eu já deixar sua landing com a sua cara: você atende mais ansiedade, casais ou infantil?"). A pergunta nunca é gratuita.
 • INFIRA do que ele disser e salve com \`salvar_memoria\` SEM perguntar; só pergunte o que não der pra inferir.
+• Disse o NOME ou a ATIVIDADE/profissão? NÃO basta lembrar: chame \`salvar_dado_cadastro\` pra GRAVAR no perfil — é o que faz o site e a geração de landing/conteúdo refletirem a área REAL dele (corrige o padrão "psicologia"). ANTES de gerar landing ou artigo, garanta que a atividade real está gravada.
 • No MÁXIMO 1 descoberta por resposta, e só quando couber naturalmente. Nunca interrogue.
 
 ━━━ HOJE: ${now} ━━━
@@ -346,7 +360,8 @@ async function handleToolCall(
     const ctx = {
       name: prof?.full_name || "Profissional",
       crp: prof?.crp,
-      specialty: prof?.category || prof?.category_custom || "",
+      // category_custom (atividade que o profissional informou) tem prioridade sobre o category padrão
+      specialty: prof?.category_custom || prof?.category || "",
     }
 
     if (toolName === "gerar_landing") {
@@ -481,7 +496,7 @@ async function handleToolCall(
       const ctx: any = {
         name: prof?.full_name || "Profissional",
         crp: prof?.crp,
-        specialty: prof?.category || prof?.category_custom || "",
+        specialty: prof?.category_custom || prof?.category || "",
         existing_titles: existingTitles,
         existing_cover_urls: existingCoverUrls,
         existing_carousel_urls: [],
@@ -545,6 +560,32 @@ async function handleToolCall(
     } catch (e: any) {
       return { erro: e.message, instrucao: "Avise o profissional que houve erro técnico ao gerar o artigo." }
     }
+  }
+
+  if (toolName === "salvar_dado_cadastro") {
+    const campo = (args.campo || "").toString().trim().toLowerCase()
+    const valor = (args.valor ?? "").toString().trim()
+    if (!campo || !valor) return { erro: "campo e valor são obrigatórios" }
+
+    if (campo === "nome") {
+      // profiles é a FONTE DE VERDADE da identidade; espelha em professionals
+      // pro que ainda lê de lá (landing pública, etc.).
+      const { error: e1 } = await supabaseAdmin.from("professionals").update({ full_name: valor }).eq("id", professionalId)
+      const { data: pr } = await supabaseAdmin.from("professionals").select("user_id").eq("id", professionalId).maybeSingle()
+      if (pr?.user_id) await supabaseAdmin.from("profiles").update({ full_name: valor }).eq("user_id", pr.user_id)
+      if (e1) return { erro: e1.message, instrucao: "Avise que houve erro ao salvar o nome." }
+      console.log(`[salvar_dado_cadastro] nome=${valor}`)
+      return { sucesso: true, campo, instrucao: "Confirme em 1 frase que salvou o nome e use o novo nome daqui pra frente." }
+    }
+
+    if (campo === "atividade" || campo === "profissao" || campo === "profissão") {
+      const { error } = await supabaseAdmin.from("professionals").update({ category_custom: valor }).eq("id", professionalId)
+      if (error) return { erro: error.message, instrucao: "Avise que houve erro ao salvar a atividade." }
+      console.log(`[salvar_dado_cadastro] atividade=${valor}`)
+      return { sucesso: true, campo, instrucao: "Confirme em 1 frase que registrou a atividade. Agora a landing/conteúdo gerado vai refletir a área real dele, não mais o padrão de psicologia." }
+    }
+
+    return { erro: "campo deve ser 'nome' ou 'atividade'" }
   }
 
   if (toolName === "abrir_pagina") {

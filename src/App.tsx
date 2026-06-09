@@ -44,6 +44,7 @@ import PatientAgendar from "./pages/paciente/PatientAgendar.tsx";
 import PatientPerfil from "./pages/paciente/PatientPerfil.tsx";
 import FaviconUpdater from "./components/FaviconUpdater.tsx";
 import AppAnnouncements from "./components/AppAnnouncements.tsx";
+import RouteErrorBoundary from "./components/ErrorBoundary.tsx";
 
 const queryClient = new QueryClient();
 
@@ -74,6 +75,7 @@ const App = () => (
         <AuthProvider>
           <FaviconUpdater />
           <AppAnnouncements />
+          <RouteErrorBoundary>
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
@@ -116,6 +118,7 @@ const App = () => (
             <Route path="/:slug/video/:videoId" element={<VideoPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </RouteErrorBoundary>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

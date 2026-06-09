@@ -64,7 +64,16 @@ serve(async (req) => {
       .eq('user_id', user.id)
       .maybeSingle()
 
+    // If professional exists, sync slug from user_metadata if metadata has one and different
+    const metadataSlugExisting = user.user_metadata?.slug as string | undefined
     if (pro) {
+      if (metadataSlugExisting && pro.slug !== metadataSlugExisting) {
+        await supabaseAdmin
+          .from('professionals')
+          .update({ slug: metadataSlugExisting })
+          .eq('id', pro.id)
+        pro.slug = metadataSlugExisting
+      }
       return new Response(JSON.stringify({ professional: pro, created: false }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -72,8 +81,10 @@ serve(async (req) => {
     }
 
     // Auto-create professional record
-    // Generate slug from email prefix or full_name
-    const emailSlug = user.email?.split('@')[0]?.replace(/[^a-z0-9]/gi, '-')?.toLowerCase() || `pro-${user.id.substring(0, 8)}`
+    // Use slug from user_metadata (set during Cadastro), fallback to email prefix
+    const emailSlug = metadataSlugExisting ||
+      user.email?.split('@')[0]?.replace(/[^a-z0-9]/gi, '-')?.toLowerCase() ||
+      `pro-${user.id.substring(0, 8)}`
 
     const { data: newPro, error: insertError } = await supabaseAdmin
       .from('professionals')

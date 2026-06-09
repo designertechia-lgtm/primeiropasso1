@@ -7,12 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Trash2, Plus } from "lucide-react";
+import { Trash2, Plus, Phone } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
+import { formatPhone, unformatPhone } from "@/lib/utils";
 
 export default function AdminPerfil() {
   const { user, profile } = useAuth();
@@ -98,8 +99,8 @@ export default function AdminPerfil() {
         full_name: fullName,
         slug: slug || null,
         crp,
-        phone: phone || null,
-        whatsapp: phone || null,
+        phone: phone ? unformatPhone(phone) : null,
+        whatsapp: phone ? unformatPhone(phone) : null,
         email: email || null,
         address: address || null,
         photo_url: photoUrl || null,
@@ -165,9 +166,23 @@ export default function AdminPerfil() {
             <Input id="crp" placeholder="Ex: CRP 06/12345 · CFP 01/00000" value={crp} onChange={(e) => setCrp(e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
+          <div className="space-y-2">
               <Label htmlFor="phone">Telefone / WhatsApp</Label>
-              <Input id="phone" placeholder="Ex: 11 99999-9999" value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="phone"
+                  placeholder="55 11 9 9999-9999"
+                  className="pl-9"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  onBlur={(e) => {
+                    const formatted = formatPhone(e.target.value);
+                    setPhone(formatted);
+                  }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">Exibido formatado. Ao salvar, apenas números serão armazenados.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">E-mail de contato</Label>

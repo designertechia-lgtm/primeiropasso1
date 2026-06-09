@@ -82,3 +82,35 @@ export function formatCurrency(value: number) {
     currency: "BRL",
   }).format(value);
 }
+
+/**
+ * Formata telefone para exibição: 55 ## # ####-####
+ * Aceita string com ou sem formatação, extrai só dígitos.
+ */
+export function formatPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 13) {
+    // 55 11 9 1234-5678 (Brasil com código do país)
+    return `${digits.slice(0, 2)} ${digits.slice(2, 4)} ${digits.slice(4, 5)} ${digits.slice(5, 9)}-${digits.slice(9)}`;
+  }
+  if (digits.length === 12) {
+    // 55 11 1234-5678 (fixo)
+    return `${digits.slice(0, 2)} ${digits.slice(2, 4)} ${digits.slice(4, 8)}-${digits.slice(8)}`;
+  }
+  if (digits.length === 11) {
+    // 11 9 1234-5678 (sem país)
+    return `${digits.slice(0, 2)} ${digits.slice(2, 3)} ${digits.slice(3, 7)}-${digits.slice(7)}`;
+  }
+  if (digits.length === 10) {
+    // 11 1234-5678 (fixo sem país)
+    return `${digits.slice(0, 2)} ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  }
+  return raw;
+}
+
+/**
+ * Remove toda formatação, mantém apenas dígitos.
+ */
+export function unformatPhone(formatted: string): string {
+  return formatted.replace(/\D/g, "");
+}

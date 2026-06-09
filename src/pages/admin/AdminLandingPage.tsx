@@ -773,60 +773,6 @@ export default function AdminLandingPage() {
           </div>
         )}
 
-        {/* ── seletor de modelos prontos ── */}
-        <div className="mx-4 mt-3">
-          <button
-            type="button"
-            onClick={() => setShowTemplates((v) => !v)}
-            className="flex w-full items-center gap-3 rounded-xl border border-primary/30 bg-gradient-to-r from-primary/10 to-primary/5 px-4 py-3 text-left transition-colors hover:from-primary/15"
-          >
-            <LayoutTemplate className="h-5 w-5 text-primary flex-shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-foreground">Começar com um modelo</p>
-              <p className="text-xs text-muted-foreground">Preencha textos, cores e fontes em 1 clique</p>
-            </div>
-            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showTemplates ? "rotate-180" : ""}`} />
-          </button>
-
-          {showTemplates && (
-            <div className="mt-2 grid grid-cols-1 gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
-              {LANDING_TEMPLATES.map((tpl) => {
-                const dv = deriveColors(tpl.primaryColor);
-                const isApplied = appliedTemplateId === tpl.id;
-                return (
-                  <button
-                    key={tpl.id}
-                    type="button"
-                    onClick={() => applyTemplate(tpl)}
-                    className={`group flex items-center gap-3 rounded-xl border-2 p-3 text-left transition-all hover:shadow-md ${
-                      isApplied ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
-                    }`}
-                  >
-                    {/* mini swatch de cores */}
-                    <div className="flex h-12 w-12 flex-shrink-0 flex-col overflow-hidden rounded-lg border shadow-sm">
-                      <div className="flex-1" style={{ background: tpl.primaryColor }} />
-                      <div className="flex h-1/2">
-                        <div className="flex-1" style={{ background: dv.secondary }} />
-                        <div className="flex-1" style={{ background: dv.background }} />
-                      </div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-                        {tpl.name}
-                        {isApplied && <Check className="h-3.5 w-3.5 text-primary" />}
-                      </p>
-                      <p className="text-xs text-muted-foreground leading-snug line-clamp-2">{tpl.description}</p>
-                    </div>
-                  </button>
-                );
-              })}
-              <p className="px-1 text-[11px] text-muted-foreground leading-relaxed">
-                Aplicar um modelo substitui os textos, cores e fontes — suas imagens, abordagens e contatos são mantidos. Lembre de <strong>salvar cada aba</strong> depois.
-              </p>
-            </div>
-          )}
-        </div>
-
         {/* section tabs */}
         <div className="flex flex-wrap border-b sticky top-0 bg-background z-10">
 
@@ -859,6 +805,60 @@ export default function AdminLandingPage() {
           {/* ── HERO ── */}
           {activeSection === "hero" && (
             <>
+              {/* ── seletor de modelos prontos ── */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowTemplates((v) => !v)}
+                  className="flex w-full items-center gap-3 rounded-xl border border-primary/30 bg-gradient-to-r from-primary/10 to-primary/5 px-4 py-3 text-left transition-colors hover:from-primary/15"
+                >
+                  <LayoutTemplate className="h-5 w-5 text-primary flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-foreground">Começar com um modelo</p>
+                    <p className="text-xs text-muted-foreground">Preencha textos, cores e fontes em 1 clique</p>
+                  </div>
+                  <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showTemplates ? "rotate-180" : ""}`} />
+                </button>
+
+                {showTemplates && (
+                  <div className="mt-2 grid grid-cols-1 gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                    {LANDING_TEMPLATES.map((tpl) => {
+                      const dv = deriveColors(tpl.primaryColor);
+                      const isApplied = appliedTemplateId === tpl.id;
+                      return (
+                        <button
+                          key={tpl.id}
+                          type="button"
+                          onClick={() => applyTemplate(tpl)}
+                          className={`group flex items-center gap-3 rounded-xl border-2 p-3 text-left transition-all hover:shadow-md ${
+                            isApplied ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
+                          }`}
+                        >
+                          {/* mini swatch de cores */}
+                          <div className="flex h-12 w-12 flex-shrink-0 flex-col overflow-hidden rounded-lg border shadow-sm">
+                            <div className="flex-1" style={{ background: tpl.primaryColor }} />
+                            <div className="flex h-1/2">
+                              <div className="flex-1" style={{ background: dv.secondary }} />
+                              <div className="flex-1" style={{ background: dv.background }} />
+                            </div>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                              {tpl.name}
+                              {isApplied && <Check className="h-3.5 w-3.5 text-primary" />}
+                            </p>
+                            <p className="text-xs text-muted-foreground leading-snug line-clamp-2">{tpl.description}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                    <p className="px-1 text-[11px] text-muted-foreground leading-relaxed">
+                      Aplicar um modelo substitui os textos, cores e fontes — suas imagens, abordagens e contatos são mantidos. Lembre de <strong>salvar cada aba</strong> depois.
+                    </p>
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-2">
                 <Label>Imagem do Hero <FieldHint text="Foto de destaque no topo da página. Se não definida, usa a foto de perfil." /></Label>
                 <ImageUpload currentUrl={heroImageUrl || null} onUploaded={setHeroImageUrl} folder="hero" variant="logo" />

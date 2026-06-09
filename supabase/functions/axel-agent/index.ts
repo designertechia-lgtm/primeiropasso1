@@ -4,10 +4,11 @@
 // Replica o motor agêntico do whatsapp-agent (Claude Sonnet + Tool Use loop),
 // trocando o público (lead → profissional) e as tools (agenda → produtividade).
 //
-// Fase 1 (este arquivo): tools de LEITURA + MEMÓRIA
-//   - consultar_conhecimento : RAG GLOBAL do produto (UUID sentinela)
-//   - ler_estado_perfil      : o que falta no perfil/onboarding
-//   - salvar_memoria         : grava um fato do profissional (relacionamento)
+// Tools de LEITURA + MEMÓRIA + EXECUÇÃO
+//   - consultar_secao   : abre uma seção da base de conhecimento SECCIONADA (schema axel,
+//                         via RPC public.axel_kb_sections). O índice das seções vai no system prompt.
+//   - ler_estado_perfil : o que falta no perfil/onboarding
+//   - salvar_memoria    : grava um fato do profissional (relacionamento)
 //
 // Segurança: NUNCA confia no professional_id do cliente. Valida o JWT, deriva
 // o user e busca o professional dono. Persiste histórico em axel_conversations.
@@ -20,9 +21,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 }
 
-// UUID sentinela: dono da base de conhecimento GLOBAL do produto (gerida no painel gerente).
-const AXEL_PLATFORM_KB_ID = "00000000-0000-0000-0000-000000000000"
-
 const CLAUDE_MODEL = "claude-sonnet-4-6"
 const CLAUDE_URL = "https://api.anthropic.com/v1/messages"
 
@@ -31,15 +29,15 @@ const CLAUDE_URL = "https://api.anthropic.com/v1/messages"
 // =============================================
 const tools = [
   {
-    name: "consultar_conhecimento",
+    name: "consultar_secao",
     description:
-      "Busca na BASE DE CONHECIMENTO DO PRODUTO PrimeiroPasso (como a plataforma funciona, recursos, planos, agenda, landing page, conteúdo, créditos, integrações). CHAME SEMPRE que o profissional perguntar 'como faço X?', 'a plataforma tem Y?', 'onde fica Z?'. NÃO invente funcionalidade — fundamente na base. Use queries CURTAS de 1-3 palavras-chave (ex.: 'landing page', 'agenda', 'créditos', 'whatsapp', 'artigo carrossel'). NÃO use frases longas.",
+      "Abre o passo a passo / detalhe de uma SEÇÃO da plataforma pela 'key' listada no MAPA DA PLATAFORMA (no system prompt). CHAME SEMPRE que o profissional perguntar 'como faço X?', 'como conecto Y?', 'a plataforma tem Z?', 'onde fica W?'. Fundamente a resposta no conteúdo da seção — NÃO responda de cabeça nem invente. Ex.: key 'google-agenda'.",
     input_schema: {
       type: "object",
       properties: {
-        query: { type: "string", description: "1-3 palavras-chave. Ex.: 'landing page', 'agenda', 'whatsapp', 'plano mensal'." },
+        key: { type: "string", description: "A chave EXATA da seção (campo [key] no MAPA DA PLATAFORMA). Ex.: 'google-agenda', 'agenda', 'landing'." },
       },
-      required: ["query"],
+      required: ["key"],
     },
   },
   {
@@ -116,13 +114,22 @@ function buildSystemPrompt(opts: {
   professional: any
   memoryFacts: Array<{ key: string; value: string }>
   now: string
+  kbSections: Array<{ key: string; title: string; route?: string; keywords?: string[] }>
 }): string {
-  const { professional, memoryFacts, now } = opts
+  const { professional, memoryFacts, now, kbSections } = opts
   const proName = professional?.full_name?.split(" ")?.[0] || "você"
 
   const memoriaStr = memoryFacts.length > 0
     ? memoryFacts.map((m) => `• ${m.key}: ${m.value}`).join("\n")
     : "(ainda não conheço fatos sobre este profissional — descubra com naturalidade e use salvar_memoria)"
+
+  const mapaStr = (kbSections && kbSections.length > 0)
+    ? kbSections.map((s) => {
+        const rota = s.route ? ` (${s.route})` : ""
+        const kws = Array.isArray(s.keywords) && s.keywords.length ? ` — palavras: ${s.keywords.join(", ")}` : ""
+        return `• [${s.key}] ${s.title}${rota}${kws}`
+      }).join("\n")
+    : "(nenhuma seção de conhecimento cadastrada ainda)"
 
   return `Você é o **Axel**, o copiloto inteligente do profissional dentro da plataforma PrimeiroPasso.
 Você NÃO é um robô de FAQ: você tem memória, entende o contexto e ajuda de verdade.
@@ -142,14 +149,18 @@ ${memoriaStr}
 
 ━━━ HOJE: ${now} ━━━
 
+━━━ MAPA DA PLATAFORMA (base de conhecimento) ━━━
+Estas são as seções disponíveis. Para abrir o passo a passo/detalhe de QUALQUER uma, chame \`consultar_secao\` com a [key]. NÃO responda "como fazer" de cabeça — abra a seção primeiro.
+${mapaStr}
+
 ━━━ COMO AGIR ━━━
 1. RELACIONAMENTO: use a memória acima pra dar continuidade ("semana passada você queria publicar a landing..."). Se descobrir um fato novo e relevante, chame \`salvar_memoria\` SEM avisar.
-2. ENSINAR: para qualquer dúvida sobre COMO a plataforma funciona, chame \`consultar_conhecimento\` com 1-3 palavras-chave ANTES de responder. NUNCA invente funcionalidade que não existe.
+2. ENSINAR: para qualquer dúvida sobre COMO a plataforma funciona, identifique a seção certa no MAPA acima e chame \`consultar_secao\` com a [key] ANTES de responder. NUNCA invente funcionalidade que não existe.
 3. CONTEXTO: se precisar saber o que falta configurar, chame \`ler_estado_perfil\` e sugira o próximo passo concreto.
-4. Se a base de conhecimento não cobrir a pergunta, seja honesto: "Sobre isso específico eu vou confirmar pra não te passar errado" — NÃO invente.
+4. Se nenhuma seção do MAPA cobrir a pergunta, seja honesto: "Sobre isso específico eu vou confirmar pra não te passar errado" — NÃO invente.
 
 ━━━ REGRAS ABSOLUTAS ━━━
-• NÃO invente recursos, telas, preços ou botões. Fundamente em \`consultar_conhecimento\`.
+• NÃO invente recursos, telas, preços ou botões. Fundamente em \`consultar_secao\`.
 • NÃO prometa executar ações que você ainda não pode fazer (gerar landing, criar vídeo). Nesta fase você ENSINA e ORIENTA — diga onde ele encontra a função na plataforma.
 • Seja específico e acionável: aponte o caminho ("Menu → Agenda → Disponibilidade").
 • Brevidade sempre. Reconheça o que ele trouxe antes de responder.`
@@ -163,51 +174,25 @@ async function handleToolCall(
   args: any,
   supabaseAdmin: any,
   professionalId: string,
+  kbSections: Array<{ key: string; title: string; route?: string; body: string }>,
 ): Promise<any> {
-  if (toolName === "consultar_conhecimento") {
-    const query = (args.query || "").toString().trim()
-    if (!query) return { erro: "query obrigatória" }
+  if (toolName === "consultar_secao") {
+    const key = (args.key || "").toString().trim()
+    if (!key) return { erro: "key obrigatória" }
 
-    const workerUrl = Deno.env.get("WORKER_RAG_URL") || Deno.env.get("WORKER_URL")
-    if (!workerUrl) {
+    const sec = (kbSections || []).find((s) => s.key === key)
+    if (!sec) {
       return {
-        chunks: [],
-        instrucao: "A base de conhecimento do produto ainda não está configurada. Responda com base no que você sabe da plataforma, com cautela, e sugira que o profissional consulte o suporte se for algo muito específico.",
+        encontrado: false,
+        instrucao: "Não existe seção com essa chave. Veja o MAPA DA PLATAFORMA e tente a [key] correta; se nada cobrir, seja honesto e diga que vai confirmar pra não passar errado.",
       }
     }
-
-    try {
-      const res = await fetch(`${workerUrl.replace(/\/$/, "")}/rag/search`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          professional_id: AXEL_PLATFORM_KB_ID, // base GLOBAL do produto
-          query,
-          match_count: 6,
-        }),
-      })
-      if (!res.ok) {
-        console.error("[consultar_conhecimento] status", res.status)
-        return { chunks: [], instrucao: "Não consegui consultar a base agora. Responda com cautela ou peça pra ele tentar de novo." }
-      }
-      const data = await res.json()
-      const rawChunks = (data.chunks || []) as Array<string | { content?: string; similarity?: number }>
-      const chunks = rawChunks.map((c: any) =>
-        typeof c === "string" ? { content: c } : { content: c.content || "", similarity: c.similarity }
-      )
-      if (chunks.length === 0) {
-        return {
-          chunks: [],
-          instrucao: "A base retornou vazio pra essa query. Tente reformular com outra palavra-chave OU diga que vai confirmar a info pra não passar errado.",
-        }
-      }
-      return {
-        chunks: chunks.map((c: any) => ({ content: (c.content || "").slice(0, 800), similarity: c.similarity })),
-        instrucao: "USE os trechos pra montar a resposta. Reformule com naturalidade (não cole texto cru). Aponte o caminho na plataforma quando fizer sentido.",
-      }
-    } catch (e: any) {
-      console.error("[consultar_conhecimento] erro:", e.message)
-      return { chunks: [], instrucao: "Erro técnico ao buscar. Responda com cautela." }
+    return {
+      encontrado: true,
+      titulo: sec.title,
+      rota: sec.route || null,
+      conteudo: sec.body,
+      instrucao: "USE o conteúdo pra responder com naturalidade (não cole o texto cru). Aponte o caminho na plataforma (rota) quando fizer sentido. Seja breve.",
     }
   }
 
@@ -518,8 +503,9 @@ async function callClaude(opts: {
   userMessage: string
   supabaseAdmin: any
   professionalId: string
+  kbSections: any[]
 }): Promise<{ reply: string; toolsUsed: string[] }> {
-  const { systemPrompt, history, userMessage, supabaseAdmin, professionalId } = opts
+  const { systemPrompt, history, userMessage, supabaseAdmin, professionalId, kbSections } = opts
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY")
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured")
 
@@ -584,7 +570,7 @@ async function callClaude(opts: {
     const toolResults = []
     for (const tu of toolUseBlocks) {
       toolsUsed.push(tu.name)
-      const out = await handleToolCall(tu.name, tu.input, supabaseAdmin, professionalId)
+      const out = await handleToolCall(tu.name, tu.input, supabaseAdmin, professionalId, kbSections)
       toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(out) })
     }
 
@@ -667,6 +653,11 @@ serve(async (req) => {
       .limit(40)
     const memoryFacts = (memoryRows || []) as Array<{ key: string; value: string }>
 
+    // Base de conhecimento seccionada (mapa do site) — schema axel via RPC facade
+    const { data: kbRows, error: kbErr } = await supabaseAdmin.rpc("axel_kb_sections", { p_scope: "platform" })
+    if (kbErr) console.error("[axel-agent] axel_kb_sections erro:", kbErr.message)
+    const kbSections = (kbRows || []) as Array<{ key: string; title: string; route?: string; keywords?: string[]; body: string }>
+
     // 5. Persiste a mensagem do usuário
     await supabaseAdmin.from("axel_conversations").insert({
       professional_id: professionalId,
@@ -676,12 +667,12 @@ serve(async (req) => {
 
     // 6. Chama o Claude
     const now = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })
-    const systemPrompt = buildSystemPrompt({ professional, memoryFacts, now })
+    const systemPrompt = buildSystemPrompt({ professional, memoryFacts, now, kbSections })
 
     let reply: string
     let toolsUsed: string[] = []
     try {
-      const out = await callClaude({ systemPrompt, history, userMessage: message, supabaseAdmin, professionalId })
+      const out = await callClaude({ systemPrompt, history, userMessage: message, supabaseAdmin, professionalId, kbSections })
       reply = out.reply
       toolsUsed = out.toolsUsed
     } catch (aiErr: any) {

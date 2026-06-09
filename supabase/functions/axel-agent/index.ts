@@ -645,7 +645,7 @@ serve(async (req) => {
     // 2. Deriva o professional dono (segurança: ignora qualquer id do cliente).
     const { data: professional, error: profErr } = await supabaseAdmin
       .from("professionals")
-      .select("id, full_name, category, category_custom")
+      .select("id, full_name, category, category_custom, phone, whatsapp")
       .eq("user_id", userId)
       .maybeSingle()
     if (profErr || !professional) {
@@ -692,6 +692,7 @@ serve(async (req) => {
     const factKeys = new Set(memoryFacts.map((f) => f.key))
     const profileGaps: string[] = []
     if (!professional?.full_name) profileGaps.push("Nome do profissional (ainda não sei como ele se chama)")
+    if (!professional?.phone && !professional?.whatsapp) profileGaps.push("Telefone/WhatsApp — identificador PRINCIPAL do profissional na plataforma; é o que conecta o agente de WhatsApp aos leads. Prioridade alta.")
     if (!professional?.category && !professional?.category_custom) profileGaps.push("Profissão / área de atuação e nicho")
     if (!factKeys.has("objetivo_plataforma") && !factKeys.has("objetivo")) profileGaps.push("Objetivo COM a plataforma (o que ele quer alcançar aqui: mais pacientes, presença digital, organizar a rotina...)")
     if (!factKeys.has("objetivo_profissional")) profileGaps.push("Objetivo profissional / de carreira (onde ele quer chegar)")

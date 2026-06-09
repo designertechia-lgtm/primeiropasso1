@@ -105,6 +105,19 @@ const tools = [
       required: [],
     },
   },
+  {
+    name: "abrir_pagina",
+    description:
+      "LEVA o profissional até uma página da plataforma (ele está logado no painel; o app navega na hora e o chat continua aberto por cima). CHAME quando ele quiser IR a uma área — 'quero mexer na agenda', 'cadê minha landing', 'me leva pro perfil', 'como configuro o WhatsApp' — ou quando o próximo passo que você sugerir exigir uma tela específica. Use a ROTA EXATA do MAPA DA PLATAFORMA (campo entre parênteses). Depois de chamar, continue a conversa em texto: diga o que ele vai encontrar lá e o que fazer. NÃO invente rotas.",
+    input_schema: {
+      type: "object",
+      properties: {
+        rota: { type: "string", description: "Rota EXATA do MAPA DA PLATAFORMA (ex.: '/admin/agenda', '/admin/landing'). Só rotas que aparecem no MAPA." },
+        titulo: { type: "string", description: "Rótulo curto do atalho/botão. Ex.: 'Agenda', 'Minha página', 'Meu perfil', 'Conectar WhatsApp'." },
+      },
+      required: ["rota", "titulo"],
+    },
+  },
 ]
 
 // =============================================
@@ -145,8 +158,8 @@ Você NÃO é um robô de FAQ: você é o GERENTE DE SUCESSO de ${proName} — e
 
 ━━━ QUEM É VOCÊ ━━━
 • Nome: Axel. Papel: gerente de sucesso + produtor de conteúdo do profissional.
-• Tom: amigável, paciente, encorajador e DIRETO. Linguagem simples, sem corporativês.
-• Emojis com moderação. Respostas curtas (2-5 frases). Nada de textão.
+• Tom: amigável, mas SOBRETUDO objetivo. Linguagem simples, sem corporativês.
+• BREVIDADE É REGRA: 1 a 3 frases por mensagem, no MÁXIMO. Uma ideia por vez, direto ao ponto. Nunca liste mais de 3 itens. Corte saudações longas, floreios e resumos do que ele já sabe. Se cabe em 1 frase, use 1 frase. No máximo 1 emoji por mensagem (ou nenhum).
 • FORMATAÇÃO: escreva em TEXTO PURO — o chat NÃO renderiza markdown. NÃO use \`**\` para negrito, nem \`#\`, nem \`*\` em listas. Para passos, numere (1., 2., 3.) em linhas separadas. Para destacar, use o próprio texto, nunca asteriscos.
 • Você fala COM ${proName} na SEGUNDA pessoa ("você").
 
@@ -173,8 +186,9 @@ ${mapaStr}
 ━━━ COMO AGIR ━━━
 1. RELACIONAMENTO: use a memória pra dar continuidade ("semana passada você queria publicar a landing..."). Descobriu um fato novo e relevante? Chame \`salvar_memoria\` SEM avisar.
 2. ENSINAR: pra dúvida de COMO a plataforma funciona, identifique a seção no MAPA e chame \`consultar_secao\` com a [key] ANTES de responder.
-3. PRÓXIMO PASSO (sempre): termine cada resposta com UM passo concreto rumo ao objetivo dele. Use \`ler_estado_perfil\` pra saber o que falta e priorize pelo objetivo declarado. Quando fizer sentido, ENTREGUE no chat: ofereça criar o artigo (\`criar_artigo\`) ou montar/melhorar a landing e o perfil (\`sugerir_dados_perfil\`, \`gerar_landing\`) ali mesmo.
-4. Se nenhuma seção do MAPA cobrir, seja honesto ("vou confirmar pra não te passar errado") — NÃO invente.
+3. EDITAR/IR A UMA ÁREA = LEVE DIRETO: se ele pede pra editar/ver/configurar/mexer numa área (landing, agenda, perfil, WhatsApp, conteúdo) ou quer IR até lá, chame \`abrir_pagina\` IMEDIATAMENTE (rota do MAPA) e diga em 1 frase o que fazer lá. NÃO pergunte "aqui ou na página?" nesses casos. Só ofereça resolver no PRÓPRIO chat quando for gerar TEXTO (bio, artigo, ou textos da landing via \`gerar_landing\`/\`sugerir_dados_perfil\`/\`criar_artigo\`) e ele NÃO tiver pedido pra ir à tela.
+4. PRÓXIMO PASSO (sempre): termine cada resposta com UM passo concreto rumo ao objetivo dele. Use \`ler_estado_perfil\` pra saber o que falta e priorize pelo objetivo declarado.
+5. Se nenhuma seção do MAPA cobrir, seja honesto ("vou confirmar pra não te passar errado") — NÃO invente.
 
 ━━━ REGRAS ABSOLUTAS ━━━
 • Você EXECUTA, não só orienta: pode gerar e aplicar conteúdo de perfil/landing e criar artigos — SEMPRE mostrando o resultado e pedindo confirmação explícita ANTES de gravar. Vídeo ainda não tem ferramenta sua: oriente o caminho (Redes Sociais > Criar Vídeo).
@@ -248,7 +262,7 @@ async function handleToolCall(
   if (toolName === "ler_estado_perfil") {
     const { data: prof } = await supabaseAdmin
       .from("professionals")
-      .select("full_name, crp, bio, hero_title, pain_title, category")
+      .select("full_name, crp, bio, landing_published, category")
       .eq("id", professionalId)
       .maybeSingle()
 
@@ -270,7 +284,9 @@ async function handleToolCall(
 
     const profileComplete = !!(prof?.full_name && prof?.crp && prof?.bio)
     const agendaConfigured = (availCount ?? 0) > 0
-    const landingPublished = !!(prof?.hero_title || prof?.pain_title)
+    // landing_published é coluna GENERATED no banco (ignora hero_title, que tem DEFAULT).
+    // Ver migration 20260609_axel_landing_published.sql.
+    const landingPublished = !!prof?.landing_published
     const firstContentCreated = ((articles ?? 0) + (videos ?? 0)) > 0
 
     const itens = {
@@ -521,6 +537,31 @@ async function handleToolCall(
     }
   }
 
+  if (toolName === "abrir_pagina") {
+    const rota = (args.rota || "").toString().trim()
+    const titulo = (args.titulo || "").toString().trim() || "Abrir página"
+    // Allowlist: só rotas que o MAPA conhece (curadas pelo admin) + base do onboarding.
+    // Segurança: o Axel não navega pra caminho arbitrário.
+    const rotasValidas = new Set<string>([
+      ...(kbSections || []).map((s) => (s.route || "").trim()).filter(Boolean),
+      "/admin", "/admin/perfil", "/admin/agenda", "/admin/landing",
+      "/admin/clientes", "/admin/redes-sociais", "/admin/assinatura", "/admin/configuracoes",
+    ])
+    if (!rota.startsWith("/") || !rotasValidas.has(rota)) {
+      return {
+        sucesso: false,
+        erro: "rota_desconhecida",
+        instrucao: "Essa rota não está no MAPA DA PLATAFORMA. Não invente caminhos — use a rota EXATA de uma seção do MAPA, ou apenas oriente em texto.",
+      }
+    }
+    return {
+      sucesso: true,
+      rota,
+      titulo,
+      instrucao: "Pronto: o profissional foi levado a essa página (o chat segue aberto por cima). Continue em texto dizendo o que ele encontra lá e o próximo passo concreto — não repita a rota crua.",
+    }
+  }
+
   return { erro: "Ferramenta desconhecida" }
 }
 
@@ -534,7 +575,7 @@ async function callClaude(opts: {
   supabaseAdmin: any
   professionalId: string
   kbSections: any[]
-}): Promise<{ reply: string; toolsUsed: string[] }> {
+}): Promise<{ reply: string; toolsUsed: string[]; actions: Array<{ label: string; href: string }>; navigate: string | null }> {
   const { systemPrompt, history, userMessage, supabaseAdmin, professionalId, kbSections } = opts
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY")
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured")
@@ -559,7 +600,8 @@ async function callClaude(opts: {
   }
 
   const toolsUsed: string[] = []
-  let maxIterations = 5
+  const navActions: Array<{ label: string; href: string }> = []
+  let maxIterations = 8
 
   while (maxIterations-- > 0) {
     const payload = {
@@ -593,7 +635,12 @@ async function callClaude(opts: {
 
     if (stopReason !== "tool_use") {
       const textBlock = content.find((b: any) => b.type === "text")
-      return { reply: textBlock?.text || "Desculpe, não consegui responder agora. Pode reformular?", toolsUsed }
+      return {
+        reply: textBlock?.text || "Desculpe, não consegui responder agora. Pode reformular?",
+        toolsUsed,
+        actions: navActions,
+        navigate: navActions.length > 0 ? navActions[navActions.length - 1].href : null,
+      }
     }
 
     const toolUseBlocks = content.filter((b: any) => b.type === "tool_use")
@@ -601,6 +648,10 @@ async function callClaude(opts: {
     for (const tu of toolUseBlocks) {
       toolsUsed.push(tu.name)
       const out = await handleToolCall(tu.name, tu.input, supabaseAdmin, professionalId, kbSections)
+      // Navegação: o Axel pediu pra levar o profissional a uma página válida.
+      if (tu.name === "abrir_pagina" && out?.sucesso && out?.rota) {
+        navActions.push({ label: out.titulo || "Abrir página", href: out.rota })
+      }
       toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(out) })
     }
 
@@ -608,7 +659,12 @@ async function callClaude(opts: {
     messages.push({ role: "user", content: toolResults })
   }
 
-  return { reply: "Desculpe, tive um problema ao processar. Pode tentar de novo?", toolsUsed }
+  return {
+    reply: "Desculpe, tive um problema ao processar. Pode tentar de novo?",
+    toolsUsed,
+    actions: navActions,
+    navigate: navActions.length > 0 ? navActions[navActions.length - 1].href : null,
+  }
 }
 
 // =============================================
@@ -710,10 +766,14 @@ serve(async (req) => {
 
     let reply: string
     let toolsUsed: string[] = []
+    let actions: Array<{ label: string; href: string }> = []
+    let navigate: string | null = null
     try {
       const out = await callClaude({ systemPrompt, history, userMessage: message, supabaseAdmin, professionalId, kbSections })
       reply = out.reply
       toolsUsed = out.toolsUsed
+      actions = out.actions
+      navigate = out.navigate
     } catch (aiErr: any) {
       console.error("[axel-agent][AI Error]", aiErr.message)
       // Sinaliza erro pro front cair no fallback por regras (não persiste resposta vazia).
@@ -723,15 +783,16 @@ serve(async (req) => {
       })
     }
 
-    // 7. Persiste a resposta do Axel
+    // 7. Persiste a resposta do Axel (inclui os atalhos de navegação, que o front renderiza como botões)
     await supabaseAdmin.from("axel_conversations").insert({
       professional_id: professionalId,
       role: "axel",
       content: reply,
       tool_calls: toolsUsed.length > 0 ? toolsUsed : null,
+      actions: actions.length > 0 ? actions : null,
     })
 
-    return new Response(JSON.stringify({ reply, tools_used: toolsUsed }), {
+    return new Response(JSON.stringify({ reply, tools_used: toolsUsed, actions, navigate }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
   } catch (error: any) {

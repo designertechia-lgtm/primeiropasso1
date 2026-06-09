@@ -508,6 +508,7 @@ export type Database = {
           hero_title: string | null
           id: string
           instagram: string | null
+          landing_published: boolean | null
           linkedin: string | null
           logo_url: string | null
           pain_items: Json | null
@@ -564,6 +565,7 @@ export type Database = {
           hero_title?: string | null
           id?: string
           instagram?: string | null
+          landing_published?: boolean | null
           linkedin?: string | null
           logo_url?: string | null
           pain_items?: Json | null
@@ -620,6 +622,7 @@ export type Database = {
           hero_title?: string | null
           id?: string
           instagram?: string | null
+          landing_published?: boolean | null
           linkedin?: string | null
           logo_url?: string | null
           pain_items?: Json | null

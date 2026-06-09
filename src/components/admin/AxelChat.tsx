@@ -277,9 +277,14 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
 
       const reply = (data as { reply?: string; fallback?: boolean } | null)?.reply;
       const wantsFallback = (data as { fallback?: boolean } | null)?.fallback;
+      const navTo = (data as { navigate?: string | null } | null)?.navigate;
 
       if (!error && reply && !wantsFallback) {
         addMessage({ role: "axel", content: reply });
+        // Axel pediu pra LEVAR o profissional a uma página (rota já validada na edge).
+        // No chat flutuante a navegação mantém o chat aberto por cima; na página
+        // dedicada não tiramos o usuário do chat (o botão de atalho persistido cobre).
+        if (navTo && !isDedicatedPage) navigate(navTo);
       } else {
         // IA indisponível/erro → motor por regras (não quebra a experiência).
         runRulesFallback(text);

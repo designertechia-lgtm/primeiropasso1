@@ -160,7 +160,7 @@ export function useAxelMemory() {
     queryFn: async () => {
       const { data } = await supabase
         .from("professionals")
-        .select("id, full_name, email, crp, slug, bio, hero_title, pain_title, category")
+        .select("id, full_name, email, crp, slug, bio, hero_title, pain_title, landing_published, category")
         .eq("user_id", user!.id)
         .maybeSingle();
       return data;
@@ -299,7 +299,9 @@ export function useAxelMemory() {
   const onboarding: OnboardingStatus = (() => {
     const profileComplete = !!((professional as any)?.full_name && (professional as any)?.crp && (professional as any)?.bio);
     const agendaConfigured = !!hasAvailability;
-    const landingPublished = !!((professional as any)?.hero_title || (professional as any)?.pain_title);
+    // landing_published é coluna GENERATED no banco (ignora hero_title, que tem DEFAULT).
+    // Ver migration 20260609_axel_landing_published.sql.
+    const landingPublished = !!((professional as any)?.landing_published);
     const firstContentCreated = !!hasContent;
     const subActive = !!subscriptionActive;
 

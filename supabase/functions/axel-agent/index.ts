@@ -184,6 +184,38 @@ ${mapaStr}
 }
 
 // =============================================
+// GERAÇÃO DE TEXTO (perfil/landing) — direto na Anthropic (sem edge-to-edge frágil)
+// =============================================
+const PERFIL_PROMPTS: Record<string, (c: any) => string> = {
+  bio: (c) => `Escreva uma biografia profissional em primeira pessoa para ${c.name}${c.crp ? ` (${c.crp})` : ""}${c.specialty ? `, especialista em ${c.specialty}` : ""}. 2 a 3 parágrafos curtos, calorosa, humana e profissional, voltada a atrair clientes. Responda APENAS com o texto da bio, sem títulos.`,
+  hero_title: (c) => `Crie um título de destaque (hero) curto e magnético para a landing page de ${c.name}${c.specialty ? `, ${c.specialty}` : ""}. No máximo 8 palavras. Responda APENAS com o título.`,
+  hero_subtitle: (c) => `Crie um subtítulo de 1 a 2 frases para a landing de ${c.name}${c.specialty ? `, ${c.specialty}` : ""}, complementando o título e convidando ao agendamento. Responda APENAS com o subtítulo.`,
+  pain_title: (c) => `Crie um título curto e empático para a seção de DORES (problemas que o cliente sente) na landing de um(a) ${c.specialty || "profissional"}. Responda APENAS com o título.`,
+  pain_subtitle: (c) => `Crie um subtítulo curto para a seção de dores na landing de um(a) ${c.specialty || "profissional"}. Responda APENAS com o subtítulo.`,
+  pain_items: (c) => `Liste 4 dores ou problemas comuns que levam alguém a procurar um(a) ${c.specialty || "profissional"}. Responda APENAS com um array JSON de 4 strings curtas, sem comentários e sem cercas de código. Ex: ["...","...","...","..."]`,
+  solution_title: (c) => `Crie um título curto e acolhedor para a seção de SOLUÇÃO na landing de um(a) ${c.specialty || "profissional"}. Responda APENAS com o título.`,
+  solution_subtitle: (c) => `Crie um subtítulo curto para a seção de solução na landing de um(a) ${c.specialty || "profissional"}. Responda APENAS com o subtítulo.`,
+  solution_items: (c) => `Liste 4 formas como um(a) ${c.specialty || "profissional"} ajuda seus clientes a melhorar. Responda APENAS com um array JSON de 4 strings curtas, sem comentários e sem cercas de código.`,
+}
+
+async function gerarTextoIA(campo: string, ctx: any, apiKey: string): Promise<string> {
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY ausente")
+  const promptFn = PERFIL_PROMPTS[campo]
+  if (!promptFn) throw new Error(`campo não suportado: ${campo}`)
+  const resp = await fetch(CLAUDE_URL, {
+    method: "POST",
+    headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 800, messages: [{ role: "user", content: promptFn(ctx) }] }),
+  })
+  if (!resp.ok) throw new Error(`Claude ${resp.status}: ${(await resp.text()).slice(0, 150)}`)
+  const data = await resp.json()
+  let txt = (data.content?.find((b: any) => b.type === "text")?.text || "").trim()
+  // remove cercas de código (relevante para os campos _items em JSON)
+  txt = txt.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim()
+  return txt
+}
+
+// =============================================
 // TOOL HANDLERS
 // =============================================
 async function handleToolCall(
@@ -283,8 +315,7 @@ async function handleToolCall(
 
   if (toolName === "sugerir_dados_perfil" || toolName === "gerar_landing") {
     const campo = toolName === "gerar_landing" ? null : (args.campo || "").toString().trim()
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") || ""
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+    const apiKey = Deno.env.get("ANTHROPIC_API_KEY") || ""
 
     // Busca dados do profissional para contexto
     const { data: prof } = await supabaseAdmin
@@ -300,24 +331,14 @@ async function handleToolCall(
     }
 
     if (toolName === "gerar_landing") {
-      // Gera todas as 9 seções da landing em paralelo
       const campos = ["hero_title", "hero_subtitle", "pain_title", "pain_subtitle", "pain_items", "solution_title", "solution_subtitle", "solution_items", "bio"]
       const resultados: Record<string, any> = {}
       for (const c of campos) {
         try {
-          const res = await fetch(`${supabaseUrl}/functions/v1/generate-text`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${anonKey}` },
-            body: JSON.stringify({ field: c, context: ctx }),
-          })
-          if (res.ok) {
-            const data = await res.json()
-            resultados[c] = data.result || data.error || "erro ao gerar"
-          } else {
-            resultados[c] = `erro ${res.status}`
-          }
+          resultados[c] = await gerarTextoIA(c, ctx, apiKey)
         } catch (e: any) {
-          resultados[c] = `erro: ${e.message}`
+          console.error(`[gerar_landing] campo ${c} erro:`, e.message)
+          resultados[c] = "erro ao gerar"
         }
       }
       return {
@@ -328,23 +349,15 @@ async function handleToolCall(
 
     if (!campo) return { erro: "campo obrigatório para sugerir_dados_perfil" }
     try {
-      const res = await fetch(`${supabaseUrl}/functions/v1/generate-text`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${anonKey}` },
-        body: JSON.stringify({ field: campo, context: ctx }),
-      })
-      if (!res.ok) {
-        return { erro: `generate-text retornou ${res.status}`, instrucao: "Avise o profissional que houve um erro técnico e peça pra tentar de novo." }
-      }
-      const data = await res.json()
-      const resultado = data.result || data.error || "erro ao gerar"
+      const resultado = await gerarTextoIA(campo, ctx, apiKey)
       return {
         campo,
         resultado,
         instrucao: "MOSTRE o resultado para o profissional. Pergunte se ele quer APLICAR (chame atualizar_perfil com o campo e valor). NÃO aplique automaticamente — espere a confirmação EXPLÍCITA dele.",
       }
     } catch (e: any) {
-      return { erro: e.message, instrucao: "Avise o profissional que houve um erro técnico ao gerar conteúdo." }
+      console.error("[sugerir_dados_perfil] erro:", e.message)
+      return { erro: e.message, instrucao: "Avise o profissional que houve um erro técnico ao gerar conteúdo. Peça pra tentar de novo em instantes." }
     }
   }
 

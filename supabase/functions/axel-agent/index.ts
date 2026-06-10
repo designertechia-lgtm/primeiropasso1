@@ -131,6 +131,32 @@ const tools = [
       required: ["campo", "valor"],
     },
   },
+  {
+    name: "consultar_agenda",
+    description:
+      "Lista os agendamentos do profissional num período. CHAME quando ele perguntar sobre a agenda ('o que tenho hoje?', 'agenda da semana') E SEMPRE antes de cancelar algo (pra ver e pegar os IDs). Retorna data, hora, nome e telefone do paciente, status e o appointment_id.",
+    input_schema: {
+      type: "object",
+      properties: {
+        periodo: { type: "string", enum: ["hoje", "amanha", "proximas_horas", "semana", "proximos_7_dias", "data_especifica"], description: "Período a consultar." },
+        horas: { type: "number", description: "Quantidade de horas à frente, OBRIGATÓRIO quando periodo='proximas_horas' (ex.: 3 = próximas 3 horas de hoje)." },
+        data: { type: "string", description: "Data YYYY-MM-DD, obrigatório quando periodo='data_especifica'." },
+      },
+      required: ["periodo"],
+    },
+  },
+  {
+    name: "cancelar_agendamentos",
+    description:
+      "Cancela (marca status=cancelled) UM ou VÁRIOS agendamentos pelos IDs. SÓ CHAME depois de mostrar quais agendamentos serão cancelados e o profissional CONFIRMAR explicitamente ('pode', 'cancela', 'sim'). NÃO avisa o paciente automaticamente — avise ele que ainda precisa avisar o paciente. Pegue os appointment_ids via consultar_agenda.",
+    input_schema: {
+      type: "object",
+      properties: {
+        appointment_ids: { type: "array", items: { type: "string" }, description: "Lista de appointment_id a cancelar (vindos de consultar_agenda)." },
+      },
+      required: ["appointment_ids"],
+    },
+  },
 ]
 
 // =============================================
@@ -206,6 +232,12 @@ ${mapaStr}
 3. EDITAR/IR A UMA ÁREA = LEVE DIRETO: se ele pede pra editar/ver/configurar/mexer numa área (landing, agenda, perfil, WhatsApp, conteúdo) ou quer IR até lá, chame \`abrir_pagina\` IMEDIATAMENTE (rota do MAPA) e diga em 1 frase o que fazer lá. NÃO pergunte "aqui ou na página?" nesses casos. Só ofereça resolver no PRÓPRIO chat quando for gerar TEXTO (bio, artigo, ou textos da landing via \`gerar_landing\`/\`sugerir_dados_perfil\`/\`criar_artigo\`) e ele NÃO tiver pedido pra ir à tela.
 4. PRÓXIMO PASSO (sempre): termine cada resposta com UM passo concreto rumo ao objetivo dele. Use \`ler_estado_perfil\` pra saber o que falta e priorize pelo objetivo declarado.
 5. Se nenhuma seção do MAPA cobrir, seja honesto ("vou confirmar pra não te passar errado") — NÃO invente.
+
+━━━ AGENDA ━━━
+Você gerencia a agenda dele. Para qualquer pedido sobre agendamentos:
+1. SEMPRE use \`consultar_agenda\` primeiro — não invente horários. Para "furei o pneu / não atendo nas próximas X horas", use periodo='proximas_horas' com horas=X.
+2. CANCELAR: mostre os agendamentos afetados (dia · hora · paciente) e PEÇA confirmação clara. Só então chame \`cancelar_agendamentos\` com os appointment_id. Depois, AVISE que o paciente ainda não foi notificado automaticamente e ofereça o telefone pra ele avisar.
+3. Remarcar e avisar o paciente automaticamente ainda estão sendo construídos — seja honesto, não prometa o que ainda não faz.
 
 ━━━ REGRAS ABSOLUTAS ━━━
 • Você EXECUTA, não só orienta: pode gerar e aplicar conteúdo de perfil/landing e criar artigos — SEMPRE mostrando o resultado e pedindo confirmação explícita ANTES de gravar. Vídeo ainda não tem ferramenta sua: oriente o caminho (Redes Sociais > Criar Vídeo).
@@ -610,6 +642,95 @@ async function handleToolCall(
       rota,
       titulo,
       instrucao: "Pronto: o profissional foi levado a essa página (o chat segue aberto por cima). Continue em texto dizendo o que ele encontra lá e o próximo passo concreto — não repita a rota crua.",
+    }
+  }
+
+  if (toolName === "consultar_agenda") {
+    const periodo = (args.periodo || "").toString()
+    const nowSP = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }))
+    const pad = (n: number) => String(n).padStart(2, "0")
+    const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    const today = new Date(nowSP); today.setHours(0, 0, 0, 0)
+
+    let dataInicio = ymd(today)
+    let dataFim = ymd(today)
+    let horaInicio: string | null = null
+    let horaFim: string | null = null
+
+    if (periodo === "hoje") {
+      /* hoje */
+    } else if (periodo === "amanha") {
+      const t = new Date(today); t.setDate(t.getDate() + 1); dataInicio = ymd(t); dataFim = ymd(t)
+    } else if (periodo === "proximas_horas") {
+      const h = Number(args.horas) || 3
+      horaInicio = `${pad(nowSP.getHours())}:${pad(nowSP.getMinutes())}:00`
+      const fim = new Date(nowSP.getTime() + h * 3600 * 1000)
+      horaFim = ymd(fim) !== ymd(nowSP) ? "23:59:59" : `${pad(fim.getHours())}:${pad(fim.getMinutes())}:00`
+    } else if (periodo === "semana") {
+      const day = today.getDay()
+      const ini = new Date(today); ini.setDate(ini.getDate() + (day === 0 ? -6 : 1 - day))
+      const fim = new Date(ini); fim.setDate(fim.getDate() + 6)
+      dataInicio = ymd(ini); dataFim = ymd(fim)
+    } else if (periodo === "proximos_7_dias") {
+      const fim = new Date(today); fim.setDate(fim.getDate() + 6); dataFim = ymd(fim)
+    } else if (periodo === "data_especifica") {
+      if (!args.data) return { erro: "data obrigatória quando periodo='data_especifica'" }
+      dataInicio = args.data; dataFim = args.data
+    } else {
+      return { erro: `período desconhecido: ${periodo}` }
+    }
+
+    let q = supabaseAdmin
+      .from("appointments")
+      .select("id, appointment_date, start_time, end_time, status, lead_id, leads(name, whatsapp)")
+      .eq("professional_id", professionalId)
+      .gte("appointment_date", dataInicio)
+      .lte("appointment_date", dataFim)
+      .in("status", ["pending", "confirmed"])
+      .eq("appointment_type", "booking") // só agendamentos reais (corrige o .is(null) que falhava com DEFAULT)
+      .is("block_type", null)            // exclui bloqueios de agenda
+      .order("appointment_date", { ascending: true })
+      .order("start_time", { ascending: true })
+    if (horaInicio) q = q.gte("start_time", horaInicio)
+    if (horaFim) q = q.lte("start_time", horaFim)
+
+    const { data: appts, error } = await q
+    if (error) { console.error("[consultar_agenda]", error.message); return { erro: error.message } }
+
+    const dayNames = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"]
+    const lista = (appts || []).map((a: any) => ({
+      appointment_id: a.id,
+      data: a.appointment_date,
+      dia_semana: dayNames[new Date(a.appointment_date + "T00:00:00").getDay()],
+      hora: (a.start_time || "").slice(0, 5),
+      paciente: a.leads?.name || "(sem nome)",
+      telefone: a.leads?.whatsapp || null,
+      status: a.status,
+    }))
+
+    return {
+      periodo, data_inicio: dataInicio, data_fim: dataFim, total: lista.length, agendamentos: lista,
+      instrucao: "Liste compacto (dia · hora · paciente · status). Vazio → diga sem rodeios. Pra cancelar, use os appointment_id e PEÇA confirmação antes.",
+    }
+  }
+
+  if (toolName === "cancelar_agendamentos") {
+    const ids = Array.isArray(args.appointment_ids) ? args.appointment_ids.filter(Boolean) : []
+    if (ids.length === 0) return { erro: "appointment_ids vazio" }
+    // Segurança: só cancela agendamentos DESTE profissional e que ainda estão ativos.
+    const { data, error } = await supabaseAdmin
+      .from("appointments")
+      .update({ status: "cancelled" })
+      .in("id", ids)
+      .eq("professional_id", professionalId)
+      .in("status", ["pending", "confirmed"])
+      .select("id")
+    if (error) { console.error("[cancelar_agendamentos]", error.message); return { erro: error.message, instrucao: "Avise que houve erro ao cancelar." } }
+    const n = (data || []).length
+    console.log(`[cancelar_agendamentos] ${n} cancelado(s) para ${professionalId}`)
+    return {
+      sucesso: true, cancelados: n,
+      instrucao: `Confirme que cancelou ${n} agendamento(s). AVISE que o paciente ainda NÃO foi notificado automaticamente (esse aviso pelo Axel está chegando em breve) — por ora ofereça o telefone pra ele avisar.`,
     }
   }
 

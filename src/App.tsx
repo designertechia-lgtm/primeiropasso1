@@ -37,6 +37,7 @@ import AdminAssinatura from "./pages/admin/AdminAssinatura.tsx";
 import AdminGerente from "./pages/admin/AdminGerente.tsx";
 import AdminFeedback from "./pages/admin/AdminFeedback.tsx";
 import AdminAxelChat from "./pages/admin/AdminAxelChat.tsx";
+import AdminTrafegoPago from "./pages/admin/AdminTrafegoPago.tsx";
 
 import PatientBuscar from "./pages/paciente/PatientBuscar.tsx";
 import PatientAgendamentos from "./pages/paciente/PatientAgendamentos.tsx";
@@ -107,6 +108,7 @@ const App = () => (
             <Route path="/admin/assinatura" element={<AdminRoute><AdminAssinatura /></AdminRoute>} />
             <Route path="/admin/feedback" element={<AdminRoute><AdminFeedback /></AdminRoute>} />
             <Route path="/admin/chat" element={<AdminRoute><AdminAxelChat /></AdminRoute>} />
+            <Route path="/admin/trafego-pago" element={<AdminRoute><AdminTrafegoPago /></AdminRoute>} />
             <Route path="/admin-gerente" element={<OwnerOnlyRoute><AdminGerente /></OwnerOnlyRoute>} />
             <Route path="/admin-proprietario" element={<Navigate to="/admin-gerente" replace />} />
 

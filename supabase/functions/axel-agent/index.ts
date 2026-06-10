@@ -157,6 +157,51 @@ const tools = [
       required: ["appointment_ids"],
     },
   },
+  // ── TRÁFEGO PAGO (Especialista interno) ─────────────────────────────────────
+  {
+    name: "criar_campanha_ads",
+    description:
+      "Gera uma campanha Google Ads completa (rascunho) com IA. SOMENTE CHAME depois que o profissional confirmar EXPLICITAMENTE o brief completo (serviço, cidade, orçamento e diferencial) E autorizar a geração. Consome CRÉDITOS (10 por campanha) — mostre o custo e peça confirmação antes de chamar. Inclui gate de saldo: se insuficiente, retorna erro e orienta a recarregar.",
+    input_schema: {
+      type: "object",
+      properties: {
+        servico:          { type: "string",  description: "Serviço anunciado (ex.: 'Psicologia infantil')" },
+        cidade:           { type: "string",  description: "Cidade e estado alvo (ex.: 'São Paulo, SP')" },
+        raio_km:          { type: "number",  description: "Raio em km (opcional, padrão 20)" },
+        orcamento_mensal: { type: "number",  description: "Orçamento mensal em R$ informado pelo profissional" },
+        diferencial:      { type: "string",  description: "Diferencial ou especialidade principal" },
+        publico:          { type: "string",  description: "Público-alvo (opcional)" },
+        objective:        { type: "string",  enum: ["leads","agendamentos","whatsapp","trafego_landing"], description: "Objetivo principal da campanha" },
+      },
+      required: ["servico", "cidade", "orcamento_mensal", "objective"],
+    },
+  },
+  {
+    name: "consultar_campanhas_ads",
+    description:
+      "Lista as campanhas Google Ads do profissional com status, orçamento e métricas básicas. Use quando ele perguntar sobre campanhas existentes, quiser ver o status, ou antes de sugerir alterações.",
+    input_schema: {
+      type: "object",
+      properties: {
+        status: { type: "string", description: "Filtrar por status (opcional): draft, approved, active, paused" },
+      },
+    },
+  },
+  {
+    name: "atualizar_campanha_ads",
+    description:
+      "Atualiza um campo de uma campanha (orçamento, status). SOMENTE CHAME após confirmação explícita do profissional mostrando o valor atual e o novo. Mudança de status para 'approved' significa que o profissional revisou e aprovou o rascunho.",
+    input_schema: {
+      type: "object",
+      properties: {
+        campaign_id:          { type: "string", description: "ID da campanha (de consultar_campanhas_ads)" },
+        daily_budget_brl:     { type: "number", description: "Novo orçamento diário em R$ (opcional)" },
+        max_daily_budget_brl: { type: "number", description: "Novo teto de orçamento diário em R$ (opcional)" },
+        status:               { type: "string", enum: ["approved","paused","archived"], description: "Novo status (opcional)" },
+      },
+      required: ["campaign_id"],
+    },
+  },
 ]
 
 // =============================================
@@ -243,7 +288,25 @@ Você gerencia a agenda dele. Para qualquer pedido sobre agendamentos:
 • Você EXECUTA, não só orienta: pode gerar e aplicar conteúdo de perfil/landing e criar artigos — SEMPRE mostrando o resultado e pedindo confirmação explícita ANTES de gravar. Vídeo ainda não tem ferramenta sua: oriente o caminho (Redes Sociais > Criar Vídeo).
 • NÃO invente recursos, telas, preços ou botões. Fundamente em \`consultar_secao\`.
 • VALOR PRIMEIRO: ajude de verdade — o consumo é consequência, não empurrão. 1 pergunta/CTA por resposta. Se ele disser "não agora", registre com \`salvar_memoria\` e recue; não insista no mesmo assunto.
-• Brevidade sempre. Reconheça o que ele trouxe antes de responder.`
+• Brevidade sempre. Reconheça o que ele trouxe antes de responder.
+
+━━━ TRÁFEGO PAGO (Especialista interno) ━━━
+Você tem acesso a ferramentas de Google Ads. Use-as quando o profissional quiser atrair clientes via anúncios pagos.
+
+ANTES de qualquer geração, diga EXPLICITAMENTE o custo em créditos e aguarde confirmação ("Isso vai custar 10 créditos. Confirma?"). Só então chame \`criar_campanha_ads\`.
+
+COLETANDO INFORMAÇÕES (obrigatórias — não pule):
+1. Serviço principal (ex: "terapia de casal", "psicoterapia infantil")
+2. Cidade e raio aproximado (ex: "São Paulo, 10 km")
+3. Orçamento mensal em R$ (ex: "R$ 600/mês")
+4. Objetivo: "leads" (WhatsApp/contato) ou "awareness" (visibilidade)
+Opcionais (melhora a campanha): diferencial, público-alvo específico.
+
+APÓS CRIAR: chame \`abrir_pagina('/admin/trafego-pago')\` para que ele revise os textos e aprove. Rascunho criado = pronto pra revisar, não publicado. Para publicar no Google Ads, o profissional precisará de uma conta Google Ads vinculada (oriente ao clicar em "Como publicar" na página).
+
+CONSULTAR/ATUALIZAR campanhas: use \`consultar_campanhas_ads\` / \`atualizar_campanha_ads\`. Status "aprovada" = ele revisou e quer publicar; "pausada" = campanha ativa pausada; "arquivada" = descartada.
+
+NUNCA crie sem confirmar custo. NUNCA prometa que a campanha vai ao ar sozinha — publicação é manual no Google Ads Editor.`
 }
 
 // =============================================
@@ -480,47 +543,27 @@ async function handleToolCall(
   }
 
   if (toolName === "criar_artigo") {
+    // Artigo é GRÁTIS na assinatura (regra de monetização 10/06/2026 — tarefa simples).
     const tema = (args.tema || "").toString().trim()
 
-    // 1. Verifica créditos do profissional
-    let creditos = 0
-    try {
-      const { data: bal } = await supabaseAdmin
-        .from("credit_balances")
-        .select("balance")
-        .eq("professional_id", professionalId)
-        .maybeSingle()
-      creditos = (bal as any)?.balance ?? 0
-    } catch (_) { /* tabela pode não existir */ }
-
-    const CUSTO_ARTIGO = 1 // 1 crédito por artigo
-    if (creditos < CUSTO_ARTIGO) {
-      return {
-        erro: "creditos_insuficientes",
-        creditos_disponiveis: creditos,
-        custo: CUSTO_ARTIGO,
-        instrucao: "Avise o profissional que ele não tem créditos suficientes. Ele precisa de 1 crédito para criar um artigo. Sugira recarregar em /admin/assinatura.",
-      }
-    }
-
-    // 2. Busca dados do profissional
+    // 1. Busca dados do profissional
     const { data: prof } = await supabaseAdmin
       .from("professionals")
       .select("full_name, crp, category, category_custom")
       .eq("id", professionalId)
       .maybeSingle()
 
-    // 3. Busca títulos existentes para evitar duplicação
+    // 2. Busca títulos existentes para evitar duplicação
     const { data: existingArticles } = await supabaseAdmin
       .from("articles")
-      .select("title, cover_url")
+      .select("title, cover_image_url")
       .eq("professional_id", professionalId)
       .order("created_at", { ascending: false })
       .limit(20)
     const existingTitles = (existingArticles || []).map((a: any) => a.title).filter(Boolean)
-    const existingCoverUrls = (existingArticles || []).map((a: any) => a.cover_url).filter(Boolean)
+    const existingCoverUrls = (existingArticles || []).map((a: any) => a.cover_image_url).filter(Boolean)
 
-    // 4. Chama generate-text para criar o artigo
+    // 3. Chama generate-text para criar o artigo
     const supabaseUrl = Deno.env.get("SUPABASE_URL") || ""
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
 
@@ -550,28 +593,31 @@ async function handleToolCall(
         return { erro: "resposta vazia da IA", instrucao: "Avise o profissional que a geração falhou. Peça pra tentar com outro tema." }
       }
 
-      // 5. Debita crédito
-      try {
-        await supabaseAdmin
-          .from("credit_balances")
-          .update({ balance: creditos - CUSTO_ARTIGO })
-          .eq("professional_id", professionalId)
-      } catch (_) { /* non-blocking */ }
+      // 4. Gera slug único a partir do título
+      const slugBase = artigo.title
+        .toLowerCase()
+        .normalize("NFD").replace(/[̀-ͯ]/g, "")
+        .replace(/[^a-z0-9\s-]/g, "")
+        .trim()
+        .replace(/\s+/g, "-")
+        .slice(0, 70)
+      const slug = `${slugBase}-${Date.now().toString(36)}`
 
-      // 6. Salva o artigo no banco
+      // 5. Salva o artigo com schema correto (cover_image_url, carousel_items, published)
       const carouselItems = artigo.carousel_items || []
       const { data: inserted, error: insertErr } = await supabaseAdmin
         .from("articles")
         .insert({
           professional_id: professionalId,
           title: artigo.title,
+          slug,
           content: artigo.content || "",
-          cover_url: artigo.cover_image_url || "",
-          carousel: carouselItems.map((item: any) => ({
+          cover_image_url: artigo.cover_image_url || "",
+          carousel_items: carouselItems.map((item: any) => ({
             image_url: item.image_url || "",
             caption: item.caption || "",
           })),
-          status: "published",
+          published: false,
         })
         .select("id")
         .single()
@@ -581,13 +627,12 @@ async function handleToolCall(
         return { erro: insertErr.message, instrucao: "Avise o profissional que houve erro ao salvar o artigo." }
       }
 
-      console.log(`[criar_artigo] artigo ${inserted?.id} criado, crédito debitado`)
+      console.log(`[criar_artigo] artigo ${inserted?.id} criado (slug: ${slug})`)
       return {
         sucesso: true,
         artigo_id: inserted?.id,
         titulo: artigo.title,
-        creditos_restantes: creditos - CUSTO_ARTIGO,
-        instrucao: "Confirme pro profissional que o artigo foi criado com sucesso. Informe o título, o ID e os créditos restantes. Ele pode ver o artigo em /admin/redes-sociais.",
+        instrucao: "Confirme que o artigo foi criado. Diga que está como rascunho e ele pode revisar e publicar em Redes Sociais > Artigos. Chame abrir_pagina com '/admin/redes-sociais?tab=artigos' para levá-lo diretamente.",
       }
     } catch (e: any) {
       return { erro: e.message, instrucao: "Avise o profissional que houve erro técnico ao gerar o artigo." }
@@ -629,6 +674,7 @@ async function handleToolCall(
       ...(kbSections || []).map((s) => (s.route || "").trim()).filter(Boolean),
       "/admin", "/admin/perfil", "/admin/agenda", "/admin/landing",
       "/admin/clientes", "/admin/redes-sociais", "/admin/assinatura", "/admin/configuracoes",
+      "/admin/trafego-pago", "/admin/redes-sociais?tab=artigos",
     ])
     if (!rota.startsWith("/") || !rotasValidas.has(rota)) {
       return {
@@ -731,6 +777,293 @@ async function handleToolCall(
     return {
       sucesso: true, cancelados: n,
       instrucao: `Confirme que cancelou ${n} agendamento(s). AVISE que o paciente ainda NÃO foi notificado automaticamente (esse aviso pelo Axel está chegando em breve) — por ora ofereça o telefone pra ele avisar.`,
+    }
+  }
+
+  // ── TRÁFEGO PAGO ──────────────────────────────────────────────────────────────
+
+  if (toolName === "consultar_campanhas_ads") {
+    const statusFilter = (args.status || "").toString().trim()
+    let q = (supabaseAdmin as any)
+      .from("ads_campaigns")
+      .select("id, name, objective, status, daily_budget_brl, max_daily_budget_brl, landing_url, created_at")
+      .eq("professional_id", professionalId)
+      .eq("platform", "google_ads")
+      .neq("status", "archived")
+      .order("created_at", { ascending: false })
+      .limit(10)
+    if (statusFilter) q = q.eq("status", statusFilter)
+
+    const { data: camps, error: campErr } = await q
+    if (campErr) return { erro: campErr.message, instrucao: "Avise que houve erro ao buscar campanhas." }
+
+    const STATUS_PT: Record<string, string> = {
+      draft: "rascunho", approved: "aprovada", published: "publicada",
+      active: "ativa", paused: "pausada",
+    }
+    const lista = (camps || []).map((c: any) => ({
+      id: c.id,
+      nome: c.name,
+      objetivo: c.objective,
+      status: STATUS_PT[c.status] ?? c.status,
+      orcamento_diario: `R$ ${Number(c.daily_budget_brl).toFixed(2)}`,
+      teto_diario: `R$ ${Number(c.max_daily_budget_brl).toFixed(2)}`,
+      landing_url: c.landing_url,
+      criada_em: c.created_at?.slice(0, 10),
+    }))
+
+    return {
+      total: lista.length,
+      campanhas: lista,
+      instrucao: lista.length === 0
+        ? "Nenhuma campanha encontrada. Ofereça criar uma com criar_campanha_ads se o profissional quiser."
+        : "Liste as campanhas de forma compacta (nome · status · orçamento). Rascunhos podem ser aprovados; aprovadas estão prontas para publicar.",
+    }
+  }
+
+  if (toolName === "atualizar_campanha_ads") {
+    const campaignId = (args.campaign_id || "").toString().trim()
+    if (!campaignId) return { erro: "campaign_id obrigatório" }
+
+    const updates: Record<string, any> = {}
+    if (args.daily_budget_brl != null)     updates.daily_budget_brl     = Number(args.daily_budget_brl)
+    if (args.max_daily_budget_brl != null) updates.max_daily_budget_brl = Number(args.max_daily_budget_brl)
+    if (args.status)                        updates.status               = args.status
+
+    if (Object.keys(updates).length === 0) return { erro: "nenhum campo pra atualizar" }
+
+    const { error: updErr } = await (supabaseAdmin as any)
+      .from("ads_campaigns")
+      .update(updates)
+      .eq("id", campaignId)
+      .eq("professional_id", professionalId)
+    if (updErr) return { erro: updErr.message, instrucao: "Avise que houve erro ao atualizar a campanha." }
+
+    return {
+      sucesso: true,
+      atualizados: updates,
+      instrucao: updates.status === "approved"
+        ? "Campanha aprovada. Diga ao profissional que está pronta e ofereça o guia de publicação ('como publicar no Google Ads')."
+        : "Campanha atualizada. Confirme as mudanças e chame abrir_pagina('/admin/trafego-pago') para mostrar o resultado.",
+    }
+  }
+
+  if (toolName === "criar_campanha_ads") {
+    const apiKey = Deno.env.get("ANTHROPIC_API_KEY")
+    if (!apiKey) return { erro: "ANTHROPIC_API_KEY ausente", instrucao: "Avise que a geração IA não está disponível agora." }
+
+    // Gate de créditos (view credit_balance SINGULAR)
+    const { data: balRow } = await supabaseAdmin
+      .from("credit_balance")
+      .select("balance")
+      .eq("professional_id", professionalId)
+      .maybeSingle()
+    const saldo: number = (balRow as any)?.balance ?? 0
+    const CUSTO = 10
+    if (saldo < CUSTO) {
+      return {
+        erro: "creditos_insuficientes",
+        saldo_atual: saldo,
+        custo: CUSTO,
+        instrucao: `Avise que o saldo (${saldo} créditos) é insuficiente para criar a campanha (custo: ${CUSTO}). Sugira recarregar em /admin/assinatura.`,
+      }
+    }
+
+    // Dados do profissional (slug para UTM)
+    const { data: profData } = await supabaseAdmin
+      .from("professionals")
+      .select("slug")
+      .eq("id", professionalId)
+      .maybeSingle()
+    const slug: string = (profData as any)?.slug ?? ""
+
+    const servico:  string  = (args.servico  || "").toString()
+    const cidade:   string  = (args.cidade   || "").toString()
+    const raio_km:  number  = Number(args.raio_km  || 20)
+    const mensal:   number  = Number(args.orcamento_mensal || 0)
+    const diferencial: string = (args.diferencial || "").toString()
+    const publico:  string  = (args.publico   || "pacientes adultos e/ou responsáveis").toString()
+    const objective: string = (args.objective || "leads").toString()
+    const dailyBudget = +(mensal / 30.4).toFixed(2)
+    const maxDaily    = +(dailyBudget * 1.25).toFixed(2)
+
+    // ID da campanha (gerado aqui para usar na landing_url)
+    const campaignId: string = crypto.randomUUID()
+    const siteUrl = Deno.env.get("SITE_URL") ?? "https://primeiropasso.com.br"
+    const landingUrl = slug
+      ? `${siteUrl}/p/${slug}?utm_source=google&utm_medium=cpc&utm_campaign=${campaignId}`
+      : siteUrl
+
+    // Negativos seed do nicho de saúde
+    const negSeed = ["grátis","gratuito","sus","curso","o que é","significado","como funciona"]
+
+    const prompt = `Você é especialista certificado em Google Ads para profissionais de saúde.
+Gere uma campanha Search completa, pronta para importar no Google Ads Editor.
+
+BRIEF:
+- Serviço: ${servico}
+- Cidade/raio: ${cidade} (raio ~${raio_km} km)
+- Orçamento mensal: R$ ${mensal}
+- Diferencial: ${diferencial || "não informado"}
+- Público: ${publico}
+- URL de destino: ${landingUrl}
+
+REGRAS:
+1. Títulos RSA: máx 30 chars cada (inclua cidade e serviço em ≥2).
+2. Descrições RSA: máx 90 chars (CTA claro em ≥1).
+3. Path1/path2: máx 15 chars, sem espaços.
+4. Sitelinks: texto máx 25 chars.
+5. Callouts: máx 25 chars cada.
+6. Keywords: exact p/ alta intenção, phrase p/ variações, broad p/ descoberta. Mínimo 8/grupo.
+7. Negativos globais obrigatórios: ${negSeed.map((n) => `"${n}"`).join(", ")}.
+8. Tom: profissional, acolhedor; nunca prometa cura. Português brasileiro.`
+
+    const outputSchema = {
+      type: "object",
+      properties: {
+        campaign_name: { type: "string" },
+        ad_groups: {
+          type: "array", minItems: 1, maxItems: 3,
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" }, theme: { type: "string" },
+              rsa: {
+                type: "object",
+                properties: {
+                  headlines:    { type: "array", minItems: 10, maxItems: 15, items: { type: "string", maxLength: 30 } },
+                  descriptions: { type: "array", minItems: 4,  maxItems: 4,  items: { type: "string", maxLength: 90 } },
+                  path1: { type: "string", maxLength: 15 },
+                  path2: { type: "string", maxLength: 15 },
+                },
+                required: ["headlines", "descriptions"],
+              },
+              keywords: {
+                type: "array", minItems: 8, maxItems: 20,
+                items: {
+                  type: "object",
+                  properties: { text: { type: "string" }, match_type: { type: "string", enum: ["broad","phrase","exact"] } },
+                  required: ["text", "match_type"],
+                },
+              },
+              negative_keywords: { type: "array", maxItems: 10, items: { type: "string" } },
+            },
+            required: ["name", "theme", "rsa", "keywords"],
+          },
+        },
+        sitelinks: {
+          type: "array", maxItems: 4,
+          items: { type: "object", properties: { text: { type: "string", maxLength: 25 }, url: { type: "string" } }, required: ["text","url"] },
+        },
+        callouts: { type: "array", maxItems: 6, items: { type: "string", maxLength: 25 } },
+        negative_keywords_global: { type: "array", maxItems: 20, items: { type: "string" } },
+      },
+      required: ["campaign_name", "ad_groups"],
+    }
+
+    const adsRes = await fetch(CLAUDE_URL, {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 4096,
+        tools: [{ name: "gerar_campanha", description: "Retorna a campanha estruturada.", input_schema: outputSchema }],
+        tool_choice: { type: "tool", name: "gerar_campanha" },
+        messages: [{ role: "user", content: prompt }],
+      }),
+    })
+    if (!adsRes.ok) {
+      const err = await adsRes.text()
+      console.error("[criar_campanha_ads] Anthropic:", err)
+      return { erro: "falha_ia", instrucao: "Avise que houve erro ao gerar a campanha. Peça pra tentar novamente." }
+    }
+    const adsData = await adsRes.json()
+    const toolBlock = adsData.content?.find((b: any) => b.type === "tool_use" && b.name === "gerar_campanha")
+    if (!toolBlock?.input) return { erro: "ia_sem_resultado", instrucao: "Avise que a geração não retornou resultado. Peça pra tentar novamente." }
+
+    const raw = toolBlock.input
+    // Sanitiza chars acima dos limites do Google
+    const trunc = (s: string, max: number) => s.length > max ? s.slice(0, max) : s
+    const adGroups = (raw.ad_groups ?? []).map((g: any) => ({
+      ...g,
+      rsa: {
+        ...g.rsa,
+        headlines:    (g.rsa?.headlines ?? []).map((h: string) => trunc(h, 30)),
+        descriptions: (g.rsa?.descriptions ?? []).map((d: string) => trunc(d, 90)),
+        final_url: landingUrl,
+        path1: g.rsa?.path1 ? trunc(g.rsa.path1, 15) : undefined,
+        path2: g.rsa?.path2 ? trunc(g.rsa.path2, 15) : undefined,
+      },
+    }))
+
+    // Persiste em ads_campaigns
+    const { error: campErr } = await (supabaseAdmin as any)
+      .from("ads_campaigns")
+      .insert({
+        id: campaignId,
+        professional_id: professionalId,
+        platform: "google_ads",
+        name: raw.campaign_name,
+        objective,
+        campaign_type: "search",
+        status: "draft",
+        daily_budget_brl: dailyBudget,
+        max_daily_budget_brl: maxDaily,
+        geo_targeting: { cidade, raio_km },
+        landing_url: landingUrl,
+        brief: { servico, cidade, raio_km, orcamento_mensal: mensal, diferencial, publico },
+        created_by: "axel",
+      })
+    if (campErr) {
+      console.error("[criar_campanha_ads] INSERT:", campErr.message)
+      return { erro: campErr.message, instrucao: "Avise que houve erro ao salvar a campanha." }
+    }
+
+    // Assets
+    const assets: any[] = []
+    for (let gi = 0; gi < adGroups.length; gi++) {
+      const g = adGroups[gi]
+      const gId = crypto.randomUUID()
+      assets.push({ id: gId, campaign_id: campaignId, asset_type: "ad_group", payload: { name: g.name, theme: g.theme }, position: gi })
+      assets.push({ id: crypto.randomUUID(), campaign_id: campaignId, asset_type: "rsa", parent_id: gId, payload: g.rsa, position: 0 })
+      ;(g.keywords ?? []).forEach((k: any, ki: number) =>
+        assets.push({ id: crypto.randomUUID(), campaign_id: campaignId, asset_type: "keyword", parent_id: gId, payload: k, position: ki }))
+      ;(g.negative_keywords ?? []).forEach((t: string, ni: number) =>
+        assets.push({ id: crypto.randomUUID(), campaign_id: campaignId, asset_type: "negative_keyword", parent_id: gId, payload: { text: t }, position: ni }))
+    }
+    ;(raw.sitelinks ?? []).forEach((sl: any, si: number) =>
+      assets.push({ id: crypto.randomUUID(), campaign_id: campaignId, asset_type: "sitelink", payload: sl, position: si }))
+    ;(raw.callouts ?? []).forEach((c: string, ci: number) =>
+      assets.push({ id: crypto.randomUUID(), campaign_id: campaignId, asset_type: "callout", payload: { text: c }, position: ci }))
+    const allNegs = [...negSeed, ...((raw.negative_keywords_global ?? []).filter((k: string) => !negSeed.includes(k)))]
+    allNegs.forEach((t: string, ni: number) =>
+      assets.push({ id: crypto.randomUUID(), campaign_id: campaignId, asset_type: "negative_keyword", payload: { text: t, scope: "campaign" }, position: ni }))
+
+    if (assets.length > 0) {
+      const { error: assErr } = await (supabaseAdmin as any).from("ads_campaign_assets").insert(assets)
+      if (assErr) console.error("[criar_campanha_ads] INSERT assets:", assErr.message)
+    }
+
+    // Debita créditos (idempotente por campaign_id)
+    const { error: creditErr } = await supabaseAdmin.rpc("consume_credits", {
+      p_professional_id: professionalId,
+      p_service_key:     "campanha_ads",
+      p_units:           1,
+      p_description:     `Geração de campanha: ${raw.campaign_name}`,
+      p_reference_id:    campaignId,
+      p_idempotency_key: `${professionalId}|campanha_ads|${campaignId}`,
+    })
+    if (creditErr) console.error("[criar_campanha_ads] consume_credits:", creditErr.message)
+
+    console.log(`[criar_campanha_ads] campanha ${campaignId} criada para ${professionalId}`)
+    return {
+      sucesso: true,
+      campaign_id: campaignId,
+      nome: raw.campaign_name,
+      grupos: adGroups.length,
+      orcamento_diario: `R$ ${dailyBudget}`,
+      creditos_debitados: CUSTO,
+      instrucao: `Campanha "${raw.campaign_name}" criada com sucesso (${adGroups.length} grupo(s) de anúncios, ${dailyBudget} R$/dia). Chame abrir_pagina('/admin/trafego-pago') para que o profissional revise e aprove. Diga que ele pode aprovar lá ou pedir ajustes por aqui.`,
     }
   }
 

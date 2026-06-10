@@ -62,6 +62,13 @@ O app `PrimeiroPassoAuthRedesSociais` está em **modo Desenvolvimento (não publ
 
 ## 📋 Plano: Auditoria + Campanhas (próximas fases)
 
+> **⚡ NOVO (10/06):** campanhas **PAGAS (Google Ads + Meta Ads)** viraram prioridade da cliente
+> e têm plano próprio em `_docs/PLANO_AXEL_CAMPANHAS_GOOGLE_ADS.md` — Axel estrategista, MCC com
+> sub-contas individuais, mídia no cartão do PROFISSIONAL direto no Google (créditos pagam só a
+> geração IA), **página DEDICADA `/admin/trafego-pago`** (fora desta tela), relatórios com funil
+> completo anúncio→lead→agendamento. A Fase 3 abaixo (planejador de campanha ORGÂNICA/calendário)
+> continua válida e é complementar — não confundir as duas.
+
 | Fase | Entrega | Peça técnica |
 |------|---------|--------------|
 | 0 · Fundação | Histórico real de métricas | Tabela `social_insights_snapshots` + cron diário |

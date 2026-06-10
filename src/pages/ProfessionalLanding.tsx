@@ -1,4 +1,4 @@
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,6 +14,7 @@ import { buildLandingVars, getFontScale, GOOGLE_FONTS_URL } from "@/lib/landing/
 
 export default function ProfessionalLanding({ slugOverride }: { slugOverride?: string }) {
   const { slug: paramSlug } = useParams<{ slug: string }>();
+  const [searchParams] = useSearchParams();
   const slug = slugOverride || paramSlug;
   const { data: professional, isLoading, error } = useQuery({
     queryKey: ["professional", slug],
@@ -114,6 +115,28 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     return () => { html.style.fontSize = prev; };
   }, [fontScaleKey]);
 
+  // Captura UTMs da URL para atribuição de tráfego pago.
+  // Persiste em landing_visits quando o visitante clica no CTA do WhatsApp.
+  const utmParams = useMemo(() => {
+    const params: Record<string, string> = {};
+    for (const key of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"]) {
+      const val = searchParams.get(key);
+      if (val) params[key] = val;
+    }
+    return params;
+  }, [searchParams]);
+  const gclid = searchParams.get("gclid") ?? undefined;
+
+  const handleCtaClick = useCallback(() => {
+    if (!professional?.id) return;
+    if (!Object.keys(utmParams).length && !gclid) return;
+    // Fire-and-forget: registra a visita com atribuição UTM
+    supabase
+      .from("landing_visits")
+      .insert({ professional_id: professional.id, utm: utmParams, gclid: gclid ?? null })
+      .then(({ error }) => { if (error) console.warn("[landing_visits]", error.message); });
+  }, [professional?.id, utmParams, gclid]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -193,6 +216,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         linkedin={(professional as any).linkedin ?? undefined}
         tiktok={(professional as any).tiktok ?? undefined}
         facebook={(professional as any).facebook ?? undefined}
+        onWhatsAppClick={handleCtaClick}
       />
       <LandingFooter professionalName={name} whatsapp={professional.whatsapp ?? undefined} />
     </div>

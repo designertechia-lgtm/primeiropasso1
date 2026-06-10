@@ -15,6 +15,7 @@ import {
   Crown,
   MessageSquare,
   Sparkles,
+  TrendingUp,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -52,6 +53,7 @@ const sections = [
     label: "Marketing",
     items: [
       { title: "Redes Sociais", url: "/admin/redes-sociais", icon: Share2 },
+      { title: "Tráfego Pago", url: "/admin/trafego-pago", icon: TrendingUp },
     ]
   },
   {

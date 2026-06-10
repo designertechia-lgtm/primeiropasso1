@@ -12,6 +12,7 @@ interface ContactSectionProps {
   linkedin?: string;
   tiktok?: string;
   facebook?: string;
+  onWhatsAppClick?: () => void;
 }
 
 function buildSocialUrl(value: string, base: string): string {
@@ -30,6 +31,7 @@ export default function ContactSection({
   linkedin,
   tiktok,
   facebook,
+  onWhatsAppClick,
 }: ContactSectionProps) {
   const whatsappLink = whatsapp
     ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent("Olá! Gostaria de agendar um horário.")}`
@@ -54,8 +56,13 @@ export default function ContactSection({
 
           <div className="flex flex-col items-center gap-3">
             {whatsappLink && (
-              <Button asChild size="lg" className="gap-2 w-full max-w-xs">
-                <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
+              <Button size="lg" className="gap-2 w-full max-w-xs" asChild>
+                <a
+                  href={whatsappLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={onWhatsAppClick}
+                >
                   <MessageCircle className="h-5 w-5" />
                   Agendar pelo WhatsApp
                 </a>

@@ -1,5 +1,5 @@
 import { useParams } from "react-router-dom";
-import { useMemo, useState, useCallback, useRef } from "react";
+import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import LandingHeader from "@/components/landing/LandingHeader";
@@ -10,7 +10,7 @@ import AboutSection from "@/components/landing/AboutSection";
 import ContentSection from "@/components/landing/ContentSection";
 import ContactSection from "@/components/landing/ContactSection";
 import LandingFooter from "@/components/landing/LandingFooter";
-import { buildLandingVars, GOOGLE_FONTS_URL } from "@/lib/landing/buildLandingVars";
+import { buildLandingVars, getFontScale, GOOGLE_FONTS_URL } from "@/lib/landing/buildLandingVars";
 
 export default function ProfessionalLanding({ slugOverride }: { slugOverride?: string }) {
   const { slug: paramSlug } = useParams<{ slug: string }>();
@@ -103,6 +103,16 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     if (!professional) return undefined;
     return buildLandingVars(professional as any, dark ? "dark" : "light");
   }, [professional, dark]);
+
+  // "Tamanho do texto": escala o root font-size enquanto a landing está montada. É o único ponto que
+  // afeta os utilitários text-* (rem) do Tailwind. Usa % para respeitar a preferência do navegador.
+  const fontScaleKey = (professional as any)?.font_size_scale as string | undefined;
+  useEffect(() => {
+    const html = document.documentElement;
+    const prev = html.style.fontSize;
+    html.style.fontSize = `${getFontScale(fontScaleKey) * 100}%`;
+    return () => { html.style.fontSize = prev; };
+  }, [fontScaleKey]);
 
   if (isLoading) {
     return (

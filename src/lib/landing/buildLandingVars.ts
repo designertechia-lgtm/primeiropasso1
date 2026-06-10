@@ -121,13 +121,20 @@ export function buildLandingVars(prof: LandingThemeInput, mode: "light" | "dark"
 
   const bodyDef    = FONTS.find((f) => f.value === prof.font_family)         ?? FONTS[0];
   const headingDef = FONTS.find((f) => f.value === prof.heading_font_family) ?? bodyDef;
-  const sizeDef    = FONT_SIZES.find((s) => s.value === prof.font_size_scale) ?? FONT_SIZES[1];
   vars["--font-body"]    = bodyDef.style.fontFamily;
   vars["--font-heading"] = headingDef.style.fontFamily;
   // camelCase: forma canônica que o React aplica no style inline sem ambiguidade.
   // O corpo usa fontFamily direto no container; os títulos usam .font-heading → var(--font-heading).
   vars["fontFamily"]     = bodyDef.style.fontFamily;
-  vars["fontSize"]       = `${sizeDef.scale}rem`;
+  // NOTA: o "Tamanho do texto" (font_size_scale) NÃO entra aqui de propósito. Setar font-size no
+  // container não escala os utilitários text-* do Tailwind (são `rem`, relativos ao <html>). Use
+  // getFontScale() para ajustar o root font-size na pública e o transform no preview do editor.
 
   return vars;
+}
+
+/** Fator do "Tamanho do texto" (0.9–1.2). Aplicado no root font-size (pública) e no transform (preview). */
+export function getFontScale(value?: string | null): number {
+  const def = FONT_SIZES.find((s) => s.value === value) ?? FONT_SIZES[1];
+  return Number(def.scale);
 }

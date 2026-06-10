@@ -152,7 +152,7 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
           {/* Text Column */}
           <div className="w-full lg:w-1/2 space-y-8">
             <div className="space-y-4">
-              <h2 className="font-serif text-4xl md:text-5xl font-bold text-foreground leading-tight">
+              <h2 className="font-heading text-4xl md:text-5xl font-bold text-foreground leading-tight">
                 {title || "Muito prazer, sou o(a)"}<br/> 
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent">
                   {name || "Profissional"}

@@ -16,7 +16,7 @@ export default function LandingFooter({ professionalName, whatsapp }: LandingFoo
       <div className="container mx-auto px-4">
         <div className="max-w-2xl mx-auto text-center space-y-6">
           <Leaf className="h-10 w-10 mx-auto opacity-80" />
-          <h2 className="font-serif text-2xl md:text-3xl font-bold">
+          <h2 className="font-heading text-2xl md:text-3xl font-bold">
             O momento de cuidar de si é agora.
           </h2>
           <p className="text-muted-foreground text-lg">

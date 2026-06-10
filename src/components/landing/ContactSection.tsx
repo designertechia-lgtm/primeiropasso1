@@ -45,7 +45,7 @@ export default function ContactSection({
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-6">
             <MessageCircle className="h-8 w-8 text-primary" />
           </div>
-          <h2 className="font-serif text-3xl md:text-4xl font-bold text-foreground mb-4">
+          <h2 className="font-heading text-3xl md:text-4xl font-bold text-foreground mb-4">
             {title || "Agende Sua Primeira Consulta"}
           </h2>
           <p className="text-muted-foreground text-lg mb-8">

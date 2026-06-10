@@ -10,27 +10,7 @@ import AboutSection from "@/components/landing/AboutSection";
 import ContentSection from "@/components/landing/ContentSection";
 import ContactSection from "@/components/landing/ContactSection";
 import LandingFooter from "@/components/landing/LandingFooter";
-
-function hexToHSL(hex: string): string | null {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  if (!result) return null;
-  let r = parseInt(result[1], 16) / 255;
-  let g = parseInt(result[2], 16) / 255;
-  let b = parseInt(result[3], 16) / 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  let h = 0, s = 0;
-  const l = (max + min) / 2;
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    switch (max) {
-      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
-      case g: h = ((b - r) / d + 2) / 6; break;
-      case b: h = ((r - g) / d + 4) / 6; break;
-    }
-  }
-  return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
-}
+import { buildLandingVars, GOOGLE_FONTS_URL } from "@/lib/landing/buildLandingVars";
 
 export default function ProfessionalLanding({ slugOverride }: { slugOverride?: string }) {
   const { slug: paramSlug } = useParams<{ slug: string }>();
@@ -100,7 +80,6 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
       .slice(0, 3);
   }, [rawVideos]);
 
-  const isDarkModeEnabled = !!(professional as any)?.dark_mode;
   const darkKey = `dark_${slug}`;
   const [dark, setDark] = useState(() => localStorage.getItem(`dark_${slug}`) === "1");
   const toggleDark = useCallback(() => {
@@ -122,78 +101,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
 
   const customStyles = useMemo(() => {
     if (!professional) return undefined;
-    const prof = professional as any;
-    const isDark = dark;
-    const styles: Record<string, string> = {};
-
-    const activePrimary = (isDark && prof.dark_primary_color) ? prof.dark_primary_color : professional.primary_color;
-    const activeSecondary = (isDark && prof.dark_secondary_color) ? prof.dark_secondary_color : professional.secondary_color;
-    const activeBg = (isDark && prof.dark_background_color) ? prof.dark_background_color : prof.background_color;
-
-    const contrastFg = (hslStr: string) => {
-      const l = parseInt(hslStr.split(" ")[2]);
-      return l > 55 ? "220 15% 10%" : "210 40% 98%";
-    };
-
-    const primaryHSL = activePrimary ? hexToHSL(activePrimary) : null;
-    const secondaryHSL = activeSecondary ? hexToHSL(activeSecondary) : null;
-    const bgHSL = activeBg ? hexToHSL(activeBg) : null;
-    const hasDarkCustomColors = isDark && (prof.dark_primary_color || prof.dark_secondary_color || prof.dark_background_color);
-
-    if (primaryHSL) {
-      styles["--primary"] = primaryHSL;
-      styles["--primary-foreground"] = contrastFg(primaryHSL);
-      const parts = primaryHSL.split(" ");
-      const h = parts[0];
-      const s = parseInt(parts[1]);
-      const l = parseInt(parts[2]);
-      const accentHSL = `${h} ${Math.min(s + 6, 100)}% ${Math.max(l - 15, 10)}%`;
-      styles["--accent"] = accentHSL;
-      styles["--accent-foreground"] = contrastFg(accentHSL);
-      styles["--ring"] = primaryHSL;
-    }
-    if (secondaryHSL) {
-      styles["--secondary"] = secondaryHSL;
-      styles["--secondary-foreground"] = contrastFg(secondaryHSL);
-    }
-
-    if (bgHSL && (!isDark || hasDarkCustomColors)) {
-      styles["--background"] = bgHSL;
-      const parts = bgHSL.split(" ");
-      const h = parts[0];
-      const s = parseInt(parts[1]);
-      const l = parseInt(parts[2]);
-      const cardHSL = `${h} ${Math.max(s - 5, 0)}% ${Math.min(l + 2, 100)}%`;
-      styles["--card"] = cardHSL;
-      styles["--popover"] = cardHSL;
-      styles["--muted"] = `${h} ${Math.max(s - 10, 0)}% ${Math.max(l - 5, 0)}%`;
-      styles["--border"] = `${h} ${Math.max(s - 10, 0)}% ${Math.max(l - 10, 0)}%`;
-      styles["--input"] = `${h} ${Math.max(s - 10, 0)}% ${Math.max(l - 10, 0)}%`;
-      const fgVal = l < 50
-        ? `${h} ${Math.max(s - 15, 0)}% 90%`
-        : `${h} ${Math.min(s + 10, 100)}% 15%`;
-      const mutedFgVal = l < 50
-        ? `${h} ${Math.max(s - 15, 0)}% 60%`
-        : `${h} ${Math.max(s - 5, 0)}% 45%`;
-      styles["--foreground"] = fgVal;
-      styles["--card-foreground"] = fgVal;
-      styles["--popover-foreground"] = fgVal;
-      styles["--muted-foreground"] = mutedFgVal;
-    }
-    const fontMap: Record<string, string> = {
-      inter:        "Inter, system-ui, sans-serif",
-      poppins:      "'Poppins', sans-serif",
-      lato:         "'Lato', sans-serif",
-      playfair:     "'Playfair Display', serif",
-      merriweather: "'Merriweather', serif",
-    };
-    const sizeMap: Record<string, string> = { sm: "0.9", md: "1.0", lg: "1.1", xl: "1.2" };
-    const ff = prof.font_family as string | undefined;
-    const fs = prof.font_size_scale as string | undefined;
-    if (ff && fontMap[ff]) styles["font-family"] = fontMap[ff];
-    if (fs && sizeMap[fs]) styles["font-size"] = `${sizeMap[fs]}rem`;
-
-    return Object.keys(styles).length > 0 ? styles : undefined;
+    return buildLandingVars(professional as any, dark ? "dark" : "light");
   }, [professional, dark]);
 
   if (isLoading) {
@@ -219,12 +127,13 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
 
   return (
     <div className={`min-h-screen bg-background ${dark ? 'dark' : ''}`} style={customStyles as React.CSSProperties}>
+      {/* Carrega as fontes que não vêm no index.html (mesmo set do preview do editor) */}
+      <link rel="stylesheet" href={GOOGLE_FONTS_URL} />
       <LandingHeader
         professionalName={name}
         whatsapp={professional.whatsapp ?? undefined}
         logoUrl={professional.logo_url ?? undefined}
         slug={professional.slug}
-        darkModeEnabled={isDarkModeEnabled}
         dark={dark}
         onToggleDark={toggleDark}
       />

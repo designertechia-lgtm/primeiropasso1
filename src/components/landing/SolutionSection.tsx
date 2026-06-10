@@ -74,7 +74,7 @@ export default function SolutionSection({ title, subtitle, items }: SolutionSect
 
       <div className="container mx-auto px-4 relative z-10">
         <div className="max-w-3xl mx-auto text-center mb-16 space-y-6">
-          <h2 className="font-serif text-4xl md:text-5xl font-bold text-foreground leading-tight">
+          <h2 className="font-heading text-4xl md:text-5xl font-bold text-foreground leading-tight">
             {displayTitle}
           </h2>
           <p className="text-muted-foreground text-lg md:text-xl leading-relaxed">
@@ -101,7 +101,7 @@ export default function SolutionSection({ title, subtitle, items }: SolutionSect
                   <Icon className="h-8 w-8" strokeWidth={1.5} />
                 </div>
                 
-                <h3 className="font-serif text-2xl font-bold text-foreground mb-4 z-10 group-hover:text-primary transition-colors duration-300">
+                <h3 className="font-heading text-2xl font-bold text-foreground mb-4 z-10 group-hover:text-primary transition-colors duration-300">
                   {itemTitle(s)}
                 </h3>
 

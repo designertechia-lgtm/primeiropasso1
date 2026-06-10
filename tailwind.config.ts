@@ -8,6 +8,9 @@ export default {
     fontFamily: {
       sans: ['Roboto', 'system-ui', 'sans-serif'],
       serif: ['Lora', 'Georgia', 'serif'],
+      // Fonte dos títulos da landing: respeita a escolha do profissional (--font-heading),
+      // setada pelo helper buildLandingVars. Fora da landing cai no fallback Lora.
+      heading: ['var(--font-heading)', 'Lora', 'Georgia', 'serif'],
     },
     container: {
       center: true,

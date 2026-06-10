@@ -131,7 +131,7 @@ export default function ContentSection({ articles, videos, slug, whatsapp }: Con
     <section id="content" className="py-16 md:py-24">
       <div className="container mx-auto px-4">
         <div className="max-w-3xl mx-auto text-center mb-12">
-          <h2 className="font-serif text-3xl md:text-4xl font-bold text-foreground mb-4">
+          <h2 className="font-heading text-3xl md:text-4xl font-bold text-foreground mb-4">
             Conteúdos para você
           </h2>
           <p className="text-muted-foreground text-lg">
@@ -142,7 +142,7 @@ export default function ContentSection({ articles, videos, slug, whatsapp }: Con
         {articles.length > 0 && (
           <div id="artigos" className="mb-12">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="font-serif text-xl font-semibold text-foreground flex items-center gap-2">
+              <h3 className="font-heading text-xl font-semibold text-foreground flex items-center gap-2">
                 <BookOpen className="h-5 w-5 text-primary" /> Artigos
               </h3>
               <Link
@@ -166,7 +166,7 @@ export default function ContentSection({ articles, videos, slug, whatsapp }: Con
                       </div>
                     )}
                     <CardHeader>
-                      <CardTitle className="font-serif text-lg">{a.title}</CardTitle>
+                      <CardTitle className="font-heading text-lg">{a.title}</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <p className="text-xs text-muted-foreground">
@@ -186,7 +186,7 @@ export default function ContentSection({ articles, videos, slug, whatsapp }: Con
         {videos.length > 0 && (
           <div id="videos">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="font-serif text-xl font-semibold text-foreground flex items-center gap-2">
+              <h3 className="font-heading text-xl font-semibold text-foreground flex items-center gap-2">
                 <Play className="h-5 w-5 text-primary" /> Vídeos
               </h3>
               <Link
@@ -203,7 +203,7 @@ export default function ContentSection({ articles, videos, slug, whatsapp }: Con
                   <Card key={v.id} className={`overflow-hidden transition-shadow flex flex-col ${isDraft ? "opacity-70" : "hover:shadow-md"}`}>
                     <VideoCard video={v} isDraft={isDraft} />
                     <CardHeader className="pb-2">
-                      <CardTitle className="font-serif text-base">{v.title}</CardTitle>
+                      <CardTitle className="font-heading text-base">{v.title}</CardTitle>
                       {v.description && (
                         <p className="text-sm text-muted-foreground line-clamp-3">{v.description}</p>
                       )}

@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, LayoutTemplate, Check, ChevronDown } from "lucide-react";
+import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, LayoutTemplate, Check, ChevronDown, Moon, Sun } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { LANDING_TEMPLATES, type LandingTemplate } from "@/data/landingTemplates";
 import { FieldHint } from "@/components/ui/FieldHint";
@@ -21,6 +21,7 @@ import AboutSection from "@/components/landing/AboutSection";
 import SolutionSection from "@/components/landing/SolutionSection";
 import PainSection from "@/components/landing/PainSection";
 import ContactSection from "@/components/landing/ContactSection";
+import { buildLandingVars, FONTS, FONT_SIZES, GOOGLE_FONTS_URL } from "@/lib/landing/buildLandingVars";
 
 // ── AI helper ─────────────────────────────────────────────
 async function callGenerateText(field: string, context: { name: string; crp?: string; specialty?: string }) {
@@ -95,70 +96,6 @@ function deriveColors(hex: string) {
     background: hslToHex(h, Math.round(s * 0.15), 94),
   };
 }
-
-function buildPreviewVars(primary: string, secondary: string, bg: string, fontFamily?: string, fontSizeScale?: string, headingFontFamily?: string): Record<string, string> {
-  const p = hexToHsl(primary);
-  const b = hexToHsl(bg);
-  const primaryHSL = `${p.h} ${p.s}% ${p.l}%`;
-  const contrastFg = p.l > 55 ? "220 15% 10%" : "210 40% 98%";
-  const accentHSL = `${p.h} ${Math.min(p.s + 6, 100)}% ${Math.max(p.l - 15, 10)}%`;
-  const bgHSL = `${b.h} ${b.s}% ${b.l}%`;
-  const cardHSL = `${b.h} ${Math.max(b.s - 5, 0)}% ${Math.min(b.l + 2, 100)}%`;
-  const borderHSL = `${b.h} ${Math.max(b.s - 10, 0)}% ${Math.max(b.l - 10, 0)}%`;
-  const fgHSL = b.l < 50 ? `${b.h} ${Math.max(b.s - 15, 0)}% 90%` : `${b.h} ${Math.min(b.s + 10, 100)}% 15%`;
-  const mutedFgHSL = b.l < 50 ? `${b.h} ${Math.max(b.s - 15, 0)}% 60%` : `${b.h} ${Math.max(b.s - 5, 0)}% 45%`;
-  const sec = hexToHsl(secondary);
-  const secHSL = `${sec.h} ${sec.s}% ${sec.l}%`;
-  const bodyDef    = FONTS.find((f) => f.value === fontFamily)        ?? FONTS[0];
-  const headingDef = FONTS.find((f) => f.value === headingFontFamily) ?? bodyDef;
-  const sizeDef    = FONT_SIZES.find((s) => s.value === fontSizeScale) ?? FONT_SIZES[1];
-  return {
-    "--primary": primaryHSL,
-    "--primary-foreground": contrastFg,
-    "--accent": accentHSL,
-    "--accent-foreground": contrastFg,
-    "--ring": primaryHSL,
-    "--secondary": secHSL,
-    "--secondary-foreground": "220 15% 10%",
-    "--background": bgHSL,
-    "--card": cardHSL,
-    "--popover": cardHSL,
-    "--muted": `${b.h} ${Math.max(b.s - 10, 0)}% ${Math.max(b.l - 5, 0)}%`,
-    "--border": borderHSL,
-    "--input": borderHSL,
-    "--foreground": fgHSL,
-    "--card-foreground": fgHSL,
-    "--popover-foreground": fgHSL,
-    "--muted-foreground": mutedFgHSL,
-    "--font-body":    bodyDef.style.fontFamily,
-    "--font-heading": headingDef.style.fontFamily,
-    "font-family":    bodyDef.style.fontFamily,
-    "font-size":      `${sizeDef.scale}rem`,
-  };
-}
-
-const FONTS = [
-  { value: "inter",        label: "Inter",            desc: "Moderno e neutro",      style: { fontFamily: "'Inter', system-ui, sans-serif" } },
-  { value: "poppins",      label: "Poppins",          desc: "Geométrico e amigável", style: { fontFamily: "'Poppins', sans-serif" } },
-  { value: "lato",         label: "Lato",             desc: "Limpo e profissional",  style: { fontFamily: "'Lato', sans-serif" } },
-  { value: "montserrat",   label: "Montserrat",       desc: "Forte e contemporâneo", style: { fontFamily: "'Montserrat', sans-serif" } },
-  { value: "raleway",      label: "Raleway",          desc: "Fino e estiloso",       style: { fontFamily: "'Raleway', sans-serif" } },
-  { value: "roboto",       label: "Roboto",           desc: "Universal e técnico",   style: { fontFamily: "'Roboto', sans-serif" } },
-  { value: "opensans",     label: "Open Sans",        desc: "Acolhedor e neutro",    style: { fontFamily: "'Open Sans', sans-serif" } },
-  { value: "playfair",     label: "Playfair Display", desc: "Elegante e clássico",   style: { fontFamily: "'Playfair Display', serif" } },
-  { value: "merriweather", label: "Merriweather",     desc: "Legível e confiável",   style: { fontFamily: "'Merriweather', serif" } },
-  { value: "lora",         label: "Lora",             desc: "Editorial e sereno",    style: { fontFamily: "'Lora', serif" } },
-];
-
-const FONT_SIZES = [
-  { value: "sm", label: "Pequeno", scale: "0.9" },
-  { value: "md", label: "Normal",  scale: "1.0" },
-  { value: "lg", label: "Grande",  scale: "1.1" },
-  { value: "xl", label: "Maior",   scale: "1.2" },
-];
-
-const GOOGLE_FONTS_URL =
-  "https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Lato:wght@400;700&family=Montserrat:wght@400;500;600;700&family=Raleway:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Open+Sans:wght@400;600;700&family=Playfair+Display:wght@400;600;700&family=Merriweather:wght@400;700&family=Lora:wght@400;500;600;700&display=swap";
 
 const PALETTES = [
   { name: "Sálvia",      primary: "#87A96B" },
@@ -634,11 +571,17 @@ export default function AdminLandingPage() {
         <link rel="stylesheet" href={GOOGLE_FONTS_URL} />
 
         {/* scale wrapper */}
-        <div className={previewMode} style={{ transform: "scale(0.58)", transformOrigin: "top left", width: "172.4%", pointerEvents: "none", ...buildPreviewVars(
-          previewMode === "dark" && darkPrimaryColor ? darkPrimaryColor : primaryColor, 
-          previewMode === "dark" && darkSecondaryColor ? darkSecondaryColor : secondaryColor, 
-          previewMode === "dark" && darkBgColor ? darkBgColor : bgColor, 
-          fontFamily, fontSizeScale, headingFontFamily) } as React.CSSProperties}>
+        <div className={previewMode} style={{ transform: "scale(0.58)", transformOrigin: "top left", width: "172.4%", pointerEvents: "none", ...buildLandingVars({
+          primary_color: primaryColor,
+          secondary_color: secondaryColor,
+          background_color: bgColor,
+          dark_primary_color: darkPrimaryColor,
+          dark_secondary_color: darkSecondaryColor,
+          dark_background_color: darkBgColor,
+          font_family: fontFamily,
+          heading_font_family: headingFontFamily,
+          font_size_scale: fontSizeScale,
+        }, previewMode === "dark" ? "dark" : "light") } as React.CSSProperties}>
           <div className="bg-background text-foreground" style={{ pointerEvents: "auto" }}>
 
             <SectionBlock label="Hero" icon={Layout} active={activeSection === "hero"} onClick={() => selectSection("hero")}>
@@ -1300,14 +1243,24 @@ export default function AdminLandingPage() {
               </div>
 
               <div className="space-y-3 pt-6 border-t">
-                <div className="flex items-center justify-between">
-                  <Label className="flex items-center gap-2">Permitir Modo Escuro no site?</Label>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" className="sr-only peer" checked={darkModeEnabled} onChange={(e) => setDarkModeEnabled(e.target.checked)} />
-                    <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                  </label>
+                <Label className="flex items-center gap-2">Tema padrão da página</Label>
+                <div className="inline-flex rounded-lg border border-border p-1 bg-muted/40">
+                  <button
+                    type="button"
+                    onClick={() => setDarkModeEnabled(false)}
+                    className={`flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-md transition-all ${!darkModeEnabled ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    <Sun className="h-4 w-4" /> Claro
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDarkModeEnabled(true)}
+                    className={`flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-md transition-all ${darkModeEnabled ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    <Moon className="h-4 w-4" /> Escuro
+                  </button>
                 </div>
-                <p className="text-xs text-muted-foreground">Se ativado, um botão de alternar tema aparecerá no cabeçalho do seu site público para os visitantes.</p>
+                <p className="text-xs text-muted-foreground">Define o tema em que sua página abre para os visitantes. Eles sempre podem alternar pelo botão no cabeçalho do site.</p>
               </div>
 
               <div className="space-y-3 pt-2 border-t">

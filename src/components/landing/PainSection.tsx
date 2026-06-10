@@ -72,7 +72,7 @@ export default function PainSection({ title, subtitle, items }: PainSectionProps
 
       <div className="container mx-auto px-4 relative z-10">
         <div className="max-w-3xl mx-auto text-center mb-16 space-y-6">
-          <h2 className="font-serif text-4xl md:text-5xl font-bold text-foreground leading-tight">
+          <h2 className="font-heading text-4xl md:text-5xl font-bold text-foreground leading-tight">
             {displayTitle}
           </h2>
           <p className="text-muted-foreground text-lg md:text-xl leading-relaxed">

@@ -231,9 +231,15 @@ serve(async (req) => {
     const maxDailyBudget: number = Number(body.max_daily_budget_brl ?? dailyBudget * 1.25)
     const objective: string = (body.objective ?? "leads").toString()
     const platform: string = (body.platform ?? "google_ads").toString()
+    // Período opcional (YYYY-MM-DD); sem datas = campanha contínua
+    const startDate: string | null = body.start_date ? String(body.start_date) : null
+    const endDate: string | null = body.end_date ? String(body.end_date) : null
 
     if (!brief.servico || !dailyBudget) {
       return json({ error: "brief.servico e daily_budget_brl são obrigatórios" }, 400)
+    }
+    if (startDate && endDate && endDate < startDate) {
+      return json({ error: "end_date deve ser maior ou igual a start_date" }, 400)
     }
 
     // ── 3. Verifica créditos (ANTES de chamar Anthropic) ─────────────────────
@@ -317,7 +323,9 @@ serve(async (req) => {
         geo_targeting:        { cidade: brief.cidade, raio_km: brief.raio_km },
         landing_url:          landingUrl,
         brief,
-        created_by:           "axel",
+        start_date:           startDate,
+        end_date:             endDate,
+        created_by:           body.created_by === "user" ? "user" : "axel",
       })
     if (campaignErr) {
       console.error("[ads-campaign-generator] INSERT campaigns:", campaignErr.message)

@@ -129,6 +129,148 @@ const OUTPUT_SCHEMA = {
 }
 
 // =============================================
+// META ADS — schema, prompt e sanitização
+// =============================================
+const META_PRIMARY_MAX = 300   // recomendado ≤125 antes do "ver mais"
+const META_HEADLINE_MAX = 40
+const META_DESC_MAX = 30
+
+const META_OUTPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    campaign_name: { type: "string", description: "Nome da campanha (ex.: 'CTWA — Terapia de Casal SP')" },
+    ad_sets: {
+      type: "array", minItems: 1, maxItems: 2,
+      description: "Conjuntos de anúncio, cada um com público distinto",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          publico: {
+            type: "object",
+            properties: {
+              raio_km:    { type: "number" },
+              interesses: { type: "array", minItems: 3, maxItems: 8, items: { type: "string" }, description: "Interesses segmentáveis no Meta (ex.: 'Saúde mental', 'Terapia')" },
+              idade_min:  { type: "number" },
+              idade_max:  { type: "number" },
+              descricao:  { type: "string", description: "Resumo de quem é esse público" },
+            },
+            required: ["interesses", "idade_min", "idade_max"],
+          },
+          ads: {
+            type: "array", minItems: 3, maxItems: 3,
+            description: "3 variações de anúncio com ângulos diferentes (ex.: dor, prova social, urgência suave)",
+            items: {
+              type: "object",
+              properties: {
+                angulo:       { type: "string", description: "Ângulo da variação (ex.: 'PAS — dor', 'AIDA — benefício')" },
+                primary_text: { type: "string", maxLength: META_PRIMARY_MAX, description: `Texto principal. Gancho nos primeiros 125 chars (limite ${META_PRIMARY_MAX}).` },
+                headline:     { type: "string", maxLength: META_HEADLINE_MAX },
+                description:  { type: "string", maxLength: META_DESC_MAX },
+                cta:          { type: "string", enum: ["SEND_MESSAGE", "BOOK_NOW", "LEARN_MORE", "CONTACT_US"] },
+              },
+              required: ["angulo", "primary_text", "headline", "cta"],
+            },
+          },
+        },
+        required: ["name", "publico", "ads"],
+      },
+    },
+    creative_briefs: {
+      type: "object",
+      description: "Briefs executáveis pros criativos (gerados depois pelas ferramentas da plataforma)",
+      properties: {
+        video: {
+          type: "object",
+          properties: {
+            duracao_s: { type: "number", description: "15 a 30" },
+            cenas: {
+              type: "array", minItems: 3, maxItems: 6,
+              items: {
+                type: "object",
+                properties: {
+                  tempo:      { type: "string", description: "ex.: '0-3s'" },
+                  visual:     { type: "string", description: "O que aparece (9:16 vertical)" },
+                  texto_tela: { type: "string", description: "Texto sobreposto curto" },
+                  narracao:   { type: "string", description: "Fala/narração (opcional)" },
+                },
+                required: ["tempo", "visual", "texto_tela"],
+              },
+            },
+            cta_final: { type: "string" },
+          },
+          required: ["duracao_s", "cenas", "cta_final"],
+        },
+        carrossel: {
+          type: "object",
+          properties: {
+            cards: {
+              type: "array", minItems: 5, maxItems: 7,
+              items: {
+                type: "object",
+                properties: {
+                  titulo:        { type: "string", maxLength: 40 },
+                  texto:         { type: "string", maxLength: 90 },
+                  visual_prompt: { type: "string", description: "Prompt da imagem do card (estilo consistente entre cards)" },
+                },
+                required: ["titulo", "texto", "visual_prompt"],
+              },
+            },
+          },
+          required: ["cards"],
+        },
+        imagem: {
+          type: "object",
+          properties: {
+            prompt_visual: { type: "string", description: "Prompt da imagem estática 1:1" },
+            texto_overlay: { type: "string", maxLength: 60 },
+          },
+          required: ["prompt_visual"],
+        },
+      },
+      required: ["video", "carrossel", "imagem"],
+    },
+  },
+  required: ["campaign_name", "ad_sets", "creative_briefs"],
+}
+
+function buildMetaPrompt(brief: Record<string, any>): string {
+  return `Você é especialista sênior em Meta Ads (Facebook/Instagram) para profissionais de saúde no Brasil.
+Gere uma campanha Click-to-WhatsApp completa: o anúncio abre conversa direto no WhatsApp do profissional.
+
+BRIEF:
+- Serviço: ${brief.servico ?? "não informado"}
+- Cidade / raio: ${brief.cidade ?? "não informado"} ${brief.raio_km ? `(raio ~${brief.raio_km} km)` : ""}
+- Orçamento mensal: ${brief.orcamento_mensal ? `R$ ${brief.orcamento_mensal}` : "não informado"}
+- Diferencial: ${brief.diferencial ?? "não informado"}
+- Público-alvo: ${brief.publico ?? "pacientes adultos e/ou responsáveis"}
+
+REGRAS OBRIGATÓRIAS:
+1. 1-2 conjuntos com públicos DISTINTOS (raio local + interesses segmentáveis reais do Meta).
+2. 3 variações de anúncio por conjunto, cada uma com ângulo diferente (dor/PAS, benefício/AIDA, prova social ou urgência suave). Gancho forte nos primeiros 125 caracteres do texto principal.
+3. CTA padrão SEND_MESSAGE (Click-to-WhatsApp); use BOOK_NOW só se fizer mais sentido pro ângulo.
+4. Briefs de criativo: vídeo 9:16 de 15-30s (gancho nos 3 primeiros segundos), carrossel de 5-7 cards com narrativa progressiva e estilo visual CONSISTENTE, imagem estática 1:1.
+5. Tom: profissional, acolhedor, linguagem simples. NUNCA prometa cura/resultado (Resolução CFM 1974/2011). Sem sensacionalismo — políticas de saúde do Meta são rígidas: nada de "você sofre de X?", prefira "para quem busca Y".
+6. Tudo em português brasileiro.`
+}
+
+function sanitizeMetaCampaign(raw: any): any {
+  return {
+    campaign_name: raw.campaign_name,
+    ad_sets: (raw.ad_sets ?? []).map((s: any) => ({
+      ...s,
+      ads: (s.ads ?? []).slice(0, 3).map((a: any) => ({
+        ...a,
+        primary_text: trunc(a.primary_text ?? "", META_PRIMARY_MAX),
+        headline:     trunc(a.headline ?? "", META_HEADLINE_MAX),
+        description:  a.description ? trunc(a.description, META_DESC_MAX) : undefined,
+      })),
+    })),
+    creative_briefs: raw.creative_briefs ?? {},
+  }
+}
+
+// =============================================
 // Prompt do gerador (system)
 // =============================================
 function buildPrompt(brief: Record<string, any>, landingUrl: string): string {
@@ -270,8 +412,9 @@ serve(async (req) => {
       : (body.landing_url ?? `${siteUrl}`)
 
     // ── 5. Gera campanha com Anthropic (1 chamada, structured output via tool forced) ──
-    console.log(`[ads-campaign-generator] Gerando campanha para ${professionalId}`)
-    const prompt = buildPrompt(brief, landingUrl)
+    const isMeta = platform === "meta_ads"
+    console.log(`[ads-campaign-generator] Gerando campanha ${platform} para ${professionalId}`)
+    const prompt = isMeta ? buildMetaPrompt(brief) : buildPrompt(brief, landingUrl)
 
     const anthropicRes = await fetch(CLAUDE_URL, {
       method: "POST",
@@ -285,8 +428,8 @@ serve(async (req) => {
         max_tokens: 4096,
         tools: [{
           name: "gerar_campanha",
-          description: "Retorna a campanha Google Ads completa no formato estruturado.",
-          input_schema: OUTPUT_SCHEMA,
+          description: `Retorna a campanha ${isMeta ? "Meta Ads (Click-to-WhatsApp)" : "Google Ads"} completa no formato estruturado.`,
+          input_schema: isMeta ? META_OUTPUT_SCHEMA : OUTPUT_SCHEMA,
         }],
         tool_choice: { type: "tool", name: "gerar_campanha" },
         messages: [{ role: "user", content: prompt }],
@@ -305,7 +448,9 @@ serve(async (req) => {
       return json({ error: "ia_nao_retornou_campanha" }, 500)
     }
 
-    const raw = sanitizeCampaign(toolBlock.input, landingUrl)
+    const raw = isMeta
+      ? sanitizeMetaCampaign(toolBlock.input)
+      : sanitizeCampaign(toolBlock.input, landingUrl)
 
     // ── 6. Persiste no banco ──────────────────────────────────────────────────
     const { error: campaignErr } = await supabaseAdmin
@@ -315,8 +460,8 @@ serve(async (req) => {
         professional_id:      professionalId,
         platform,
         name:                 raw.campaign_name,
-        objective,
-        campaign_type:        "search",
+        objective:            isMeta && objective === "leads" ? "whatsapp" : objective,
+        campaign_type:        isMeta ? "ctwa" : "search",
         status:               "draft",
         daily_budget_brl:     dailyBudget,
         max_daily_budget_brl: maxDailyBudget,
@@ -332,8 +477,48 @@ serve(async (req) => {
       return json({ error: "erro_ao_salvar_campanha", detail: campaignErr.message }, 500)
     }
 
-    // Ativos: grupos → RSA → keywords → negativos → sitelinks → callouts
+    // Ativos
     const assets: any[] = []
+
+    if (isMeta) {
+      // META: conjuntos → 3 anúncios cada → briefs de criativo
+      for (let si = 0; si < (raw.ad_sets ?? []).length; si++) {
+        const adSet = raw.ad_sets[si]
+        const adSetId = crypto.randomUUID()
+        assets.push({
+          id: adSetId, campaign_id: campaignId,
+          asset_type: "ad_set",
+          payload: { name: adSet.name, publico: adSet.publico },
+          position: si,
+        })
+        for (let ai = 0; ai < (adSet.ads ?? []).length; ai++) {
+          assets.push({
+            id: crypto.randomUUID(), campaign_id: campaignId,
+            asset_type: "meta_ad",
+            parent_id: adSetId,
+            payload: adSet.ads[ai],
+            position: ai,
+          })
+        }
+      }
+      const briefs = raw.creative_briefs ?? {}
+      const tipos: Array<[string, any]> = [
+        ["video", briefs.video],
+        ["carrossel", briefs.carrossel],
+        ["imagem", briefs.imagem],
+      ]
+      let bi = 0
+      for (const [tipo, brief] of tipos) {
+        if (!brief) continue
+        assets.push({
+          id: crypto.randomUUID(), campaign_id: campaignId,
+          asset_type: "creative_brief",
+          payload: { tipo, ...brief },
+          position: bi++,
+        })
+      }
+    } else {
+    // GOOGLE: grupos → RSA → keywords → negativos → sitelinks → callouts
     for (let gi = 0; gi < raw.ad_groups.length; gi++) {
       const group = raw.ad_groups[gi]
       const groupId = crypto.randomUUID()
@@ -403,6 +588,7 @@ serve(async (req) => {
         position: ni,
       })
     }
+    } // fim do branch Google
 
     if (assets.length > 0) {
       const { error: assetsErr } = await supabaseAdmin.from("ads_campaign_assets").insert(assets)
@@ -436,7 +622,7 @@ serve(async (req) => {
       platform,
       objective,
       daily_budget_brl: dailyBudget,
-      ad_groups_count: raw.ad_groups.length,
+      ad_groups_count: isMeta ? (raw.ad_sets ?? []).length : raw.ad_groups.length,
       assets_count: assets.length,
       creditos_debitados: expectedCost,
     })

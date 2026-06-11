@@ -12,6 +12,18 @@ export const HEADLINE_MAX = 30;
 export const DESC_MAX = 90;
 export const PATH_MAX = 15;
 
+// ── Limites do Meta Ads ────────────────────────────────────
+export const META_PRIMARY_MAX = 300; // recomendado ≤125 antes do "ver mais"
+export const META_HEADLINE_MAX = 40;
+export const META_DESC_MAX = 30;
+
+export const META_CTA_LABEL: Record<string, string> = {
+  SEND_MESSAGE: "Enviar mensagem",
+  BOOK_NOW: "Reservar agora",
+  LEARN_MORE: "Saiba mais",
+  CONTACT_US: "Fale conosco",
+};
+
 // ── Custo de geração (placeholder — service_pricing 'campanha_ads') ──
 export const CAMPAIGN_COST = 10;
 

@@ -29,6 +29,7 @@ interface CreateCampaignDialogProps {
   onOpenChange: (open: boolean) => void;
   creditBalance: number;
   onCreated: (campaignId: string) => void;
+  platform?: "google_ads" | "meta_ads";
 }
 
 export default function CreateCampaignDialog({
@@ -36,7 +37,9 @@ export default function CreateCampaignDialog({
   onOpenChange,
   creditBalance,
   onCreated,
+  platform = "google_ads",
 }: CreateCampaignDialogProps) {
+  const isMeta = platform === "meta_ads";
   const [servico, setServico] = useState("");
   const [cidade, setCidade] = useState("");
   const [raioKm, setRaioKm] = useState("20");
@@ -71,7 +74,8 @@ export default function CreateCampaignDialog({
             objetivo: OBJECTIVE_LABEL[objective] ?? objective,
           },
           daily_budget_brl: dailyBudget,
-          objective,
+          objective: isMeta ? "whatsapp" : objective,
+          platform,
           start_date: startDate || undefined,
           end_date: endDate || undefined,
           created_by: "user",
@@ -104,10 +108,12 @@ export default function CreateCampaignDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
-            Criar campanha Google Ads
+            {isMeta ? "Criar campanha Meta Ads (Instagram/Facebook)" : "Criar campanha Google Ads"}
           </DialogTitle>
           <DialogDescription>
-            A IA gera a campanha completa (anúncios, palavras-chave e extensões). Você revisa e aprova antes de publicar.
+            {isMeta
+              ? "A IA gera a campanha Click-to-WhatsApp completa: públicos, 3 variações de anúncio e briefs de criativo (vídeo, carrossel e imagem). Você revisa e aprova."
+              : "A IA gera a campanha completa (anúncios, palavras-chave e extensões). Você revisa e aprova antes de publicar."}
           </DialogDescription>
         </DialogHeader>
 
@@ -193,14 +199,20 @@ export default function CreateCampaignDialog({
             </div>
             <div className="space-y-1.5">
               <Label>Objetivo</Label>
-              <Select value={objective} onValueChange={setObjective} disabled={generating}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {Object.entries(OBJECTIVE_LABEL).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>{label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {isMeta ? (
+                <p className="text-sm h-10 flex items-center px-3 rounded-md border bg-muted/30">
+                  Click-to-WhatsApp
+                </p>
+              ) : (
+                <Select value={objective} onValueChange={setObjective} disabled={generating}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(OBJECTIVE_LABEL).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
 

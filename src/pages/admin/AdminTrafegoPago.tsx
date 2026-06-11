@@ -1,10 +1,10 @@
 import { useSearchParams, Link } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TrendingUp, Facebook, BarChart2, Coins } from "lucide-react";
 import { useCreditBalance } from "@/hooks/useBilling";
 import GoogleAdsTab from "@/components/admin/trafego-pago/GoogleAdsTab";
+import MetaAdsTab from "@/components/admin/trafego-pago/MetaAdsTab";
 import RelatoriosTab from "@/components/admin/trafego-pago/RelatoriosTab";
 
 const VALID_TABS = ["google", "meta", "relatorios"] as const;
@@ -66,7 +66,6 @@ export default function AdminTrafegoPago() {
           <TabsTrigger value="meta" className="gap-2">
             <Facebook className="h-4 w-4" />
             <span className="hidden sm:inline">Meta Ads</span>
-            <Badge variant="secondary" className="text-xs py-0 px-1 hidden sm:inline-flex">Em breve</Badge>
           </TabsTrigger>
           <TabsTrigger value="relatorios" className="gap-2">
             <BarChart2 className="h-4 w-4" />
@@ -79,27 +78,13 @@ export default function AdminTrafegoPago() {
         </TabsContent>
 
         <TabsContent value="meta" className="mt-4">
-          <MetaPlaceholder />
+          <MetaAdsTab creditBalance={balance} />
         </TabsContent>
 
         <TabsContent value="relatorios" className="mt-4">
           <RelatoriosTab />
         </TabsContent>
       </Tabs>
-    </div>
-  );
-}
-
-function MetaPlaceholder() {
-  return (
-    <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
-      <div className="w-16 h-16 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-        <Facebook className="h-8 w-8 text-blue-600" />
-      </div>
-      <h3 className="text-lg font-semibold">Meta Ads em breve</h3>
-      <p className="text-muted-foreground text-sm max-w-sm">
-        Campanhas para Facebook e Instagram chegarão na próxima fase, com a mesma arquitetura do Google Ads — sua conta, seus dados, relatórios de funil completo.
-      </p>
     </div>
   );
 }

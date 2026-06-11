@@ -172,6 +172,8 @@ const tools = [
         diferencial:      { type: "string",  description: "Diferencial ou especialidade principal" },
         publico:          { type: "string",  description: "Público-alvo (opcional)" },
         objective:        { type: "string",  enum: ["leads","agendamentos","whatsapp","trafego_landing"], description: "Objetivo principal da campanha" },
+        data_inicio:      { type: "string",  description: "Data de início no formato YYYY-MM-DD (opcional; sem datas = campanha contínua)" },
+        data_fim:         { type: "string",  description: "Data de fim no formato YYYY-MM-DD (opcional; precisa ser >= data_inicio)" },
       },
       required: ["servico", "cidade", "orcamento_mensal", "objective"],
     },
@@ -300,7 +302,7 @@ COLETANDO INFORMAÇÕES (obrigatórias — não pule):
 2. Cidade e raio aproximado (ex: "São Paulo, 10 km")
 3. Orçamento mensal em R$ (ex: "R$ 600/mês")
 4. Objetivo: "leads" (WhatsApp/contato) ou "awareness" (visibilidade)
-Opcionais (melhora a campanha): diferencial, público-alvo específico.
+Opcionais (melhora a campanha): diferencial, público-alvo específico, PERÍODO (data de início e fim em data_inicio/data_fim — pergunte "quer rodar por um período específico ou deixar contínua?"; sem datas = contínua).
 
 APÓS CRIAR: chame \`abrir_pagina('/admin/trafego-pago')\` para que ele revise os textos e aprove. Rascunho criado = pronto pra revisar, não publicado. Para publicar no Google Ads, o profissional precisará de uma conta Google Ads vinculada (oriente ao clicar em "Como publicar" na página).
 
@@ -910,6 +912,13 @@ async function handleToolCall(
     const objective: string = (args.objective || "leads").toString()
     const dailyBudget = +(mensal / 30.4).toFixed(2)
     const maxDaily    = +(dailyBudget * 1.25).toFixed(2)
+    // Período opcional (YYYY-MM-DD); sem datas = campanha contínua
+    const reData = /^\d{4}-\d{2}-\d{2}$/
+    const startDate: string | null = reData.test(args.data_inicio ?? "") ? args.data_inicio : null
+    const endDate: string | null = reData.test(args.data_fim ?? "") ? args.data_fim : null
+    if (startDate && endDate && endDate < startDate) {
+      return { erro: "periodo_invalido", instrucao: "Avise que a data de fim precisa ser igual ou depois da de início e pergunte as datas de novo." }
+    }
 
     // ID da campanha (gerado aqui para usar na landing_url)
     const campaignId: string = crypto.randomUUID()
@@ -1036,6 +1045,8 @@ REGRAS:
         geo_targeting: { cidade, raio_km },
         landing_url: landingUrl,
         brief: { servico, cidade, raio_km, orcamento_mensal: mensal, diferencial, publico },
+        start_date: startDate,
+        end_date: endDate,
         created_by: "axel",
       })
     if (campErr) {

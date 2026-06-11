@@ -2,9 +2,10 @@ import { useSearchParams, Link } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Facebook, BarChart2, Zap, Coins } from "lucide-react";
+import { TrendingUp, Facebook, BarChart2, Coins } from "lucide-react";
 import { useCreditBalance } from "@/hooks/useBilling";
 import GoogleAdsTab from "@/components/admin/trafego-pago/GoogleAdsTab";
+import RelatoriosTab from "@/components/admin/trafego-pago/RelatoriosTab";
 
 const VALID_TABS = ["google", "meta", "relatorios"] as const;
 type TabValue = (typeof VALID_TABS)[number];
@@ -70,7 +71,6 @@ export default function AdminTrafegoPago() {
           <TabsTrigger value="relatorios" className="gap-2">
             <BarChart2 className="h-4 w-4" />
             <span className="hidden sm:inline">Relatórios</span>
-            <Badge variant="secondary" className="text-xs py-0 px-1 hidden sm:inline-flex">Em breve</Badge>
           </TabsTrigger>
         </TabsList>
 
@@ -83,7 +83,7 @@ export default function AdminTrafegoPago() {
         </TabsContent>
 
         <TabsContent value="relatorios" className="mt-4">
-          <RelatoriosPlaceholder />
+          <RelatoriosTab />
         </TabsContent>
       </Tabs>
     </div>
@@ -104,21 +104,3 @@ function MetaPlaceholder() {
   );
 }
 
-function RelatoriosPlaceholder() {
-  return (
-    <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
-      <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-        <BarChart2 className="h-8 w-8 text-green-600" />
-      </div>
-      <h3 className="text-lg font-semibold">Relatórios de funil completo — em breve</h3>
-      <p className="text-muted-foreground text-sm max-w-sm">
-        Quando suas campanhas estiverem rodando, você verá aqui o funil completo:
-        impressões → cliques → visitas à landing → conversas no WhatsApp → agendamentos → custo por agendamento.
-      </p>
-      <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
-        <Zap className="h-3 w-3 text-yellow-500" />
-        O Google só mostra até o clique. Aqui você vê até o agendamento.
-      </div>
-    </div>
-  );
-}

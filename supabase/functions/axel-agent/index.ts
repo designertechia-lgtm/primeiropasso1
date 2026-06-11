@@ -674,7 +674,7 @@ async function handleToolCall(
       ...(kbSections || []).map((s) => (s.route || "").trim()).filter(Boolean),
       "/admin", "/admin/perfil", "/admin/agenda", "/admin/landing",
       "/admin/clientes", "/admin/redes-sociais", "/admin/assinatura", "/admin/configuracoes",
-      "/admin/trafego-pago", "/admin/redes-sociais?tab=artigos",
+      "/admin/trafego-pago", "/admin/trafego-pago?tab=relatorios", "/admin/redes-sociais?tab=artigos",
     ])
     if (!rota.startsWith("/") || !rotasValidas.has(rota)) {
       return {
@@ -801,23 +801,47 @@ async function handleToolCall(
       draft: "rascunho", approved: "aprovada", published: "publicada",
       active: "ativa", paused: "pausada",
     }
-    const lista = (camps || []).map((c: any) => ({
-      id: c.id,
-      nome: c.name,
-      objetivo: c.objective,
-      status: STATUS_PT[c.status] ?? c.status,
-      orcamento_diario: `R$ ${Number(c.daily_budget_brl).toFixed(2)}`,
-      teto_diario: `R$ ${Number(c.max_daily_budget_brl).toFixed(2)}`,
-      landing_url: c.landing_url,
-      criada_em: c.created_at?.slice(0, 10),
-    }))
+
+    // Funil completo (visitas→leads→conversas→agendamentos + métricas Google quando houver)
+    const { data: funnelRows } = await supabaseAdmin.rpc("get_ads_funnel_for", {
+      p_professional_id: professionalId,
+    })
+    const funnelById = new Map(
+      ((funnelRows as any[]) ?? []).map((f: any) => [f.campaign_id, f]),
+    )
+
+    const lista = (camps || []).map((c: any) => {
+      const f = funnelById.get(c.id)
+      return {
+        id: c.id,
+        nome: c.name,
+        objetivo: c.objective,
+        status: STATUS_PT[c.status] ?? c.status,
+        orcamento_diario: `R$ ${Number(c.daily_budget_brl).toFixed(2)}`,
+        teto_diario: `R$ ${Number(c.max_daily_budget_brl).toFixed(2)}`,
+        landing_url: c.landing_url,
+        criada_em: c.created_at?.slice(0, 10),
+        funil: f ? {
+          impressoes: Number(f.impressions) || 0,
+          cliques: Number(f.clicks) || 0,
+          investido: Number(f.cost_brl) > 0 ? `R$ ${Number(f.cost_brl).toFixed(2)}` : null,
+          visitas_landing: Number(f.visitas) || 0,
+          leads: Number(f.leads) || 0,
+          conversas: Number(f.conversas) || 0,
+          agendamentos: Number(f.agendamentos) || 0,
+          custo_por_agendamento: Number(f.cost_brl) > 0 && Number(f.agendamentos) > 0
+            ? `R$ ${(Number(f.cost_brl) / Number(f.agendamentos)).toFixed(2)}`
+            : null,
+        } : null,
+      }
+    })
 
     return {
       total: lista.length,
       campanhas: lista,
       instrucao: lista.length === 0
         ? "Nenhuma campanha encontrada. Ofereça criar uma com criar_campanha_ads se o profissional quiser."
-        : "Liste as campanhas de forma compacta (nome · status · orçamento). Rascunhos podem ser aprovados; aprovadas estão prontas para publicar.",
+        : "Liste as campanhas de forma compacta (nome · status · orçamento). Se o funil tiver números, destaque o que importa em 1 frase (ex: 'X leads e Y agendamentos vindos dos anúncios'); custo_por_agendamento é a métrica de ouro. impressoes/cliques zerados = campanha ainda não veicula no Google. Funil completo visual: abrir_pagina('/admin/trafego-pago?tab=relatorios').",
     }
   }
 

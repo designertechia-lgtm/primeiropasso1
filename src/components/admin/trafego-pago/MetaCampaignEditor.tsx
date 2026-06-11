@@ -22,8 +22,10 @@ import {
   Sparkles,
   Wand2,
   ExternalLink,
+  Facebook,
 } from "lucide-react";
 import GenerateCreativeDialog from "./GenerateCreativeDialog";
+import MetaPublishChecklistDialog from "./MetaPublishChecklistDialog";
 import {
   type Campaign,
   type Asset,
@@ -80,6 +82,7 @@ export default function MetaCampaignEditor({ campaign }: { campaign: Campaign })
   const navigate = useNavigate();
   const { data: assets = [], isLoading } = useCampaignAssets(campaign.id);
   const [generateBrief, setGenerateBrief] = useState<Asset | null>(null);
+  const [publishOpen, setPublishOpen] = useState(false);
 
   const adSets = assets
     .filter((a) => a.asset_type === "ad_set")
@@ -280,6 +283,31 @@ export default function MetaCampaignEditor({ campaign }: { campaign: Campaign })
         ))}
       </div>
 
+      {/* ── Publicação guiada (F3) ── */}
+      {campaign.status === "approved" && (
+        <div className="rounded-lg border bg-muted/40 p-3 flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-sm text-muted-foreground flex-1 min-w-48">
+            Campanha aprovada! Publique no Gerenciador de Anúncios seguindo o passo a passo guiado.
+          </p>
+          <Button size="sm" className="gap-1.5" onClick={() => setPublishOpen(true)}>
+            <Facebook className="h-3.5 w-3.5" />
+            Como publicar
+          </Button>
+        </div>
+      )}
+      {(campaign.status === "published" || campaign.status === "active") && (
+        <div className="rounded-lg border bg-muted/40 p-3 flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-sm text-muted-foreground flex-1 min-w-48">
+            Publicada no Gerenciador de Anúncios. Os leads que chegarem pelo anúncio
+            Click-to-WhatsApp aparecem no funil da tab Relatórios.
+          </p>
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setPublishOpen(true)}>
+            <Facebook className="h-3.5 w-3.5" />
+            Rever o guia
+          </Button>
+        </div>
+      )}
+
       {generateBrief && (
         <GenerateCreativeDialog
           open={!!generateBrief}
@@ -288,6 +316,12 @@ export default function MetaCampaignEditor({ campaign }: { campaign: Campaign })
           brief={generateBrief}
         />
       )}
+      <MetaPublishChecklistDialog
+        open={publishOpen}
+        onOpenChange={setPublishOpen}
+        campaign={campaign}
+        assets={assets}
+      />
     </div>
   );
 }

@@ -29,8 +29,17 @@ export interface Campaign {
   brief: Record<string, any>;
   start_date: string | null;
   end_date: string | null;
+  external_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// Sub-conta Google Ads do profissional (ads_accounts via google-ads-proxy)
+export interface AdsAccount {
+  external_customer_id: string | null;
+  status: "pending_billing" | "active" | "suspended" | "closed";
+  billing_configured: boolean;
+  invited_email: string | null;
 }
 
 export interface Asset {

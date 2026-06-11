@@ -32,6 +32,7 @@ import {
 import CampaignEditor from "./CampaignEditor";
 import CampaignCalendar from "./CampaignCalendar";
 import CreateCampaignDialog from "./CreateCampaignDialog";
+import GoogleAdsAccountCard from "./GoogleAdsAccountCard";
 
 // ── Hook: campanhas do profissional ────────────────────────
 function useCampaigns(professionalId: string | undefined) {
@@ -85,6 +86,8 @@ export default function GoogleAdsTab({ creditBalance }: GoogleAdsTabProps) {
 
   return (
     <div className="space-y-3">
+      <GoogleAdsAccountCard />
+
       {campaigns.length === 0 ? (
         <EmptyState creditBalance={creditBalance} onCreate={() => setCreateOpen(true)} />
       ) : (

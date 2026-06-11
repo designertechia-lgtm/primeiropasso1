@@ -20,7 +20,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Loader2, Globe, Pencil, X, Plus, Save, Download } from "lucide-react";
+import { Loader2, Globe, Pencil, X, Plus, Save, Download, Rocket, PlayCircle, PauseCircle } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   type Campaign,
   type Asset,
@@ -30,6 +40,20 @@ import {
 } from "./types";
 import { downloadGoogleAdsEditorCsv } from "./exportGoogleAdsCsv";
 import PublishChecklistDialog from "./PublishChecklistDialog";
+import { useAdsAccountStatus } from "./GoogleAdsAccountCard";
+
+async function callAdsProxy(action: string, extra: Record<string, unknown> = {}) {
+  const { data, error } = await supabase.functions.invoke("google-ads-proxy", {
+    body: { action, ...extra },
+  });
+  if (error) {
+    let detail: any = null;
+    try { detail = await (error as any).context?.json?.(); } catch { /* ignore */ }
+    throw new Error(detail?.mensagem ?? detail?.error ?? error.message);
+  }
+  if (data?.error) throw new Error(data.mensagem ?? data.error);
+  return data;
+}
 
 function charCounter(value: string, max: number) {
   const len = value.length;
@@ -82,6 +106,10 @@ export default function CampaignEditor({ campaign }: { campaign: Campaign }) {
 
   const [editing, setEditing] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [apiPublishSummary, setApiPublishSummary] = useState<{ nome: string; orcamento_diario: string; aviso: string } | null>(null);
+  const [apiBusy, setApiBusy] = useState(false);
+  const { data: adsStatus } = useAdsAccountStatus();
+  const accountActive = adsStatus?.conta?.status === "active";
   const [rsaDrafts, setRsaDrafts] = useState<Record<string, RsaDraft>>({});
   const [kwDrafts, setKwDrafts] = useState<Record<string, KwDraft>>({});
   const [removedKw, setRemovedKw] = useState<Set<string>>(new Set());
@@ -204,6 +232,48 @@ export default function CampaignEditor({ campaign }: { campaign: Campaign }) {
     },
     onError: (e: any) => toast.error("Erro ao salvar", { description: e.message }),
   });
+
+  async function startApiPublish() {
+    setApiBusy(true);
+    try {
+      const res = await callAdsProxy("publicar_campanha", { campaign_id: campaign.id });
+      if (res.requer_confirmacao) setApiPublishSummary(res.resumo);
+      else if (res.ja_publicada) toast.info("Essa campanha já está publicada no Google Ads.");
+    } catch (e: any) {
+      toast.error("Publicação", { description: e.message });
+    } finally {
+      setApiBusy(false);
+    }
+  }
+
+  async function confirmApiPublish() {
+    setApiBusy(true);
+    try {
+      const res = await callAdsProxy("publicar_campanha", { campaign_id: campaign.id, confirmar: true });
+      toast.success("Campanha publicada no Google Ads! 🎉", { description: res.aviso });
+      setApiPublishSummary(null);
+      qc.invalidateQueries({ queryKey: ["ads_campaigns"] });
+    } catch (e: any) {
+      toast.error("Publicação falhou", { description: e.message });
+    } finally {
+      setApiBusy(false);
+    }
+  }
+
+  async function toggleVeiculacao(action: "ativar_campanha" | "pausar_campanha") {
+    setApiBusy(true);
+    try {
+      await callAdsProxy(action, { campaign_id: campaign.id });
+      toast.success(action === "ativar_campanha"
+        ? "Campanha ATIVA no Google Ads — começou a veicular."
+        : "Campanha pausada no Google Ads.");
+      qc.invalidateQueries({ queryKey: ["ads_campaigns"] });
+    } catch (e: any) {
+      toast.error("Google Ads", { description: e.message });
+    } finally {
+      setApiBusy(false);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -591,6 +661,17 @@ export default function CampaignEditor({ campaign }: { campaign: Campaign }) {
             </div>
           </div>
           <div className="flex flex-wrap gap-2 pl-6">
+            {accountActive && (
+              <Button
+                size="sm"
+                className="gap-1.5 h-7 text-xs"
+                disabled={apiBusy}
+                onClick={startApiPublish}
+              >
+                {apiBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Rocket className="h-3 w-3" />}
+                Publicar pela plataforma
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -601,30 +682,62 @@ export default function CampaignEditor({ campaign }: { campaign: Campaign }) {
               Exportar CSV (Ads Editor)
             </Button>
             <Button
+              variant={accountActive ? "outline" : "default"}
               size="sm"
-              className="gap-1.5 h-7 text-xs"
+              className={`gap-1.5 h-7 text-xs ${accountActive ? "bg-background" : ""}`}
               onClick={() => setPublishOpen(true)}
             >
               <Globe className="h-3 w-3" />
-              Como publicar
+              {accountActive ? "Publicação manual" : "Como publicar"}
             </Button>
           </div>
         </div>
       )}
 
-      {/* Publicada: lembrete de ativação */}
-      {campaign.status === "published" && (
-        <div className="flex items-start gap-2 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-md px-3 py-2.5 text-xs text-emerald-800 dark:text-emerald-200 mt-2">
-          <Globe className="h-4 w-4 mt-0.5 shrink-0" />
-          <div>
-            <p className="font-medium">Publicada no Google Ads</p>
-            <p className="mt-0.5 text-emerald-700 dark:text-emerald-300">
-              Aprovação do Google leva 1-3 dias úteis. A campanha foi importada pausada — ative no Google Ads quando quiser começar a veicular. Precisa do CSV de novo?{" "}
-              <button type="button" className="underline" onClick={() => downloadGoogleAdsEditorCsv(campaign, assets)}>
-                Baixar
-              </button>
-            </p>
+      {/* Publicada / veiculando / pausada */}
+      {["published", "active", "paused"].includes(campaign.status) && (
+        <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-md px-3 py-2.5 text-xs text-emerald-800 dark:text-emerald-200 mt-2 space-y-2">
+          <div className="flex items-start gap-2">
+            <Globe className="h-4 w-4 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-medium">
+                {campaign.status === "active"
+                  ? "Veiculando no Google Ads"
+                  : campaign.status === "paused"
+                  ? "Pausada no Google Ads"
+                  : "Publicada no Google Ads"}
+              </p>
+              <p className="mt-0.5 text-emerald-700 dark:text-emerald-300">
+                {campaign.status === "published" && (
+                  <>A campanha está pausada no Google (aprovação leva 1-3 dias úteis). Ative quando quiser veicular.{" "}</>
+                )}
+                {!campaign.external_id && (
+                  <>Precisa do CSV de novo?{" "}
+                    <button type="button" className="underline" onClick={() => downloadGoogleAdsEditorCsv(campaign, assets)}>
+                      Baixar
+                    </button>
+                  </>
+                )}
+              </p>
+            </div>
           </div>
+          {campaign.external_id && (
+            <div className="pl-6">
+              {campaign.status === "active" ? (
+                <Button variant="outline" size="sm" className="gap-1.5 h-7 text-xs bg-background" disabled={apiBusy}
+                  onClick={() => toggleVeiculacao("pausar_campanha")}>
+                  {apiBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <PauseCircle className="h-3 w-3" />}
+                  Pausar veiculação
+                </Button>
+              ) : (
+                <Button size="sm" className="gap-1.5 h-7 text-xs" disabled={apiBusy}
+                  onClick={() => toggleVeiculacao("ativar_campanha")}>
+                  {apiBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <PlayCircle className="h-3 w-3" />}
+                  Ativar veiculação
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -634,6 +747,28 @@ export default function CampaignEditor({ campaign }: { campaign: Campaign }) {
         campaign={campaign}
         assets={assets}
       />
+
+      {/* Dupla confirmação da publicação via API */}
+      <AlertDialog open={apiPublishSummary !== null} onOpenChange={(o) => { if (!o) setApiPublishSummary(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Publicar no Google Ads?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                <p><span className="font-medium text-foreground">{apiPublishSummary?.nome}</span></p>
+                <p>Orçamento: <span className="font-medium text-foreground">{apiPublishSummary?.orcamento_diario}</span> (o Google pode gastar até 2× num dia)</p>
+                <p>{apiPublishSummary?.aviso}</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={apiBusy}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction disabled={apiBusy} onClick={(e) => { e.preventDefault(); confirmApiPublish(); }}>
+              {apiBusy ? "Publicando…" : "Confirmar publicação"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

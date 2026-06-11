@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Loader2, Globe, Pencil, X, Plus, Save } from "lucide-react";
+import { Loader2, Globe, Pencil, X, Plus, Save, Download } from "lucide-react";
 import {
   type Campaign,
   type Asset,
@@ -28,6 +28,8 @@ import {
   DESC_MAX,
   PATH_MAX,
 } from "./types";
+import { downloadGoogleAdsEditorCsv } from "./exportGoogleAdsCsv";
+import PublishChecklistDialog from "./PublishChecklistDialog";
 
 function charCounter(value: string, max: number) {
   const len = value.length;
@@ -79,6 +81,7 @@ export default function CampaignEditor({ campaign }: { campaign: Campaign }) {
   const { data: assets = [], isLoading } = useCampaignAssets(campaign.id);
 
   const [editing, setEditing] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
   const [rsaDrafts, setRsaDrafts] = useState<Record<string, RsaDraft>>({});
   const [kwDrafts, setKwDrafts] = useState<Record<string, KwDraft>>({});
   const [removedKw, setRemovedKw] = useState<Set<string>>(new Set());
@@ -575,18 +578,62 @@ export default function CampaignEditor({ campaign }: { campaign: Campaign }) {
         </div>
       )}
 
-      {/* Aviso sobre publicação */}
+      {/* Publicação guiada (campanha aprovada) */}
       {campaign.status === "approved" && !editing && (
-        <div className="flex items-start gap-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md px-3 py-2.5 text-xs text-blue-800 dark:text-blue-200 mt-2">
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md px-3 py-2.5 text-xs text-blue-800 dark:text-blue-200 mt-2 space-y-2">
+          <div className="flex items-start gap-2">
+            <Globe className="h-4 w-4 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-medium">Campanha aprovada — pronta para publicar</p>
+              <p className="mt-0.5 text-blue-700 dark:text-blue-300">
+                Exporte o CSV e siga o checklist guiado. A campanha importa <strong>pausada</strong> — você ativa quando conferir tudo na sua conta Google Ads.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 pl-6">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 h-7 text-xs bg-background"
+              onClick={() => downloadGoogleAdsEditorCsv(campaign, assets)}
+            >
+              <Download className="h-3 w-3" />
+              Exportar CSV (Ads Editor)
+            </Button>
+            <Button
+              size="sm"
+              className="gap-1.5 h-7 text-xs"
+              onClick={() => setPublishOpen(true)}
+            >
+              <Globe className="h-3 w-3" />
+              Como publicar
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Publicada: lembrete de ativação */}
+      {campaign.status === "published" && (
+        <div className="flex items-start gap-2 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-md px-3 py-2.5 text-xs text-emerald-800 dark:text-emerald-200 mt-2">
           <Globe className="h-4 w-4 mt-0.5 shrink-0" />
           <div>
-            <p className="font-medium">Campanha aprovada — pronta para publicar</p>
-            <p className="mt-0.5 text-blue-700 dark:text-blue-300">
-              Pergunte ao Axel <em>"como publicar minha campanha no Google Ads"</em> e ele vai guiar o passo a passo. A publicação manual (por enquanto) é feita direto na sua conta Google Ads.
+            <p className="font-medium">Publicada no Google Ads</p>
+            <p className="mt-0.5 text-emerald-700 dark:text-emerald-300">
+              Aprovação do Google leva 1-3 dias úteis. A campanha foi importada pausada — ative no Google Ads quando quiser começar a veicular. Precisa do CSV de novo?{" "}
+              <button type="button" className="underline" onClick={() => downloadGoogleAdsEditorCsv(campaign, assets)}>
+                Baixar
+              </button>
             </p>
           </div>
         </div>
       )}
+
+      <PublishChecklistDialog
+        open={publishOpen}
+        onOpenChange={setPublishOpen}
+        campaign={campaign}
+        assets={assets}
+      />
     </div>
   );
 }

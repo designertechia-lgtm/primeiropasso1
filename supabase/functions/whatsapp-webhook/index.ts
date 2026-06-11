@@ -434,10 +434,42 @@ serve(async (req) => {
       })
     }
 
+    // 1.7. Atribuição CTWA (F4 Meta Ads): lead que chega por anúncio Click-to-WhatsApp
+    //      traz contextInfo.externalAdReply na 1ª mensagem. Gravamos em leads.utm —
+    //      o funil de Relatórios casa por utm->>'utm_campaign' = ads_campaigns.id.
+    const adReply =
+      message?.extendedTextMessage?.contextInfo?.externalAdReply ||
+      message?.contextInfo?.externalAdReply ||
+      null
+    let ctwaUtm: Record<string, unknown> | null = null
+    if (adReply) {
+      ctwaUtm = {
+        utm_source: 'meta_ctwa',
+        utm_medium: 'ctwa',
+        ctwa_clid: adReply.ctwaClid ?? null,
+        ad_source_id: adReply.sourceId ?? null,
+        ad_title: adReply.title ?? null,
+        ad_source_url: adReply.sourceUrl ?? null,
+      }
+      // Sem Marketing API ainda não há mapa sourceId→campanha; se o profissional tem
+      // EXATAMENTE 1 campanha Meta publicada/ativa, atribui a ela (caso comum).
+      const { data: metaCampaigns } = await supabaseAdmin
+        .from('ads_campaigns')
+        .select('id')
+        .eq('professional_id', professional.id)
+        .eq('platform', 'meta_ads')
+        .in('status', ['published', 'active'])
+        .limit(2)
+      if (metaCampaigns?.length === 1) {
+        ctwaUtm.utm_campaign = metaCampaigns[0].id
+      }
+      console.log(`[WEBHOOK] 📣 Lead veio de anúncio CTWA (sourceId=${adReply.sourceId ?? '?'}, campanha=${ctwaUtm.utm_campaign ?? 'não mapeada'})`)
+    }
+
     // 2. Upsert do lead (criar se não existe, atualizar se existe)
     const { data: existingLead } = await supabaseAdmin
       .from('leads')
-      .select('id, agent_enabled, pipeline_stage')
+      .select('id, agent_enabled, pipeline_stage, utm')
       .eq('whatsapp', formattedNumber)
       .eq('professional_id', professional.id)
       .maybeSingle()
@@ -451,6 +483,10 @@ serve(async (req) => {
       const updates: Record<string, unknown> = { last_message_at: new Date().toISOString() }
       if (existingLead.pipeline_stage === 'novo') {
         updates.pipeline_stage = 'em_conversa'
+      }
+      // CTWA: não sobrescreve atribuição existente (vale a PRIMEIRA origem)
+      if (ctwaUtm && !(existingLead as any).utm) {
+        updates.utm = ctwaUtm
       }
       await supabaseAdmin
         .from('leads')
@@ -476,6 +512,7 @@ serve(async (req) => {
           last_message_at: new Date().toISOString(),
           origin_platform: 'whatsapp',
           agent_enabled: true,
+          ...(ctwaUtm ? { utm: ctwaUtm } : {}),
         })
         .select('id')
         .single()

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BookOpen, Play, MessageCircle, Calendar, Lock } from "lucide-react";
+import { buildWhatsAppLink } from "@/lib/utils";
 
 interface Article {
   id: string;
@@ -115,10 +116,8 @@ function VideoCard({ video, isDraft }: { video: Video; isDraft?: boolean }) {
 
 function buildContactHref(whatsapp: string | null | undefined, slug: string | undefined): { href: string; isWa: boolean } {
   if (whatsapp) {
-    const digits = whatsapp.replace(/\D/g, "");
-    const number = digits.startsWith("55") ? digits : `55${digits}`;
-    const msg = encodeURIComponent("Olá! Vi um vídeo seu e gostaria de saber mais sobre o seu trabalho.");
-    return { href: `https://wa.me/${number}?text=${msg}`, isWa: true };
+    const href = buildWhatsAppLink(whatsapp, "Olá! Vi um vídeo seu e gostaria de saber mais sobre o seu trabalho.");
+    return { href, isWa: true };
   }
   return { href: `/${slug}#agendar`, isWa: false };
 }
@@ -128,7 +127,7 @@ export default function ContentSection({ articles, videos, slug, whatsapp }: Con
   if (articles.length === 0 && videos.length === 0) return null;
 
   return (
-    <section id="content" className="py-16 md:py-24">
+    <>
       <div className="container mx-auto px-4">
         <div className="max-w-3xl mx-auto text-center mb-12">
           <h2 className="font-heading text-3xl md:text-4xl font-bold text-foreground mb-4">
@@ -231,6 +230,6 @@ export default function ContentSection({ articles, videos, slug, whatsapp }: Con
           </div>
         )}
       </div>
-    </section>
+    </>
   );
 }

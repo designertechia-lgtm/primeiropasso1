@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { DEMO_PROFESSIONAL } from "@/data/demoProfessional";
+import { buildWhatsAppLink } from "@/lib/utils";
 
 type PhotoStyle = "portrait" | "circle" | "square" | "horizontal";
 
@@ -56,7 +57,7 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
   const displayTitle = title || DEMO_PROFESSIONAL.hero_title;
   const displaySubtitle = subtitle || DEMO_PROFESSIONAL.hero_subtitle;
   const whatsappLink = whatsapp
-    ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=Olá! Gostaria de agendar um horário.`
+    ? buildWhatsAppLink(whatsapp, "Olá! Gostaria de agendar um horário.")
     : "#";
 
   const isDefaultBg = !heroBgUrl; // usando fallback, sem bg customizado
@@ -100,7 +101,7 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
         )}
       </>
       <div className={`absolute inset-0 bg-gradient-to-br from-primary/10 via-background/60 to-secondary/10 ${isDefaultBg ? "opacity-20" : "opacity-50"}`} />
-      <div className="container mx-auto px-4 pt-28 pb-16 md:pt-36 md:pb-24 relative min-h-[90vh] flex items-center justify-center">
+      <div className="container mx-auto px-4 pt-28 pb-16 md:pt-36 md:pb-24 relative min-h-[90dvh] flex items-center justify-center">
         <div className="flex flex-col lg:flex-row items-center justify-between gap-10 lg:gap-16 w-full max-w-6xl">
           {/* Profile Photo - Hero Protagonist */}
           {(() => {

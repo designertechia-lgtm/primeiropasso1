@@ -79,8 +79,8 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
   };
 
   return (
-    <section id="about" className="scroll-mt-20 py-20 md:py-32 relative overflow-hidden bg-background">
-      {/* Decorative background elements */}
+    <>
+      {/* Decorative background elements (fundo/scroll-mt/id vêm do <Section>) */}
       <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-accent/5 rounded-full blur-3xl translate-y-1/3 -translate-x-1/3 pointer-events-none" />
 
@@ -264,6 +264,6 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
           </div>
         </div>
       </div>
-    </section>
+    </>
   );
 }

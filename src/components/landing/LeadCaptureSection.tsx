@@ -1,5 +1,6 @@
 import { MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { buildWhatsAppLink } from "@/lib/utils";
 
 interface LeadCaptureSectionProps {
   slug: string;
@@ -8,7 +9,7 @@ interface LeadCaptureSectionProps {
 
 export default function LeadCaptureSection({ slug, whatsapp }: LeadCaptureSectionProps) {
   const whatsappLink = whatsapp
-    ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent("Olá! Gostaria de agendar um horário.")}`
+    ? buildWhatsAppLink(whatsapp, "Olá! Gostaria de agendar um horário.")
     : null;
 
   return (

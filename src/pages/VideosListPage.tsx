@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ArrowLeft, Play, MessageCircle, Calendar, Lock, Share2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { buildWhatsAppLink } from "@/lib/utils";
 
 function hexToHSL(hex: string): string | null {
   const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -67,7 +68,7 @@ function VideoCard({ video, whatsapp, slug, isDraft }: { video: Video; whatsapp?
   const thumbnail = video.thumbnail_url || getYoutubeThumbnail(video.embed_url);
 
   const waLink = whatsapp
-    ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent("Olá! Vi um vídeo seu e gostaria de saber mais sobre o seu trabalho.")}`
+    ? buildWhatsAppLink(whatsapp, "Olá! Vi um vídeo seu e gostaria de saber mais sobre o seu trabalho.")
     : `/${slug}#agendar`;
   const isWa = !!whatsapp;
   const videoPageUrl = `${window.location.origin}/${slug}/video/${video.id}`;

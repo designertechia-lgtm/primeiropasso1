@@ -114,3 +114,33 @@ export function formatPhone(raw: string): string {
 export function unformatPhone(formatted: string): string {
   return formatted.replace(/\D/g, "");
 }
+
+/**
+ * Normaliza um telefone brasileiro para o formato canônico de discagem:
+ * apenas dígitos e SEMPRE com o código do país "55".
+ *
+ * Sem o "55" o WhatsApp interpreta o DDD como código de país
+ * (ex.: DDD 49 vira +49 Alemanha → "número não está no WhatsApp").
+ * É idempotente: se já tiver o 55, mantém; nunca duplica.
+ *
+ * - 12 díg. (55 + DDD + fixo) ou 13 díg. (55 + DDD + 9 + celular) iniciando em 55 → já tem país
+ * - 10/11 díg. (DDD + número) ou qualquer outro tamanho → prefixa 55
+ *   (cobre o caso-armadilha do DDD 55 de Santa Maria, que só é "país" com 12/13 díg.)
+ * - vazio → retorna "" (chamadores devem checar antes de montar link)
+ */
+export function toWhatsAppNumber(raw: string | null | undefined): string {
+  const digits = (raw ?? "").replace(/\D/g, "");
+  if (!digits) return "";
+  if ((digits.length === 12 || digits.length === 13) && digits.startsWith("55")) {
+    return digits;
+  }
+  return `55${digits}`;
+}
+
+/**
+ * Monta o link wa.me com o código do país garantido (via toWhatsAppNumber)
+ * e a mensagem sempre encodada. Fonte única para todos os CTAs de WhatsApp.
+ */
+export function buildWhatsAppLink(raw: string, message: string): string {
+  return `https://wa.me/${toWhatsAppNumber(raw)}?text=${encodeURIComponent(message)}`;
+}

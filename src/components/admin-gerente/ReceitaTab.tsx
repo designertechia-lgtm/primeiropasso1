@@ -23,6 +23,7 @@ import {
 } from "@/hooks/useOwnerStats";
 import { Download } from "lucide-react";
 import { exportToCsv } from "@/lib/exportUtils";
+import { buildWhatsAppLink } from "@/lib/utils";
 
 const PERIODS = [
   { label: "Últimos 3 meses", value: 3 },
@@ -57,12 +58,11 @@ const monthLabel = (iso: string) => {
 };
 
 function buildWhatsappLink(sub: OverdueSubscriber): string | null {
-  const raw = (sub.whatsapp ?? sub.phone ?? "").replace(/\D/g, "");
-  if (!raw) return null;
-  const number = raw.length <= 11 ? `55${raw}` : raw;
+  const raw = sub.whatsapp ?? sub.phone ?? "";
+  if (!raw.replace(/\D/g, "")) return null;
   const name = sub.full_name?.split(" ")[0] ?? "";
   const msg = `Olá ${name}, notamos que sua assinatura do PrimeiroPasso está em atraso há ${sub.days_overdue} dia(s). Posso te ajudar a regularizar?`;
-  return `https://wa.me/${number}?text=${encodeURIComponent(msg)}`;
+  return buildWhatsAppLink(raw, msg);
 }
 
 export default function ReceitaTab() {

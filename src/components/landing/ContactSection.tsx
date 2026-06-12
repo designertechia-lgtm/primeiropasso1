@@ -1,6 +1,7 @@
 import { MessageCircle, Phone, Mail, Instagram, Linkedin, Facebook } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TikTokIcon } from "@/components/icons/TikTokIcon";
+import { buildWhatsAppLink } from "@/lib/utils";
 
 interface ContactSectionProps {
   title?: string;
@@ -34,14 +35,14 @@ export default function ContactSection({
   onWhatsAppClick,
 }: ContactSectionProps) {
   const whatsappLink = whatsapp
-    ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent("Olá! Gostaria de agendar um horário.")}`
+    ? buildWhatsAppLink(whatsapp, "Olá! Gostaria de agendar um horário.")
     : null;
 
   const hasSecondary = phone || email || instagram || linkedin || tiktok || facebook;
   const hasAnyContact = whatsapp || hasSecondary;
 
   return (
-    <section className="py-16 md:py-24 bg-primary/5">
+    <>
       <div className="container mx-auto px-4">
         <div className="max-w-xl mx-auto text-center">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-6">
@@ -144,6 +145,6 @@ export default function ContactSection({
           </div>
         </div>
       </div>
-    </section>
+    </>
   );
 }

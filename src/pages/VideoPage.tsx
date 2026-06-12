@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ArrowLeft, Play, MessageCircle, Calendar, Share2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { buildWhatsAppLink } from "@/lib/utils";
 
 function hexToHSL(hex: string): string | null {
   const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -105,7 +106,7 @@ export default function VideoPage() {
   };
 
   const waLink = professional?.whatsapp
-    ? `https://wa.me/${professional.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent("Olá! Vi um vídeo seu e gostaria de saber mais sobre o seu trabalho.")}`
+    ? buildWhatsAppLink(professional.whatsapp, "Olá! Vi um vídeo seu e gostaria de saber mais sobre o seu trabalho.")
     : `/${slug}#agendar`;
 
   const name = (professional as any)?.full_name || "Profissional";

@@ -64,9 +64,8 @@ export default function PainSection({ title, subtitle, items }: PainSectionProps
   const displayItems = (items && items.length > 0) ? items : DEFAULT_ITEMS;
 
   return (
-    <section className="py-20 md:py-32 relative overflow-hidden bg-background">
-      {/* Background Dinâmico */}
-      <div className="absolute inset-0 bg-muted/20" />
+    <>
+      {/* Auras decorativas (o fundo base vem do <Section> via zebra) */}
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-[100px] -z-10 opacity-70 animate-pulse" style={{ animationDuration: '8s' }} />
       <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-accent/10 rounded-full blur-[100px] -z-10 opacity-70 animate-pulse" style={{ animationDuration: '10s' }} />
 
@@ -108,6 +107,6 @@ export default function PainSection({ title, subtitle, items }: PainSectionProps
           })}
         </div>
       </div>
-    </section>
+    </>
   );
 }

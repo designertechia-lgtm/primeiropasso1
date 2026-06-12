@@ -20,6 +20,7 @@ import AboutSection from "@/components/landing/AboutSection";
 import SolutionSection from "@/components/landing/SolutionSection";
 import PainSection from "@/components/landing/PainSection";
 import ContactSection from "@/components/landing/ContactSection";
+import Section from "@/components/landing/Section";
 import { buildLandingVars, getFontScale, FONTS, FONT_SIZES, GOOGLE_FONTS_URL } from "@/lib/landing/buildLandingVars";
 import GenerateAboutVideoDialog from "@/components/admin/landing/GenerateAboutVideoDialog";
 
@@ -573,22 +574,27 @@ export default function AdminLandingPage() {
             </SectionBlock>
 
             <SectionBlock label="Dores" icon={AlertCircle} active={activeSection === "dores"} onClick={() => selectSection("dores")}>
+              <Section tone="base">
               <PainSection
                 title={painTitle || undefined}
                 subtitle={painSubtitle || undefined}
                 items={painItems.length > 0 ? painItems : undefined}
               />
+              </Section>
             </SectionBlock>
 
             <SectionBlock label="Solução" icon={Lightbulb} active={activeSection === "solucao"} onClick={() => selectSection("solucao")}>
+              <Section tone="alt">
               <SolutionSection
                 title={solutionTitle || undefined}
                 subtitle={solutionSubtitle || undefined}
                 items={solutionItems.length > 0 ? solutionItems : undefined}
               />
+              </Section>
             </SectionBlock>
 
             <SectionBlock label="Sobre" icon={BookOpen} active={activeSection === "sobre"} onClick={() => selectSection("sobre")}>
+              <Section tone="base">
               <AboutSection
                 title={aboutTitle || undefined}
                 name={name}
@@ -599,6 +605,7 @@ export default function AdminLandingPage() {
                 aboutVideoUrl={aboutVideoUrl}
                 approaches={approaches}
               />
+              </Section>
             </SectionBlock>
 
             <SectionBlock label="Cores" icon={Palette} active={activeSection === "cores"} onClick={() => selectSection("cores")}>
@@ -629,6 +636,7 @@ export default function AdminLandingPage() {
             </SectionBlock>
 
             <SectionBlock label="Contatos" icon={MessageCircle} active={activeSection === "contatos"} onClick={() => selectSection("contatos")}>
+              <Section tone="accent">
               <ContactSection
                 title={contactTitle || undefined}
                 subtitle={contactSubtitle || undefined}
@@ -640,6 +648,7 @@ export default function AdminLandingPage() {
                 tiktok={contactTiktok || undefined}
                 facebook={contactFacebook || undefined}
               />
+              </Section>
             </SectionBlock>
 
           </div>

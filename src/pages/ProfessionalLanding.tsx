@@ -11,6 +11,8 @@ import ContentSection from "@/components/landing/ContentSection";
 import ContactSection from "@/components/landing/ContactSection";
 import LandingFooter from "@/components/landing/LandingFooter";
 import { buildLandingVars, getFontScale, GOOGLE_FONTS_URL } from "@/lib/landing/buildLandingVars";
+import Section from "@/components/landing/Section";
+import { zebraTone } from "@/lib/landing/sections";
 
 export default function ProfessionalLanding({ slugOverride }: { slugOverride?: string }) {
   const { slug: paramSlug } = useParams<{ slug: string }>();
@@ -158,6 +160,61 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
 
   const name = (professional as any).full_name || "Profissional";
 
+  // ContentSection se esconde quando não há artigos/vídeos; guardamos a inclusão aqui também
+  // para a zebra não criar uma faixa vazia e a alternância de fundo seguir certa.
+  const hasContent = articles.length > 0 || videos.length > 0;
+
+  // Seções de conteúdo entre o Hero e o Contato. A zebra alterna o fundo pela POSIÇÃO na lista
+  // (preparado para a reordenação da Fase 1). Hero e Contato têm tom próprio, fora da alternância.
+  // Ver _docs/PLANO_LANDING_PAGES.md (Fase 0).
+  const contentSections: Array<{ key: string; id?: string; node: React.ReactNode }> = [
+    {
+      key: "pain",
+      node: (
+        <PainSection
+          title={(professional as any).pain_title ?? undefined}
+          subtitle={(professional as any).pain_subtitle ?? undefined}
+          items={(professional as any).pain_items ?? undefined}
+        />
+      ),
+    },
+    {
+      key: "solution",
+      node: (
+        <SolutionSection
+          title={(professional as any).solution_title ?? undefined}
+          subtitle={(professional as any).solution_subtitle ?? undefined}
+          items={(professional as any).solution_items ?? undefined}
+        />
+      ),
+    },
+    {
+      key: "about",
+      id: "about",
+      node: (
+        <AboutSection
+          title={(professional as any).about_title ?? undefined}
+          name={name}
+          bio={professional.bio ?? undefined}
+          crp={professional.crp ?? undefined}
+          photoUrl={professional.photo_url ?? undefined}
+          aboutImageUrl={professional.about_image_url ?? undefined}
+          aboutVideoUrl={(professional as any).about_video_url ?? undefined}
+          approaches={professional.approaches ?? undefined}
+        />
+      ),
+    },
+    ...(hasContent
+      ? [{
+          key: "content",
+          id: "content",
+          node: (
+            <ContentSection articles={articles} videos={videos} slug={professional.slug} whatsapp={professional.whatsapp} />
+          ),
+        }]
+      : []),
+  ];
+
   return (
     <div className={`min-h-screen bg-background ${dark ? 'dark' : ''}`} style={customStyles as React.CSSProperties}>
       {/* Carrega as fontes que não vêm no index.html (mesmo set do preview do editor) */}
@@ -185,39 +242,25 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         photoStyle={(professional as any).photo_style ?? "portrait"}
         photoFit={(professional as any).photo_fit ?? "contain"}
       />
-      <PainSection
-        title={(professional as any).pain_title ?? undefined}
-        subtitle={(professional as any).pain_subtitle ?? undefined}
-        items={(professional as any).pain_items ?? undefined}
-      />
-      <SolutionSection
-        title={(professional as any).solution_title ?? undefined}
-        subtitle={(professional as any).solution_subtitle ?? undefined}
-        items={(professional as any).solution_items ?? undefined}
-      />
-      <AboutSection
-        title={(professional as any).about_title ?? undefined}
-        name={name}
-        bio={professional.bio ?? undefined}
-        crp={professional.crp ?? undefined}
-        photoUrl={professional.photo_url ?? undefined}
-        aboutImageUrl={professional.about_image_url ?? undefined}
-        aboutVideoUrl={(professional as any).about_video_url ?? undefined}
-        approaches={professional.approaches ?? undefined}
-      />
-      <ContentSection articles={articles} videos={videos} slug={professional.slug} whatsapp={professional.whatsapp} />
-      <ContactSection
-        title={(professional as any).contact_title ?? undefined}
-        subtitle={(professional as any).contact_subtitle ?? undefined}
-        whatsapp={professional.whatsapp ?? undefined}
-        phone={(professional as any).phone ?? undefined}
-        email={(professional as any).email ?? undefined}
-        instagram={(professional as any).instagram ?? undefined}
-        linkedin={(professional as any).linkedin ?? undefined}
-        tiktok={(professional as any).tiktok ?? undefined}
-        facebook={(professional as any).facebook ?? undefined}
-        onWhatsAppClick={handleCtaClick}
-      />
+      {contentSections.map((s, i) => (
+        <Section key={s.key} id={s.id} tone={zebraTone(i)}>
+          {s.node}
+        </Section>
+      ))}
+      <Section id="contact" tone="accent">
+        <ContactSection
+          title={(professional as any).contact_title ?? undefined}
+          subtitle={(professional as any).contact_subtitle ?? undefined}
+          whatsapp={professional.whatsapp ?? undefined}
+          phone={(professional as any).phone ?? undefined}
+          email={(professional as any).email ?? undefined}
+          instagram={(professional as any).instagram ?? undefined}
+          linkedin={(professional as any).linkedin ?? undefined}
+          tiktok={(professional as any).tiktok ?? undefined}
+          facebook={(professional as any).facebook ?? undefined}
+          onWhatsAppClick={handleCtaClick}
+        />
+      </Section>
       <LandingFooter professionalName={name} whatsapp={professional.whatsapp ?? undefined} />
     </div>
   );

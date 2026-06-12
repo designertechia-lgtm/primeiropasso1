@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Leaf, Eye, EyeOff } from "lucide-react";
+import { formatPhone, toWhatsAppNumber } from "@/lib/utils";
 
 export default function Cadastro() {
   const [fullName, setFullName] = useState("");
@@ -55,7 +56,7 @@ export default function Cadastro() {
       email,
       password,
       options: {
-        data: { full_name: fullName, phone, role: "professional", slug: normalizedSlug, ref_slug: refSlug || undefined },
+        data: { full_name: fullName, phone: toWhatsAppNumber(phone), role: "professional", slug: normalizedSlug, ref_slug: refSlug || undefined },
         emailRedirectTo: window.location.origin,
       },
     });
@@ -110,9 +111,10 @@ export default function Cadastro() {
               <Input
                 id="phone"
                 type="tel"
-                placeholder="5548999999999 (com DDD, só números)"
+                placeholder="48 9 9999-9999 (com DDD)"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
+                onChange={(e) => setPhone(e.target.value)}
+                onBlur={(e) => setPhone(formatPhone(e.target.value))}
                 disabled={loading}
                 autoComplete="tel"
                 required

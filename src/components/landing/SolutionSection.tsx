@@ -66,9 +66,8 @@ export default function SolutionSection({ title, subtitle, items }: SolutionSect
   const displayItems = (items && items.length > 0) ? items : DEFAULT_ITEMS;
 
   return (
-    <section className="py-20 md:py-32 relative overflow-hidden bg-background">
-      {/* Background Dinâmico - Auras Suaves */}
-      <div className="absolute inset-0 bg-muted/30" />
+    <>
+      {/* Auras decorativas (o fundo base vem do <Section> via zebra) */}
       <div className="absolute -top-40 right-1/4 w-[500px] h-[500px] bg-primary/10 rounded-full blur-[120px] -z-10 opacity-60 animate-pulse" style={{ animationDuration: '12s' }} />
       <div className="absolute bottom-0 left-1/4 w-[400px] h-[400px] bg-accent/10 rounded-full blur-[100px] -z-10 opacity-60 animate-pulse" style={{ animationDuration: '9s' }} />
 
@@ -113,6 +112,6 @@ export default function SolutionSection({ title, subtitle, items }: SolutionSect
           })}
         </div>
       </div>
-    </section>
+    </>
   );
 }

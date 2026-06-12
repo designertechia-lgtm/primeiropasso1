@@ -1,5 +1,6 @@
 import { Leaf, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { buildWhatsAppLink } from "@/lib/utils";
 
 interface LandingFooterProps {
   professionalName?: string;
@@ -8,11 +9,11 @@ interface LandingFooterProps {
 
 export default function LandingFooter({ professionalName, whatsapp }: LandingFooterProps) {
   const whatsappLink = whatsapp
-    ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=Olá! Gostaria de agendar um horário.`
+    ? buildWhatsAppLink(whatsapp, "Olá! Gostaria de agendar um horário.")
     : "#";
 
   return (
-    <footer id="contact" className="bg-card text-card-foreground border-t py-16">
+    <footer className="bg-card text-card-foreground border-t py-16 md:py-20">
       <div className="container mx-auto px-4">
         <div className="max-w-2xl mx-auto text-center space-y-6">
           <Leaf className="h-10 w-10 mx-auto opacity-80" />
@@ -24,7 +25,7 @@ export default function LandingFooter({ professionalName, whatsapp }: LandingFoo
           </p>
           <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
             <Button size="lg" variant="secondary" className="text-base mt-2">
-              Agenda
+              Agendar
             </Button>
           </a>
         </div>

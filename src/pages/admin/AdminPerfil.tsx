@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
-import { formatPhone, unformatPhone } from "@/lib/utils";
+import { formatPhone, toWhatsAppNumber } from "@/lib/utils";
 
 export default function AdminPerfil() {
   const { user, profile } = useAuth();
@@ -99,8 +99,8 @@ export default function AdminPerfil() {
         full_name: fullName,
         slug: slug || null,
         crp,
-        phone: phone ? unformatPhone(phone) : null,
-        whatsapp: phone ? unformatPhone(phone) : null,
+        phone: phone ? toWhatsAppNumber(phone) : null,
+        whatsapp: phone ? toWhatsAppNumber(phone) : null,
         email: email || null,
         address: address || null,
         photo_url: photoUrl || null,

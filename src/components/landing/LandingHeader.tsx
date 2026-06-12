@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Leaf, Menu, X, Moon, Sun } from "lucide-react";
 import { useState } from "react";
+import { buildWhatsAppLink } from "@/lib/utils";
 
 interface LandingHeaderProps {
   professionalName?: string;
@@ -18,7 +19,7 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
   const [menuOpen, setMenuOpen] = useState(false);
 
   const whatsappLink = whatsapp
-    ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=Olá! Gostaria de agendar um horário.`
+    ? buildWhatsAppLink(whatsapp, "Olá! Gostaria de agendar um horário.")
     : "#";
 
   const scrollTo = (id: string) => {
@@ -62,7 +63,7 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
           )}
           {whatsapp && (
             <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
-              <Button size="sm">Agenda</Button>
+              <Button size="sm">Agendar</Button>
             </a>
           )}
         </nav>
@@ -92,7 +93,7 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
             <Link to={slug ? `/login?ref=${slug}` : "/login"} className="block"><Button variant="outline" size="sm" className="w-full">Entrar</Button></Link>
           )}
           {whatsapp && (
-            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="block"><Button size="sm" className="w-full">Agenda</Button></a>
+            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="block"><Button size="sm" className="w-full">Agendar</Button></a>
           )}
         </div>
       )}

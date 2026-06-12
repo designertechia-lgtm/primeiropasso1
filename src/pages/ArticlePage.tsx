@@ -12,6 +12,7 @@ import {
   CarouselPrevious,
 } from "@/components/ui/carousel";
 import html2canvas from "html2canvas";
+import { buildWhatsAppLink } from "@/lib/utils";
 
 export default function ArticlePage() {
   const { slug, articleSlug } = useParams<{ slug: string; articleSlug: string }>();
@@ -115,7 +116,7 @@ export default function ArticlePage() {
 
   const whatsappNumber = professional?.whatsapp?.replace(/\D/g, "") ?? "";
   const whatsappLink = whatsappNumber
-    ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent("Olá! Gostaria de agendar um horário.")}`
+    ? buildWhatsAppLink(professional!.whatsapp!, "Olá! Gostaria de agendar um horário.")
     : null;
   const siteLink = `https://primeiropasso.online/${slug}`;
 

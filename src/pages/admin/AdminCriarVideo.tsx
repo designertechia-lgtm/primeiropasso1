@@ -288,6 +288,10 @@ export default function AdminCriarVideo() {
   const { data: professional } = useProfessional();
   const [searchParams] = useSearchParams();
   const editVideoId = searchParams.get("edit");
+  // Tier pré-selecionado via URL (?model=) — usado pelo Axel ao preparar roteiro por molde
+  const tierParam = searchParams.get("model");
+  const initialTier: VideoModel | null =
+    tierParam === "gratuito" || tierParam === "premium" || tierParam === "pro" ? tierParam : null;
 
   // Inicializa do localStorage para persistir entre navegações
   const saved = useRef(editVideoId ? null : loadSaved()).current;
@@ -299,7 +303,7 @@ export default function AdminCriarVideo() {
   const [plataformaAlvo, setPlataformaAlvo] = useState<PlataformaAlvo>(saved?.plataformaAlvo ?? "geral");
   const [iaLoading, setIaLoading]   = useState(false);
   const [script, setScript]         = useState<Script | null>(saved?.script ?? null);
-  const [videoModel, setVideoModel] = useState<VideoModel>(saved?.videoModel ?? "gratuito");
+  const [videoModel, setVideoModel] = useState<VideoModel>(initialTier ?? saved?.videoModel ?? "gratuito");
   const [estiloIA, setEstiloIA]     = useState<EstiloIA>(saved?.estiloIA ?? "cinematico");
   const [voiceMode, setVoiceMode]   = useState<VoiceMode>(saved?.voiceMode ?? "edge");
   const [edgeVoice, setEdgeVoice]   = useState<string>(saved?.edgeVoice ?? "pt-BR-FranciscaNeural");

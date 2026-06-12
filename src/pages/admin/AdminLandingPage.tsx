@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfessional } from "@/hooks/useProfessional";
 import { useQueryClient } from "@tanstack/react-query";
@@ -21,6 +21,7 @@ import SolutionSection from "@/components/landing/SolutionSection";
 import PainSection from "@/components/landing/PainSection";
 import ContactSection from "@/components/landing/ContactSection";
 import { buildLandingVars, getFontScale, FONTS, FONT_SIZES, GOOGLE_FONTS_URL } from "@/lib/landing/buildLandingVars";
+import GenerateAboutVideoDialog from "@/components/admin/landing/GenerateAboutVideoDialog";
 
 // ── AI helper ─────────────────────────────────────────────
 async function callGenerateText(field: string, context: { name: string; crp?: string; specialty?: string }) {
@@ -202,6 +203,19 @@ export default function AdminLandingPage() {
   const [contactFacebook, setContactFacebook] = useState("");
 
   const [activeSection, setActiveSection] = useState<Section>("hero");
+
+  // Vídeo institucional com IA (seção Sobre) + deep-link do Axel (?gerarVideoSobre=<draft>&model=<tier>)
+  const [searchParams] = useSearchParams();
+  const axelDraftId = searchParams.get("gerarVideoSobre");
+  const axelTierParam = searchParams.get("model");
+  const axelTier = axelTierParam === "pro" ? "pro" as const : axelTierParam === "premium" ? "premium" as const : null;
+  const [aboutVideoDialogOpen, setAboutVideoDialogOpen] = useState(false);
+  useEffect(() => {
+    if (axelDraftId) {
+      setActiveSection("sobre");
+      setAboutVideoDialogOpen(true);
+    }
+  }, [axelDraftId]);
   const [saving, setSaving] = useState(false);
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
@@ -975,15 +989,27 @@ export default function AdminLandingPage() {
 
               <div className="space-y-4 border rounded-xl p-4 bg-muted/20">
                 <div className="space-y-2">
-                  <Label htmlFor="aboutVideoUrl">Vídeo Institucional</Label>
-                  <Input 
-                    id="aboutVideoUrl" 
-                    value={aboutVideoUrl} 
-                    onChange={(e) => setAboutVideoUrl(e.target.value)} 
-                    placeholder="Ex: https://www.youtube.com/watch?v=..." 
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor="aboutVideoUrl">Vídeo Institucional</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 h-7 text-xs"
+                      onClick={() => setAboutVideoDialogOpen(true)}
+                    >
+                      <Sparkles className="h-3 w-3 text-primary" />
+                      Gerar com IA
+                    </Button>
+                  </div>
+                  <Input
+                    id="aboutVideoUrl"
+                    value={aboutVideoUrl}
+                    onChange={(e) => setAboutVideoUrl(e.target.value)}
+                    placeholder="Ex: https://www.youtube.com/watch?v=..."
                   />
                   <p className="text-xs text-muted-foreground">
-                    Cole o link do YouTube, Vimeo ou faça o upload direto do seu computador abaixo.
+                    Gere com IA a partir da sua foto, cole o link do YouTube/Vimeo ou faça upload abaixo.
                   </p>
                 </div>
                 <div className="space-y-2 pt-2 border-t">
@@ -1302,6 +1328,20 @@ export default function AdminLandingPage() {
 
         </div>
       </div>
+
+      {/* Vídeo institucional com IA — montado no nível da página pra
+          sobreviver à troca de seção durante a geração (polling) */}
+      {professional && (
+        <GenerateAboutVideoDialog
+          open={aboutVideoDialogOpen}
+          onOpenChange={setAboutVideoDialogOpen}
+          professionalSlug={(professional as any).slug}
+          photoUrl={aboutImageUrl || (professional as any).photo_url || null}
+          onDone={setAboutVideoUrl}
+          initialDraftId={axelDraftId}
+          initialTier={axelTier}
+        />
+      )}
     </div>
   );
 }

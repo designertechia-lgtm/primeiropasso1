@@ -157,6 +157,21 @@ const tools = [
       required: ["appointment_ids"],
     },
   },
+  {
+    name: "preparar_video",
+    description:
+      "Prepara um VÍDEO pro profissional: gera o roteiro com IA no molde escolhido e deixa PRONTO no estúdio de vídeo — lá ele revisa, escolhe a voz e confirma a geração (créditos cobrados só na geração, com confirmação). ANTES de chamar, SEMPRE pergunte o molde com os custos: 'gratis' (imagens de banco + narração, 0 créditos), 'premium' (cinematográfico com IA Kling, ~8-16 créditos) ou 'pro' (roteiro Opus + Kling topo de linha, ~16-32 créditos). Chame quando pedir 'quero um vídeo', 'faz um reels sobre X', 'vídeo pra divulgar meu trabalho'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tema: { type: "string", description: "Tema do vídeo. Ex.: 'ansiedade no trabalho', 'benefícios da terapia de casal'." },
+        molde: { type: "string", enum: ["gratis", "premium", "pro"], description: "Molde CONFIRMADO pelo profissional." },
+        tom: { type: "string", enum: ["acolhedor", "educativo", "provocador", "motivacional"], description: "Tom do roteiro (padrão acolhedor)." },
+        duracao: { type: "string", enum: ["30s", "45s", "60s"], description: "Duração alvo (padrão 45s)." },
+      },
+      required: ["tema", "molde"],
+    },
+  },
   // ── TRÁFEGO PAGO (Especialista interno) ─────────────────────────────────────
   {
     name: "criar_campanha_ads",
@@ -287,7 +302,7 @@ Você gerencia a agenda dele. Para qualquer pedido sobre agendamentos:
 3. Remarcar e avisar o paciente automaticamente ainda estão sendo construídos — seja honesto, não prometa o que ainda não faz.
 
 ━━━ REGRAS ABSOLUTAS ━━━
-• Você EXECUTA, não só orienta: pode gerar e aplicar conteúdo de perfil/landing e criar artigos — SEMPRE mostrando o resultado e pedindo confirmação explícita ANTES de gravar. Vídeo ainda não tem ferramenta sua: oriente o caminho (Redes Sociais > Criar Vídeo).
+• Você EXECUTA, não só orienta: pode gerar e aplicar conteúdo de perfil/landing, criar artigos e preparar vídeos (\`preparar_video\`) — SEMPRE mostrando o resultado e pedindo confirmação explícita ANTES de gravar ou gastar créditos.
 • NÃO invente recursos, telas, preços ou botões. Fundamente em \`consultar_secao\`.
 • VALOR PRIMEIRO: ajude de verdade — o consumo é consequência, não empurrão. 1 pergunta/CTA por resposta. Se ele disser "não agora", registre com \`salvar_memoria\` e recue; não insista no mesmo assunto.
 • Brevidade sempre. Reconheça o que ele trouxe antes de responder.
@@ -309,7 +324,18 @@ APÓS CRIAR: chame \`abrir_pagina('/admin/trafego-pago')\` para que ele revise o
 
 CONSULTAR/ATUALIZAR campanhas: use \`consultar_campanhas_ads\` / \`atualizar_campanha_ads\`. Status "aprovada" = ele revisou e quer publicar; "pausada" = campanha ativa pausada; "arquivada" = descartada.
 
-NUNCA crie sem confirmar custo. NUNCA prometa que a campanha vai ao ar sozinha — publicação é manual no Google Ads Editor.`
+NUNCA crie sem confirmar custo. NUNCA prometa que a campanha vai ao ar sozinha — publicação é manual no Google Ads Editor.
+
+━━━ CRIAÇÃO DE VÍDEO (3 moldes) ━━━
+Quando ele quiser vídeo (reels, divulgação, conteúdo), apresente os 3 moldes e PERGUNTE qual:
+• GRÁTIS — imagens de banco + narração, sai agora, 0 créditos. Bom pra manter constância.
+• PREMIUM — cinematográfico com IA (Kling), ~8-16 créditos conforme a duração. Roteiro caprichado.
+• PRO — roteiro com a IA mais avançada (Opus) + Kling topo de linha, ~16-32 créditos. O melhor disponível.
+Com tema + molde confirmados, chame \`preparar_video\`. O roteiro é GRÁTIS em qualquer molde — o crédito só é cobrado quando ele confirmar a GERAÇÃO no estúdio (a tela mostra o custo antes). Após a tool, chame \`abrir_pagina\` com a rota exata que ela devolver na instrucao.
+Os fluxos manuais (Redes Sociais > Criar Vídeo, Estúdio Viral) continuam existindo — se ele preferir fazer na mão, oriente o caminho.
+
+━━━ KIT DIVULGAÇÃO (molde PRO) ━━━
+Quando ele pedir pra "divulgar meu trabalho/serviço" de forma completa, ofereça o KIT: artigo (grátis) + vídeo PRO (~16-32 cr) + campanha de anúncio Google ou Meta (10 cr) + imagens dos criativos (1-2 cr). Apresente a SOMA transparente peça a peça ANTES ("kit completo: artigo grátis + vídeo ~16 + campanha 10 + imagens ~2 = ~28 créditos. Fecho?"). Com o OK, execute NA ORDEM, um de cada vez, confirmando cada entrega: 1) \`criar_artigo\` → 2) \`preparar_video\` molde pro → 3) campanha (\`criar_campanha_ads\` pra Google; Meta é pela tela ?tab=meta) → 4) criativos na própria campanha. Nunca dispare tudo de uma vez sem ele acompanhar.`
 }
 
 // =============================================
@@ -668,6 +694,72 @@ async function handleToolCall(
     return { erro: "campo deve ser 'nome' ou 'atividade'" }
   }
 
+  if (toolName === "preparar_video") {
+    const tema = (args.tema || "").toString().trim()
+    const molde = (args.molde || "").toString().trim()
+    if (!tema) return { erro: "tema_obrigatorio", instrucao: "Pergunte qual o tema do vídeo." }
+    if (!["gratis", "premium", "pro"].includes(molde)) {
+      return { erro: "molde_invalido", instrucao: "Pergunte o molde (gratis, premium ou pro) apresentando os custos antes." }
+    }
+
+    // A video-api identifica o profissional pelo slug
+    const { data: profV } = await supabaseAdmin
+      .from("professionals").select("slug").eq("id", professionalId).maybeSingle()
+    const slug = (profV as any)?.slug
+    if (!slug) {
+      return { erro: "sem_slug", instrucao: "Avise que o perfil ainda não tem página publicada — oriente a completar o perfil antes de criar vídeos." }
+    }
+
+    // URL pública hardcoded (serviço interno estável; não depender de env ausente)
+    const VIDEO_API = "https://video-api.primeiropasso.online"
+    // Molde PRO usa Opus no roteiro; premium/gratis seguem o Sonnet padrão da video-api
+    const model = molde === "pro" ? "claude-opus-4-8" : ""
+
+    try {
+      // 1. Gera o roteiro (grátis — assinatura; crédito só na geração do vídeo)
+      const rRes = await fetch(`${VIDEO_API}/gerar-roteiro`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          professional_slug: slug,
+          tema_sugerido: tema,
+          tom: (args.tom || "acolhedor").toString(),
+          duracao_alvo: (args.duracao || "45s").toString(),
+          plataforma: "instagram",
+          formato: "livre",
+          model,
+        }),
+      })
+      if (!rRes.ok) {
+        const err = await rRes.json().catch(() => ({}))
+        return { erro: `roteiro_falhou_${rRes.status}`, instrucao: `A geração do roteiro falhou (${err.detail ?? rRes.status}). Avise e sugira tentar de novo em instantes.` }
+      }
+      const roteiro = await rRes.json()
+
+      // 2. Salva como rascunho — vira o vídeo aberto no estúdio via ?edit=
+      const sRes = await fetch(`${VIDEO_API}/salvar-rascunho`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ professional_slug: slug, roteiro, format: "portrait" }),
+      })
+      if (!sRes.ok) {
+        return { erro: "rascunho_falhou", instrucao: "O roteiro saiu mas não consegui salvar o rascunho. Peça pra tentar de novo." }
+      }
+      const { draft_id } = await sRes.json()
+
+      const tier = molde === "gratis" ? "gratuito" : molde
+      return {
+        sucesso: true,
+        draft_id,
+        titulo: roteiro.titulo,
+        molde,
+        instrucao: `Roteiro "${roteiro.titulo}" pronto no estúdio (molde ${molde}). Chame abrir_pagina('/admin/redes-sociais?tab=criar-video&edit=${draft_id}&model=${tier}', título 'Estúdio de vídeo'). Diga que lá ele revisa o roteiro, escolhe a voz e confirma a geração — ${molde === "gratis" ? "sem custo" : "o custo em créditos aparece ANTES de confirmar"}.`,
+      }
+    } catch (e) {
+      return { erro: String(e), instrucao: "Avise que o estúdio de vídeo está indisponível agora; pra tentar em alguns minutos." }
+    }
+  }
+
   if (toolName === "abrir_pagina") {
     const rota = (args.rota || "").toString().trim()
     const titulo = (args.titulo || "").toString().trim() || "Abrir página"
@@ -679,7 +771,9 @@ async function handleToolCall(
       "/admin/clientes", "/admin/redes-sociais", "/admin/assinatura", "/admin/configuracoes",
       "/admin/trafego-pago", "/admin/trafego-pago?tab=relatorios", "/admin/redes-sociais?tab=artigos",
     ])
-    if (!rota.startsWith("/") || !rotasValidas.has(rota)) {
+    // Exceção dinâmica: estúdio de vídeo com rascunho preparado pelo preparar_video
+    const isEstudioEdit = /^\/admin\/redes-sociais\?tab=criar-video&edit=[0-9a-fA-F-]{36}(&model=(gratuito|premium|pro))?$/.test(rota)
+    if (!rota.startsWith("/") || (!rotasValidas.has(rota) && !isEstudioEdit)) {
       return {
         sucesso: false,
         erro: "rota_desconhecida",

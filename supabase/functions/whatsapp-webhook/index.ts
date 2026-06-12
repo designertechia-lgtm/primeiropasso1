@@ -466,6 +466,13 @@ serve(async (req) => {
       console.log(`[WEBHOOK] 📣 Lead veio de anúncio CTWA (sourceId=${adReply.sourceId ?? '?'}, campanha=${ctwaUtm.utm_campaign ?? 'não mapeada'})`)
     }
 
+    // 1.8. ORIGEM → Modo Conversão (IA assume) x Relacionamento (recado).
+    //       Sinais que chegam JUNTO da 1a mensagem: greeting do site (todos os botões da
+    //       landing mandam SITE_GREETING) ou anúncio Click-to-WhatsApp do Meta (adReply).
+    //       Sem sinal de campanha = contato orgânico/conhecido → a IA NÃO assume (a Daiane atende).
+    //       Vale só na CRIAÇÃO do lead; depois o switch é o agent_enabled (e #ativar/#ok).
+    const isFromCampaign = messageText.trim() === SITE_GREETING || !!adReply
+
     // 2. Upsert do lead (criar se não existe, atualizar se existe)
     const { data: existingLead } = await supabaseAdmin
       .from('leads')
@@ -510,8 +517,10 @@ serve(async (req) => {
           whatsapp: formattedNumber,
           pipeline_stage: 'em_conversa',
           last_message_at: new Date().toISOString(),
-          origin_platform: 'whatsapp',
-          agent_enabled: true,
+          origin_platform: isFromCampaign ? (adReply ? 'meta_ctwa' : 'site') : 'whatsapp',
+          // Modo Conversão só pra quem veio de campanha (site/anúncio). Resto entra
+          // em Modo Relacionamento (recado abaixo). A Daiane religa com #ativar.
+          agent_enabled: isFromCampaign,
           ...(ctwaUtm ? { utm: ctwaUtm } : {}),
         })
         .select('id')
@@ -539,6 +548,44 @@ serve(async (req) => {
         processed: false,
       })
     console.log(`[DEBUG] ✅ Mensagem salva (processed=false)`)
+
+    // 3.2. MODO RELACIONAMENTO — lead novo SEM origem de campanha: a IA não assume.
+    //       Manda um recado curto, registra e PARA (não vai pro menu/scheduler/agente).
+    //       O profissional atende manual; pode religar a IA com #ativar. Só dispara na
+    //       1a mensagem: a partir daí o lead já existe com agent_enabled=false (bloqueado acima).
+    if (!existingLead && !isFromCampaign) {
+      console.log('[FLUXO] Lead novo orgânico (sem campanha) → Modo Relacionamento (recado; IA não assume).')
+      const proFirst = (professional.full_name || 'o profissional').split(' ')[0]
+      const recado = `Oi! 💛 Sua mensagem chegou e ${proFirst} te responde por aqui assim que puder.`
+
+      const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
+      const evoKey = Deno.env.get('EVOLUTION_API_KEY')
+      if (evoUrl && evoKey && instanceName) {
+        try {
+          await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
+            method: 'POST',
+            headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ number: remoteJid, text: recado }),
+          })
+        } catch (e: any) {
+          console.error('[Modo Relacionamento] Erro Evolution:', e.message)
+        }
+      }
+
+      await supabaseAdmin.from('chat_messages').insert({
+        lead_id: leadId, role: 'assistant', content: recado, processed: true,
+      })
+      await supabaseAdmin
+        .from('chat_messages')
+        .update({ processed: true })
+        .eq('lead_id', leadId)
+        .eq('processed', false)
+
+      return new Response(JSON.stringify({ success: true, action: 'relationship_mode_greeting' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
 
     // 3.35. RESPOSTA A LEMBRETE 24h — Confirmar/Remarcar/Cancelar atualizam
     //       appointments.status + appointment_reminders.patient_response, sem invocar agente.

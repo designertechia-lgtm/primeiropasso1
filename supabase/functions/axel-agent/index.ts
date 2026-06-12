@@ -160,16 +160,17 @@ const tools = [
   {
     name: "preparar_video",
     description:
-      "Prepara um VÍDEO pro profissional: gera o roteiro com IA no molde escolhido e deixa PRONTO no estúdio de vídeo — lá ele revisa, escolhe a voz e confirma a geração (créditos cobrados só na geração, com confirmação). ANTES de chamar, SEMPRE pergunte o molde com os custos: 'gratis' (imagens de banco + narração, 0 créditos), 'premium' (cinematográfico com IA Kling, ~8-16 créditos) ou 'pro' (roteiro Opus + Kling topo de linha, ~16-32 créditos). Chame quando pedir 'quero um vídeo', 'faz um reels sobre X', 'vídeo pra divulgar meu trabalho'.",
+      "Prepara um VÍDEO pro profissional: gera o roteiro com IA no molde escolhido e deixa PRONTO na tela certa — lá ele revisa, escolhe a voz e confirma a geração (créditos cobrados só na geração, com confirmação). Dois tipos: 'conteudo' (reels/divulgação — abre no estúdio de vídeo) e 'institucional' (apresentação pessoal feita da FOTO dele, vai pra seção Sobre da página — abre no editor da landing; só moldes premium/pro pois a IA anima a foto). ANTES de chamar, SEMPRE pergunte o molde com os custos: 'gratis' (imagens de banco, 0 créditos; só tipo conteudo), 'premium' (IA Kling, ~8-16 créditos) ou 'pro' (roteiro Opus + Kling topo, ~16-32 créditos). Chame quando pedir 'quero um vídeo', 'reels sobre X', 'vídeo de apresentação pra minha página/seção sobre'.",
     input_schema: {
       type: "object",
       properties: {
-        tema: { type: "string", description: "Tema do vídeo. Ex.: 'ansiedade no trabalho', 'benefícios da terapia de casal'." },
-        molde: { type: "string", enum: ["gratis", "premium", "pro"], description: "Molde CONFIRMADO pelo profissional." },
-        tom: { type: "string", enum: ["acolhedor", "educativo", "provocador", "motivacional"], description: "Tom do roteiro (padrão acolhedor)." },
+        tipo: { type: "string", enum: ["conteudo", "institucional"], description: "'conteudo' = reels/divulgação (padrão). 'institucional' = apresentação pessoal da foto pra seção Sobre da landing." },
+        tema: { type: "string", description: "Tema do vídeo (obrigatório pra tipo conteudo). Ex.: 'ansiedade no trabalho'. No institucional é ignorado (usa a bio)." },
+        molde: { type: "string", enum: ["gratis", "premium", "pro"], description: "Molde CONFIRMADO pelo profissional. Institucional aceita só premium/pro." },
+        tom: { type: "string", enum: ["acolhedor", "educativo", "provocador", "motivacional"], description: "Tom do roteiro (padrão acolhedor; só tipo conteudo)." },
         duracao: { type: "string", enum: ["30s", "45s", "60s"], description: "Duração alvo (padrão 45s)." },
       },
-      required: ["tema", "molde"],
+      required: ["molde"],
     },
   },
   // ── TRÁFEGO PAGO (Especialista interno) ─────────────────────────────────────
@@ -332,6 +333,7 @@ Quando ele quiser vídeo (reels, divulgação, conteúdo), apresente os 3 moldes
 • PREMIUM — cinematográfico com IA (Kling), ~8-16 créditos conforme a duração. Roteiro caprichado.
 • PRO — roteiro com a IA mais avançada (Opus) + Kling topo de linha, ~16-32 créditos. O melhor disponível.
 Com tema + molde confirmados, chame \`preparar_video\`. O roteiro é GRÁTIS em qualquer molde — o crédito só é cobrado quando ele confirmar a GERAÇÃO no estúdio (a tela mostra o custo antes). Após a tool, chame \`abrir_pagina\` com a rota exata que ela devolver na instrucao.
+VÍDEO INSTITUCIONAL (seção Sobre): se ele quiser "vídeo de apresentação", "me apresentar na minha página", use \`preparar_video\` com tipo='institucional' — a IA escreve o roteiro a partir da bio e ANIMA A FOTO dele (movimento natural + narração + legendas; SEM sincronia labial — seja transparente). Só premium (~8 cr) ou pro (~16 cr). Ao concluir na tela, o vídeo entra sozinho na seção Sobre.
 Os fluxos manuais (Redes Sociais > Criar Vídeo, Estúdio Viral) continuam existindo — se ele preferir fazer na mão, oriente o caminho.
 
 ━━━ KIT DIVULGAÇÃO (molde PRO) ━━━
@@ -695,19 +697,26 @@ async function handleToolCall(
   }
 
   if (toolName === "preparar_video") {
+    const tipo = (args.tipo || "conteudo").toString().trim()
     const tema = (args.tema || "").toString().trim()
     const molde = (args.molde || "").toString().trim()
-    if (!tema) return { erro: "tema_obrigatorio", instrucao: "Pergunte qual o tema do vídeo." }
+    if (tipo === "conteudo" && !tema) return { erro: "tema_obrigatorio", instrucao: "Pergunte qual o tema do vídeo." }
     if (!["gratis", "premium", "pro"].includes(molde)) {
       return { erro: "molde_invalido", instrucao: "Pergunte o molde (gratis, premium ou pro) apresentando os custos antes." }
+    }
+    if (tipo === "institucional" && molde === "gratis") {
+      return { erro: "institucional_sem_gratis", instrucao: "O vídeo institucional anima a foto com IA — só existe em premium (~8 créditos) ou pro (~16). Pergunte qual ele prefere." }
     }
 
     // A video-api identifica o profissional pelo slug
     const { data: profV } = await supabaseAdmin
-      .from("professionals").select("slug").eq("id", professionalId).maybeSingle()
+      .from("professionals").select("slug, photo_url, about_image_url").eq("id", professionalId).maybeSingle()
     const slug = (profV as any)?.slug
     if (!slug) {
       return { erro: "sem_slug", instrucao: "Avise que o perfil ainda não tem página publicada — oriente a completar o perfil antes de criar vídeos." }
+    }
+    if (tipo === "institucional" && !(profV as any)?.photo_url && !(profV as any)?.about_image_url) {
+      return { erro: "sem_foto", instrucao: "O vídeo institucional é feito da FOTO dele e não há foto no perfil. Oriente a adicionar a foto em Perfil (ou na seção Sobre da landing) primeiro." }
     }
 
     // URL pública hardcoded (serviço interno estável; não depender de env ausente)
@@ -717,18 +726,22 @@ async function handleToolCall(
 
     try {
       // 1. Gera o roteiro (grátis — assinatura; crédito só na geração do vídeo)
-      const rRes = await fetch(`${VIDEO_API}/gerar-roteiro`, {
+      const endpoint = tipo === "institucional" ? "/gerar-roteiro-institucional" : "/gerar-roteiro"
+      const payload = tipo === "institucional"
+        ? { professional_slug: slug, duracao_alvo: (args.duracao || "40s").toString(), model }
+        : {
+            professional_slug: slug,
+            tema_sugerido: tema,
+            tom: (args.tom || "acolhedor").toString(),
+            duracao_alvo: (args.duracao || "45s").toString(),
+            plataforma: "instagram",
+            formato: "livre",
+            model,
+          }
+      const rRes = await fetch(`${VIDEO_API}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          professional_slug: slug,
-          tema_sugerido: tema,
-          tom: (args.tom || "acolhedor").toString(),
-          duracao_alvo: (args.duracao || "45s").toString(),
-          plataforma: "instagram",
-          formato: "livre",
-          model,
-        }),
+        body: JSON.stringify(payload),
       })
       if (!rRes.ok) {
         const err = await rRes.json().catch(() => ({}))
@@ -746,6 +759,16 @@ async function handleToolCall(
         return { erro: "rascunho_falhou", instrucao: "O roteiro saiu mas não consegui salvar o rascunho. Peça pra tentar de novo." }
       }
       const { draft_id } = await sRes.json()
+
+      if (tipo === "institucional") {
+        return {
+          sucesso: true,
+          draft_id,
+          titulo: roteiro.titulo,
+          molde,
+          instrucao: `Roteiro de apresentação "${roteiro.titulo}" pronto. Chame abrir_pagina('/admin/landing?gerarVideoSobre=${draft_id}&model=${molde}', título 'Vídeo da seção Sobre'). Diga que a tela abre com o roteiro carregado: ele revisa o texto, escolhe a voz e confirma a geração (custo em créditos visível antes). Ao terminar, o vídeo entra SOZINHO na seção Sobre da página dele. Lembre: a foto ganha movimento natural com narração — não é sincronia labial.`,
+        }
+      }
 
       const tier = molde === "gratis" ? "gratuito" : molde
       return {
@@ -771,9 +794,10 @@ async function handleToolCall(
       "/admin/clientes", "/admin/redes-sociais", "/admin/assinatura", "/admin/configuracoes",
       "/admin/trafego-pago", "/admin/trafego-pago?tab=relatorios", "/admin/redes-sociais?tab=artigos",
     ])
-    // Exceção dinâmica: estúdio de vídeo com rascunho preparado pelo preparar_video
+    // Exceções dinâmicas: rascunhos preparados pelo preparar_video
     const isEstudioEdit = /^\/admin\/redes-sociais\?tab=criar-video&edit=[0-9a-fA-F-]{36}(&model=(gratuito|premium|pro))?$/.test(rota)
-    if (!rota.startsWith("/") || (!rotasValidas.has(rota) && !isEstudioEdit)) {
+    const isVideoSobre = /^\/admin\/landing\?gerarVideoSobre=[0-9a-fA-F-]{36}(&model=(premium|pro))?$/.test(rota)
+    if (!rota.startsWith("/") || (!rotasValidas.has(rota) && !isEstudioEdit && !isVideoSobre)) {
       return {
         sucesso: false,
         erro: "rota_desconhecida",

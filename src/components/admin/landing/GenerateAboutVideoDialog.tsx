@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Sparkles, Loader2, Clapperboard, Crown, RefreshCw } from "lucide-react";
+import { Sparkles, Loader2, Clapperboard, Crown, RefreshCw, Mic, Square, CheckCircle2, RotateCcw } from "lucide-react";
 
 const VIDEO_API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
 
@@ -31,6 +31,55 @@ const EDGE_VOICES = [
 ];
 
 type Tier = "premium" | "pro";
+type VoiceMode = "neural" | "clone";
+
+// ── Gravador compacto de amostra de voz (pro clone ElevenLabs) ──
+function useSampleRecorder() {
+  const [state, setState] = useState<"idle" | "recording" | "done">("idle");
+  const [seconds, setSeconds] = useState(0);
+  const [blob, setBlob] = useState<Blob | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const recRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
+
+  async function start() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      chunksRef.current = [];
+      rec.ondataavailable = (e) => chunksRef.current.push(e.data);
+      rec.onstop = () => {
+        const b = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
+        setBlob(b);
+        setAudioUrl(URL.createObjectURL(b));
+        setState("done");
+        stream.getTracks().forEach((t) => t.stop());
+      };
+      rec.start();
+      recRef.current = rec;
+      setSeconds(0);
+      setState("recording");
+      timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
+    } catch {
+      toast.error("Não foi possível acessar o microfone", {
+        description: "Verifique a permissão do navegador.",
+      });
+    }
+  }
+  function stop() {
+    if (timerRef.current) clearInterval(timerRef.current);
+    recRef.current?.stop();
+  }
+  function reset() {
+    setState("idle"); setBlob(null); setSeconds(0);
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+    setAudioUrl(null);
+  }
+  return { state, seconds, blob, audioUrl, start, stop, reset };
+}
 
 function useTierCost(serviceKey: string, enabled: boolean) {
   return useQuery({
@@ -51,7 +100,10 @@ interface GenerateAboutVideoDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   professionalSlug: string;
+  professionalId: string;
+  professionalName: string;
   photoUrl: string | null; // foto que será animada (about_image_url ou foto de perfil)
+  savedVoiceId: string | null; // clone ElevenLabs já salvo no perfil (reusado)
   onDone: (videoUrl: string) => void;
   /** Deep-link do Axel: rascunho de roteiro já preparado + molde escolhido na conversa */
   initialDraftId?: string | null;
@@ -62,7 +114,10 @@ export default function GenerateAboutVideoDialog({
   open,
   onOpenChange,
   professionalSlug,
+  professionalId,
+  professionalName,
   photoUrl,
+  savedVoiceId,
   onDone,
   initialDraftId,
   initialTier,
@@ -70,6 +125,24 @@ export default function GenerateAboutVideoDialog({
   const qc = useQueryClient();
   const [tier, setTier] = useState<Tier>(initialTier ?? "premium");
   const [voice, setVoice] = useState(EDGE_VOICES[0].id);
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>(savedVoiceId ? "clone" : "neural");
+  const [cloneVoiceId, setCloneVoiceId] = useState<string | null>(savedVoiceId);
+  const [recloning, setRecloning] = useState(false); // regravar mesmo tendo voz salva
+  const [cloning, setCloning] = useState(false);
+  const recorder = useSampleRecorder();
+
+  // Formato do vídeo segue a proporção da FOTO (foto 1:1 → vídeo 1:1; alta → 9:16).
+  // Evita esticar a imagem e a seção Sobre renderiza qualquer proporção.
+  const [videoFormat, setVideoFormat] = useState<"portrait" | "square">("portrait");
+  useEffect(() => {
+    if (!photoUrl) return;
+    const img = new Image();
+    img.onload = () => {
+      const ratio = img.naturalWidth / img.naturalHeight;
+      setVideoFormat(ratio > 0.85 ? "square" : "portrait");
+    };
+    img.src = photoUrl;
+  }, [photoUrl]);
   const [script, setScript] = useState<Record<string, any> | null>(null);
   const [narracao, setNarracao] = useState("");
   const [phase, setPhase] = useState<"roteiro" | "pronto" | "gerando">("roteiro");
@@ -126,8 +199,42 @@ export default function GenerateAboutVideoDialog({
     }
   }
 
+  async function clonarVoz() {
+    if (!recorder.blob) return;
+    setCloning(true);
+    try {
+      const form = new FormData();
+      form.append("audio", recorder.blob, "amostra.webm");
+      form.append("nome", professionalName || "Profissional");
+      const res = await fetch(`${VIDEO_API}/clone-voz`, { method: "POST", body: form });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Erro ${res.status}`);
+      }
+      const { voice_id } = await res.json();
+      // Clona 1x e salva no perfil — os próximos vídeos reusam a voz
+      const { error } = await supabase
+        .from("professionals" as any)
+        .update({ elevenlabs_voice_id: voice_id })
+        .eq("id", professionalId);
+      if (error) console.error("Falha ao salvar voice_id no perfil:", error.message);
+      qc.invalidateQueries({ queryKey: ["my-professional"] });
+      setCloneVoiceId(voice_id);
+      setRecloning(false);
+      recorder.reset();
+      toast.success("Voz clonada e salva no seu perfil!", {
+        description: "Ela será usada neste e nos próximos vídeos.",
+      });
+    } catch (e: any) {
+      toast.error("Erro ao clonar a voz", { description: e?.message });
+    } finally {
+      setCloning(false);
+    }
+  }
+
   async function gerarVideo() {
     if (!script || !photoUrl || !canAfford) return;
+    if (voiceMode === "clone" && !cloneVoiceId) return;
     setPhase("gerando");
     setProgress({ pct: 5, step: "Enviando..." });
     try {
@@ -149,7 +256,9 @@ export default function GenerateAboutVideoDialog({
           photo_url: photoUrl,
           tier,
           voice,
-          format: "portrait",
+          voice_provider: voiceMode === "clone" && cloneVoiceId ? "elevenlabs" : "edge",
+          elevenlabs_voice_id: voiceMode === "clone" ? cloneVoiceId : undefined,
+          format: videoFormat,
           set_about_video: true,
         }),
       });
@@ -272,14 +381,85 @@ export default function GenerateAboutVideoDialog({
                 />
                 <div className="space-y-1.5">
                   <Label>Voz da narração</Label>
-                  <Select value={voice} onValueChange={setVoice} disabled={gerando}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {EDGE_VOICES.map((v) => (
-                        <SelectItem key={v.id} value={v.id}>{v.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex rounded-md border overflow-hidden w-fit">
+                    <button
+                      type="button"
+                      onClick={() => setVoiceMode("neural")}
+                      disabled={gerando}
+                      className={`px-3 py-1.5 text-xs transition ${voiceMode === "neural" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:text-foreground"}`}
+                    >
+                      Voz neural
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVoiceMode("clone")}
+                      disabled={gerando}
+                      className={`flex items-center gap-1 px-3 py-1.5 text-xs transition ${voiceMode === "clone" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:text-foreground"}`}
+                    >
+                      <Mic className="h-3 w-3" />
+                      Minha voz {cloneVoiceId ? "(salva ✓)" : "(clonar)"}
+                    </button>
+                  </div>
+
+                  {voiceMode === "neural" ? (
+                    <Select value={voice} onValueChange={setVoice} disabled={gerando}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {EDGE_VOICES.map((v) => (
+                          <SelectItem key={v.id} value={v.id}>{v.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : cloneVoiceId && !recloning ? (
+                    <div className="flex items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+                      <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        Sua voz clonada será usada na narração.
+                      </span>
+                      <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => setRecloning(true)} disabled={gerando}>
+                        <RotateCcw className="h-3 w-3" /> Regravar
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                      {recorder.state === "idle" && (
+                        <>
+                          <p className="text-xs text-muted-foreground">
+                            Grave ~30-60s lendo o roteiro acima com voz natural — a IA clona e
+                            salva no seu perfil pra usar em todos os vídeos.
+                          </p>
+                          <Button variant="outline" size="sm" className="w-full gap-1.5" onClick={recorder.start}>
+                            <Mic className="h-3.5 w-3.5 text-red-500" /> Gravar amostra
+                          </Button>
+                        </>
+                      )}
+                      {recorder.state === "recording" && (
+                        <div className="space-y-2 text-center">
+                          <p className="text-sm font-mono font-bold text-red-500 animate-pulse">
+                            ● {Math.floor(recorder.seconds / 60)}:{String(recorder.seconds % 60).padStart(2, "0")}
+                          </p>
+                          <Button variant="destructive" size="sm" className="w-full gap-1.5" onClick={recorder.stop}>
+                            <Square className="h-3.5 w-3.5" /> Parar gravação
+                          </Button>
+                        </div>
+                      )}
+                      {recorder.state === "done" && recorder.audioUrl && (
+                        <div className="space-y-2">
+                          <audio src={recorder.audioUrl} controls className="w-full h-8" />
+                          <div className="flex gap-2">
+                            <Button variant="ghost" size="sm" className="gap-1 text-xs" onClick={recorder.reset} disabled={cloning}>
+                              <RotateCcw className="h-3 w-3" /> Regravar
+                            </Button>
+                            <Button size="sm" className="flex-1 gap-1.5" onClick={clonarVoz} disabled={cloning}>
+                              {cloning
+                                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Clonando…</>
+                                : <><Mic className="h-3.5 w-3.5" /> Clonar e salvar minha voz</>}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -301,7 +481,8 @@ export default function GenerateAboutVideoDialog({
           </Button>
           <Button
             onClick={gerarVideo}
-            disabled={!script || !narracao.trim() || gerando || !canAfford || !photoUrl}
+            disabled={!script || !narracao.trim() || gerando || !canAfford || !photoUrl || (voiceMode === "clone" && !cloneVoiceId)}
+            title={voiceMode === "clone" && !cloneVoiceId ? "Grave e clone sua voz primeiro (ou use a voz neural)" : undefined}
             className="gap-2"
           >
             {gerando

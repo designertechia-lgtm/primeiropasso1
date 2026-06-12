@@ -1336,7 +1336,10 @@ export default function AdminLandingPage() {
           open={aboutVideoDialogOpen}
           onOpenChange={setAboutVideoDialogOpen}
           professionalSlug={(professional as any).slug}
+          professionalId={(professional as any).id}
+          professionalName={(professional as any).full_name || "Profissional"}
           photoUrl={aboutImageUrl || (professional as any).photo_url || null}
+          savedVoiceId={(professional as any).elevenlabs_voice_id || null}
           onDone={setAboutVideoUrl}
           initialDraftId={axelDraftId}
           initialTier={axelTier}

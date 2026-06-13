@@ -1,4 +1,5 @@
-import { Lightbulb, Target, RefreshCw, Shield, Zap, CheckCircle2 } from "lucide-react";
+import { useState } from "react";
+import { Lightbulb, Target, RefreshCw, Shield, Zap, CheckCircle2, ChevronDown } from "lucide-react";
 
 const DEFAULT_ITEMS = [
   { title: "Autoconhecimento", desc: "Entenda seus padrões de pensamento e como eles influenciam suas emoções e comportamentos." },
@@ -65,6 +66,11 @@ export default function SolutionSection({ title, subtitle, items }: SolutionSect
   const displaySubtitle = subtitle || "A Terapia Cognitivo-Comportamental (TCC) é uma abordagem prática e cientificamente comprovada que ajuda você a transformar pensamentos e comportamentos.";
   const displayItems = (items && items.length > 0) ? items : DEFAULT_ITEMS;
 
+  // Cards expansíveis: o 1º já abre por padrão (não esconde todo o contexto de cara).
+  const [openItems, setOpenItems] = useState<number[]>([0]);
+  const toggle = (i: number) =>
+    setOpenItems((prev) => (prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]));
+
   return (
     <>
       {/* Auras decorativas (o fundo base vem do <Section> via zebra) */}
@@ -81,37 +87,41 @@ export default function SolutionSection({ title, subtitle, items }: SolutionSect
           </p>
         </div>
 
-        {/* Stepper vertical numerado — o método em etapas, com o conteúdo sempre visível */}
-        <ol className="relative max-w-3xl mx-auto">
+        {/* Cards expansíveis — título + ícone sempre visíveis, contexto abre ao clicar */}
+        <div className="grid sm:grid-cols-2 gap-5 max-w-4xl mx-auto items-start">
           {displayItems.map((s, i) => {
             const Icon = ICONS[i % ICONS.length];
-            const isLast = i === displayItems.length - 1;
+            const isOpen = openItems.includes(i);
             return (
-              <li key={i} className="group relative flex gap-5 md:gap-6 pb-10 last:pb-0">
-                {/* Linha conectora da timeline (some no último passo) */}
-                {!isLast && (
-                  <span className="absolute left-6 md:left-7 top-12 md:top-14 bottom-0 w-px bg-gradient-to-b from-primary/40 to-primary/5" aria-hidden />
-                )}
-
-                {/* Marcador numerado */}
-                <div className="relative z-10 flex-none flex items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-gradient-to-br from-primary to-accent text-primary-foreground font-heading text-xl md:text-2xl font-bold shadow-lg shadow-primary/20 transition-transform duration-300 group-hover:scale-105">
-                  {i + 1}
-                </div>
-
-                {/* Conteúdo da etapa — sempre visível */}
-                <div className="flex-1 pt-1.5">
-                  <h3 className="font-heading text-xl md:text-2xl font-bold text-foreground flex items-center gap-2 group-hover:text-primary transition-colors duration-300">
-                    <Icon className="h-5 w-5 text-primary flex-none" strokeWidth={1.5} />
+              <button
+                key={i}
+                type="button"
+                onClick={() => toggle(i)}
+                aria-expanded={isOpen}
+                className="group text-left bg-background/60 backdrop-blur-xl p-6 md:p-7 rounded-3xl border border-foreground/5 shadow-lg hover:shadow-primary/20 hover:-translate-y-1 transition-all duration-300 overflow-hidden"
+              >
+                <div className="flex items-center gap-4">
+                  <span className="flex-none inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors duration-300">
+                    <Icon className="h-6 w-6" strokeWidth={1.5} />
+                  </span>
+                  <h3 className="flex-1 font-heading text-lg md:text-xl font-bold text-foreground group-hover:text-primary transition-colors duration-300">
                     {itemTitle(s)}
                   </h3>
-                  <p className="mt-2 text-foreground/80 text-base md:text-lg leading-relaxed">
-                    {renderWithHighlights(itemDesc(s))}
-                  </p>
+                  <ChevronDown className={`flex-none h-5 w-5 text-muted-foreground transition-transform duration-300 ${isOpen ? "rotate-180" : ""}`} />
                 </div>
-              </li>
+
+                {/* Contexto que expande/recolhe (animação por grid-rows) */}
+                <div className={`grid transition-all duration-300 ease-out ${isOpen ? "grid-rows-[1fr] opacity-100 mt-3" : "grid-rows-[0fr] opacity-0"}`}>
+                  <div className="overflow-hidden">
+                    <p className="text-foreground/80 text-base leading-relaxed pl-16">
+                      {renderWithHighlights(itemDesc(s))}
+                    </p>
+                  </div>
+                </div>
+              </button>
             );
           })}
-        </ol>
+        </div>
       </div>
     </>
   );

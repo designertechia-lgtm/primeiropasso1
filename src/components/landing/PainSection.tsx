@@ -79,34 +79,32 @@ export default function PainSection({ title, subtitle, items }: PainSectionProps
           </p>
         </div>
 
-        {/* Stepper vertical numerado — sinais listados, sempre visíveis */}
-        <ol className="relative max-w-3xl mx-auto">
+        {/* Layout em cards (mosaico, flex-wrap centralizado) */}
+        <div className="flex flex-wrap justify-center gap-6 max-w-5xl mx-auto">
           {displayItems.map((s, i) => {
             const Icon = ICONS[i % ICONS.length];
-            const isLast = i === displayItems.length - 1;
             return (
-              <li key={i} className="group relative flex gap-5 md:gap-6 pb-8 last:pb-0">
-                {/* Linha conectora da timeline (some no último) */}
-                {!isLast && (
-                  <span className="absolute left-6 md:left-7 top-12 md:top-14 bottom-0 w-px bg-gradient-to-b from-primary/40 to-primary/5" aria-hidden />
-                )}
+              <div
+                key={i}
+                className="w-full sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)] group"
+              >
+                <div className="h-full flex flex-col gap-4 bg-background/60 backdrop-blur-xl p-8 rounded-3xl border border-foreground/5 shadow-lg hover:-translate-y-2 hover:shadow-primary/20 transition-all duration-500 relative overflow-hidden">
+                  {/* Detalhe de gradiente sutil no topo do card */}
+                  <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary/40 to-accent/40 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
-                {/* Marcador numerado */}
-                <div className="relative z-10 flex-none flex items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-gradient-to-br from-primary to-accent text-primary-foreground font-heading text-xl md:text-2xl font-bold shadow-lg shadow-primary/20 transition-transform duration-300 group-hover:scale-105">
-                  {i + 1}
-                </div>
+                  {/* Ícone em destaque */}
+                  <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-500">
+                    <Icon className="h-7 w-7" strokeWidth={1.5} />
+                  </div>
 
-                {/* Sinal — sempre visível */}
-                <div className="flex-1 flex items-start gap-3 pt-2.5">
-                  <Icon className="h-5 w-5 text-primary flex-none mt-0.5" strokeWidth={1.5} />
-                  <p className="text-foreground/80 text-base md:text-lg leading-relaxed">
+                  <p className="text-foreground/80 text-base md:text-lg leading-relaxed mt-2">
                     {renderWithHighlights(itemText(s))}
                   </p>
                 </div>
-              </li>
+              </div>
             );
           })}
-        </ol>
+        </div>
       </div>
     </>
   );

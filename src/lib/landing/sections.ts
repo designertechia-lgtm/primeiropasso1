@@ -28,3 +28,18 @@ export const TONE_BG: Record<SectionTone, string> = {
 export function zebraTone(index: number): SectionTone {
   return index % 2 === 0 ? "base" : "alt";
 }
+
+// Divide o título da seção em [lead, accent] pra colorir a 2ª parte (formato "frase. complemento colorido").
+// 1) Se há uma sentença completa seguida de mais texto, divide ali. 2) Senão, divide ~na metade das palavras.
+// 3) Título curto (até 3 palavras) fica inteiro no lead, sem destaque.
+export function splitHeadline(text: string): [string, string] {
+  const t = (text ?? "").trim();
+  const sentence = t.match(/^(.*?[.!?])\s+(.+)$/s);
+  if (sentence) return [sentence[1], sentence[2]];
+  const words = t.split(/\s+/);
+  if (words.length >= 4) {
+    const mid = Math.ceil(words.length / 2);
+    return [words.slice(0, mid).join(" "), words.slice(mid).join(" ")];
+  }
+  return [t, ""];
+}

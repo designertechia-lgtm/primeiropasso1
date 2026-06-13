@@ -1,4 +1,5 @@
 import { CircleAlert, Brain, Heart, Moon, Users, AlertTriangle } from "lucide-react";
+import { splitHeadline } from "@/lib/landing/sections";
 
 const DEFAULT_ITEMS = [
   { text: "Pensamentos acelerados que não param" },
@@ -62,6 +63,7 @@ export default function PainSection({ title, subtitle, items }: PainSectionProps
   const displayTitle = title || "Você sente que seus pensamentos estão no controle?";
   const displaySubtitle = subtitle || "Reconhecer o que você sente é o primeiro passo. Se você se identifica com algum desses sinais, saiba que não precisa enfrentar isso sozinho(a).";
   const displayItems = (items && items.length > 0) ? items : DEFAULT_ITEMS;
+  const [titleLead, titleAccent] = splitHeadline(displayTitle);
 
   return (
     <>
@@ -70,11 +72,12 @@ export default function PainSection({ title, subtitle, items }: PainSectionProps
       <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-accent/10 rounded-full blur-[100px] -z-10 opacity-70 animate-pulse" style={{ animationDuration: '10s' }} />
 
       <div className="container mx-auto px-4 md:px-8 relative z-10">
-        <div className="max-w-2xl mx-auto text-center mb-10 space-y-6">
-          <h2 className="font-heading text-4xl md:text-5xl font-bold text-foreground leading-tight">
-            {displayTitle}
+        <div className="max-w-2xl mx-auto text-center mb-12 flex flex-col items-center gap-5">
+          <h2 className="font-heading text-3xl md:text-4xl font-bold text-foreground leading-[1.15] tracking-tight text-balance">
+            {titleLead}{titleAccent ? <> <span className="text-primary">{titleAccent}</span></> : null}
           </h2>
-          <p className="text-muted-foreground text-lg md:text-xl leading-relaxed">
+          <span aria-hidden className="block h-1 w-16 rounded-full bg-gradient-to-r from-primary to-accent opacity-80" />
+          <p className="max-w-xl text-muted-foreground text-base md:text-lg leading-relaxed text-pretty">
             {displaySubtitle}
           </p>
         </div>

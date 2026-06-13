@@ -75,7 +75,7 @@ function VideoCard({ video, isDraft }: { video: Video; isDraft?: boolean }) {
     >
       {canPlay ? (
         isSupabaseUrl(video.embed_url) ? (
-          <video src={video.embed_url} controls autoPlay className="absolute inset-0 w-full h-full" />
+          <video src={video.embed_url} controls autoPlay playsInline className="absolute inset-0 w-full h-full" />
         ) : (
           <iframe
             src={toEmbedUrl(video.embed_url)}

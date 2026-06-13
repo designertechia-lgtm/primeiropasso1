@@ -161,3 +161,23 @@
 .fc-wrapper .fc .fc-scrollgrid { border-radius: var(--radius); overflow: hidden; }
 .fc-wrapper .fc td, .fc-wrapper .fc th { border-color: hsl(var(--border)); }
 @media (max-width: 640px) { .fc-wrapper .fc .fc-toolbar { flex-direction: column; gap: 0.5rem; } .fc-wrapper .fc .fc-toolbar-title { font-size: 1rem; } }
+
+/* Marquee (fita rolante) — usado nas Abordagens do Sobre. Duas faixas em sentidos opostos.
+   O track tem o conteúdo duplicado (2x), então transladar 50% cria loop contínuo (seamless). */
+@keyframes marquee-rtl { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes marquee-ltr { from { transform: translateX(-50%); } to { transform: translateX(0); } }
+.marquee-track { width: max-content; will-change: transform; }
+.marquee-rtl { animation: marquee-rtl var(--marquee-duration, 26s) linear infinite; }
+.marquee-ltr { animation: marquee-ltr var(--marquee-duration, 30s) linear infinite; }
+.marquee-row {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent);
+          mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent);
+}
+.marquee-row:hover .marquee-rtl, .marquee-row:hover .marquee-ltr { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  /* Sem movimento: vira lista estática com todas as tags visíveis (esconde as duplicatas do loop). */
+  .marquee-rtl, .marquee-ltr { animation: none; }
+  .marquee-row { overflow: visible; -webkit-mask-image: none; mask-image: none; }
+  .marquee-track { flex-wrap: wrap; justify-content: center; width: auto; }
+  .marquee-dupe { display: none; }
+}

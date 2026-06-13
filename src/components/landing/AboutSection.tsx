@@ -17,6 +17,19 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
   const [activeCard, setActiveCard] = useState(0);
   const displayImage = aboutImageUrl || photoUrl;
 
+  // Abordagens em 2 faixas (marquee). Repete o conjunto até ter volume pra preencher a faixa, pra o
+  // loop ficar contínuo mesmo quando o profissional tem poucas abordagens.
+  const fillRow = (arr: string[], min: number) => {
+    if (arr.length === 0) return [] as string[];
+    const out = [...arr];
+    while (out.length < min) out.push(...arr);
+    return out;
+  };
+  const approachList = approaches ?? [];
+  const half = Math.ceil(approachList.length / 2);
+  const marqueeRow1 = fillRow(approachList.slice(0, half), 8);
+  const marqueeRow2 = fillRow(approachList.slice(half).length ? approachList.slice(half) : approachList, 8);
+
   const paragraphs = bio 
     ? bio.split('\n').filter(p => p.trim() !== '')
     : ["Profissional dedicado(a) à saúde mental e ao bem-estar emocional, com experiência em Terapia Cognitivo-Comportamental."];
@@ -104,6 +117,7 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
                     src={aboutVideoUrl}
                     autoPlay
                     controls
+                    playsInline
                     className="block w-full h-auto max-h-[60vh]"
                     onEnded={() => setIsVideoPlaying(false)}
                   />
@@ -248,27 +262,41 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
           </div>
         </div>
 
-        {/* Abordagens e Especialidades — largura total, abaixo das duas colunas (foto + bio) */}
-        {approaches && approaches.length > 0 && (
-          <div className="max-w-6xl mx-auto mt-12 pt-8 border-t border-border/50">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4 flex items-center gap-2">
+      </div>
+
+      {/* Abordagens — título alinhado ao conteúdo; faixas em LARGURA TOTAL da seção (fora do container) */}
+      {approaches && approaches.length > 0 && (
+        <div className="relative z-10 mt-12">
+          <div className="container mx-auto px-4 md:px-8 pt-10 border-t border-border/50">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-5 flex items-center gap-2">
               <Award className="w-4 h-4" />
               Abordagens e Especialidades
             </h3>
-            <div className="flex flex-wrap gap-2.5">
-              {approaches.map((a) => (
-                <span
-                  key={a}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2 text-sm font-medium text-foreground hover:bg-primary/10 hover:border-primary/30 transition-colors duration-300"
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                  {a}
-                </span>
-              ))}
-            </div>
           </div>
-        )}
-      </div>
+          {/* Duas faixas em largura total, rolando em sentidos opostos; pausam no hover e respeitam reduced-motion */}
+          <div className="space-y-3">
+            {[
+              { row: marqueeRow1, dir: "marquee-rtl" },
+              { row: marqueeRow2, dir: "marquee-ltr" },
+            ].map(({ row, dir }, ri) => (
+              <div key={ri} className="marquee-row relative overflow-hidden">
+                <div className={`marquee-track flex gap-2.5 ${dir}`}>
+                  {[...row, ...row].map((a, idx) => (
+                    <span
+                      key={idx}
+                      aria-hidden={idx >= row.length}
+                      className={`inline-flex flex-none items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2 text-sm font-medium text-foreground ${idx >= row.length ? "marquee-dupe" : ""}`}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+                      {a}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </>
   );
 }

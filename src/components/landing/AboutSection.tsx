@@ -87,7 +87,7 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
         <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-accent/5 rounded-full blur-3xl translate-y-1/3 -translate-x-1/3" />
       </div>
 
-      <div className="container mx-auto px-4 relative z-10">
+      <div className="container mx-auto px-4 md:px-8 relative z-10">
         <div className="flex flex-col lg:flex-row gap-16 items-start max-w-6xl mx-auto">
 
           {/* Media Column (Sticky) */}

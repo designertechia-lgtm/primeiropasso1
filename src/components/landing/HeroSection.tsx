@@ -101,7 +101,7 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
         )}
       </>
       <div className={`absolute inset-0 bg-gradient-to-br from-primary/10 via-background/60 to-secondary/10 ${isDefaultBg ? "opacity-20" : "opacity-50"}`} />
-      <div className="container mx-auto px-4 pt-28 pb-16 md:pt-36 md:pb-24 relative min-h-[90dvh] flex items-center justify-center">
+      <div className="container mx-auto px-4 md:px-8 pt-28 pb-16 md:pt-36 md:pb-24 relative min-h-[90dvh] flex items-center justify-center">
         <div className="flex flex-col lg:flex-row items-center justify-between gap-10 lg:gap-16 w-full max-w-6xl">
           {/* Profile Photo - Hero Protagonist */}
           {(() => {

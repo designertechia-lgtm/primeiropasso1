@@ -167,7 +167,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
   // Seções de conteúdo entre o Hero e o Contato. A zebra alterna o fundo pela POSIÇÃO na lista
   // (preparado para a reordenação da Fase 1). Hero e Contato têm tom próprio, fora da alternância.
   // Ver _docs/PLANO_LANDING_PAGES.md (Fase 0).
-  const contentSections: Array<{ key: string; id?: string; node: React.ReactNode }> = [
+  const contentSections: Array<{ key: string; id?: string; clip?: boolean; node: React.ReactNode }> = [
     {
       key: "pain",
       node: (
@@ -191,6 +191,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     {
       key: "about",
       id: "about",
+      clip: false,
       node: (
         <AboutSection
           title={(professional as any).about_title ?? undefined}
@@ -243,7 +244,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         photoFit={(professional as any).photo_fit ?? "contain"}
       />
       {contentSections.map((s, i) => (
-        <Section key={s.key} id={s.id} tone={zebraTone(i)}>
+        <Section key={s.key} id={s.id} tone={zebraTone(i)} clip={s.clip}>
           {s.node}
         </Section>
       ))}

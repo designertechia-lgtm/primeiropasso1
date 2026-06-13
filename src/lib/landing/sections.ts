@@ -3,9 +3,11 @@
 // que compensa o header sticky. Consumido por <Section> e por ProfessionalLanding.
 // Ver _docs/PLANO_LANDING_PAGES.md (Fase 0).
 
-// Escala única de padding vertical das seções — grade 8pt (80px / 112px).
-// Mantém o ar generoso; é a zebra (não a compactação) que dá o ritmo. Ajustável aqui num lugar só.
-export const SECTION_PADDING = "py-20 md:py-28";
+// Escala única de padding vertical das seções — grade 8pt (48px / 64px).
+// Mais enxuto: o conteúdo fica perto do topo da seção (não "solto"); a zebra é que marca o ritmo.
+// Simétrico de propósito (reduzir só o topo deixaria o conteúdo colado em cima e vazio embaixo).
+// Ajustável aqui num lugar só.
+export const SECTION_PADDING = "py-12 md:py-16";
 
 // Compensa o header sticky (h-16 = 64px) ao rolar para uma âncora, pra o título não ficar escondido.
 export const SECTION_SCROLL_MT = "scroll-mt-16";

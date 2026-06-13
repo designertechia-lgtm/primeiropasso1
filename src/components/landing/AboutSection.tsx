@@ -80,9 +80,12 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
 
   return (
     <>
-      {/* Decorative background elements (fundo/scroll-mt/id vêm do <Section>) */}
-      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none" />
-      <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-accent/5 rounded-full blur-3xl translate-y-1/3 -translate-x-1/3 pointer-events-none" />
+      {/* Auras num wrapper que recorta (overflow-hidden), pra o <Section> do Sobre poder liberar
+          o overflow (clip=false) e a coluna sticky da foto voltar a funcionar. */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
+        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-accent/5 rounded-full blur-3xl translate-y-1/3 -translate-x-1/3" />
+      </div>
 
       <div className="container mx-auto px-4 relative z-10">
         <div className="flex flex-col lg:flex-row gap-16 items-start max-w-6xl mx-auto">
@@ -101,7 +104,7 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
                     src={aboutVideoUrl}
                     autoPlay
                     controls
-                    className="block w-full h-auto max-h-[70vh]"
+                    className="block w-full h-auto max-h-[60vh]"
                     onEnded={() => setIsVideoPlaying(false)}
                   />
                 ) : (
@@ -124,7 +127,7 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
                     <img
                       src={displayImage}
                       alt={name}
-                      className="block w-auto h-auto max-h-[70vh] max-w-full object-contain transition-transform duration-700 group-hover:scale-[1.02]"
+                      className="block w-auto h-auto max-h-[60vh] max-w-full object-contain transition-transform duration-700 group-hover:scale-[1.02]"
                     />
                   ) : (
                     <div className="w-full aspect-[4/5] bg-gradient-to-br from-primary/10 to-accent/10 flex items-center justify-center">
@@ -242,27 +245,29 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
               )}
             </div>
 
-            {approaches && approaches.length > 0 && (
-              <div className="pt-6 border-t border-border/50">
-                <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4 flex items-center gap-2">
-                  <Award className="w-4 h-4" />
-                  Abordagens e Especialidades
-                </h3>
-                <div className="flex flex-wrap gap-2.5">
-                  {approaches.map((a) => (
-                    <span
-                      key={a}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2 text-sm font-medium text-foreground hover:bg-primary/10 hover:border-primary/30 transition-colors duration-300"
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                      {a}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         </div>
+
+        {/* Abordagens e Especialidades — largura total, abaixo das duas colunas (foto + bio) */}
+        {approaches && approaches.length > 0 && (
+          <div className="max-w-6xl mx-auto mt-12 pt-8 border-t border-border/50">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4 flex items-center gap-2">
+              <Award className="w-4 h-4" />
+              Abordagens e Especialidades
+            </h3>
+            <div className="flex flex-wrap gap-2.5">
+              {approaches.map((a) => (
+                <span
+                  key={a}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2 text-sm font-medium text-foreground hover:bg-primary/10 hover:border-primary/30 transition-colors duration-300"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+                  {a}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

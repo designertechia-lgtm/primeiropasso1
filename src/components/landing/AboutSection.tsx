@@ -106,7 +106,7 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
           {/* Media Column (Sticky) */}
           <div className="w-full lg:w-1/2 relative group lg:sticky lg:top-24 flex flex-col">
             {/* Soft decorative border behind */}
-            <div className="absolute -inset-4 bg-gradient-to-tr from-primary/20 to-accent/20 rounded-[2.5rem] rotate-3 scale-[0.98] transition-transform duration-500 group-hover:rotate-6 group-hover:scale-100" />
+            <div className="absolute -inset-4 bg-gradient-to-tr from-primary/20 to-accent/20 rounded-[2rem] rotate-3 scale-[0.98] transition-transform duration-500 group-hover:rotate-6 group-hover:scale-100" />
 
             {/* Moldura: o padding (p-3) cria a borda visivel ao redor da imagem,
                 como um porta-retrato. A imagem (h-auto) define a proporcao. */}
@@ -132,11 +132,11 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
                   </div>
                 )
               ) : (
-                /* Wrapper que ENVOLVE a imagem: overflow-hidden + rounded-xl
+                /* Wrapper que ENVOLVE a imagem: overflow-hidden + rounded-2xl
                    recortam a imagem com cantos arredondados. O wrapper usa
                    w-fit + h-auto pra COLAR no tamanho real da foto (sem espaco
                    sobrando), entao o arredondamento aparece na propria foto. */
-                <div className="relative overflow-hidden rounded-xl mx-auto w-fit">
+                <div className="relative overflow-hidden rounded-2xl mx-auto w-fit">
                   {displayImage ? (
                     <img
                       src={displayImage}
@@ -268,13 +268,26 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
       {approaches && approaches.length > 0 && (
         <div className="relative z-10 mt-12">
           <div className="container mx-auto px-4 md:px-8 pt-10 border-t border-border/50">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-5 flex items-center gap-2">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-5 flex items-center justify-center gap-2">
               <Award className="w-4 h-4" />
               Abordagens e Especialidades
             </h3>
           </div>
-          {/* Duas faixas em largura total, rolando em sentidos opostos; pausam no hover e respeitam reduced-motion */}
-          <div className="space-y-3">
+          {/* Versão estática (aparece só com prefers-reduced-motion) — abordagens originais, sem repetir */}
+          <div className="marquee-static container mx-auto px-4 md:px-8 flex-wrap justify-center gap-2.5">
+            {(approaches ?? []).map((a) => (
+              <span
+                key={a}
+                className="inline-flex items-center gap-1.5 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-2 text-sm font-medium text-foreground"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+                {a}
+              </span>
+            ))}
+          </div>
+
+          {/* Faixas animadas, full-width, em sentidos opostos; pausam no hover (escondidas com reduced-motion) */}
+          <div className="marquee-animated space-y-3">
             {[
               { row: marqueeRow1, dir: "marquee-rtl" },
               { row: marqueeRow2, dir: "marquee-ltr" },
@@ -285,7 +298,7 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
                     <span
                       key={idx}
                       aria-hidden={idx >= row.length}
-                      className={`inline-flex flex-none items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2 text-sm font-medium text-foreground ${idx >= row.length ? "marquee-dupe" : ""}`}
+                      className="inline-flex flex-none items-center gap-1.5 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-2 text-sm font-medium text-foreground"
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-primary" />
                       {a}

@@ -174,10 +174,9 @@
           mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent);
 }
 .marquee-row:hover .marquee-rtl, .marquee-row:hover .marquee-ltr { animation-play-state: paused; }
+.marquee-static { display: none; }
 @media (prefers-reduced-motion: reduce) {
-  /* Sem movimento: vira lista estática com todas as tags visíveis (esconde as duplicatas do loop). */
-  .marquee-rtl, .marquee-ltr { animation: none; }
-  .marquee-row { overflow: visible; -webkit-mask-image: none; mask-image: none; }
-  .marquee-track { flex-wrap: wrap; justify-content: center; width: auto; }
-  .marquee-dupe { display: none; }
+  /* Sem movimento: esconde as faixas animadas e mostra a lista estática (tags originais, sem repetir). */
+  .marquee-animated { display: none; }
+  .marquee-static { display: flex; }
 }

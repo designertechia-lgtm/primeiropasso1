@@ -263,7 +263,7 @@ Você NÃO é um robô de FAQ: você é o GERENTE DE SUCESSO de ${proName} — e
 • Nome: Axel. Papel: gerente de sucesso + produtor de conteúdo do profissional.
 • Tom: amigável, mas SOBRETUDO objetivo. Linguagem simples, sem corporativês.
 • BREVIDADE É REGRA: 1 a 3 frases por mensagem, no MÁXIMO. Uma ideia por vez, direto ao ponto. Nunca liste mais de 3 itens. Corte saudações longas, floreios e resumos do que ele já sabe. Se cabe em 1 frase, use 1 frase. No máximo 1 emoji por mensagem (ou nenhum).
-• FORMATAÇÃO: escreva em TEXTO PURO — o chat NÃO renderiza markdown. NÃO use \`**\` para negrito, nem \`#\`, nem \`*\` em listas. Para passos, numere (1., 2., 3.) em linhas separadas. Para destacar, use o próprio texto, nunca asteriscos.
+• FORMATAÇÃO: escreva em TEXTO PURO — o chat NÃO renderiza markdown. NÃO use \`**\` para negrito, nem \`#\`, nem \`*\` em listas, nem \`---\` ou linhas de hífens como separador (aparecem crus na tela). Para passos, numere (1., 2., 3.) em linhas separadas. Para separar as seções de um preview (landing, brief), use um RÓTULO em CAIXA ALTA seguido de uma linha em branco (ex.: "HERO", "DORES", "SOLUÇÃO") — nunca traços. Para destacar, use o próprio texto, nunca símbolos.
 • Você fala COM ${proName} na SEGUNDA pessoa ("você").
 
 ━━━ COM QUEM VOCÊ FALA ━━━
@@ -359,10 +359,20 @@ async function gerarTextoIA(campo: string, ctx: any, apiKey: string): Promise<st
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY ausente")
   const promptFn = PERFIL_PROMPTS[campo]
   if (!promptFn) throw new Error(`campo não suportado: ${campo}`)
+  // Enriquece o gerador com o que o Axel já sabe do profissional (memória) e com o que
+  // ele acabou de descrever na conversa. Sem isso o texto sai genérico — a própria
+  // cliente notou "menos rico que o ChatGPT" (auditoria 13/06).
+  const ctxParts: string[] = []
+  if (ctx?.memoria) ctxParts.push(`O QUE SEI SOBRE O PROFISSIONAL:\n${ctx.memoria}`)
+  if (ctx?.material) ctxParts.push(`O QUE O PROFISSIONAL DESCREVEU (use as PALAVRAS e o posicionamento dele):\n${ctx.material}`)
+  const basePrompt = promptFn(ctx)
+  const prompt = ctxParts.length
+    ? `${ctxParts.join("\n\n")}\n\nTAREFA: ${basePrompt}\n\nBaseie-se no contexto acima: priorize as palavras, o posicionamento e os exemplos REAIS do profissional. NÃO invente técnicas, públicos ou promessas que ele não mencionou.`
+    : basePrompt
   const resp = await fetch(CLAUDE_URL, {
     method: "POST",
     headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 800, messages: [{ role: "user", content: promptFn(ctx) }] }),
+    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 800, messages: [{ role: "user", content: prompt }] }),
   })
   if (!resp.ok) throw new Error(`Claude ${resp.status}: ${(await resp.text()).slice(0, 150)}`)
   const data = await resp.json()
@@ -381,6 +391,7 @@ async function handleToolCall(
   supabaseAdmin: any,
   professionalId: string,
   kbSections: Array<{ key: string; title: string; route?: string; body: string }>,
+  genContext?: { memoria?: string; material?: string },
 ): Promise<any> {
   if (toolName === "consultar_secao") {
     const key = (args.key || "").toString().trim()
@@ -488,6 +499,9 @@ async function handleToolCall(
       crp: prof?.crp,
       // category_custom (atividade que o profissional informou) tem prioridade sobre o category padrão
       specialty: prof?.category_custom || prof?.category || "",
+      // Contexto vivo: memória + o que ele descreveu na conversa (auditoria 13/06)
+      memoria: genContext?.memoria || "",
+      material: genContext?.material || "",
     }
 
     if (toolName === "gerar_landing") {
@@ -1224,6 +1238,25 @@ REGRAS:
   return { erro: "Ferramenta desconhecida" }
 }
 
+// Recuperação: quando o modelo encerra o turno SEM texto (ex.: chamou só uma tool e não
+// escreveu resposta, ou pediram algo que ele ainda não faz), re-pedimos uma resposta
+// textual SEM tools — em vez de devolver um erro genérico que parece culpar o usuário
+// ("não consegui responder, reformule" apareceu 2x na auditoria 13/06).
+async function requestTextOnly(messages: any[], systemPrompt: string, apiKey: string): Promise<string> {
+  try {
+    const resp = await fetch(CLAUDE_URL, {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 1024, temperature: 0.7, system: systemPrompt, messages }),
+    })
+    if (!resp.ok) return ""
+    const data = await resp.json()
+    return (data.content?.find((b: any) => b.type === "text")?.text || "").trim()
+  } catch (_) {
+    return ""
+  }
+}
+
 // =============================================
 // CLAUDE CALL (Messages API + Tool Use loop)
 // =============================================
@@ -1234,8 +1267,9 @@ async function callClaude(opts: {
   supabaseAdmin: any
   professionalId: string
   kbSections: any[]
+  memoryFacts?: Array<{ key: string; value: string }>
 }): Promise<{ reply: string; toolsUsed: string[]; actions: Array<{ label: string; href: string }>; navigate: string | null }> {
-  const { systemPrompt, history, userMessage, supabaseAdmin, professionalId, kbSections } = opts
+  const { systemPrompt, history, userMessage, supabaseAdmin, professionalId, kbSections, memoryFacts } = opts
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY")
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured")
 
@@ -1257,6 +1291,13 @@ async function callClaude(opts: {
   } else {
     messages.push({ role: "user", content: userMessage || "Oi" })
   }
+
+  // Contexto vivo pros geradores de texto (landing/perfil): memória + o que o profissional
+  // descreveu na conversa. Sem isso o gerador sai genérico (auditoria 13/06).
+  const memoriaStr = (memoryFacts || []).map((m) => `• ${m.key}: ${m.value}`).join("\n")
+  const userNotes = [...history.filter((m) => m.role === "user").map((m) => m.content), userMessage]
+    .filter(Boolean).join("\n\n").slice(-6000)
+  const genContext = { memoria: memoriaStr, material: userNotes }
 
   const toolsUsed: string[] = []
   const navActions: Array<{ label: string; href: string }> = []
@@ -1294,8 +1335,14 @@ async function callClaude(opts: {
 
     if (stopReason !== "tool_use") {
       const textBlock = content.find((b: any) => b.type === "text")
+      let reply = textBlock?.text || ""
+      if (!reply) {
+        // Turno encerrou sem texto → re-pede resposta textual sem tools (não culpa o usuário).
+        console.warn(`[callClaude] turno sem texto (stop_reason=${stopReason}); re-pedindo resposta sem tools`)
+        reply = await requestTextOnly(messages, systemPrompt, apiKey)
+      }
       return {
-        reply: textBlock?.text || "Desculpe, não consegui responder agora. Pode reformular?",
+        reply: reply || "Me embolei aqui ao montar a resposta — me dá um instante e manda de novo?",
         toolsUsed,
         actions: navActions,
         navigate: navActions.length > 0 ? navActions[navActions.length - 1].href : null,
@@ -1306,7 +1353,7 @@ async function callClaude(opts: {
     const toolResults = []
     for (const tu of toolUseBlocks) {
       toolsUsed.push(tu.name)
-      const out = await handleToolCall(tu.name, tu.input, supabaseAdmin, professionalId, kbSections)
+      const out = await handleToolCall(tu.name, tu.input, supabaseAdmin, professionalId, kbSections, genContext)
       // Navegação: o Axel pediu pra levar o profissional a uma página válida.
       if (tu.name === "abrir_pagina" && out?.sucesso && out?.rota) {
         navActions.push({ label: out.titulo || "Abrir página", href: out.rota })
@@ -1318,8 +1365,10 @@ async function callClaude(opts: {
     messages.push({ role: "user", content: toolResults })
   }
 
+  // Estourou as iterações de tool: tenta fechar com uma resposta textual antes de desistir.
+  const closing = await requestTextOnly(messages, systemPrompt, apiKey)
   return {
-    reply: "Desculpe, tive um problema ao processar. Pode tentar de novo?",
+    reply: closing || "Me embolei aqui ao montar a resposta — me dá um instante e tenta de novo?",
     toolsUsed,
     actions: navActions,
     navigate: navActions.length > 0 ? navActions[navActions.length - 1].href : null,
@@ -1439,7 +1488,7 @@ serve(async (req) => {
     let actions: Array<{ label: string; href: string }> = []
     let navigate: string | null = null
     try {
-      const out = await callClaude({ systemPrompt, history, userMessage: message, supabaseAdmin, professionalId, kbSections })
+      const out = await callClaude({ systemPrompt, history, userMessage: message, supabaseAdmin, professionalId, kbSections, memoryFacts })
       reply = out.reply
       toolsUsed = out.toolsUsed
       actions = out.actions

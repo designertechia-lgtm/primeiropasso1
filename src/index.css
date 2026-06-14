@@ -174,9 +174,6 @@
           mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent);
 }
 .marquee-row:hover .marquee-rtl, .marquee-row:hover .marquee-ltr { animation-play-state: paused; }
+/* Decisão 13/06: o marquee anima para todos (não respeita "reduzir movimento") — é parte do design da landing.
+   A lista estática (.marquee-static) fica como fallback inerte, escondida. */
 .marquee-static { display: none; }
-@media (prefers-reduced-motion: reduce) {
-  /* Sem movimento: esconde as faixas animadas e mostra a lista estática (tags originais, sem repetir). */
-  .marquee-animated { display: none; }
-  .marquee-static { display: flex; }
-}

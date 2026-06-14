@@ -1,5 +1,5 @@
 import { Play, Award, Heart } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 
 interface AboutSectionProps {
   title?: string;
@@ -10,12 +10,21 @@ interface AboutSectionProps {
   aboutImageUrl?: string;
   aboutVideoUrl?: string;
   approaches?: string[];
+  /** Apresentação automática dos cards da bio (5s) + início do vídeo ao final. Desligado no editor. */
+  autoplay?: boolean;
 }
 
-export default function AboutSection({ title, name, bio, crp, photoUrl, aboutImageUrl, aboutVideoUrl, approaches }: AboutSectionProps) {
+export default function AboutSection({ title, name, bio, crp, photoUrl, aboutImageUrl, aboutVideoUrl, approaches, autoplay = true }: AboutSectionProps) {
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [activeCard, setActiveCard] = useState(0);
+  // Passagem automática: só arranca quando a seção entra na tela; o clique do usuário a interrompe de vez.
+  const [autoplayArmed, setAutoplayArmed] = useState(false);
+  const [autoplayStopped, setAutoplayStopped] = useState(false);
+  const cardsRef = useRef<HTMLDivElement>(null);
   const displayImage = aboutImageUrl || photoUrl;
+
+  // Encerra a passagem automática quando o usuário assume o controle (clique em card, indicador ou play).
+  const stopAutoplay = () => setAutoplayStopped(true);
 
   // Abordagens em 2 faixas (marquee). Repete o conjunto até ter volume pra preencher a faixa, pra o
   // loop ficar contínuo mesmo quando o profissional tem poucas abordagens.
@@ -30,9 +39,43 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
   const marqueeRow1 = fillRow(approachList.slice(0, half), 8);
   const marqueeRow2 = fillRow(approachList.slice(half).length ? approachList.slice(half) : approachList, 8);
 
-  const paragraphs = bio 
+  const paragraphs = bio
     ? bio.split('\n').filter(p => p.trim() !== '')
     : ["Profissional dedicado(a) à saúde mental e ao bem-estar emocional, com experiência em Terapia Cognitivo-Comportamental."];
+
+  // Arma a passagem automática só quando os cards entram na viewport (uma vez).
+  // Decisão 13/06: anima pra todos (não respeita "reduzir movimento") — animação é parte do design da landing.
+  useEffect(() => {
+    if (!autoplay || paragraphs.length <= 1) return;
+    const el = cardsRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setAutoplayArmed(true);
+          obs.disconnect();
+        }
+      },
+      { threshold: 0.35 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [autoplay, paragraphs.length]);
+
+  // A cada 5s avança um card; ao passar do último, inicia o vídeo (se houver) e encerra a passagem automática.
+  // O timer reinicia a cada card (depende de activeCard), dando 5s exatos por card.
+  useEffect(() => {
+    if (!autoplay || !autoplayArmed || autoplayStopped || isVideoPlaying || paragraphs.length <= 1) return;
+    const id = window.setTimeout(() => {
+      if (activeCard >= paragraphs.length - 1) {
+        setAutoplayStopped(true);
+        if (aboutVideoUrl) setIsVideoPlaying(true);
+      } else {
+        setActiveCard((c) => c + 1);
+      }
+    }, 5000);
+    return () => window.clearTimeout(id);
+  }, [autoplay, autoplayArmed, autoplayStopped, isVideoPlaying, activeCard, paragraphs.length, aboutVideoUrl]);
 
   // Helper to get embed url if it's youtube or vimeo
   const getEmbedUrl = (url: string) => {
@@ -153,7 +196,7 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
                   {aboutVideoUrl && (
                     <div className="absolute inset-0 bg-black/10 transition-all duration-300 group-hover:bg-black/30 pointer-events-none">
                       <button
-                        onClick={() => setIsVideoPlaying(true)}
+                        onClick={() => { stopAutoplay(); setIsVideoPlaying(true); }}
                         className="absolute bottom-6 left-6 w-16 h-16 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-xl text-primary hover:scale-110 transition-transform duration-300 pointer-events-auto"
                         aria-label="Assistir vídeo de apresentação"
                       >
@@ -177,8 +220,8 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
               </h2>
             </div>
 
-            <div className="relative pt-8 pb-4">
-              <div className="grid relative" onClick={() => setActiveCard((prev) => (prev + 1) % paragraphs.length)}>
+            <div ref={cardsRef} className="relative pt-8 pb-4">
+              <div className="grid relative" onClick={() => { stopAutoplay(); setActiveCard((prev) => (prev + 1) % paragraphs.length); }}>
                 {paragraphs.map((p, i) => {
                   const tintColors = [
                     "bg-amber-500/15 dark:bg-amber-400/10", // Amarelo
@@ -250,7 +293,7 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
                   {paragraphs.map((_, i) => (
                     <button
                       key={i}
-                      onClick={() => setActiveCard(i)}
+                      onClick={() => { stopAutoplay(); setActiveCard(i); }}
                       className={`h-2 rounded-full transition-all duration-300 ${i === activeCard ? 'w-8 bg-primary' : 'w-2 bg-primary/20 hover:bg-primary/40'}`}
                       aria-label={`Página ${i + 1}`}
                     />

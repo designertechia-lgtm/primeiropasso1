@@ -12,7 +12,7 @@ import ContactSection from "@/components/landing/ContactSection";
 import LandingFooter from "@/components/landing/LandingFooter";
 import { buildLandingVars, getFontScale, GOOGLE_FONTS_URL } from "@/lib/landing/buildLandingVars";
 import Section from "@/components/landing/Section";
-import { zebraTone } from "@/lib/landing/sections";
+import { zebraTone, orderContentSections } from "@/lib/landing/sections";
 
 export default function ProfessionalLanding({ slugOverride }: { slugOverride?: string }) {
   const { slug: paramSlug } = useParams<{ slug: string }>();
@@ -164,57 +164,54 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
   // para a zebra não criar uma faixa vazia e a alternância de fundo seguir certa.
   const hasContent = articles.length > 0 || videos.length > 0;
 
-  // Seções de conteúdo entre o Hero e o Contato. A zebra alterna o fundo pela POSIÇÃO na lista
-  // (preparado para a reordenação da Fase 1). Hero e Contato têm tom próprio, fora da alternância.
-  // Ver _docs/PLANO_LANDING_PAGES.md (Fase 0).
-  const contentSections: Array<{ key: string; id?: string; clip?: boolean; node: React.ReactNode }> = [
-    {
-      key: "pain",
-      node: (
-        <PainSection
-          title={(professional as any).pain_title ?? undefined}
-          subtitle={(professional as any).pain_subtitle ?? undefined}
-          items={(professional as any).pain_items ?? undefined}
-        />
-      ),
-    },
-    {
-      key: "solution",
-      node: (
-        <SolutionSection
-          title={(professional as any).solution_title ?? undefined}
-          subtitle={(professional as any).solution_subtitle ?? undefined}
-          items={(professional as any).solution_items ?? undefined}
-        />
-      ),
-    },
-    {
-      key: "about",
-      id: "about",
-      clip: false,
-      node: (
-        <AboutSection
-          title={(professional as any).about_title ?? undefined}
-          name={name}
-          bio={professional.bio ?? undefined}
-          crp={professional.crp ?? undefined}
-          photoUrl={professional.photo_url ?? undefined}
-          aboutImageUrl={professional.about_image_url ?? undefined}
-          aboutVideoUrl={(professional as any).about_video_url ?? undefined}
-          approaches={professional.approaches ?? undefined}
-        />
-      ),
-    },
+  // Seções de conteúdo entre o Hero e o Contato, como DADOS (mapa key → nó). O profissional pode
+  // reordenar e ocultar (tier Grátis, Fase 1): section_order define a ordem, section_hidden remove.
+  // A zebra alterna o fundo pela POSIÇÃO na lista já ordenada/filtrada (sem faixa vazia).
+  // Hero e Contato têm tom próprio, fora da alternância. Ver _docs/PLANO_LANDING_PAGES.md.
+  const sectionMeta: Record<string, { id?: string; clip?: boolean }> = {
+    about: { id: "about", clip: false },
+    content: { id: "content" },
+  };
+  const sectionNodes: Record<string, React.ReactNode> = {
+    pain: (
+      <PainSection
+        title={(professional as any).pain_title ?? undefined}
+        subtitle={(professional as any).pain_subtitle ?? undefined}
+        items={(professional as any).pain_items ?? undefined}
+      />
+    ),
+    solution: (
+      <SolutionSection
+        title={(professional as any).solution_title ?? undefined}
+        subtitle={(professional as any).solution_subtitle ?? undefined}
+        items={(professional as any).solution_items ?? undefined}
+      />
+    ),
+    about: (
+      <AboutSection
+        title={(professional as any).about_title ?? undefined}
+        name={name}
+        bio={professional.bio ?? undefined}
+        crp={professional.crp ?? undefined}
+        photoUrl={professional.photo_url ?? undefined}
+        aboutImageUrl={professional.about_image_url ?? undefined}
+        aboutVideoUrl={(professional as any).about_video_url ?? undefined}
+        approaches={professional.approaches ?? undefined}
+      />
+    ),
     ...(hasContent
-      ? [{
-          key: "content",
-          id: "content",
-          node: (
+      ? {
+          content: (
             <ContentSection articles={articles} videos={videos} slug={professional.slug} whatsapp={professional.whatsapp} />
           ),
-        }]
-      : []),
-  ];
+        }
+      : {}),
+  };
+  const orderedKeys = orderContentSections(
+    Object.keys(sectionNodes),
+    (professional as any).section_order ?? undefined,
+    (professional as any).section_hidden ?? undefined,
+  );
 
   return (
     <div className={`min-h-screen bg-background ${dark ? 'dark' : ''}`} style={customStyles as React.CSSProperties}>
@@ -243,9 +240,9 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         photoStyle={(professional as any).photo_style ?? "portrait"}
         photoFit={(professional as any).photo_fit ?? "contain"}
       />
-      {contentSections.map((s, i) => (
-        <Section key={s.key} id={s.id} tone={zebraTone(i)} clip={s.clip}>
-          {s.node}
+      {orderedKeys.map((key, i) => (
+        <Section key={key} id={sectionMeta[key]?.id} tone={zebraTone(i)} clip={sectionMeta[key]?.clip}>
+          {sectionNodes[key]}
         </Section>
       ))}
       <Section id="contact" tone="accent">

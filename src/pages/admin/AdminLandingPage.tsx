@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun } from "lucide-react";
+import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun, ListOrdered, ArrowUp, ArrowDown, Eye, EyeOff, Newspaper } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
 import { TikTokIcon } from "@/components/icons/TikTokIcon";
@@ -21,6 +21,7 @@ import SolutionSection from "@/components/landing/SolutionSection";
 import PainSection from "@/components/landing/PainSection";
 import ContactSection from "@/components/landing/ContactSection";
 import Section from "@/components/landing/Section";
+import { CONTENT_SECTION_KEYS, zebraTone } from "@/lib/landing/sections";
 import { buildLandingVars, getFontScale, FONTS, FONT_SIZES, GOOGLE_FONTS_URL } from "@/lib/landing/buildLandingVars";
 import GenerateAboutVideoDialog from "@/components/admin/landing/GenerateAboutVideoDialog";
 
@@ -111,22 +112,37 @@ const PALETTES = [
   { name: "Vinho",       primary: "#8B3A52" },
 ];
 
+// Rótulos/ícones das seções de conteúdo reordenáveis (tier Grátis, aba "Seções").
+// Mesmas chaves de CONTENT_SECTION_KEYS (sections.ts) — Hero e Contato são fixos, fora daqui.
+const CONTENT_SECTION_LABELS: Record<string, { label: string; icon: React.ElementType; hint?: string }> = {
+  pain:     { label: "Dores",     icon: AlertCircle },
+  solution: { label: "Solução",   icon: Lightbulb   },
+  about:    { label: "Sobre",     icon: BookOpen    },
+  content:  { label: "Conteúdos", icon: Newspaper, hint: "Aparece na página quando você publica artigos ou vídeos." },
+};
+
 // ── section overlay wrapper ────────────────────────────────
 function SectionBlock({
-  label, icon: Icon, active, onClick, children,
+  label, icon: Icon, active, onClick, hidden, children,
 }: {
   label: string;
   icon: React.ElementType;
   active: boolean;
   onClick: () => void;
+  hidden?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div
-      className={`relative group cursor-pointer transition-all ${active ? "ring-2 ring-primary ring-offset-2" : "hover:ring-2 hover:ring-primary/40 hover:ring-offset-1"}`}
+      className={`relative group cursor-pointer transition-all ${active ? "ring-2 ring-primary ring-offset-2" : "hover:ring-2 hover:ring-primary/40 hover:ring-offset-1"} ${hidden ? "opacity-50" : ""}`}
       onClick={onClick}
     >
       {children}
+      {hidden && (
+        <div className="absolute top-3 left-3 z-10 flex items-center gap-1 rounded-full bg-foreground/70 px-2.5 py-1 text-[10px] font-semibold text-background">
+          <EyeOff className="h-3 w-3" /> Oculta
+        </div>
+      )}
       <div className={`absolute inset-0 flex items-start justify-end p-3 transition-opacity ${active ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
         <button
           type="button"
@@ -141,7 +157,7 @@ function SectionBlock({
   );
 }
 
-type Section = "hero" | "dores" | "solucao" | "sobre" | "cores" | "contatos";
+type Section = "secoes" | "hero" | "dores" | "solucao" | "sobre" | "cores" | "contatos";
 
 export default function AdminLandingPage() {
   const { data: professional, isLoading } = useProfessional();
@@ -191,6 +207,10 @@ export default function AdminLandingPage() {
   const [fontFamily, setFontFamily] = useState("inter");
   const [headingFontFamily, setHeadingFontFamily] = useState("playfair");
   const [fontSizeScale, setFontSizeScale] = useState("md");
+
+  // seções (ordem + ocultar) — tier Grátis
+  const [sectionOrder, setSectionOrder] = useState<string[]>([...CONTENT_SECTION_KEYS]);
+  const [sectionHidden, setSectionHidden] = useState<string[]>([]);
 
   // contatos
   const [contactTitle, setContactTitle] = useState("");
@@ -318,6 +338,12 @@ export default function AdminLandingPage() {
     setSolutionTitle((professional as any).solution_title || "");
     setSolutionSubtitle((professional as any).solution_subtitle || "");
     setSolutionItems((professional as any).solution_items || []);
+    // Ordem das seções: garante que as 4 chaves estejam presentes (anexa as faltantes na ordem canônica),
+    // mesmo que o banco tenha um subconjunto ou null → a aba "Seções" sempre lista as 4.
+    const savedOrder: string[] = Array.isArray((professional as any).section_order) ? (professional as any).section_order : [];
+    const validSaved = savedOrder.filter((k) => (CONTENT_SECTION_KEYS as readonly string[]).includes(k));
+    setSectionOrder([...validSaved, ...CONTENT_SECTION_KEYS.filter((k) => !validSaved.includes(k))]);
+    setSectionHidden(Array.isArray((professional as any).section_hidden) ? (professional as any).section_hidden : []);
     setFontFamily((professional as any).font_family || "inter");
     setHeadingFontFamily((professional as any).heading_font_family || "playfair");
     setFontSizeScale((professional as any).font_size_scale || "md");
@@ -339,7 +365,7 @@ export default function AdminLandingPage() {
     setIsDirty(true);
   }, [heroTitle, heroSubtitle, heroImageUrl, heroBgUrl, heroBgOpacity, heroBgOverlay, photoUrl, photoStyle, photoFit,
       aboutTitle, bio, aboutImageUrl, aboutVideoUrl, approaches, primaryColor, secondaryColor, bgColor, darkPrimaryColor, darkSecondaryColor, darkBgColor, darkModeEnabled,
-      painTitle, painSubtitle, painItems, solutionTitle, solutionSubtitle, solutionItems,
+      painTitle, painSubtitle, painItems, solutionTitle, solutionSubtitle, solutionItems, sectionOrder, sectionHidden,
       fontFamily, headingFontFamily, fontSizeScale, contactTitle, contactSubtitle, contactWhatsapp, contactPhone, contactEmail, contactInstagram, contactLinkedin, contactTiktok, contactFacebook]);
 
   // alerta ao fechar/recarregar a aba
@@ -450,6 +476,33 @@ export default function AdminLandingPage() {
     else { toast.success("Contatos salvos!"); setIsDirty(false); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
   };
 
+  const saveSecoes = async () => {
+    if (!professional) return;
+    setSaving(true);
+    const { error } = await supabase.from("professionals").update({
+      section_order: sectionOrder,
+      section_hidden: sectionHidden,
+    } as any).eq("id", professional.id);
+    setSaving(false);
+    if (error) toast.error("Erro ao salvar");
+    else { toast.success("Seções salvas!"); setIsDirty(false); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+  };
+
+  const moveSection = (key: string, dir: -1 | 1) => {
+    setSectionOrder((prev) => {
+      const i = prev.indexOf(key);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  };
+
+  const toggleHidden = (key: string) => {
+    setSectionHidden((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  };
+
   const addApproach = () => {
     const parts = newApproach.split(",").map((s) => s.trim()).filter(Boolean);
     if (parts.length === 0) return;
@@ -496,6 +549,23 @@ export default function AdminLandingPage() {
 
   if (isLoading) return <div className="animate-pulse text-muted-foreground">Carregando...</div>;
 
+  // Blocos de conteúdo do preview (Dores/Solução/Sobre) como dados, pra reordenar conforme a aba "Seções".
+  // 'content' (Conteúdos) não é pré-visualizado aqui (depende de artigos/vídeos publicados).
+  const previewBlocksMeta: Record<string, { label: string; icon: React.ElementType; tab: Section; node: React.ReactNode }> = {
+    pain: {
+      label: "Dores", icon: AlertCircle, tab: "dores",
+      node: <PainSection title={painTitle || undefined} subtitle={painSubtitle || undefined} items={painItems.length > 0 ? painItems : undefined} />,
+    },
+    solution: {
+      label: "Solução", icon: Lightbulb, tab: "solucao",
+      node: <SolutionSection title={solutionTitle || undefined} subtitle={solutionSubtitle || undefined} items={solutionItems.length > 0 ? solutionItems : undefined} />,
+    },
+    about: {
+      label: "Sobre", icon: BookOpen, tab: "sobre",
+      node: <AboutSection title={aboutTitle || undefined} name={name} bio={bio} crp={crp} photoUrl={photoUrl} aboutImageUrl={aboutImageUrl} aboutVideoUrl={aboutVideoUrl} approaches={approaches} autoplay={false} />,
+    },
+  };
+  const previewContentOrder = sectionOrder.filter((k) => k in previewBlocksMeta);
 
   return (
     <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)] overflow-hidden">
@@ -573,40 +643,16 @@ export default function AdminLandingPage() {
               />
             </SectionBlock>
 
-            <SectionBlock label="Dores" icon={AlertCircle} active={activeSection === "dores"} onClick={() => selectSection("dores")}>
-              <Section tone="base">
-              <PainSection
-                title={painTitle || undefined}
-                subtitle={painSubtitle || undefined}
-                items={painItems.length > 0 ? painItems : undefined}
-              />
-              </Section>
-            </SectionBlock>
-
-            <SectionBlock label="Solução" icon={Lightbulb} active={activeSection === "solucao"} onClick={() => selectSection("solucao")}>
-              <Section tone="alt">
-              <SolutionSection
-                title={solutionTitle || undefined}
-                subtitle={solutionSubtitle || undefined}
-                items={solutionItems.length > 0 ? solutionItems : undefined}
-              />
-              </Section>
-            </SectionBlock>
-
-            <SectionBlock label="Sobre" icon={BookOpen} active={activeSection === "sobre"} onClick={() => selectSection("sobre")}>
-              <Section tone="base">
-              <AboutSection
-                title={aboutTitle || undefined}
-                name={name}
-                bio={bio}
-                crp={crp}
-                photoUrl={photoUrl}
-                aboutImageUrl={aboutImageUrl}
-                aboutVideoUrl={aboutVideoUrl}
-                approaches={approaches}
-              />
-              </Section>
-            </SectionBlock>
+            {previewContentOrder.map((k, i) => {
+              const b = previewBlocksMeta[k];
+              return (
+                <SectionBlock key={k} label={b.label} icon={b.icon} active={activeSection === b.tab} hidden={sectionHidden.includes(k)} onClick={() => selectSection(b.tab)}>
+                  <Section tone={zebraTone(i)}>
+                    {b.node}
+                  </Section>
+                </SectionBlock>
+              );
+            })}
 
             <SectionBlock label="Cores" icon={Palette} active={activeSection === "cores"} onClick={() => selectSection("cores")}>
               <div className="py-16 px-8 flex flex-col items-center gap-8 bg-background">
@@ -701,6 +747,7 @@ export default function AdminLandingPage() {
         <div className="flex flex-wrap border-b sticky top-0 bg-background z-10">
 
           {([
+            { id: "secoes",   label: "Seções",   icon: ListOrdered   },
             { id: "hero",     label: "Hero",     icon: Layout        },
             { id: "dores",    label: "Dores",    icon: AlertCircle   },
             { id: "solucao",  label: "Solução",  icon: Lightbulb     },
@@ -725,6 +772,83 @@ export default function AdminLandingPage() {
         </div>
 
         <div className="p-5 space-y-5">
+
+          {/* ── SEÇÕES (ordem + ocultar) ── */}
+          {activeSection === "secoes" && (
+            <>
+              <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
+                Organize a <strong>ordem</strong> das seções e <strong>oculte</strong> o que não quiser mostrar. O <strong>Hero</strong> fica sempre no topo e o <strong>Contato</strong> sempre no fim.
+              </div>
+
+              {/* Hero — fixo no topo */}
+              <div className="flex items-center gap-3 rounded-xl border border-dashed bg-muted/30 px-3 py-2.5">
+                <Layout className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                <span className="text-sm font-medium flex-1">Hero</span>
+                <span className="text-[10px] text-muted-foreground">Sempre no topo</span>
+              </div>
+
+              {/* Seções reordenáveis */}
+              <div className="space-y-2">
+                {sectionOrder.map((key, i) => {
+                  const meta = CONTENT_SECTION_LABELS[key];
+                  if (!meta) return null;
+                  const Icon = meta.icon;
+                  const hidden = sectionHidden.includes(key);
+                  return (
+                    <div
+                      key={key}
+                      className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 transition-all ${hidden ? "bg-muted/20 opacity-60" : "bg-background"}`}
+                    >
+                      <div className="flex flex-col -my-1">
+                        <button
+                          type="button"
+                          disabled={i === 0}
+                          onClick={() => moveSection(key, -1)}
+                          className="text-muted-foreground hover:text-primary disabled:opacity-30 disabled:hover:text-muted-foreground transition-colors"
+                          aria-label={`Mover ${meta.label} para cima`}
+                        >
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={i === sectionOrder.length - 1}
+                          onClick={() => moveSection(key, 1)}
+                          className="text-muted-foreground hover:text-primary disabled:opacity-30 disabled:hover:text-muted-foreground transition-colors"
+                          aria-label={`Mover ${meta.label} para baixo`}
+                        >
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <Icon className="h-4 w-4 text-primary flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium leading-tight">{meta.label}</p>
+                        {meta.hint && <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{meta.hint}</p>}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => toggleHidden(key)}
+                        title={hidden ? "Mostrar seção" : "Ocultar seção"}
+                        className="rounded-md p-1.5 hover:bg-muted transition-colors flex-shrink-0"
+                      >
+                        {hidden ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-primary" />}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Contato — fixo no fim */}
+              <div className="flex items-center gap-3 rounded-xl border border-dashed bg-muted/30 px-3 py-2.5">
+                <MessageCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                <span className="text-sm font-medium flex-1">Contato</span>
+                <span className="text-[10px] text-muted-foreground">Sempre no fim</span>
+              </div>
+
+              <Button onClick={saveSecoes} disabled={saving} className="w-full">
+                {saving ? "Salvando..." : "Salvar Seções"}
+              </Button>
+            </>
+          )}
 
           {/* ── HERO ── */}
           {activeSection === "hero" && (

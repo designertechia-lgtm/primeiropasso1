@@ -1,11 +1,13 @@
 import { CircleAlert, Brain, Heart, Moon, Users, AlertTriangle } from "lucide-react";
 import { splitHeadline } from "@/lib/landing/sections";
 
+// 6 itens: preenche 2 linhas cheias na grade de 3 colunas (sem card órfão).
 const DEFAULT_ITEMS = [
   { text: "Pensamentos acelerados que não param" },
   { text: "Dificuldade para dormir ou descansar de verdade" },
   { text: "Ansiedade que aperta o peito sem motivo aparente" },
   { text: "Relacionamentos que desgastam ao invés de nutrir" },
+  { text: "Autocobrança constante que nunca dá trégua" },
   { text: "Sensação de que algo precisa mudar, mas não sabe por onde começar" },
 ];
 

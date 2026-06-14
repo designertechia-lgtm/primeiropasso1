@@ -2,11 +2,14 @@ import { useState } from "react";
 import { Lightbulb, Target, RefreshCw, Shield, Zap, CheckCircle2, ChevronDown } from "lucide-react";
 import { splitHeadline } from "@/lib/landing/sections";
 
+// 6 cards: preenche 2 linhas cheias na grade de 3 colunas (sem card órfão).
 const DEFAULT_ITEMS = [
   { title: "Autoconhecimento", desc: "Entenda seus padrões de pensamento e como eles influenciam suas emoções e comportamentos." },
   { title: "Objetivos Claros", desc: "Juntos, definimos metas terapêuticas que fazem sentido para a sua vida real." },
   { title: "Novas Perspectivas", desc: "Aprenda a mudar a forma como você percebe os desafios, com técnicas práticas e baseadas em evidências." },
   { title: "Espaço Seguro", desc: "Atendimento 100% ético e sigiloso, onde você pode se expressar sem julgamentos." },
+  { title: "Ferramentas Práticas", desc: "Estratégias e exercícios que você leva para o dia a dia, muito além das sessões." },
+  { title: "Acolhimento Contínuo", desc: "Um acompanhamento próximo e humano em cada etapa do seu processo." },
 ];
 
 const ICONS = [Lightbulb, Target, RefreshCw, Shield, Zap, CheckCircle2];

@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfessional } from "@/hooks/useProfessional";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +20,8 @@ import AboutSection from "@/components/landing/AboutSection";
 import SolutionSection from "@/components/landing/SolutionSection";
 import PainSection from "@/components/landing/PainSection";
 import ContactSection from "@/components/landing/ContactSection";
+import ContentSection from "@/components/landing/ContentSection";
+import LandingFooter from "@/components/landing/LandingFooter";
 import Section from "@/components/landing/Section";
 import { CONTENT_SECTION_KEYS, zebraTone } from "@/lib/landing/sections";
 import { buildLandingVars, getFontScale, FONTS, FONT_SIZES, GOOGLE_FONTS_URL } from "@/lib/landing/buildLandingVars";
@@ -163,6 +165,57 @@ export default function AdminLandingPage() {
   const { data: professional, isLoading } = useProfessional();
   const queryClient = useQueryClient();
 
+  // Artigos/vídeos para o preview da seção Conteúdos — mesma lógica da página pública
+  // (publicados primeiro; se não houver, mostra rascunhos; top 3) pra o preview bater com o que o visitante vê.
+  const { data: rawPreviewArticles = [] } = useQuery({
+    queryKey: ["landing-preview-articles", professional?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("articles")
+        .select("id, title, slug, cover_image_url, published_at, created_at, published")
+        .eq("professional_id", professional!.id)
+        .order("created_at", { ascending: false });
+      return data ?? [];
+    },
+    enabled: !!professional?.id,
+  });
+  const previewArticles = useMemo(() => {
+    const pub = rawPreviewArticles
+      .filter((a) => a.published)
+      .sort((a, b) => new Date(b.published_at ?? b.created_at ?? 0).getTime() - new Date(a.published_at ?? a.created_at ?? 0).getTime())
+      .slice(0, 3);
+    if (pub.length > 0) return pub;
+    return rawPreviewArticles
+      .filter((a) => !a.published)
+      .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())
+      .slice(0, 3);
+  }, [rawPreviewArticles]);
+
+  const { data: rawPreviewVideos = [] } = useQuery({
+    queryKey: ["landing-preview-videos", professional?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("videos")
+        .select("id, title, description, embed_url, thumbnail_url, published_at, created_at, published")
+        .eq("professional_id", professional!.id)
+        .order("created_at", { ascending: false });
+      return data ?? [];
+    },
+    enabled: !!professional?.id,
+  });
+  const previewVideos = useMemo(() => {
+    const pub = rawPreviewVideos
+      .filter((v) => v.published)
+      .sort((a, b) => new Date(b.published_at ?? b.created_at ?? 0).getTime() - new Date(a.published_at ?? a.created_at ?? 0).getTime())
+      .slice(0, 3);
+    if (pub.length > 0) return pub;
+    return rawPreviewVideos
+      .filter((v) => !v.published)
+      .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())
+      .slice(0, 3);
+  }, [rawPreviewVideos]);
+  const hasPreviewContent = previewArticles.length > 0 || previewVideos.length > 0;
+
   // hero
   const [heroTitle, setHeroTitle] = useState("");
   const [heroSubtitle, setHeroSubtitle] = useState("");
@@ -246,11 +299,13 @@ export default function AdminLandingPage() {
   const navigate = useNavigate();
 
 
+  // 6 itens/cards: fecham 2 linhas cheias na grade de 3 colunas (mesmos defaults dos componentes públicos).
   const DEFAULT_PAIN_ITEMS = [
     { text: "Pensamentos acelerados que não param" },
     { text: "Dificuldade para dormir ou descansar de verdade" },
     { text: "Ansiedade que aperta o peito sem motivo aparente" },
     { text: "Relacionamentos que desgastam ao invés de nutrir" },
+    { text: "Autocobrança constante que nunca dá trégua" },
     { text: "Sensação de que algo precisa mudar, mas não sabe por onde começar" },
   ];
 
@@ -259,6 +314,8 @@ export default function AdminLandingPage() {
     { title: "Objetivos Claros", desc: "Juntos, definimos metas terapêuticas que fazem sentido para a sua vida real." },
     { title: "Novas Perspectivas", desc: "Aprenda a mudar a forma como você percebe os desafios, com técnicas práticas e baseadas em evidências." },
     { title: "Espaço Seguro", desc: "Atendimento 100% ético e sigiloso, onde você pode se expressar sem julgamentos." },
+    { title: "Ferramentas Práticas", desc: "Estratégias e exercícios que você leva para o dia a dia, muito além das sessões." },
+    { title: "Acolhimento Contínuo", desc: "Um acompanhamento próximo e humano em cada etapa do seu processo." },
   ];
 
   const aiContext = {
@@ -549,21 +606,28 @@ export default function AdminLandingPage() {
 
   if (isLoading) return <div className="animate-pulse text-muted-foreground">Carregando...</div>;
 
-  // Blocos de conteúdo do preview (Dores/Solução/Sobre) como dados, pra reordenar conforme a aba "Seções".
-  // 'content' (Conteúdos) não é pré-visualizado aqui (depende de artigos/vídeos publicados).
-  const previewBlocksMeta: Record<string, { label: string; icon: React.ElementType; tab: Section; node: React.ReactNode }> = {
+  // Blocos de conteúdo do preview como DADOS, pra reordenar/ocultar conforme a aba "Seções" e
+  // refletir a página pública (mesmas seções, mesma ordem/zebra). Conteúdos só entra quando há
+  // artigos/vídeos (igual ao guard `hasContent` do público); ao clicar, leva à gestão de Artigos.
+  const previewBlocksMeta: Record<string, { label: string; icon: React.ElementType; active: boolean; clip?: boolean; onClick: () => void; node: React.ReactNode }> = {
     pain: {
-      label: "Dores", icon: AlertCircle, tab: "dores",
+      label: "Dores", icon: AlertCircle, active: activeSection === "dores", onClick: () => selectSection("dores"),
       node: <PainSection title={painTitle || undefined} subtitle={painSubtitle || undefined} items={painItems.length > 0 ? painItems : undefined} />,
     },
     solution: {
-      label: "Solução", icon: Lightbulb, tab: "solucao",
+      label: "Solução", icon: Lightbulb, active: activeSection === "solucao", onClick: () => selectSection("solucao"),
       node: <SolutionSection title={solutionTitle || undefined} subtitle={solutionSubtitle || undefined} items={solutionItems.length > 0 ? solutionItems : undefined} />,
     },
     about: {
-      label: "Sobre", icon: BookOpen, tab: "sobre",
+      label: "Sobre", icon: BookOpen, active: activeSection === "sobre", clip: false, onClick: () => selectSection("sobre"),
       node: <AboutSection title={aboutTitle || undefined} name={name} bio={bio} crp={crp} photoUrl={photoUrl} aboutImageUrl={aboutImageUrl} aboutVideoUrl={aboutVideoUrl} approaches={approaches} autoplay={false} />,
     },
+    ...(hasPreviewContent ? {
+      content: {
+        label: "Conteúdos", icon: Newspaper, active: false, onClick: () => navigate("/admin/artigos"),
+        node: <ContentSection articles={previewArticles as any} videos={previewVideos as any} slug={professional?.slug} whatsapp={contactWhatsapp || undefined} />,
+      },
+    } : {}),
   };
   const previewContentOrder = sectionOrder.filter((k) => k in previewBlocksMeta);
 
@@ -646,40 +710,13 @@ export default function AdminLandingPage() {
             {previewContentOrder.map((k, i) => {
               const b = previewBlocksMeta[k];
               return (
-                <SectionBlock key={k} label={b.label} icon={b.icon} active={activeSection === b.tab} hidden={sectionHidden.includes(k)} onClick={() => selectSection(b.tab)}>
-                  <Section tone={zebraTone(i)}>
+                <SectionBlock key={k} label={b.label} icon={b.icon} active={b.active} hidden={sectionHidden.includes(k)} onClick={b.onClick}>
+                  <Section tone={zebraTone(i)} clip={b.clip}>
                     {b.node}
                   </Section>
                 </SectionBlock>
               );
             })}
-
-            <SectionBlock label="Cores" icon={Palette} active={activeSection === "cores"} onClick={() => selectSection("cores")}>
-              <div className="py-16 px-8 flex flex-col items-center gap-8 bg-background">
-                <p className="text-sm font-medium text-muted-foreground uppercase tracking-widest">Paleta ativa ({previewMode === "dark" ? "Escuro" : "Claro"})</p>
-                <div className="flex gap-6">
-                  {[
-                    { label: "Principal",  color: previewMode === "dark" && darkPrimaryColor ? darkPrimaryColor : primaryColor },
-                    { label: "Secundária", color: previewMode === "dark" && darkSecondaryColor ? darkSecondaryColor : secondaryColor },
-                    { label: "Fundo",      color: previewMode === "dark" && darkBgColor ? darkBgColor : bgColor },
-                  ].map((c) => (
-                    <div key={c.label} className="flex flex-col items-center gap-2">
-                      <div className="w-20 h-20 rounded-2xl shadow-lg border" style={{ background: c.color }} />
-                      <span className="text-xs text-muted-foreground">{c.label}</span>
-                      <span className="text-xs font-mono text-foreground/60">{c.color || "—"}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex gap-3 flex-wrap justify-center">
-                  <div className="rounded-xl px-5 py-2.5 text-sm font-medium shadow-sm" style={{ background: previewMode === "dark" && darkPrimaryColor ? darkPrimaryColor : primaryColor, color: "#fff" }}>Botão primário</div>
-                  <div className="rounded-xl px-5 py-2.5 text-sm font-medium border shadow-sm" style={{ background: previewMode === "dark" && darkBgColor ? darkBgColor : bgColor, borderColor: previewMode === "dark" && darkPrimaryColor ? darkPrimaryColor : primaryColor, color: previewMode === "dark" && darkPrimaryColor ? darkPrimaryColor : primaryColor }}>Botão outline</div>
-                </div>
-                <p className="text-sm text-muted-foreground" style={{ fontFamily: (FONTS.find(f => f.value === fontFamily) ?? FONTS[0]).style.fontFamily }}>
-                  Fonte: <strong>{(FONTS.find(f => f.value === fontFamily) ?? FONTS[0]).label}</strong>
-                  {" · "}Tamanho: <strong>{(FONT_SIZES.find(s => s.value === fontSizeScale) ?? FONT_SIZES[1]).label}</strong>
-                </p>
-              </div>
-            </SectionBlock>
 
             <SectionBlock label="Contatos" icon={MessageCircle} active={activeSection === "contatos"} onClick={() => selectSection("contatos")}>
               <Section tone="accent">
@@ -696,6 +733,11 @@ export default function AdminLandingPage() {
               />
               </Section>
             </SectionBlock>
+
+            {/* Rodapé — só para fidelidade visual (não editável aqui) */}
+            <div className="pointer-events-none">
+              <LandingFooter professionalName={name} whatsapp={contactWhatsapp || undefined} />
+            </div>
 
           </div>
         </div>

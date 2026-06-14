@@ -50,9 +50,9 @@ Responda APENAS com o subtítulo, sem aspas.`,
 
   pain_items: (ctx) =>
     `Você é um redator especialista em marketing para profissionais de saúde mental.
-Crie uma lista de 5 sintomas/dores emocionais que os pacientes de ${ctx.name}${ctx.specialty ? ` (${ctx.specialty})` : ""} costumam sentir.
+Crie uma lista de EXATAMENTE 6 sintomas/dores emocionais que os pacientes de ${ctx.name}${ctx.specialty ? ` (${ctx.specialty})` : ""} costumam sentir.
 Cada item deve ser uma frase curta (máx 12 palavras), em primeira ou segunda pessoa, que gere identificação imediata.
-Responda APENAS um JSON válido no formato: [{"text":"..."},{"text":"..."},{"text":"..."},{"text":"..."},{"text":"..."}]
+Responda APENAS um JSON válido com 6 itens no formato: [{"text":"..."},{"text":"..."},{"text":"..."},{"text":"..."},{"text":"..."},{"text":"..."}]
 Sem comentários, sem markdown, apenas o JSON.`,
 
   solution_title: (ctx) =>
@@ -69,9 +69,9 @@ Responda APENAS com o subtítulo, sem aspas.`,
 
   solution_items: (ctx) =>
     `Você é um redator especialista em marketing para profissionais de saúde mental.
-Crie 4 cards de benefícios do trabalho de ${ctx.name}${ctx.specialty ? ` (${ctx.specialty})` : ""}.
+Crie EXATAMENTE 6 cards de benefícios do trabalho de ${ctx.name}${ctx.specialty ? ` (${ctx.specialty})` : ""}.
 Cada card tem um título curto (2-4 palavras) e uma descrição (1-2 frases, máx 20 palavras).
-Responda APENAS um JSON válido: [{"title":"...","desc":"..."},{"title":"...","desc":"..."},{"title":"...","desc":"..."},{"title":"...","desc":"..."}]
+Responda APENAS um JSON válido com 6 cards: [{"title":"...","desc":"..."},{"title":"...","desc":"..."},{"title":"...","desc":"..."},{"title":"...","desc":"..."},{"title":"...","desc":"..."},{"title":"...","desc":"..."}]
 Sem comentários, sem markdown, apenas o JSON.`,
 
   article_with_carousel: (ctx) => {
@@ -113,6 +113,10 @@ Sem comentários, sem markdown, apenas o JSON.`;
   },
 };
 
+// Geração de texto via Anthropic (Claude) — mesmo padrão das demais edge functions do projeto.
+const CLAUDE_URL = "https://api.anthropic.com/v1/messages";
+const CLAUDE_MODEL = "claude-sonnet-4-6";
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -127,96 +131,47 @@ Deno.serve(async (req) => {
       });
     }
 
-    const geminiKey = Deno.env.get("GEMINI_API_KEY");
-    const openaiKey = Deno.env.get("OPENAI_API_KEY");
-    const apiKey = geminiKey || openaiKey;
-
+    const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
     if (!apiKey) {
-      console.error("Nenhuma API Key encontrada no ambiente.");
-      return new Response(JSON.stringify({ 
-        error: "Configuração incompleta", 
-        details: "As chaves de API (GEMINI_API_KEY ou OPENAI_API_KEY) não foram configuradas nas Secrets do Supabase." 
+      console.error("ANTHROPIC_API_KEY não configurada no ambiente.");
+      return new Response(JSON.stringify({
+        error: "Configuração incompleta",
+        details: "A chave ANTHROPIC_API_KEY não foi configurada nas Secrets do Supabase.",
       }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Se tivermos GEMINI_API_KEY, usamos Gemini. Senão, tentamos OpenAI como fallback se a chave existir.
-    const isGemini = !!geminiKey;
-    
-    async function callGemini(key: string, prompt: string) {
-      const model = "gemini-1.5-flash";
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
-      
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.7 }
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Gemini Error: ${errorText}`);
-      }
-
-      const data = await response.json();
-      return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
-    }
-
-    async function callOpenAI(key: string, prompt: string) {
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${key}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.7,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`OpenAI Error: ${errorText}`);
-      }
-
-      const data = await response.json();
-      return data.choices?.[0]?.message?.content?.trim() ?? "";
-    }
-
     let text = "";
     const prompt = promptFn(context);
 
-    try {
-      if (isGemini) {
-        console.log("Tentando Gemini...");
-        text = await callGemini(geminiKey!, prompt);
-      } else {
-        console.log("Tentando OpenAI...");
-        text = await callOpenAI(openaiKey!, prompt);
-      }
-    } catch (err) {
-      console.error("Provedor principal falhou:", err);
-      if (isGemini && openaiKey) {
-        console.log("Gemini falhou, tentando OpenAI como fallback...");
-        try {
-          text = await callOpenAI(openaiKey, prompt);
-        } catch (openaiErr) {
-          const geminiMsg = err instanceof Error ? err.message : String(err);
-          const openaiMsg = openaiErr instanceof Error ? openaiErr.message : String(openaiErr);
-          throw new Error(`Ambos os provedores falharam. Gemini: ${geminiMsg}. OpenAI: ${openaiMsg}`);
-        }
-      } else {
-        throw err;
-      }
+    // 1 chamada à Anthropic (Claude) — mesmo padrão das demais edge functions do projeto.
+    const claudeResp = await fetch(CLAUDE_URL, {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 4096,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+
+    if (!claudeResp.ok) {
+      const errText = await claudeResp.text();
+      console.error("[generate-text] Anthropic error:", errText);
+      return new Response(JSON.stringify({
+        error: "Erro ao gerar texto com IA",
+        details: `Claude ${claudeResp.status}: ${errText.slice(0, 200)}`,
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
-    
+
+    const claudeData = await claudeResp.json();
+    text = (claudeData.content?.find((b: any) => b.type === "text")?.text || "").trim();
+
     // Remover blocos de código se a IA retornar markdown
     text = text.replace(/```json|```/g, "").trim();
 

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { useEvolutionInstance } from "@/hooks/useEvolutionInstance";
 import { Smartphone, QrCode, LogOut, Loader2, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { formatPhoneIntl } from "@/lib/utils";
 
 interface EvolutionConnectDialogProps {
   open: boolean;
@@ -50,6 +51,8 @@ export function EvolutionConnectDialog({
 
   const currentStatus = status.data?.status;
   const instanceName = status.data?.instance_name;
+  const connectedNumber = status.data?.number;
+  const profileName = status.data?.profile_name;
   const isCreating = createInstance.isPending;
   const isLoggingOut = logoutInstance.isPending;
 
@@ -125,15 +128,31 @@ export function EvolutionConnectDialog({
               </div>
               <div>
                 <h4 className="font-medium text-foreground">WhatsApp Conectado!</h4>
-                {instanceName && (
-                  <p className="text-xs text-muted-foreground font-mono mt-1 bg-muted/50 px-2 py-0.5 rounded">
-                    Instância: {instanceName}
-                  </p>
-                )}
                 <p className="text-sm text-muted-foreground mt-2">
                   Sua instância está ativa e o Agente IA já pode responder mensagens.
                 </p>
               </div>
+
+              {connectedNumber ? (
+                <div className="flex items-center gap-3 rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3">
+                  <div className="rounded-lg bg-green-500/15 p-2 text-green-600">
+                    <Smartphone className="h-5 w-5" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-base font-semibold text-foreground leading-tight">
+                      {formatPhoneIntl(connectedNumber)}
+                    </p>
+                    {profileName && (
+                      <p className="text-xs text-muted-foreground">{profileName}</p>
+                    )}
+                  </div>
+                </div>
+              ) : instanceName ? (
+                <p className="text-xs text-muted-foreground font-mono bg-muted/50 px-2 py-0.5 rounded">
+                  Instância: {instanceName}
+                </p>
+              ) : null}
+
               <Button
                 variant="destructive"
                 onClick={handleLogout}

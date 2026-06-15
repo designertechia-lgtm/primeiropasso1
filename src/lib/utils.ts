@@ -109,6 +109,23 @@ export function formatPhone(raw: string): string {
 }
 
 /**
+ * Formata telefone brasileiro no padrão internacional para exibição:
+ *   +55 (48) 98823-8190 (celular, 13 díg.) ou +55 (48) 8823-8190 (fixo, 12 díg.).
+ * Aceita o ownerJid cru do WhatsApp (ex.: "5548988238190@s.whatsapp.net").
+ * Cai de volta no formatPhone quando o tamanho não bate no padrão BR.
+ */
+export function formatPhoneIntl(raw: string): string {
+  const digits = (raw ?? "").replace(/\D/g, "");
+  if (digits.length === 13 && digits.startsWith("55")) {
+    return `+55 (${digits.slice(2, 4)}) ${digits.slice(4, 9)}-${digits.slice(9)}`;
+  }
+  if (digits.length === 12 && digits.startsWith("55")) {
+    return `+55 (${digits.slice(2, 4)}) ${digits.slice(4, 8)}-${digits.slice(8)}`;
+  }
+  return formatPhone(raw);
+}
+
+/**
  * Remove toda formatação, mantém apenas dígitos.
  */
 export function unformatPhone(formatted: string): string {

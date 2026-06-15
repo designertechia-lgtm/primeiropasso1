@@ -6,6 +6,8 @@ export type EvolutionStatus = "open" | "close" | "connecting" | "not_created" | 
 interface EvolutionResponse {
   status?: EvolutionStatus;
   instance_name?: string;
+  number?: string;
+  profile_name?: string;
   qrcode?: string;
   base64?: string;
   error?: string;

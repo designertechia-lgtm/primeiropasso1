@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -137,6 +138,8 @@ export default function GenerateAboutVideoDialog({
   const [legendas, setLegendas] = useState(true);
   const [grade, setGrade] = useState("warm_cinematic");
   const [musica, setMusica] = useState(true);
+  const [marca, setMarca] = useState(true);
+  const [marcaSubtitulo, setMarcaSubtitulo] = useState("");
   const footageInputRef = useRef<HTMLInputElement | null>(null);
 
   // Formato do vídeo segue a proporção da FOTO (foto 1:1 → vídeo 1:1; alta → 9:16).
@@ -329,6 +332,9 @@ export default function GenerateAboutVideoDialog({
           legendas,
           grade,
           musica,
+          marca,
+          marca_nome: professionalName,
+          marca_subtitulo: marcaSubtitulo.trim(),
           set_about_video: true,
         }),
       });
@@ -604,6 +610,36 @@ export default function GenerateAboutVideoDialog({
                     <SelectItem value="none">Nenhum</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-1.5 rounded-lg border bg-muted/20 p-3">
+                <button
+                  type="button"
+                  disabled={gerando}
+                  onClick={() => setMarca((v) => !v)}
+                  className="flex w-full items-center justify-between gap-2 text-sm"
+                >
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <Captions className="h-3.5 w-3.5" /> Selo com meu nome na tela
+                  </span>
+                  <span className={`h-5 w-9 rounded-full transition relative ${marca ? "bg-primary" : "bg-muted-foreground/30"}`}>
+                    <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${marca ? "left-[18px]" : "left-0.5"}`} />
+                  </span>
+                </button>
+                {marca && (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      Aparece <strong>{professionalName}</strong> + um subtítulo. Edite o subtítulo abaixo
+                      (ex.: sua especialidade e registro).
+                    </p>
+                    <Input
+                      value={marcaSubtitulo}
+                      onChange={(e) => setMarcaSubtitulo(e.target.value)}
+                      disabled={gerando}
+                      placeholder="Ex: Psicóloga · CRP 06/12345"
+                    />
+                  </>
+                )}
               </div>
             </div>
           )}

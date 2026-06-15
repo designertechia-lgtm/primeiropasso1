@@ -96,7 +96,36 @@ serve(async (req) => {
       }
       
       const data = await res.json()
-      return new Response(JSON.stringify({ status: data?.instance?.state || 'unknown' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      const state = data?.instance?.state || 'unknown'
+
+      const payload: Record<string, unknown> = {
+        status: state,
+        instance_name: pro.evolution_instance_name,
+      }
+
+      // Quando conectado, busca o número e o nome do perfil pra exibir no card.
+      // Best-effort: se a Evolution não responder, devolve só o status (como antes).
+      if (state === 'open') {
+        try {
+          const infoRes = await fetch(
+            `${evoUrl}/instance/fetchInstances?instanceName=${pro.evolution_instance_name}`,
+            { headers: evoHeaders }
+          )
+          if (infoRes.ok) {
+            const infoData = await infoRes.json()
+            const inst = Array.isArray(infoData) ? infoData[0] : infoData
+            // v2: { ownerJid, profileName } no nível raiz | v1: { instance: { owner, profileName } }
+            const node = inst?.instance ?? inst ?? {}
+            const ownerJid = node.ownerJid ?? node.owner ?? null
+            payload.number = ownerJid ? String(ownerJid).split('@')[0] : null
+            payload.profile_name = node.profileName ?? null
+          }
+        } catch (e) {
+          console.warn(`[evolution-proxy] fetchInstances falhou: ${e instanceof Error ? e.message : String(e)}`)
+        }
+      }
+
+      return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
     if (action === 'create') {

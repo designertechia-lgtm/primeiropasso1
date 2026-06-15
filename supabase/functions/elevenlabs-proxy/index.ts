@@ -64,9 +64,47 @@ serve(async (req) => {
   }
 
   const url = new URL(req.url);
-  const action = url.searchParams.get("action"); // clone | generate | delete
+  const action = url.searchParams.get("action"); // clone | generate | delete | transcribe
 
   try {
+    // ── Transcrição (Speech-to-Text / Scribe) ─────────────────
+    // Usada pela edição de vídeo institucional no worker (server-to-server,
+    // sem JWT). Scribe não é gateado por créditos aqui — a cobrança do fluxo
+    // de edição fica no chamador (video-api). Recebe o áudio já extraído
+    // (mono 16kHz) e devolve o JSON cru do Scribe com timestamps por palavra.
+    if (action === "transcribe") {
+      const form = await req.formData();
+      const audio = form.get("audio") as File;
+      if (!audio) {
+        return new Response(JSON.stringify({ error: "campo 'audio' ausente" }), {
+          status: 400, headers: { ...cors, "Content-Type": "application/json" },
+        });
+      }
+      const language = form.get("language")?.toString() || "";
+      const numSpeakers = form.get("num_speakers")?.toString() || "";
+
+      const body = new FormData();
+      body.append("file", audio, audio.name || "audio.wav");
+      body.append("model_id", "scribe_v1");
+      body.append("diarize", "true");
+      body.append("tag_audio_events", "true");
+      body.append("timestamps_granularity", "word");
+      if (language) body.append("language_code", language);
+      if (numSpeakers) body.append("num_speakers", numSpeakers);
+
+      const res = await fetch(`${BASE_URL}/speech-to-text`, {
+        method: "POST",
+        headers: { "xi-api-key": ELEVENLABS_KEY },
+        body,
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail?.message ?? JSON.stringify(data));
+      return new Response(JSON.stringify(data), {
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    }
+
     // ── Clone de voz ─────────────────────────────────────────
     if (action === "clone") {
       const form = await req.formData();
@@ -149,7 +187,7 @@ serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ error: "action inválida. Use: clone | generate | delete" }), {
+    return new Response(JSON.stringify({ error: "action inválida. Use: clone | generate | delete | transcribe" }), {
       status: 400, headers: { ...cors, "Content-Type": "application/json" },
     });
 

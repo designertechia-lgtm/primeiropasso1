@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Sparkles, Loader2, Clapperboard, Crown, RefreshCw, Mic, Square, CheckCircle2, RotateCcw } from "lucide-react";
+import { Sparkles, Loader2, Clapperboard, Crown, RefreshCw, Mic, Square, CheckCircle2, RotateCcw, Upload, Video, Music, Captions, Image as ImageIcon } from "lucide-react";
 
 const VIDEO_API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
 
@@ -130,6 +130,14 @@ export default function GenerateAboutVideoDialog({
   const [recloning, setRecloning] = useState(false); // regravar mesmo tendo voz salva
   const [cloning, setCloning] = useState(false);
   const recorder = useSampleRecorder();
+
+  // Origem do vídeo: "foto" = animar a foto (Kling); "video" = editar um footage real.
+  const [source, setSource] = useState<"foto" | "video">("foto");
+  const [footageFile, setFootageFile] = useState<File | null>(null);
+  const [legendas, setLegendas] = useState(true);
+  const [grade, setGrade] = useState("warm_cinematic");
+  const [musica, setMusica] = useState(true);
+  const footageInputRef = useRef<HTMLInputElement | null>(null);
 
   // Formato do vídeo segue a proporção da FOTO (foto 1:1 → vídeo 1:1; alta → 9:16).
   // Evita esticar a imagem e a seção Sobre renderiza qualquer proporção.
@@ -267,32 +275,73 @@ export default function GenerateAboutVideoDialog({
         throw new Error(err.detail || `Erro ${res.status}`);
       }
       const { job_id } = await res.json();
-
-      pollRef.current = setInterval(async () => {
-        try {
-          const st = await (await fetch(`${VIDEO_API}/status/${job_id}`)).json();
-          if (st.status === "done") {
-            if (pollRef.current) clearInterval(pollRef.current);
-            qc.invalidateQueries({ queryKey: ["credit-balance"] });
-            toast.success("Vídeo institucional pronto e aplicado na sua página! 🎉");
-            onDone(st.video_url);
-            onOpenChange(false);
-            setPhase("pronto");
-            setProgress(null);
-          } else if (st.status === "error" || st.status === "cancelled") {
-            if (pollRef.current) clearInterval(pollRef.current);
-            setPhase("pronto");
-            setProgress(null);
-            toast.error("A geração falhou", { description: st.message });
-          } else {
-            setProgress({ pct: st.progress ?? 50, step: st.step ?? "Gerando..." });
-          }
-        } catch { /* tenta de novo no próximo tick */ }
-      }, 5000);
+      startPolling(job_id, "Vídeo institucional pronto e aplicado na sua página! 🎉");
     } catch (e: any) {
       setPhase("pronto");
       setProgress(null);
       toast.error("Erro ao iniciar a geração", { description: e?.message });
+    }
+  }
+
+  // Polling compartilhado pelos dois fluxos (animar foto / editar vídeo).
+  function startPolling(jobId: string, successMsg: string) {
+    pollRef.current = setInterval(async () => {
+      try {
+        const st = await (await fetch(`${VIDEO_API}/status/${jobId}`)).json();
+        if (st.status === "done") {
+          if (pollRef.current) clearInterval(pollRef.current);
+          qc.invalidateQueries({ queryKey: ["credit-balance"] });
+          toast.success(successMsg);
+          onDone(st.video_url);
+          onOpenChange(false);
+          setPhase("pronto");
+          setProgress(null);
+        } else if (st.status === "error" || st.status === "cancelled") {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setPhase("pronto");
+          setProgress(null);
+          toast.error("A geração falhou", { description: st.message });
+        } else {
+          setProgress({ pct: st.progress ?? 50, step: st.step ?? "Gerando..." });
+        }
+      } catch { /* tenta de novo no próximo tick */ }
+    }, 5000);
+  }
+
+  // Fluxo "Editar um vídeo meu": upload do footage → corte automático no worker.
+  async function editarVideo() {
+    if (!footageFile) return;
+    setPhase("gerando");
+    setProgress({ pct: 5, step: "Enviando seu vídeo…" });
+    try {
+      const form = new FormData();
+      form.append("file", footageFile, footageFile.name);
+      const up = await fetch(`${VIDEO_API}/upload-footage`, { method: "POST", body: form });
+      if (!up.ok) throw new Error(`Falha ao enviar o vídeo (${up.status})`);
+      const { path } = await up.json();
+
+      const res = await fetch(`${VIDEO_API}/editar-institucional`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          professional_slug: professionalSlug,
+          footage_path: path,
+          legendas,
+          grade,
+          musica,
+          set_about_video: true,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Erro ${res.status}`);
+      }
+      const { job_id } = await res.json();
+      startPolling(job_id, "Seu vídeo foi editado e aplicado na sua página! 🎉");
+    } catch (e: any) {
+      setPhase("pronto");
+      setProgress(null);
+      toast.error("Erro ao editar o vídeo", { description: e?.message });
     }
   }
 
@@ -307,17 +356,39 @@ export default function GenerateAboutVideoDialog({
             Gerar vídeo institucional com IA
           </DialogTitle>
           <DialogDescription>
-            Sua foto ganha vida com movimento suave, narração e legendas — e o vídeo entra
-            direto na seção Sobre. (A narração é em voz off, sem sincronia labial.)
+            {source === "foto"
+              ? "Sua foto ganha vida com movimento suave, narração e legendas — e o vídeo entra direto na seção Sobre. (A narração é em voz off, sem sincronia labial.)"
+              : "Envie um vídeo seu falando à câmera: a IA corta as hesitações e os silêncios, sincroniza legendas e equaliza o áudio — e aplica direto na seção Sobre."}
           </DialogDescription>
         </DialogHeader>
 
-        {!photoUrl ? (
-          <p className="text-sm text-destructive">
-            Adicione uma foto primeiro (imagem da seção Sobre ou foto de perfil) — é ela que será animada.
-          </p>
-        ) : (
-          <div className="space-y-4">
+        <div className="space-y-4">
+          {/* Origem: animar a foto (Kling) OU editar um vídeo real do profissional */}
+          <div className="flex rounded-lg border overflow-hidden text-sm">
+            <button
+              type="button"
+              disabled={gerando}
+              onClick={() => setSource("foto")}
+              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 transition ${source === "foto" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:text-foreground"}`}
+            >
+              <ImageIcon className="h-3.5 w-3.5" /> Animar minha foto
+            </button>
+            <button
+              type="button"
+              disabled={gerando}
+              onClick={() => setSource("video")}
+              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 transition ${source === "video" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:text-foreground"}`}
+            >
+              <Video className="h-3.5 w-3.5" /> Editar um vídeo meu
+            </button>
+          </div>
+
+          {source === "foto" && (!photoUrl ? (
+            <p className="text-sm text-destructive">
+              Adicione uma foto primeiro (imagem da seção Sobre ou foto de perfil) — é ela que será animada.
+            </p>
+          ) : (
+            <div className="space-y-4">
             <div className="flex gap-3 items-start">
               <img src={photoUrl} alt="Foto a animar" className="w-20 h-20 rounded-lg object-cover border" />
               <div className="flex-1 space-y-2">
@@ -464,31 +535,111 @@ export default function GenerateAboutVideoDialog({
               </div>
             )}
 
-            {gerando && progress && (
-              <div className="space-y-2">
-                <div className="h-2 rounded-full bg-muted overflow-hidden">
-                  <div className="h-full bg-primary transition-all duration-500" style={{ width: `${progress.pct}%` }} />
-                </div>
-                <p className="text-xs text-muted-foreground text-center">{progress.step} ({progress.pct}%) — pode levar alguns minutos</p>
+            </div>
+          ))}
+
+          {source === "video" && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Sua gravação vira um institucional pronto: a IA <strong>transcreve</strong>, corta hesitações
+                e silêncios, <strong>sincroniza as legendas</strong> e equaliza o áudio — e aplica direto na seção Sobre.
+              </p>
+
+              <input
+                ref={footageInputRef}
+                type="file"
+                accept="video/*"
+                className="hidden"
+                onChange={(e) => setFootageFile(e.target.files?.[0] ?? null)}
+              />
+              <button
+                type="button"
+                disabled={gerando}
+                onClick={() => footageInputRef.current?.click()}
+                className="w-full rounded-lg border border-dashed p-4 text-center transition hover:bg-muted/40"
+              >
+                {footageFile ? (
+                  <span className="flex items-center justify-center gap-2 text-sm font-medium">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    {footageFile.name}
+                  </span>
+                ) : (
+                  <span className="flex flex-col items-center gap-1 text-sm text-muted-foreground">
+                    <Upload className="h-5 w-5" />
+                    Enviar meu vídeo (MP4/MOV)
+                  </span>
+                )}
+              </button>
+              <p className="text-xs text-muted-foreground -mt-2">
+                Dica: grave de pé, com luz na frente, em 1080p e fale solto — a edição corta o que sobra.
+              </p>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={gerando}
+                  onClick={() => setLegendas((v) => !v)}
+                  className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition ${legendas ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:bg-muted/50 text-muted-foreground"}`}
+                >
+                  <Captions className="h-3.5 w-3.5" /> Legendas {legendas ? "ligadas" : "desligadas"}
+                </button>
+                <button
+                  type="button"
+                  disabled={gerando}
+                  onClick={() => setMusica((v) => !v)}
+                  className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition ${musica ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:bg-muted/50 text-muted-foreground"}`}
+                >
+                  <Music className="h-3.5 w-3.5" /> Trilha {musica ? "ligada" : "desligada"}
+                </button>
               </div>
-            )}
-          </div>
-        )}
+
+              <div className="space-y-1.5">
+                <Label>Tratamento de cor</Label>
+                <Select value={grade} onValueChange={setGrade} disabled={gerando}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="warm_cinematic">Cinematográfico quente</SelectItem>
+                    <SelectItem value="neutral_punch">Neutro com contraste</SelectItem>
+                    <SelectItem value="subtle">Sutil (quase nada)</SelectItem>
+                    <SelectItem value="none">Nenhum</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
+          {gerando && progress && (
+            <div className="space-y-2">
+              <div className="h-2 rounded-full bg-muted overflow-hidden">
+                <div className="h-full bg-primary transition-all duration-500" style={{ width: `${progress.pct}%` }} />
+              </div>
+              <p className="text-xs text-muted-foreground text-center">{progress.step} ({progress.pct}%) — pode levar alguns minutos</p>
+            </div>
+          )}
+        </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={gerando}>
             {gerando ? "Gerando…" : "Cancelar"}
           </Button>
-          <Button
-            onClick={gerarVideo}
-            disabled={!script || !narracao.trim() || gerando || !canAfford || !photoUrl || (voiceMode === "clone" && !cloneVoiceId)}
-            title={voiceMode === "clone" && !cloneVoiceId ? "Grave e clone sua voz primeiro (ou use a voz neural)" : undefined}
-            className="gap-2"
-          >
-            {gerando
-              ? <><Loader2 className="h-4 w-4 animate-spin" /> Gerando vídeo…</>
-              : <><Clapperboard className="h-4 w-4" /> Gerar por {selectedCost ?? "…"} créditos</>}
-          </Button>
+          {source === "foto" ? (
+            <Button
+              onClick={gerarVideo}
+              disabled={!script || !narracao.trim() || gerando || !canAfford || !photoUrl || (voiceMode === "clone" && !cloneVoiceId)}
+              title={voiceMode === "clone" && !cloneVoiceId ? "Grave e clone sua voz primeiro (ou use a voz neural)" : undefined}
+              className="gap-2"
+            >
+              {gerando
+                ? <><Loader2 className="h-4 w-4 animate-spin" /> Gerando vídeo…</>
+                : <><Clapperboard className="h-4 w-4" /> Gerar por {selectedCost ?? "…"} créditos</>}
+            </Button>
+          ) : (
+            <Button onClick={editarVideo} disabled={!footageFile || gerando} className="gap-2">
+              {gerando
+                ? <><Loader2 className="h-4 w-4 animate-spin" /> Editando vídeo…</>
+                : <><Clapperboard className="h-4 w-4" /> Editar e aplicar</>}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

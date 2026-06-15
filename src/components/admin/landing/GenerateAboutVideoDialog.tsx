@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Sparkles, Loader2, Clapperboard, Crown, RefreshCw, Mic, Square, CheckCircle2, RotateCcw, Upload, Video, Music, Captions, Image as ImageIcon, Link as LinkIcon, PlayCircle, Type } from "lucide-react";
+import { Sparkles, Loader2, Clapperboard, Crown, RefreshCw, Mic, Square, CheckCircle2, RotateCcw, Upload, Video, Music, Captions, Image as ImageIcon, Link as LinkIcon, PlayCircle, Type, TriangleAlert } from "lucide-react";
 
 const VIDEO_API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
 
@@ -215,6 +215,10 @@ export default function GenerateAboutVideoDialog({
   useEffect(() => {
     if (open && source === "video") setFootageSource(currentEditable ? "atual" : "upload");
   }, [open, source, currentEditable]);
+
+  // O vídeo publicado já costuma ter legendas embutidas → não re-legendar por
+  // padrão (evita sobrepor). Upload/link (cru) legenda do zero.
+  useEffect(() => { setLegendas(footageSource !== "atual"); }, [footageSource]);
 
   // Formato do vídeo segue a proporção da FOTO (foto 1:1 → vídeo 1:1; alta → 9:16).
   // Evita esticar a imagem e a seção Sobre renderiza qualquer proporção.
@@ -700,6 +704,12 @@ export default function GenerateAboutVideoDialog({
                   )}
                   {footageSource === "link" && (
                     <Input value={footageLink} onChange={(e) => setFootageLink(e.target.value)} disabled={gerando} placeholder="Link direto do vídeo (.mp4) — YouTube não dá pra editar" />
+                  )}
+                  {footageSource === "atual" && (
+                    <p className="flex items-start gap-1.5 rounded-md bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-400">
+                      <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      Esse vídeo já está finalizado (legendas/cor embutidas). Reeditar pode sobrepor — para uma edição limpa, envie o vídeo original.
+                    </p>
                   )}
                 </div>
 

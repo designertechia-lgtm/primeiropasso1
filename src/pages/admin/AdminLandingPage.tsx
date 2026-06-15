@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun, ListOrdered, ArrowUp, ArrowDown, Eye, EyeOff, Newspaper } from "lucide-react";
+import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun, ListOrdered, ArrowUp, ArrowDown, Eye, EyeOff, Newspaper, PlayCircle } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
 import { TikTokIcon } from "@/components/icons/TikTokIcon";
@@ -26,6 +26,30 @@ import Section from "@/components/landing/Section";
 import { CONTENT_SECTION_KEYS, zebraTone } from "@/lib/landing/sections";
 import { buildLandingVars, getFontScale, FONTS, FONT_SIZES, GOOGLE_FONTS_URL } from "@/lib/landing/buildLandingVars";
 import GenerateAboutVideoDialog from "@/components/admin/landing/GenerateAboutVideoDialog";
+
+// ── Vídeo: detecção de arquivo direto vs embed (YouTube/Vimeo) ────────────
+// Espelha a lógica do AboutSection da landing pública, pro preview do editor
+// bater com o que o visitante vê.
+function isDirectVideoUrl(url: string): boolean {
+  if (!url) return false;
+  const u = url.toLowerCase();
+  return /\.(mp4|webm|mov)(\?|$)/.test(u) || u.includes("/storage/v1/object/public/");
+}
+
+function toVideoEmbedUrl(url: string): string {
+  if (!url) return "";
+  if (url.includes("youtube.com") || url.includes("youtu.be")) {
+    const videoId = url.includes("youtu.be")
+      ? url.split("youtu.be/")[1]?.split(/[?&]/)[0]
+      : url.split("v=")[1]?.split("&")[0];
+    return `https://www.youtube.com/embed/${videoId}`;
+  }
+  if (url.includes("vimeo.com")) {
+    const videoId = url.split("vimeo.com/")[1]?.split(/[?&]/)[0];
+    return `https://player.vimeo.com/video/${videoId}`;
+  }
+  return url;
+}
 
 // ── AI helper ─────────────────────────────────────────────
 async function callGenerateText(field: string, context: { name: string; crp?: string; specialty?: string }) {
@@ -1189,14 +1213,54 @@ export default function AdminLandingPage() {
                 </div>
                 <div className="space-y-2 pt-2 border-t">
                   <Label className="text-xs">Ou faça upload de um vídeo (.mp4)</Label>
-                  <ImageUpload 
-                    currentUrl={aboutVideoUrl || null} 
-                    onUploaded={setAboutVideoUrl} 
-                    folder="videos" 
-                    variant="wide" 
-                    accept="video/mp4,video/webm" 
+                  <ImageUpload
+                    currentUrl={aboutVideoUrl || null}
+                    onUploaded={setAboutVideoUrl}
+                    folder="videos"
+                    variant="wide"
+                    accept="video/mp4,video/webm"
                   />
                 </div>
+
+                {aboutVideoUrl && (
+                  <div className="space-y-1.5 pt-2 border-t">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs flex items-center gap-1.5">
+                        <PlayCircle className="h-3.5 w-3.5 text-primary" /> Pré-visualização
+                      </Label>
+                      <button
+                        type="button"
+                        onClick={() => setAboutVideoUrl("")}
+                        className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        Remover vídeo
+                      </button>
+                    </div>
+                    {isDirectVideoUrl(aboutVideoUrl) ? (
+                      <video
+                        key={aboutVideoUrl}
+                        src={aboutVideoUrl}
+                        controls
+                        playsInline
+                        className="mx-auto max-h-72 rounded-lg border bg-black"
+                      />
+                    ) : (
+                      <div className="aspect-video rounded-lg overflow-hidden border bg-black">
+                        <iframe
+                          key={aboutVideoUrl}
+                          src={toVideoEmbedUrl(aboutVideoUrl)}
+                          className="w-full h-full"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                          title="Pré-visualização do vídeo institucional"
+                        />
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      É assim que o vídeo aparece na seção Sobre. Gerar com IA ou trocar o link atualiza aqui.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">

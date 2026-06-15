@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Sparkles, Loader2, Clapperboard, Crown, RefreshCw, Mic, Square, CheckCircle2, RotateCcw, Upload, Video, Music, Captions, Image as ImageIcon } from "lucide-react";
+import { Sparkles, Loader2, Clapperboard, Crown, RefreshCw, Mic, Square, CheckCircle2, RotateCcw, Upload, Video, Music, Captions, Image as ImageIcon, Link as LinkIcon, PlayCircle, Type } from "lucide-react";
 
 const VIDEO_API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
 
@@ -97,6 +97,31 @@ function useTierCost(serviceKey: string, enabled: boolean) {
   });
 }
 
+// Vídeo "direto" (editável): arquivo .mp4/.webm/.mov ou URL do nosso storage.
+// Link de YouTube/Vimeo não dá pra editar (worker não baixa stream).
+function isDirectVideo(url?: string | null): boolean {
+  if (!url) return false;
+  const u = url.toLowerCase();
+  return /\.(mp4|webm|mov)(\?|$)/.test(u) || u.includes("/storage/v1/object/public/");
+}
+
+function SourceBtn({ active, onClick, disabled, icon: Icon, label }: {
+  active: boolean; onClick: () => void; disabled?: boolean; icon: any; label: string;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+        active ? "border-primary bg-primary/5 ring-1 ring-primary text-foreground" : "text-muted-foreground hover:bg-muted/50"
+      }`}
+    >
+      <Icon className="h-3.5 w-3.5" /> {label}
+    </button>
+  );
+}
+
 interface GenerateAboutVideoDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -104,6 +129,7 @@ interface GenerateAboutVideoDialogProps {
   professionalId: string;
   professionalName: string;
   photoUrl: string | null; // foto que será animada (about_image_url ou foto de perfil)
+  currentVideoUrl?: string | null; // vídeo atual da seção Sobre (pré-carregado no estúdio)
   savedVoiceId: string | null; // clone ElevenLabs já salvo no perfil (reusado)
   onDone: (videoUrl: string) => void;
   /** Deep-link do Axel: rascunho de roteiro já preparado + molde escolhido na conversa */
@@ -118,6 +144,7 @@ export default function GenerateAboutVideoDialog({
   professionalId,
   professionalName,
   photoUrl,
+  currentVideoUrl,
   savedVoiceId,
   onDone,
   initialDraftId,
@@ -135,12 +162,39 @@ export default function GenerateAboutVideoDialog({
   // Origem do vídeo: "foto" = animar a foto (Kling); "video" = editar um footage real.
   const [source, setSource] = useState<"foto" | "video">("foto");
   const [footageFile, setFootageFile] = useState<File | null>(null);
+  const [footageSource, setFootageSource] = useState<"upload" | "atual" | "link">("upload");
+  const [footageLink, setFootageLink] = useState("");
+  const [instrucoes, setInstrucoes] = useState("");
+  const [dragOver, setDragOver] = useState(false);
   const [legendas, setLegendas] = useState(true);
   const [grade, setGrade] = useState("warm_cinematic");
   const [musica, setMusica] = useState(true);
   const [marca, setMarca] = useState(true);
   const [marcaSubtitulo, setMarcaSubtitulo] = useState("");
   const footageInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Preview do arquivo enviado (object URL) — liberado ao trocar/fechar.
+  const footageObjectUrl = useMemo(
+    () => (footageFile ? URL.createObjectURL(footageFile) : null),
+    [footageFile],
+  );
+  useEffect(() => () => { if (footageObjectUrl) URL.revokeObjectURL(footageObjectUrl); }, [footageObjectUrl]);
+
+  const currentEditable = isDirectVideo(currentVideoUrl);
+  // Vídeo que será editado/demonstrado conforme a fonte escolhida.
+  const editablePreview =
+    footageSource === "upload" ? footageObjectUrl
+    : footageSource === "atual" ? (currentVideoUrl || null)
+    : (isDirectVideo(footageLink) ? footageLink : null);
+  const hasFootage =
+    footageSource === "upload" ? !!footageFile
+    : footageSource === "atual" ? !!currentVideoUrl
+    : isDirectVideo(footageLink);
+
+  // Ao abrir no modo vídeo, pré-carrega o vídeo atual como ponto de partida.
+  useEffect(() => {
+    if (open && source === "video") setFootageSource(currentEditable ? "atual" : "upload");
+  }, [open, source, currentEditable]);
 
   // Formato do vídeo segue a proporção da FOTO (foto 1:1 → vídeo 1:1; alta → 9:16).
   // Evita esticar a imagem e a seção Sobre renderiza qualquer proporção.
@@ -311,32 +365,37 @@ export default function GenerateAboutVideoDialog({
     }, 5000);
   }
 
-  // Fluxo "Editar um vídeo meu": upload do footage → corte automático no worker.
+  // Fluxo "Editar um vídeo meu": fonte (upload/atual/link) → corte automático no worker.
   async function editarVideo() {
-    if (!footageFile) return;
+    if (!hasFootage) return;
     setPhase("gerando");
-    setProgress({ pct: 5, step: "Enviando seu vídeo…" });
+    setProgress({ pct: 5, step: "Preparando…" });
     try {
-      const form = new FormData();
-      form.append("file", footageFile, footageFile.name);
-      const up = await fetch(`${VIDEO_API}/upload-footage`, { method: "POST", body: form });
-      if (!up.ok) throw new Error(`Falha ao enviar o vídeo (${up.status})`);
-      const { path } = await up.json();
+      const body: Record<string, any> = {
+        professional_slug: professionalSlug,
+        legendas, grade, musica,
+        marca,
+        marca_nome: professionalName,
+        marca_subtitulo: marcaSubtitulo.trim(),
+        instrucoes: instrucoes.trim(),
+        set_about_video: true,
+      };
+
+      if (footageSource === "upload") {
+        setProgress({ pct: 5, step: "Enviando seu vídeo…" });
+        const form = new FormData();
+        form.append("file", footageFile!, footageFile!.name);
+        const up = await fetch(`${VIDEO_API}/upload-footage`, { method: "POST", body: form });
+        if (!up.ok) throw new Error(`Falha ao enviar o vídeo (${up.status})`);
+        body.footage_path = (await up.json()).path;
+      } else {
+        body.footage_url = footageSource === "atual" ? currentVideoUrl : footageLink.trim();
+      }
 
       const res = await fetch(`${VIDEO_API}/editar-institucional`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          professional_slug: professionalSlug,
-          footage_path: path,
-          legendas,
-          grade,
-          musica,
-          marca,
-          marca_nome: professionalName,
-          marca_subtitulo: marcaSubtitulo.trim(),
-          set_about_video: true,
-        }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -355,7 +414,7 @@ export default function GenerateAboutVideoDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!gerando) onOpenChange(o); }}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Clapperboard className="h-5 w-5 text-primary" />
@@ -546,100 +605,122 @@ export default function GenerateAboutVideoDialog({
 
           {source === "video" && (
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Sua gravação vira um institucional pronto: a IA <strong>transcreve</strong>, corta hesitações
-                e silêncios, <strong>sincroniza as legendas</strong> e equaliza o áudio — e aplica direto na seção Sobre.
-              </p>
-
+              {/* Player / arrasta-e-solta em destaque */}
               <input
                 ref={footageInputRef}
                 type="file"
                 accept="video/*"
                 className="hidden"
-                onChange={(e) => setFootageFile(e.target.files?.[0] ?? null)}
+                onChange={(e) => { const f = e.target.files?.[0] ?? null; setFootageFile(f); if (f) setFootageSource("upload"); }}
               />
-              <button
-                type="button"
-                disabled={gerando}
-                onClick={() => footageInputRef.current?.click()}
-                className="w-full rounded-lg border border-dashed p-4 text-center transition hover:bg-muted/40"
+              <div
+                onDragOver={(e) => { e.preventDefault(); if (!gerando) setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOver(false);
+                  const f = e.dataTransfer.files?.[0];
+                  if (f && f.type.startsWith("video/")) { setFootageFile(f); setFootageSource("upload"); }
+                }}
+                className={`relative overflow-hidden rounded-xl border bg-black/90 transition ${dragOver ? "border-primary ring-2 ring-primary/40" : "border-border"}`}
               >
-                {footageFile ? (
-                  <span className="flex items-center justify-center gap-2 text-sm font-medium">
-                    <CheckCircle2 className="h-4 w-4 text-green-600" />
-                    {footageFile.name}
-                  </span>
+                {editablePreview ? (
+                  <video key={editablePreview} src={editablePreview} controls playsInline className="mx-auto max-h-[42vh] w-full bg-black object-contain" />
                 ) : (
-                  <span className="flex flex-col items-center gap-1 text-sm text-muted-foreground">
-                    <Upload className="h-5 w-5" />
-                    Enviar meu vídeo (MP4/MOV)
-                  </span>
+                  <button
+                    type="button"
+                    disabled={gerando}
+                    onClick={() => footageInputRef.current?.click()}
+                    className="flex w-full flex-col items-center justify-center gap-2 py-14 text-center"
+                  >
+                    <Upload className="h-7 w-7 text-muted-foreground" />
+                    <span className="text-sm font-medium">Arraste um vídeo aqui ou clique para enviar</span>
+                    <span className="text-xs text-muted-foreground">MP4/MOV · fale solto que a IA corta o que sobra</span>
+                  </button>
                 )}
-              </button>
-              <p className="text-xs text-muted-foreground -mt-2">
-                Dica: grave de pé, com luz na frente, em 1080p e fale solto — a edição corta o que sobra.
-              </p>
-
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  disabled={gerando}
-                  onClick={() => setLegendas((v) => !v)}
-                  className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition ${legendas ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:bg-muted/50 text-muted-foreground"}`}
-                >
-                  <Captions className="h-3.5 w-3.5" /> Legendas {legendas ? "ligadas" : "desligadas"}
-                </button>
-                <button
-                  type="button"
-                  disabled={gerando}
-                  onClick={() => setMusica((v) => !v)}
-                  className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition ${musica ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:bg-muted/50 text-muted-foreground"}`}
-                >
-                  <Music className="h-3.5 w-3.5" /> Trilha {musica ? "ligada" : "desligada"}
-                </button>
+                {dragOver && (
+                  <div className="pointer-events-none absolute inset-0 grid place-items-center bg-primary/10 text-sm font-medium text-primary">
+                    Solte o vídeo
+                  </div>
+                )}
               </div>
 
+              {/* Fonte do vídeo a editar */}
+              <div className="space-y-2.5 rounded-xl border p-3">
+                <p className="text-sm font-medium">Qual vídeo editar?</p>
+                <div className="flex flex-wrap gap-2">
+                  {currentEditable && (
+                    <SourceBtn active={footageSource === "atual"} disabled={gerando} icon={PlayCircle} label="Vídeo atual" onClick={() => setFootageSource("atual")} />
+                  )}
+                  <SourceBtn active={footageSource === "upload" && !!footageFile} disabled={gerando} icon={Upload} label={footageFile ? "Trocar arquivo" : "Enviar arquivo"} onClick={() => footageInputRef.current?.click()} />
+                  <SourceBtn active={footageSource === "link"} disabled={gerando} icon={LinkIcon} label="Colar link" onClick={() => setFootageSource("link")} />
+                </div>
+                {footageSource === "upload" && footageFile && (
+                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> {footageFile.name}
+                  </p>
+                )}
+                {footageSource === "link" && (
+                  <Input value={footageLink} onChange={(e) => setFootageLink(e.target.value)} disabled={gerando} placeholder="Link direto do vídeo (.mp4) — YouTube não dá pra editar" />
+                )}
+              </div>
+
+              {/* Instruções pro editor IA */}
               <div className="space-y-1.5">
-                <Label>Tratamento de cor</Label>
-                <Select value={grade} onValueChange={setGrade} disabled={gerando}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="warm_cinematic">Cinematográfico quente</SelectItem>
-                    <SelectItem value="neutral_punch">Neutro com contraste</SelectItem>
-                    <SelectItem value="subtle">Sutil (quase nada)</SelectItem>
-                    <SelectItem value="none">Nenhum</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="edit-instr">
+                  O que você quer mudar? <span className="font-normal text-muted-foreground">(opcional)</span>
+                </Label>
+                <Textarea
+                  id="edit-instr"
+                  rows={2}
+                  value={instrucoes}
+                  onChange={(e) => setInstrucoes(e.target.value)}
+                  disabled={gerando}
+                  placeholder="Ex: tire as pausas longas · deixe com 30s · comece pela parte do consultório"
+                />
               </div>
 
-              <div className="space-y-1.5 rounded-lg border bg-muted/20 p-3">
-                <button
-                  type="button"
-                  disabled={gerando}
-                  onClick={() => setMarca((v) => !v)}
-                  className="flex w-full items-center justify-between gap-2 text-sm"
-                >
-                  <span className="flex items-center gap-1.5 font-medium">
-                    <Captions className="h-3.5 w-3.5" /> Selo com meu nome na tela
-                  </span>
-                  <span className={`h-5 w-9 rounded-full transition relative ${marca ? "bg-primary" : "bg-muted-foreground/30"}`}>
-                    <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${marca ? "left-[18px]" : "left-0.5"}`} />
-                  </span>
-                </button>
-                {marca && (
-                  <>
-                    <p className="text-xs text-muted-foreground">
-                      Aparece <strong>{professionalName}</strong> + um subtítulo. Edite o subtítulo abaixo
-                      (ex.: sua especialidade e registro).
-                    </p>
-                    <Input
-                      value={marcaSubtitulo}
-                      onChange={(e) => setMarcaSubtitulo(e.target.value)}
-                      disabled={gerando}
-                      placeholder="Ex: Psicóloga · CRP 06/12345"
-                    />
-                  </>
-                )}
+              {/* Ajustes */}
+              <div className="space-y-3 rounded-xl border p-3">
+                <p className="text-sm font-medium">Ajustes</p>
+
+                <div className="space-y-2">
+                  <button type="button" disabled={gerando} onClick={() => setMarca((v) => !v)} className="flex w-full items-center justify-between gap-2 text-sm">
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <Type className="h-3.5 w-3.5" /> Selo com meu nome
+                    </span>
+                    <span className={`relative h-5 w-9 rounded-full transition ${marca ? "bg-primary" : "bg-muted-foreground/30"}`}>
+                      <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${marca ? "left-[18px]" : "left-0.5"}`} />
+                    </span>
+                  </button>
+                  {marca && (
+                    <Input value={marcaSubtitulo} onChange={(e) => setMarcaSubtitulo(e.target.value)} disabled={gerando} placeholder="Subtítulo — ex: Psicóloga · CRP 06/12345" />
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" disabled={gerando} onClick={() => setLegendas((v) => !v)}
+                    className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition ${legendas ? "border-primary bg-primary/5 ring-1 ring-primary" : "text-muted-foreground hover:bg-muted/50"}`}>
+                    <Captions className="h-3.5 w-3.5" /> Legendas {legendas ? "on" : "off"}
+                  </button>
+                  <button type="button" disabled={gerando} onClick={() => setMusica((v) => !v)}
+                    className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition ${musica ? "border-primary bg-primary/5 ring-1 ring-primary" : "text-muted-foreground hover:bg-muted/50"}`}>
+                    <Music className="h-3.5 w-3.5" /> Trilha {musica ? "on" : "off"}
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between gap-3">
+                  <Label className="text-sm">Tratamento de cor</Label>
+                  <Select value={grade} onValueChange={setGrade} disabled={gerando}>
+                    <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="warm_cinematic">Cinematográfico quente</SelectItem>
+                      <SelectItem value="neutral_punch">Neutro com contraste</SelectItem>
+                      <SelectItem value="subtle">Sutil (quase nada)</SelectItem>
+                      <SelectItem value="none">Nenhum</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
           )}
@@ -670,7 +751,7 @@ export default function GenerateAboutVideoDialog({
                 : <><Clapperboard className="h-4 w-4" /> Gerar por {selectedCost ?? "…"} créditos</>}
             </Button>
           ) : (
-            <Button onClick={editarVideo} disabled={!footageFile || gerando} className="gap-2">
+            <Button onClick={editarVideo} disabled={!hasFootage || gerando} className="gap-2">
               {gerando
                 ? <><Loader2 className="h-4 w-4 animate-spin" /> Editando vídeo…</>
                 : <><Clapperboard className="h-4 w-4" /> Editar e aplicar</>}

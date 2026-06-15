@@ -1578,6 +1578,7 @@ export default function AdminLandingPage() {
           professionalId={(professional as any).id}
           professionalName={(professional as any).full_name || "Profissional"}
           photoUrl={aboutImageUrl || (professional as any).photo_url || null}
+          currentVideoUrl={aboutVideoUrl || null}
           savedVoiceId={(professional as any).elevenlabs_voice_id || null}
           onDone={setAboutVideoUrl}
           initialDraftId={axelDraftId}

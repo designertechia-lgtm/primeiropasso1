@@ -293,6 +293,7 @@ export default function AdminLandingPage() {
   const [contactTitle, setContactTitle] = useState("");
   const [contactSubtitle, setContactSubtitle] = useState("");
   const [contactWhatsapp, setContactWhatsapp] = useState("");
+  const [contactCtaMessage, setContactCtaMessage] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactInstagram, setContactInstagram] = useState("");
@@ -431,6 +432,7 @@ export default function AdminLandingPage() {
     setContactTitle((professional as any).contact_title || "");
     setContactSubtitle((professional as any).contact_subtitle || "");
     setContactWhatsapp((professional as any).whatsapp || "");
+    setContactCtaMessage((professional as any).contact_cta_message || "");
     setContactPhone((professional as any).phone || "");
     setContactEmail((professional as any).email || "");
     setContactInstagram((professional as any).instagram || "");
@@ -447,7 +449,7 @@ export default function AdminLandingPage() {
   }, [heroTitle, heroSubtitle, heroImageUrl, heroBgUrl, heroBgOpacity, heroBgOverlay, photoUrl, photoStyle, photoFit,
       aboutTitle, bio, aboutImageUrl, aboutVideoUrl, approaches, primaryColor, secondaryColor, bgColor, darkPrimaryColor, darkSecondaryColor, darkBgColor, darkModeEnabled,
       painTitle, painSubtitle, painItems, solutionTitle, solutionSubtitle, solutionItems, sectionOrder, sectionHidden,
-      fontFamily, headingFontFamily, fontSizeScale, contactTitle, contactSubtitle, contactWhatsapp, contactPhone, contactEmail, contactInstagram, contactLinkedin, contactTiktok, contactFacebook]);
+      fontFamily, headingFontFamily, fontSizeScale, contactTitle, contactSubtitle, contactCtaMessage, contactWhatsapp, contactPhone, contactEmail, contactInstagram, contactLinkedin, contactTiktok, contactFacebook]);
 
   // alerta ao fechar/recarregar a aba
   useEffect(() => {
@@ -544,6 +546,7 @@ export default function AdminLandingPage() {
     const { error } = await supabase.from("professionals").update({
       contact_title: contactTitle || null,
       contact_subtitle: contactSubtitle || null,
+      contact_cta_message: contactCtaMessage || null,
       whatsapp: contactWhatsapp || null,
       phone: contactPhone || null,
       email: contactEmail || null,
@@ -748,6 +751,7 @@ export default function AdminLandingPage() {
                 title={contactTitle || undefined}
                 subtitle={contactSubtitle || undefined}
                 whatsapp={contactWhatsapp || undefined}
+                ctaMessage={contactCtaMessage || undefined}
                 phone={contactPhone || undefined}
                 email={contactEmail || undefined}
                 instagram={contactInstagram || undefined}
@@ -1527,6 +1531,11 @@ export default function AdminLandingPage() {
               <div className="space-y-2">
                 <Label htmlFor="contactWhatsapp" className="flex items-center gap-2"><MessageCircle className="h-4 w-4 text-green-500" />WhatsApp</Label>
                 <Input id="contactWhatsapp" value={contactWhatsapp} onChange={(e) => setContactWhatsapp(e.target.value)} placeholder="11 99999-9999" />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="contactCtaMessage" className="flex items-center gap-2"><MessageCircle className="h-4 w-4 text-green-500" />Mensagem do botão de agendamento <FieldHint text="Texto que já vai escrito no WhatsApp quando o lead clica no botão. Se contiver 'agendar' ou 'marcar', o assistente leva direto pra agenda; um texto neutro faz passar pela apresentação do Axel. Em branco usa o padrão." /></Label>
+                <Textarea id="contactCtaMessage" rows={2} value={contactCtaMessage} onChange={(e) => setContactCtaMessage(e.target.value)} placeholder="Olá! Gostaria de agendar um horário." />
               </div>
 
               <div className="space-y-2">

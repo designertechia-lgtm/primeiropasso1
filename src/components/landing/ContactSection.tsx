@@ -7,6 +7,10 @@ interface ContactSectionProps {
   title?: string;
   subtitle?: string;
   whatsapp?: string;
+  /** Mensagem pré-preenchida do botão de agendamento (editável na tab Contatos). */
+  ctaMessage?: string;
+  /** Código de campanha (utm/gclid) anexado à mensagem p/ atribuição no fluxo. */
+  campaignRef?: string;
   phone?: string;
   email?: string;
   instagram?: string;
@@ -15,6 +19,8 @@ interface ContactSectionProps {
   facebook?: string;
   onWhatsAppClick?: () => void;
 }
+
+const DEFAULT_CTA_MESSAGE = "Olá! Gostaria de agendar um horário.";
 
 function buildSocialUrl(value: string, base: string): string {
   const trimmed = value.trim();
@@ -26,6 +32,8 @@ export default function ContactSection({
   title,
   subtitle,
   whatsapp,
+  ctaMessage,
+  campaignRef,
   phone,
   email,
   instagram,
@@ -34,9 +42,10 @@ export default function ContactSection({
   facebook,
   onWhatsAppClick,
 }: ContactSectionProps) {
-  const whatsappLink = whatsapp
-    ? buildWhatsAppLink(whatsapp, "Olá! Gostaria de agendar um horário.")
-    : null;
+  const message =
+    (ctaMessage?.trim() || DEFAULT_CTA_MESSAGE) +
+    (campaignRef ? ` (ref: ${campaignRef})` : "");
+  const whatsappLink = whatsapp ? buildWhatsAppLink(whatsapp, message) : null;
 
   const hasSecondary = phone || email || instagram || linkedin || tiktok || facebook;
   const hasAnyContact = whatsapp || hasSecondary;

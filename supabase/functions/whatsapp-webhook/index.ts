@@ -362,7 +362,7 @@ serve(async (req) => {
     console.log(`[WEBHOOK] ✅ Passou nos filtros (não é fromMe, não é grupo)`)
 
     // Extrair texto da mensagem (suporta texto simples, botões e templates)
-    const messageText =
+    let messageText =
       message?.conversation ||
       message?.extendedTextMessage?.text ||
       message?.buttonsResponseMessage?.selectedDisplayText ||
@@ -370,6 +370,19 @@ serve(async (req) => {
       message?.listResponseMessage?.title ||
       message?.listResponseMessage?.singleSelectReply?.selectedRowId ||
       ''
+
+    // Atribuição de campanha: o botão da landing pode anexar "(ref: <code>)" à mensagem
+    // quando o visitante veio de tráfego pago (utm/gclid). Extrai o código, REMOVE o
+    // marcador do texto (pra não poluir histórico/roteamento) e guarda p/ casar no lead.
+    let campaignRef: string | null = null
+    {
+      const refMatch = messageText.match(/\(ref:\s*([a-z0-9]{4,12})\)/i)
+      if (refMatch) {
+        campaignRef = refMatch[1]
+        messageText = messageText.replace(refMatch[0], '').replace(/\s{2,}/g, ' ').trim()
+        console.log(`[CAMPANHA] ref detectado: ${campaignRef}`)
+      }
+    }
 
     // click_id estruturado (id do botão / rowId da lista) — usado pelo roteamento
     // determinístico de agendamento. Tem prioridade sobre o texto no parseChoice do scheduler.
@@ -471,7 +484,11 @@ serve(async (req) => {
     //       landing mandam SITE_GREETING) ou anúncio Click-to-WhatsApp do Meta (adReply).
     //       Sem sinal de campanha = contato orgânico/conhecido → a IA NÃO assume (a Daiane atende).
     //       Vale só na CRIAÇÃO do lead; depois o switch é o agent_enabled (e #ativar/#ok).
-    const isFromCampaign = messageText.trim() === SITE_GREETING || !!adReply
+    // "Veio do botão da landing": texto padrão (=== SITE_GREETING) OU mensagem com
+    // marcador de campanha (campaignRef). Cobre o caso do profissional ter editado o
+    // texto do botão — aí o ref é o que preserva a detecção de origem de campanha.
+    const fromSiteButton = messageText.trim() === SITE_GREETING || !!campaignRef
+    const isFromCampaign = fromSiteButton || !!adReply
 
     // 2. Upsert do lead (criar se não existe, atualizar se existe)
     const { data: existingLead } = await supabaseAdmin
@@ -518,9 +535,10 @@ serve(async (req) => {
           pipeline_stage: 'em_conversa',
           last_message_at: new Date().toISOString(),
           origin_platform: isFromCampaign ? (adReply ? 'meta_ctwa' : 'site') : 'whatsapp',
-          // Modo Conversão só pra quem veio de campanha (site/anúncio). Resto entra
-          // em Modo Relacionamento (recado abaixo). A Daiane religa com #ativar.
-          agent_enabled: isFromCampaign,
+          // Fase 1 (triagem pelo agente): TODO lead novo entra com o agente LIGADO.
+          // Orgânico novo passa por TRIAGEM no agente (bloco 3.2), que decide atender
+          // (lead real) ou silenciar (contato pessoal, via rotear_conversa). Reversível por #ativar/#ok.
+          agent_enabled: true,
           ...(ctwaUtm ? { utm: ctwaUtm } : {}),
         })
         .select('id')
@@ -549,42 +567,85 @@ serve(async (req) => {
       })
     console.log(`[DEBUG] ✅ Mensagem salva (processed=false)`)
 
-    // 3.2. MODO RELACIONAMENTO — lead novo SEM origem de campanha: a IA não assume.
-    //       Manda um recado curto, registra e PARA (não vai pro menu/scheduler/agente).
-    //       O profissional atende manual; pode religar a IA com #ativar. Só dispara na
-    //       1a mensagem: a partir daí o lead já existe com agent_enabled=false (bloqueado acima).
-    if (!existingLead && !isFromCampaign) {
-      console.log('[FLUXO] Lead novo orgânico (sem campanha) → Modo Relacionamento (recado; IA não assume).')
-      const proFirst = (professional.full_name || 'o profissional').split(' ')[0]
-      const recado = `Oi! 💛 Sua mensagem chegou e ${proFirst} te responde por aqui assim que puder.`
+    // 3.1b. Atribuição de campanha: se a mensagem trouxe "(ref:)", copia utm/gclid do
+    //       landing_visits pro lead — sem sobrescrever atribuição já existente (first-touch).
+    if (campaignRef && leadId) {
+      const { data: visit } = await supabaseAdmin
+        .from('landing_visits')
+        .select('utm, gclid')
+        .eq('ref_code', campaignRef)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (visit) {
+        const { data: leadNow } = await supabaseAdmin
+          .from('leads').select('utm, gclid').eq('id', leadId).maybeSingle()
+        const patch: Record<string, unknown> = {}
+        const hasUtm = leadNow?.utm && Object.keys(leadNow.utm).length > 0
+        if (!hasUtm && visit.utm && Object.keys(visit.utm).length > 0) patch.utm = visit.utm
+        if (!leadNow?.gclid && visit.gclid) patch.gclid = visit.gclid
+        if (Object.keys(patch).length > 0) {
+          await supabaseAdmin.from('leads').update(patch).eq('id', leadId)
+          console.log(`[CAMPANHA] ref=${campaignRef} → lead ${leadId} atribuído:`, JSON.stringify(patch))
+        }
+      } else {
+        console.log(`[CAMPANHA] ref=${campaignRef} sem landing_visits correspondente`)
+      }
+    }
 
-      const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
-      const evoKey = Deno.env.get('EVOLUTION_API_KEY')
-      if (evoUrl && evoKey && instanceName) {
-        try {
+    // 3.2. TRIAGEM (Fase 1) — lead novo SEM origem de campanha: em vez do recado fixo,
+    //       o AGENTE assume e TRIA (lead real x contato pessoal). Se for contato pessoal,
+    //       o agente chama rotear_conversa('silenciar') e avisa que o profissional retorna.
+    //       Vai DIRETO pro agente (sem debounce/menu/scheduler) por ser o 1º contato.
+    //       Rede de segurança: se o agente falhar, cai no recado de relacionamento (determinístico).
+    if (!existingLead && !isFromCampaign) {
+      console.log('[FLUXO] Lead novo orgânico → TRIAGEM pelo agente (Fase 1).')
+      await sendPresence(instanceName, remoteJid)
+      const anonKeyT = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEYS') || ''
+      const agentUrlT = `${Deno.env.get('SUPABASE_URL')}/functions/v1/whatsapp-agent`
+      try {
+        const agentRes = await fetch(agentUrlT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKeyT}` },
+          body: JSON.stringify({
+            lead_id: leadId,
+            lead_name: pushName,
+            lead_phone: formattedNumber,
+            message: messageText,
+            remote_jid: remoteJid,
+            professional_id: professional.id,
+            instance_name: instanceName,
+            triage: true,
+            contact_status: 'novo',
+          }),
+        })
+        const agentJson = await agentRes.json().catch(() => ({}))
+        // Triagem responde direto (sem debounce) → marca a msg do lead como processada.
+        await supabaseAdmin.from('chat_messages').update({ processed: true }).eq('lead_id', leadId).eq('processed', false)
+        return new Response(JSON.stringify({ success: true, action: 'triage', result: agentJson }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      } catch (e: any) {
+        console.error('[Triagem] Erro ao chamar agente — fallback recado de relacionamento:', e.message)
+        const proFirst = (professional.full_name || 'o profissional').split(' ')[0]
+        const recado = `Oi! 💛 Sua mensagem chegou e ${proFirst} te responde por aqui assim que puder.`
+        const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
+        const evoKey = Deno.env.get('EVOLUTION_API_KEY')
+        if (evoUrl && evoKey && instanceName) {
           await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
             method: 'POST',
             headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
             body: JSON.stringify({ number: remoteJid, text: recado }),
-          })
-        } catch (e: any) {
-          console.error('[Modo Relacionamento] Erro Evolution:', e.message)
+          }).catch(() => {})
         }
+        await supabaseAdmin.from('chat_messages').insert({ lead_id: leadId, role: 'assistant', content: recado, processed: true })
+        await supabaseAdmin.from('chat_messages').update({ processed: true }).eq('lead_id', leadId).eq('processed', false)
+        return new Response(JSON.stringify({ success: true, action: 'relationship_mode_greeting_fallback' }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
       }
-
-      await supabaseAdmin.from('chat_messages').insert({
-        lead_id: leadId, role: 'assistant', content: recado, processed: true,
-      })
-      await supabaseAdmin
-        .from('chat_messages')
-        .update({ processed: true })
-        .eq('lead_id', leadId)
-        .eq('processed', false)
-
-      return new Response(JSON.stringify({ success: true, action: 'relationship_mode_greeting' }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
     }
 
     // 3.35. RESPOSTA A LEMBRETE 24h — Confirmar/Remarcar/Cancelar atualizam
@@ -793,7 +854,7 @@ serve(async (req) => {
 
     // 3.6. Lead novo + mensagem diferente da programada do site → enviar menu de botões.
     // BLOQUEIA o lead ANTES de chamar Evolution pra evitar race condition.
-    if (!existingLead && messageText.trim() !== SITE_GREETING) {
+    if (!existingLead && !fromSiteButton) {
       console.log(`[FLUXO] Lead novo sem contexto do site. Bloqueando + enviando menu.`)
 
       const menuOptions = [conversarLabel, 'Conferir agenda', 'Agendar um horário', 'Tirar dúvidas']
@@ -957,10 +1018,16 @@ serve(async (req) => {
             }),
           })
           const schedJson = await schedRes.json().catch(() => ({}))
-          return new Response(JSON.stringify({ success: true, action: 'scheduler', result: schedJson }), {
-            status: 200,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          })
+          // INVERSÃO (combinado): se o scheduler não reconheceu uma seleção
+          // (handled:false), ele DEVOLVEU o controle — não retornamos aqui, deixamos
+          // o fluxo seguir pro agent (LLM) responder a dúvida/feedback/horário livre.
+          if (schedJson?.handled !== false) {
+            return new Response(JSON.stringify({ success: true, action: 'scheduler', result: schedJson }), {
+              status: 200,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            })
+          }
+          console.log('[FLUXO] scheduler devolveu controle (handoff_llm) → segue pro agent')
         } catch (e: any) {
           console.error('[FLUXO] Erro ao chamar scheduler:', e.message)
           // Em falha do scheduler, cai no fluxo do agent como rede de segurança.
@@ -1049,6 +1116,7 @@ serve(async (req) => {
         remote_jid: remoteJid,
         professional_id: professional.id,
         instance_name: instanceName,
+        contact_status: (existingLead?.pipeline_stage === 'agendado' || existingLead?.pipeline_stage === 'cliente_ativo') ? 'cliente' : 'em_conversa',
       }),
     })
 

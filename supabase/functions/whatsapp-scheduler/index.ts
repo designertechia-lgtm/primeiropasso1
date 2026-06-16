@@ -668,7 +668,7 @@ async function offerReschedOrCancel(ctx: Ctx, bs: any) {
 // =============================================================================
 // MÁQUINA DE ESTADOS
 // =============================================================================
-async function handlePick(ctx: Ctx, choice: Choice, bs: any) {
+async function handlePick(ctx: Ctx, choice: Choice, bs: any): Promise<boolean> {
   let date: string | null = null
   let time: string | null = null
 
@@ -684,71 +684,65 @@ async function handlePick(ctx: Ctx, choice: Choice, bs: any) {
       const now = new Date().toISOString()
       await setBookingState(ctx, { ...bs, stage: 'confirming', selected_date: date, selected_time: time, selected_day_label: label, updated_at: now })
       await sendConfirm(ctx, label, time)
-      return
+      return true
     }
-    await reply(ctx, `O horário das ${time} não está livre nesse dia. Olha as opções 🙂`)
-    await offerTimes(ctx, bs, date)
-    return
+    // Horário fora da grade / ocupado: NÃO respondemos o loop "não está livre".
+    // Devolvemos o controle pro LLM acolher e oferecer os livres (combinado).
+    return false
   }
 
   // Só dia → oferece horários
   if (date && !time) {
     await offerTimes(ctx, bs, date)
-    return
+    return true
   }
 
   // Só horário sem dia definido → pede o dia
   await reply(ctx, 'Me diz primeiro qual dia, aí já te mostro os horários. 🙂')
   await offerDays(ctx, bs, !!bs.rescheduling)
+  return true
 }
 
-async function handleSchedulingTurn(ctx: Ctx, choice: Choice, bs: any) {
+async function handleSchedulingTurn(ctx: Ctx, choice: Choice, bs: any): Promise<boolean> {
   const now = new Date().toISOString()
 
   // Estado terminal: já tem agendamento ativo → só remarcar/cancelar
   if (bs.stage === 'done' && bs.appointment_id) {
-    if (choice.type === 'cancel') return await doCancel(ctx, bs)
-    if (choice.type === 'reschedule') return await offerDays(ctx, bs, true)
-    return await offerReschedOrCancel(ctx, bs)
+    if (choice.type === 'cancel') { await doCancel(ctx, bs); return true }
+    if (choice.type === 'reschedule') { await offerDays(ctx, bs, true); return true }
+    await offerReschedOrCancel(ctx, bs); return true
   }
 
   // Ações globais
   if (choice.type === 'cancel') {
-    if (bs.appointment_id) return await doCancel(ctx, bs)
+    if (bs.appointment_id) { await doCancel(ctx, bs); return true }
     await reply(ctx, 'Tudo bem, sem problema! Quando quiser marcar é só me chamar. 🙂')
     await setBookingState(ctx, { ...bs, stage: 'cancelled', updated_at: now })
-    return
+    return true
   }
   if (choice.type === 'reschedule') {
-    return await offerDays(ctx, bs, !!bs.appointment_id)
+    await offerDays(ctx, bs, !!bs.appointment_id); return true
   }
   if (choice.type === 'confirm') {
-    if (bs.stage === 'confirming' && bs.selected_date && bs.selected_time) return await doConfirm(ctx, bs)
+    if (bs.stage === 'confirming' && bs.selected_date && bs.selected_time) { await doConfirm(ctx, bs); return true }
     // confirm sem contexto válido → recomeça oferecendo dias
-    return await offerDays(ctx, bs, !!bs.rescheduling)
+    await offerDays(ctx, bs, !!bs.rescheduling); return true
   }
   if (choice.type === 'day' || choice.type === 'time' || choice.type === 'datetime') {
     return await handlePick(ctx, choice, bs)
   }
   if (choice.type === 'start') {
-    return await offerDays(ctx, bs, false)
+    await offerDays(ctx, bs, false); return true
   }
 
-  // unknown → reapresenta o seletor do estado atual
-  if (bs.stage === 'choosing_day') {
-    await reply(ctx, 'Não entendi 🙂 Escolha um dos dias:')
-    return await offerDays(ctx, bs, !!bs.rescheduling)
+  // unknown no MEIO de um fluxo ativo → NÃO responde "Não entendi": devolve o
+  // controle pro whatsapp-agent (LLM), que responde a dúvida/feedback e faz a ponte.
+  if (bs.stage === 'choosing_day' || (bs.stage === 'choosing_time' && bs.selected_date) || (bs.stage === 'confirming' && bs.selected_date && bs.selected_time)) {
+    return false
   }
-  if (bs.stage === 'choosing_time' && bs.selected_date) {
-    await reply(ctx, 'Escolha um dos horários abaixo 🙂')
-    return await offerTimes(ctx, bs, bs.selected_date)
-  }
-  if (bs.stage === 'confirming' && bs.selected_date && bs.selected_time) {
-    await reply(ctx, 'Só me confirmar, por favor:')
-    return await sendConfirm(ctx, bs.selected_day_label || labelFromIso(bs.selected_date), bs.selected_time)
-  }
-  // Sem estado → começa o fluxo
-  return await offerDays(ctx, bs, false)
+  // Sem estado de fluxo → começa o fluxo
+  await offerDays(ctx, bs, false)
+  return true
 }
 
 // =============================================================================
@@ -793,13 +787,23 @@ serve(async (req) => {
 
     console.log(`[scheduler] lead=${lead_id} stage=${bs.stage || '(none)'} choice=${JSON.stringify(choice)}`)
 
-    await handleSchedulingTurn(ctx, choice, bs)
+    const handled = await handleSchedulingTurn(ctx, choice, bs)
+
+    // INVERSÃO (combinado): o determinístico vem DEPOIS do LLM. Quando não resolve
+    // a seleção (texto livre, horário fora da grade), devolve o controle SEM marcar
+    // as mensagens como processadas — o whatsapp-webhook segue pro agent (LLM).
+    if (!handled) {
+      console.log(`[scheduler] handoff → LLM (choice=${choice.type}, stage=${bs.stage || '-'})`)
+      return new Response(JSON.stringify({ success: true, handled: false, reason: 'handoff_llm' }), {
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
 
     // Marca as mensagens do lead como processadas (o scheduler já respondeu)
     await supabaseAdmin.from('chat_messages').update({ processed: true }).eq('lead_id', lead_id).eq('processed', false)
     await supabaseAdmin.from('leads').update({ last_message_at: new Date().toISOString() }).eq('id', lead_id)
 
-    return new Response(JSON.stringify({ success: true, choice: choice.type }), {
+    return new Response(JSON.stringify({ success: true, handled: true, choice: choice.type }), {
       status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (error: any) {

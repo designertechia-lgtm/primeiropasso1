@@ -129,15 +129,22 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
   }, [searchParams]);
   const gclid = searchParams.get("gclid") ?? undefined;
 
+  // Código curto que liga este clique (com utm/gclid) ao lead que chega no WhatsApp.
+  // O botão anexa "(ref: <code>)" na mensagem; o webhook lê e atribui a campanha ao lead.
+  const campaignRef = useMemo(
+    () => (Object.keys(utmParams).length || gclid ? Math.random().toString(36).slice(2, 8) : undefined),
+    [utmParams, gclid],
+  );
+
   const handleCtaClick = useCallback(() => {
     if (!professional?.id) return;
     if (!Object.keys(utmParams).length && !gclid) return;
-    // Fire-and-forget: registra a visita com atribuição UTM
+    // Fire-and-forget: registra a visita com atribuição UTM + ref_code p/ casar no fluxo
     supabase
       .from("landing_visits")
-      .insert({ professional_id: professional.id, utm: utmParams, gclid: gclid ?? null })
+      .insert({ professional_id: professional.id, utm: utmParams, gclid: gclid ?? null, ref_code: campaignRef ?? null })
       .then(({ error }) => { if (error) console.warn("[landing_visits]", error.message); });
-  }, [professional?.id, utmParams, gclid]);
+  }, [professional?.id, utmParams, gclid, campaignRef]);
 
   if (isLoading) {
     return (
@@ -250,6 +257,8 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
           title={(professional as any).contact_title ?? undefined}
           subtitle={(professional as any).contact_subtitle ?? undefined}
           whatsapp={professional.whatsapp ?? undefined}
+          ctaMessage={(professional as any).contact_cta_message ?? undefined}
+          campaignRef={campaignRef}
           phone={(professional as any).phone ?? undefined}
           email={(professional as any).email ?? undefined}
           instagram={(professional as any).instagram ?? undefined}

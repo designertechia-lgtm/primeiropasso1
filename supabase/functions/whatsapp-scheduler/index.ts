@@ -732,6 +732,15 @@ async function handleSchedulingTurn(ctx: Ctx, choice: Choice, bs: any): Promise<
     return await handlePick(ctx, choice, bs)
   }
   if (choice.type === 'start') {
+    // RETOMAR em vez de zerar: se o lead já tinha avançado, não volta pra lista de
+    // dias perdendo o progresso — re-oferece o ponto atual (o reset na frustração
+    // era o que mais irritava). Recomeço do zero só se ainda não havia dia escolhido.
+    if (bs.stage === 'choosing_time' && bs.selected_date) {
+      await offerTimes(ctx, bs, bs.selected_date); return true
+    }
+    if (bs.stage === 'confirming' && bs.selected_date && bs.selected_time) {
+      await sendConfirm(ctx, bs.selected_day_label || labelFromIso(bs.selected_date), bs.selected_time); return true
+    }
     await offerDays(ctx, bs, false); return true
   }
 

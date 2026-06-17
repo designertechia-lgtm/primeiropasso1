@@ -473,11 +473,11 @@ function buildTimeSelector(horarios: string[]): Selector {
   return { kind: 'list', title: 'Horários disponíveis', description: 'Escolha um horário:', buttonText: 'Ver horários', sections, labels: ordered.map((i) => i.label), ids: ordered.map((i) => i.id) }
 }
 
-function buildConfirmButtons(dayLabel: string, time: string): Selector {
+function buildConfirmButtons(dayLabel: string, time: string, serviceName?: string | null): Selector {
   return {
     kind: 'buttons',
     title: `Confirma ${dayLabel} às ${time}?`,
-    description: 'É só tocar:',
+    description: serviceName ? `${serviceName} · É só tocar:` : 'É só tocar:',
     buttons: [
       { displayText: 'Confirmar ✅', id: 'act:confirm' },
       { displayText: 'Remarcar', id: 'act:reschedule' },
@@ -657,7 +657,7 @@ async function startBooking(ctx: Ctx, bs: any): Promise<boolean> {
     return true
   }
   const svc = services.length === 1 ? services[0] : null
-  await offerDays(ctx, { ...bs, service_id: svc?.id ?? null, duration_min: svc?.duration_minutes ?? DEFAULT_DURATION }, false)
+  await offerDays(ctx, { ...bs, service_id: svc?.id ?? null, service_name: svc?.name ?? null, duration_min: svc?.duration_minutes ?? DEFAULT_DURATION }, false)
   return true
 }
 
@@ -678,7 +678,7 @@ async function offerServices(ctx: Ctx, bs: any, services: Array<{ id: string; na
 
 async function pickService(ctx: Ctx, serviceId: string, bs: any): Promise<boolean> {
   const svc = (bs.offered_services || []).find((s: any) => s.id === serviceId)
-  await offerDays(ctx, { ...bs, service_id: serviceId, duration_min: svc?.duration ?? DEFAULT_DURATION }, false)
+  await offerDays(ctx, { ...bs, service_id: serviceId, service_name: svc?.name ?? null, duration_min: svc?.duration ?? DEFAULT_DURATION }, false)
   return true
 }
 
@@ -709,10 +709,10 @@ async function offerTimes(ctx: Ctx, bs: any, dateIso: string) {
   })
 }
 
-async function sendConfirm(ctx: Ctx, dayLabel: string, time: string) {
-  const sel = buildConfirmButtons(dayLabel, time)
+async function sendConfirm(ctx: Ctx, dayLabel: string, time: string, serviceName?: string | null) {
+  const sel = buildConfirmButtons(dayLabel, time, serviceName)
   await sendSelector(ctx, sel)
-  await logAssistant(ctx, `[Scheduler confirmação: ${dayLabel} às ${time}]`)
+  await logAssistant(ctx, `[Scheduler confirmação: ${serviceName ? serviceName + ' · ' : ''}${dayLabel} às ${time}]`)
 }
 
 async function doConfirm(ctx: Ctx, bs: any) {
@@ -745,7 +745,9 @@ async function doConfirm(ctx: Ctx, bs: any) {
     updated_at: now,
   })
   await ctx.supabaseAdmin.from('leads').update({ pipeline_stage: 'agendado' }).eq('id', ctx.leadId)
-  await reply(ctx, `Marcado! Te espero ${label} às ${time}. 🙌`)
+  await reply(ctx, bs.service_name
+    ? `Marcado! Sua ${bs.service_name}, ${label} às ${time}. 🙌`
+    : `Marcado! Te espero ${label} às ${time}. 🙌`)
 }
 
 async function doCancel(ctx: Ctx, bs: any) {
@@ -790,7 +792,7 @@ async function handlePick(ctx: Ctx, choice: Choice, bs: any): Promise<boolean> {
       const label = labelFromIso(date)
       const now = new Date().toISOString()
       await setBookingState(ctx, { ...bs, stage: 'confirming', selected_date: date, selected_time: time, selected_day_label: label, updated_at: now })
-      await sendConfirm(ctx, label, time)
+      await sendConfirm(ctx, label, time, bs.service_name)
       return true
     }
     // Horário fora da grade / ocupado: NÃO respondemos o loop "não está livre".
@@ -849,7 +851,7 @@ async function handleSchedulingTurn(ctx: Ctx, choice: Choice, bs: any): Promise<
       await offerTimes(ctx, bs, bs.selected_date); return true
     }
     if (bs.stage === 'confirming' && bs.selected_date && bs.selected_time) {
-      await sendConfirm(ctx, bs.selected_day_label || labelFromIso(bs.selected_date), bs.selected_time); return true
+      await sendConfirm(ctx, bs.selected_day_label || labelFromIso(bs.selected_date), bs.selected_time, bs.service_name); return true
     }
     return await startBooking(ctx, bs)
   }

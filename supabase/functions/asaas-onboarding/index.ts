@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
 
     const payload: Record<string, unknown> = {
       name: profile?.full_name || "Profissional",
-      email: user.email,
+      email: body.email || user.email,
       cpfCnpj: String(body.cpfCnpj).replace(/\D/g, ""),
       mobilePhone: String(body.mobilePhone).replace(/\D/g, ""),
       incomeValue: Number(body.incomeValue),

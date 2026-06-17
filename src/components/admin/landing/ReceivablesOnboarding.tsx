@@ -11,6 +11,7 @@ import { CreditCard, CheckCircle2, ShieldCheck } from "lucide-react";
 import { FieldHint } from "@/components/ui/FieldHint";
 
 interface OnboardingForm {
+  email: string;
   cpfCnpj: string;
   mobilePhone: string;
   incomeValue: string;
@@ -22,7 +23,7 @@ interface OnboardingForm {
 }
 
 const empty: OnboardingForm = {
-  cpfCnpj: "", mobilePhone: "", incomeValue: "", postalCode: "",
+  email: "", cpfCnpj: "", mobilePhone: "", incomeValue: "", postalCode: "",
   address: "", addressNumber: "", province: "", complement: "",
 };
 
@@ -40,7 +41,7 @@ export default function ReceivablesOnboarding() {
   const set = (k: keyof OnboardingForm, v: string) => setForm((p) => ({ ...p, [k]: v }));
 
   const handleSubmit = async () => {
-    const required: (keyof OnboardingForm)[] = ["cpfCnpj", "mobilePhone", "incomeValue", "postalCode", "address", "addressNumber", "province"];
+    const required: (keyof OnboardingForm)[] = ["email", "cpfCnpj", "mobilePhone", "incomeValue", "postalCode", "address", "addressNumber", "province"];
     const missing = required.filter((k) => !form[k].trim());
     if (missing.length) {
       toast.error("Preencha todos os campos obrigatórios.");
@@ -49,6 +50,7 @@ export default function ReceivablesOnboarding() {
     setSaving(true);
     const { data, error } = await supabase.functions.invoke("asaas-onboarding", {
       body: {
+        email: form.email,
         cpfCnpj: form.cpfCnpj,
         mobilePhone: form.mobilePhone,
         incomeValue: Number(form.incomeValue.replace(",", ".")),
@@ -100,6 +102,11 @@ export default function ReceivablesOnboarding() {
                 <p className="text-xs text-muted-foreground">
                   Seus dados são usados só para criar sua conta de recebimento. Nome e e-mail vêm do seu cadastro.
                 </p>
+
+                <div className="space-y-1.5">
+                  <Label>E-mail de recebimento <FieldHint text="Precisa ser único no Asaas (diferente da conta principal da plataforma)." /></Label>
+                  <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="seu@email.com" />
+                </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">

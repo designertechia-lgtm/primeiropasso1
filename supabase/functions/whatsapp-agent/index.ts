@@ -806,7 +806,8 @@ function buildTurnLayer(opts: {
 ━━━ ⚠️ ${leadName.toUpperCase()} JÁ TEM AGENDAMENTO ━━━
 ${leadName} JÁ está agendado${(bs.label && bs.hora) ? ` para **${quando}**` : ''}${bs.service_name ? ` (${bs.service_name})` : ''}.
 • Se perguntar "foi agendado?", "tá certo?", "confirmou?" → confirme que SIM${(bs.label && bs.hora) ? `, ${quando}` : ''}, com naturalidade. NÃO crie outro agendamento.
-• Quer MUDAR o horário → \`remarcar_agendamento\`. Quer DESMARCAR → \`cancelar_agendamento\`.`
+• Pediu pra MUDAR pra um horário específico (ex.: "pode às 8:45?", "remarca pras 15h") → chame \`remarcar_agendamento\` DIRETO com esse horário; a ferramenta valida sozinha. NÃO abra a agenda. Se ela RECUSAR, EXPLIQUE em texto — nunca fique re-enviando a lista de botões.
+• Quer DESMARCAR → \`cancelar_agendamento\`.`
   }
 
   const triagemBloco = triageMode ? `
@@ -906,12 +907,12 @@ async function handleToolCall(
     const svc = services[0] || null
     const dur = svc?.duration_minutes || DEFAULT_DURATION
     const free = await isSlotFree(supabaseAdmin, professionalId, data, hora, dur)
-    if (!free) return { ok: false, instrucao: `O horário ${hora} de ${data} não está livre (ocupado ou fora do expediente). Avise em 1 frase e mostre os livres (abrir_agenda com data=${data}).` }
+    if (!free) return { ok: false, instrucao: `O horário ${hora} não está livre nesse dia (ocupado ou fora do horário de atendimento). EXPLIQUE isso ao lead em 1 frase, em TEXTO, e pergunte se ele quer ver os horários livres — só chame abrir_agenda se ele disser que sim. NÃO re-envie a lista de botões por conta própria.` }
     const horaFim = fromMinutes(toMinutes(hora) + dur)
     const r = await createBooking(supabaseAdmin, professionalId, data, hora, horaFim, '', leadId, svc?.id || null)
     if (!r.ok) return { ok: false, instrucao: r.mensagem || 'Não consegui agendar agora; peça desculpa e ofereça outro horário.' }
-    await supabaseAdmin.from('leads').update({ pipeline_stage: 'agendado', booking_state: { appointment_id: r.appointment_id, status: 'confirmed' } }).eq('id', leadId)
     const label = labelFromIso(data)
+    await supabaseAdmin.from('leads').update({ pipeline_stage: 'agendado', booking_state: { appointment_id: r.appointment_id, status: 'confirmed', data, hora, label, service_name: svc?.name || null } }).eq('id', leadId)
     const msg = svc?.name ? `Marcado! Sua ${svc.name}, ${label} às ${hora}. 🙌` : `Marcado! Te espero ${label} às ${hora}. 🙌`
     await sendWhatsAppMessage(instanceName, remoteJid, msg)
     await supabaseAdmin.from('chat_messages').insert({ lead_id: leadId, role: 'assistant', content: msg, processed: true })
@@ -931,10 +932,11 @@ async function handleToolCall(
     const windows = (avail && avail.length > 0) ? avail : DEFAULT_WEEKLY.filter((w: any) => w.day_of_week === dow)
     const sMin = toMinutes(hora), eMin = sMin + dur
     const cabe = windows.some((w: any) => sMin >= toMinutes(('' + w.start_time).slice(0, 5)) && eMin <= toMinutes(('' + w.end_time).slice(0, 5)))
-    if (!cabe) return { ok: false, instrucao: `${hora} está fora do expediente em ${data}. Mostre os horários livres (abrir_agenda com data=${data}).` }
+    if (!cabe) return { ok: false, instrucao: `${hora} está fora do horário de atendimento do profissional. EXPLIQUE ao lead em 1 frase (TEXTO) que esse horário não é atendido e pergunte se ele quer um dos horários livres OU manter o atual. NÃO abra a agenda nem re-envie a lista automaticamente.` }
     const r = await rescheduleBooking(supabaseAdmin, professionalId, appt.id, data, hora, fromMinutes(eMin))
-    if (!r.ok) return { ok: false, instrucao: r.mensagem || 'Esse horário não deu; ofereça ver os livres (abrir_agenda).' }
-    await supabaseAdmin.from('leads').update({ booking_state: { appointment_id: appt.id, status: 'confirmed' } }).eq('id', leadId)
+    if (!r.ok) return { ok: false, instrucao: (r.mensagem ? r.mensagem + ' ' : '') + 'EXPLIQUE em 1 frase (TEXTO) e pergunte se quer um dos horários livres. NÃO abra a agenda automaticamente.' }
+    const label = labelFromIso(data)
+    await supabaseAdmin.from('leads').update({ booking_state: { appointment_id: appt.id, status: 'confirmed', data, hora, label, service_name: (services.find((s: any) => s.id === appt.service_id)?.name) || null } }).eq('id', leadId)
     const msg = `Pronto, remarquei! Agora é ${labelFromIso(data)} às ${hora}. 🙌`
     await sendWhatsAppMessage(instanceName, remoteJid, msg)
     await supabaseAdmin.from('chat_messages').insert({ lead_id: leadId, role: 'assistant', content: msg, processed: true })

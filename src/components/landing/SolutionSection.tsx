@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Lightbulb, Target, RefreshCw, Shield, Zap, CheckCircle2, ChevronDown } from "lucide-react";
 import { splitHeadline } from "@/lib/landing/sections";
+
+// Intervalo (ms) entre cada card abrir/fechar na cascata automática. Ajuste só este número.
+const STEP_MS = 1200;
 
 // 6 cards: preenche 2 linhas cheias na grade de 3 colunas (sem card órfão).
 const DEFAULT_ITEMS = [
@@ -40,10 +43,17 @@ export default function SolutionSection({ title, subtitle, items }: SolutionSect
   const displayItems = (items && items.length > 0) ? items : DEFAULT_ITEMS;
   const [titleLead, titleAccent] = splitHeadline(displayTitle);
 
-  // Cards expansíveis: começam fechados; cada um abre e fecha ao clicar (inclusive o primeiro).
+  // Cards expansíveis: começam fechados. Uma cascata automática abre/fecha em loop (ver efeito
+  // abaixo); o clique do visitante assume o controle e pausa a cascata pra não brigar com a leitura.
   const [openItems, setOpenItems] = useState<number[]>([]);
-  const toggle = (i: number) =>
+  const [paused, setPaused] = useState(false);
+  const [inView, setInView] = useState(false);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const directionRef = useRef<"opening" | "closing">("opening");
+  const toggle = (i: number) => {
+    setPaused(true); // clicou: o visitante assume; a cascata automática para até recarregar.
     setOpenItems((prev) => (prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]));
+  };
 
   // Itens COM descrição = etapas (cards accordion). Itens só-texto (string crua, sem descrição) são
   // introdução do método — distribuídos como parágrafo acima dos cards, não viram card.
@@ -55,6 +65,48 @@ export default function SolutionSection({ title, subtitle, items }: SolutionSect
   // Fallback: se NENHUM item tem descrição, não dá pra separar — mostra todos como cards.
   const cardItems = stepItems.length > 0 ? stepItems : displayItems;
   const intros = stepItems.length > 0 ? introTexts : [];
+
+  // Índices (na ordem da grade) só dos cards que realmente expandem — apenas esses entram na cascata.
+  // Funciona com qualquer quantidade de cards; itens de texto corrido (sem descrição) são ignorados.
+  const expandableIndices = cardItems
+    .map((s, i) => ({ i, ok: cleanText(itemDesc(s)).trim() !== "" && cleanText(itemTitle(s)).trim() !== "" }))
+    .filter((x) => x.ok)
+    .map((x) => x.i);
+  const indicesKey = expandableIndices.join(",");
+  const stepCount = expandableIndices.length;
+
+  // Liga/desliga a cascata conforme a seção entra e sai da tela ("enquanto estiver em visualização").
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), { threshold: 0.2 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  // Cascata automática em loop: abre 1→N acumulando (esquerda p/ direita) e, com tudo aberto, fecha
+  // N→1 (efeito oposto). Só roda com a seção visível e enquanto o visitante não tiver clicado.
+  useEffect(() => {
+    if (paused || !inView || stepCount === 0) return;
+    const id = setInterval(() => {
+      setOpenItems((prev) => {
+        if (directionRef.current === "opening") {
+          if (prev.length >= stepCount) {
+            directionRef.current = "closing";
+            return prev.slice(0, -1); // tudo aberto: começa a fechar pelo último.
+          }
+          return [...prev, expandableIndices[prev.length]]; // abre o próximo da esquerda p/ a direita.
+        }
+        if (prev.length <= 0) {
+          directionRef.current = "opening";
+          return [expandableIndices[0]]; // tudo fechado: recomeça abrindo o primeiro.
+        }
+        return prev.slice(0, -1); // fecha do último p/ o primeiro.
+      });
+    }, STEP_MS);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paused, inView, stepCount, indicesKey]);
 
   return (
     <>
@@ -86,7 +138,7 @@ export default function SolutionSection({ title, subtitle, items }: SolutionSect
 
         {/* Cards de etapa em grid (rows) — título + ícone sempre visíveis, contexto abre ao clicar.
             items-start: ao abrir, o card cresce pra baixo sem esticar/desalinhar os vizinhos. */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto items-start">
+        <div ref={gridRef} className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto items-start">
           {cardItems.map((s, i) => {
             const Icon = ICONS[i % ICONS.length];
             const title = cleanText(itemTitle(s));

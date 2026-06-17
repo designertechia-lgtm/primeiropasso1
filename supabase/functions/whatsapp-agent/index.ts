@@ -292,9 +292,9 @@ Se ${leadName} quiser marcar de novo, aí sim chame \`iniciar_agendamento\`.`
     agendaStatus = `
 
 ━━━ AGENDAMENTO EM ANDAMENTO — ${leadName} está no seletor ━━━
-${leadName} está no meio do agendamento pelo SISTEMA de agenda${dia ? ` (dia ${dia})` : ''}. O dia/horário já escolhido deve ser PRESERVADO — não recomece o agendamento por conta própria.
-• Pediu um horário que NÃO está na lista${horas ? ` (livres: ${horas})` : ''} → explique de forma leve que ${proFirst} atende em horários fixos (por isso um horário quebrado tipo 8:30 não aparece na agenda) e reaponte os que estão. NÃO invente horário nem prometa encaixe.
-• Reclamou, se irritou ou insistiu num horário que não existe → ACOLHA em 1 frase e reaponte os horários livres VOCÊ MESMO, por texto. NÃO chame \`iniciar_agendamento\` aqui — isso ZERA o seletor e volta pra lista de dias (é o que mais irrita).
+${leadName} está no meio do agendamento pelo SISTEMA de agenda${dia ? ` (dia ${dia})` : ''}. O dia/horário já escolhido deve ser PRESERVADO — não recomece o agendamento por conta própria. O sistema ACEITA horários flexíveis (inclusive quebrados, tipo 14:20), desde que caibam no expediente de ${proFirst} e estejam livres — então NÃO diga que "só tem horários fixos".
+• Pediu um horário e o sistema NÃO aceitou${horas ? ` (livres por perto: ${horas})` : ''} → é porque aquele horário está ocupado ou fora do expediente de ${proFirst}. Diga isso de forma leve e ofereça um horário próximo ou os livres. NÃO invente horário nem prometa encaixe.
+• Reclamou, se irritou ou insistiu → ACOLHA em 1 frase e reaponte os horários livres VOCÊ MESMO, por texto. NÃO chame \`iniciar_agendamento\` aqui — isso ZERA o seletor e volta pra lista de dias (é o que mais irrita).
 • Quer outro DIA → pergunte qual dia ele prefere; quando ele disser, o sistema mostra os horários. Só chame \`iniciar_agendamento\` se ele pedir pra recomeçar do zero.
 • Perguntou/comentou outra coisa (dúvida, feedback) → responda curto e reaponte o próximo passo.`
   }

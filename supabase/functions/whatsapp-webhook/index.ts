@@ -970,11 +970,11 @@ serve(async (req) => {
         .eq('id', leadId)
         .maybeSingle()
       const stage = (leadBooking?.booking_state as any)?.stage || ''
-      const inSchedulingFlow = ['choosing_day', 'choosing_time', 'confirming'].includes(stage)
+      const inSchedulingFlow = ['choosing_service', 'choosing_day', 'choosing_time', 'confirming'].includes(stage)
       const isDone = stage === 'done'
 
       const isStructuredClick = !!clickId &&
-        (clickId.startsWith('day:') || clickId.startsWith('time:') || clickId.startsWith('act:'))
+        (clickId.startsWith('day:') || clickId.startsWith('time:') || clickId.startsWith('act:') || clickId.startsWith('svc:'))
       const isMenuAgendar = clickId === 'opt_agendar' || clickId === 'opt_agenda'
         || messageText.trim() === 'Agendar um horário' || messageText.trim() === 'Conferir agenda'
       const parsedIntent = parseUserIntent(messageText)

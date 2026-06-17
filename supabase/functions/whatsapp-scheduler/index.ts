@@ -28,9 +28,23 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const SLOT_MINUTES = 60
+const SLOT_MINUTES = 60                 // passo/duração padrão quando não há serviço cadastrado
+const DEFAULT_DURATION = 60             // minutos
 const dayNames  = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado']
 const dayShort  = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+
+// Disponibilidade padrão se o profissional não cadastrou nada: 9-12h / 14-18h dias úteis (sex 17h).
+const DEFAULT_WEEKLY: Array<{ day_of_week: number; start_time: string; end_time: string }> = [
+  { day_of_week: 1, start_time: '09:00', end_time: '12:00' }, { day_of_week: 1, start_time: '14:00', end_time: '18:00' },
+  { day_of_week: 2, start_time: '09:00', end_time: '12:00' }, { day_of_week: 2, start_time: '14:00', end_time: '18:00' },
+  { day_of_week: 3, start_time: '09:00', end_time: '12:00' }, { day_of_week: 3, start_time: '14:00', end_time: '18:00' },
+  { day_of_week: 4, start_time: '09:00', end_time: '12:00' }, { day_of_week: 4, start_time: '14:00', end_time: '18:00' },
+  { day_of_week: 5, start_time: '09:00', end_time: '12:00' }, { day_of_week: 5, start_time: '14:00', end_time: '17:00' },
+]
+const durationFromBs = (bs: any): number => {
+  const d = Number(bs?.duration_min)
+  return Number.isFinite(d) && d > 0 ? d : DEFAULT_DURATION
+}
 
 // ─── Helpers de data/hora ────────────────────────────────────────────────────
 const pad2 = (n: number) => String(n).padStart(2, '0')
@@ -165,6 +179,7 @@ async function computeFreeSlots(
   professionalId: string,
   dataInicio: string,
   dataFim: string,
+  slotMin: number = SLOT_MINUTES,
 ): Promise<Array<{ data: string; dia_semana: string; horarios_livres: string[] }>> {
   const { data: availability } = await supabaseAdmin
     .from('availability')
@@ -179,28 +194,20 @@ async function computeFreeSlots(
     .lte('appointment_date', dataFim)
     .in('status', ['pending', 'confirmed'])
 
-  // Fallback se não há agenda cadastrada: 9-12h / 14-18h dias úteis (sex até 17h)
-  const defaultWeeklyAvailability = [
-    { day_of_week: 1, start_time: '09:00', end_time: '12:00' },
-    { day_of_week: 1, start_time: '14:00', end_time: '18:00' },
-    { day_of_week: 2, start_time: '09:00', end_time: '12:00' },
-    { day_of_week: 2, start_time: '14:00', end_time: '18:00' },
-    { day_of_week: 3, start_time: '09:00', end_time: '12:00' },
-    { day_of_week: 3, start_time: '14:00', end_time: '18:00' },
-    { day_of_week: 4, start_time: '09:00', end_time: '12:00' },
-    { day_of_week: 4, start_time: '14:00', end_time: '18:00' },
-    { day_of_week: 5, start_time: '09:00', end_time: '12:00' },
-    { day_of_week: 5, start_time: '14:00', end_time: '17:00' },
-  ]
-  const weekly = (availability && availability.length > 0) ? availability : defaultWeeklyAvailability
+  const weekly = (availability && availability.length > 0) ? availability : DEFAULT_WEEKLY
 
-  const occupiedByDate: Record<string, Set<string>> = {}
+  // Intervalos ocupados [inícioMin, fimMin) por data — marca o BLOCO inteiro (não só o início),
+  // pra um slot quebrado/curto não cair em cima de um agendamento existente.
+  const occByDate: Record<string, Array<[number, number]>> = {}
   for (const apt of (occupied || [])) {
     const date = apt.appointment_date as string
-    const start = (apt.start_time as string).slice(0, 5)
-    if (!occupiedByDate[date]) occupiedByDate[date] = new Set()
-    occupiedByDate[date].add(start)
+    const s = toMinutes((apt.start_time as string).slice(0, 5))
+    const e = toMinutes((apt.end_time as string).slice(0, 5))
+    if (!occByDate[date]) occByDate[date] = []
+    occByDate[date].push([s, e])
   }
+  const overlaps = (m: number, dur: number, intervals: Array<[number, number]>) =>
+    (intervals || []).some(([s, e]) => m < e && (m + dur) > s)
 
   const dias: Array<{ data: string; dia_semana: string; horarios_livres: string[] }> = []
   const start = new Date(dataInicio + 'T00:00:00')
@@ -214,6 +221,7 @@ async function computeFreeSlots(
     const dow = d.getDay()
     const dateStr = d.toISOString().slice(0, 10)
     const isToday = d.getTime() === today.getTime()
+    const nowMin = new Date().getHours() * 60 + new Date().getMinutes()
 
     const windowsForDow = weekly.filter((w: any) => w.day_of_week === dow)
     if (windowsForDow.length === 0) continue
@@ -222,14 +230,11 @@ async function computeFreeSlots(
     for (const w of windowsForDow) {
       const startMin = toMinutes((w.start_time as string).slice(0, 5))
       const endMin = toMinutes((w.end_time as string).slice(0, 5))
-      for (let m = startMin; m + SLOT_MINUTES <= endMin; m += SLOT_MINUTES) {
-        const slotStr = fromMinutes(m)
-        if (isToday) {
-          const nowMin = new Date().getHours() * 60 + new Date().getMinutes()
-          if (m <= nowMin) continue
-        }
-        if (occupiedByDate[dateStr]?.has(slotStr)) continue
-        slotsLivresDoDia.push(slotStr)
+      // o slot precisa CABER inteiro na janela (m + duração <= fim)
+      for (let m = startMin; m + slotMin <= endMin; m += slotMin) {
+        if (isToday && m <= nowMin) continue
+        if (overlaps(m, slotMin, occByDate[dateStr])) continue
+        slotsLivresDoDia.push(fromMinutes(m))
       }
     }
 
@@ -241,10 +246,46 @@ async function computeFreeSlots(
 }
 
 // Consistente com computeFreeSlots: mesma fonte, mesmo fallback, mesma exclusão.
-async function isSlotFree(supabaseAdmin: any, professionalId: string, dateIso: string, time: string): Promise<boolean> {
-  const dias = await computeFreeSlots(supabaseAdmin, professionalId, dateIso, dateIso)
-  const dia = dias.find((d) => d.data === dateIso)
-  return !!dia && dia.horarios_livres.includes(time)
+// Aceita QUALQUER horário (inclusive quebrado, ex.: 14:20) desde que o bloco
+// [time, time+duração) caiba numa janela de atendimento, não esteja no passado e
+// não sobreponha outro agendamento. É o que destrava o modo flexível.
+async function isSlotFree(
+  supabaseAdmin: any, professionalId: string, dateIso: string, time: string,
+  durationMin: number = SLOT_MINUTES,
+): Promise<boolean> {
+  const startMin = toMinutes(time)
+  const endMin = startMin + durationMin
+  const dow = new Date(dateIso + 'T00:00:00').getDay()
+
+  // 1) cabe inteiro em alguma janela do dia?
+  const { data: avail } = await supabaseAdmin
+    .from('availability').select('start_time, end_time')
+    .eq('professional_id', professionalId).eq('day_of_week', dow)
+  const windows = (avail && avail.length > 0)
+    ? avail
+    : DEFAULT_WEEKLY.filter((w) => w.day_of_week === dow)
+  const cabe = windows.some((w: any) =>
+    startMin >= toMinutes((w.start_time as string).slice(0, 5)) &&
+    endMin <= toMinutes((w.end_time as string).slice(0, 5)))
+  if (!cabe) return false
+
+  // 2) não está no passado (se for hoje)
+  const todayIso = isoFromBRT(brtNow())
+  if (dateIso === todayIso) {
+    const nowMin = brtNow().getUTCHours() * 60 + brtNow().getUTCMinutes()
+    if (startMin <= nowMin) return false
+  }
+
+  // 3) não sobrepõe outro agendamento (mesma regra do createBooking)
+  const { data: conflitos } = await supabaseAdmin
+    .from('appointments').select('id')
+    .eq('professional_id', professionalId)
+    .eq('appointment_date', dateIso)
+    .in('status', ['pending', 'confirmed'])
+    .eq('appointment_type', 'booking')
+    .lt('start_time', fromMinutes(endMin))
+    .gt('end_time', time)
+  return !(conflitos && conflitos.length > 0)
 }
 
 // Cria agendamento. Valida janela + anti-overlap. (Verbatim de criar_agendamento, 744-826.)
@@ -256,6 +297,7 @@ async function createBooking(
   horaFim: string,
   notes: string,
   leadId: string | null = null,
+  serviceId: string | null = null,
 ): Promise<{ ok: boolean; appointment_id?: string; erro?: string; mensagem?: string }> {
   // ── janela de disponibilidade ──
   const reqDow = new Date(data + 'T00:00:00').getDay()
@@ -306,6 +348,7 @@ async function createBooking(
       start_time: horaInicio,
       end_time: horaFim,
       appointment_type: 'booking',
+      service_id: serviceId,
       notes: notes || '',
       status: 'pending',
     })
@@ -445,6 +488,20 @@ function buildConfirmButtons(dayLabel: string, time: string): Selector {
   }
 }
 
+// ≤3 → botões; ≥4 → lista. id = svc:<uuid>. Mostra a duração no rótulo.
+function buildServiceSelector(services: Array<{ id: string; name: string; duration_minutes: number }>): Selector {
+  const items = services.map((s) => ({ label: `${s.name} (${s.duration_minutes}min)`, id: `svc:${s.id}` }))
+  const labels = items.map((i) => i.label)
+  const ids = items.map((i) => i.id)
+  if (items.length <= 3) {
+    return { kind: 'buttons', title: 'Qual atendimento?', description: 'Toque na opção:', buttons: items.map((i) => ({ displayText: i.label, id: i.id })), labels, ids }
+  }
+  return {
+    kind: 'list', title: 'Atendimentos', description: 'Escolha o tipo de atendimento:', buttonText: 'Ver opções',
+    sections: [{ title: 'Atendimentos', rows: items.map((i) => ({ title: i.label, rowId: i.id })) }], labels, ids,
+  }
+}
+
 // =============================================================================
 // parseChoice — interpreta a resposta do lead (determinístico, sem LLM)
 // Prioriza click_id estruturado; depois regex no texto; depois nº (fallback); depois parsed_intent.
@@ -458,6 +515,7 @@ type Choice =
   | { type: 'reschedule' }
   | { type: 'cancel' }
   | { type: 'start' }
+  | { type: 'service'; id: string }
   | { type: 'unknown' }
 
 function parseChoice(clickId: string | null, message: string, parsedIntent: any, bs: any): Choice {
@@ -468,6 +526,7 @@ function parseChoice(clickId: string | null, message: string, parsedIntent: any,
   if (cid === 'act:reschedule') return { type: 'reschedule' }
   if (cid === 'act:cancel') return { type: 'cancel' }
   if (cid === 'opt_agendar' || cid === 'opt_agenda') return { type: 'start' }
+  if (cid.startsWith('svc:')) return { type: 'service', id: cid.slice(4) }
 
   const txt = (message || '').trim()
 
@@ -496,6 +555,7 @@ function parseChoice(clickId: string | null, message: string, parsedIntent: any,
   const nm = txt.match(/^([1-9])\b/)
   if (nm) {
     const idx = parseInt(nm[1], 10) - 1
+    if (bs?.stage === 'choosing_service' && Array.isArray(bs.offered_services) && bs.offered_services[idx]) return { type: 'service', id: bs.offered_services[idx].id }
     if (bs?.stage === 'choosing_day' && Array.isArray(bs.offered_days) && bs.offered_days[idx]) return { type: 'day', date: bs.offered_days[idx] }
     if (bs?.stage === 'choosing_time' && Array.isArray(bs.offered_times) && bs.offered_times[idx]) return { type: 'time', time: bs.offered_times[idx] }
   }
@@ -552,7 +612,7 @@ async function offerDays(ctx: Ctx, bs: any, rescheduling: boolean) {
   const now = new Date().toISOString()
   const hoje = isoFromBRT(brtNow())
   const fim = isoFromBRT(addDays(brtNow(), 7))
-  const dias = await computeFreeSlots(ctx.supabaseAdmin, ctx.professionalId, hoje, fim)
+  const dias = await computeFreeSlots(ctx.supabaseAdmin, ctx.professionalId, hoje, fim, durationFromBs(bs))
 
   if (dias.length === 0) {
     await reply(ctx, `No momento não encontrei horários livres nos próximos dias. Vou pedir pro ${ctx.proFirstName} te retornar com novas datas, tá? 🙂`)
@@ -575,10 +635,57 @@ async function offerDays(ctx: Ctx, bs: any, rescheduling: boolean) {
   })
 }
 
+// Serviços ativos do profissional (com duração válida). Define a duração da sessão.
+async function getServices(ctx: Ctx): Promise<Array<{ id: string; name: string; duration_minutes: number }>> {
+  const { data } = await ctx.supabaseAdmin
+    .from('professional_services')
+    .select('id, name, duration_minutes, active, created_at')
+    .eq('professional_id', ctx.professionalId)
+    .eq('active', true)
+    .order('created_at', { ascending: true })
+  return (data || [])
+    .filter((s: any) => Number(s.duration_minutes) > 0)
+    .map((s: any) => ({ id: s.id, name: s.name, duration_minutes: Number(s.duration_minutes) }))
+}
+
+// Início do agendamento: 2+ serviços → pergunta qual (define a duração);
+// 0 ou 1 serviço → resolve a duração e vai direto pros dias.
+async function startBooking(ctx: Ctx, bs: any): Promise<boolean> {
+  const services = await getServices(ctx)
+  if (services.length >= 2 && !bs.service_id) {
+    await offerServices(ctx, bs, services)
+    return true
+  }
+  const svc = services.length === 1 ? services[0] : null
+  await offerDays(ctx, { ...bs, service_id: svc?.id ?? null, duration_min: svc?.duration_minutes ?? DEFAULT_DURATION }, false)
+  return true
+}
+
+async function offerServices(ctx: Ctx, bs: any, services: Array<{ id: string; name: string; duration_minutes: number }>) {
+  const now = new Date().toISOString()
+  const sel = buildServiceSelector(services)
+  await sendSelector(ctx, sel)
+  await logAssistant(ctx, `[Scheduler serviços: ${sel.labels.join(' · ')}]`)
+  await setBookingState(ctx, {
+    ...bs,
+    stage: 'choosing_service',
+    offered_services: services.map((s) => ({ id: s.id, name: s.name, duration: s.duration_minutes })),
+    selected_date: null,
+    selected_time: null,
+    updated_at: now,
+  })
+}
+
+async function pickService(ctx: Ctx, serviceId: string, bs: any): Promise<boolean> {
+  const svc = (bs.offered_services || []).find((s: any) => s.id === serviceId)
+  await offerDays(ctx, { ...bs, service_id: serviceId, duration_min: svc?.duration ?? DEFAULT_DURATION }, false)
+  return true
+}
+
 async function offerTimes(ctx: Ctx, bs: any, dateIso: string) {
   const now = new Date().toISOString()
   const label = labelFromIso(dateIso)
-  const dias = await computeFreeSlots(ctx.supabaseAdmin, ctx.professionalId, dateIso, dateIso)
+  const dias = await computeFreeSlots(ctx.supabaseAdmin, ctx.professionalId, dateIso, dateIso, durationFromBs(bs))
   const dia = dias.find((d) => d.data === dateIso)
   const horarios = dia?.horarios_livres || []
 
@@ -612,11 +719,11 @@ async function doConfirm(ctx: Ctx, bs: any) {
   const now = new Date().toISOString()
   const date = bs.selected_date as string
   const time = bs.selected_time as string
-  const horaFim = fromMinutes(toMinutes(time) + SLOT_MINUTES)
+  const horaFim = fromMinutes(toMinutes(time) + durationFromBs(bs))
 
   const result = (bs.appointment_id && bs.rescheduling)
     ? await rescheduleBooking(ctx.supabaseAdmin, ctx.professionalId, bs.appointment_id, date, time, horaFim)
-    : await createBooking(ctx.supabaseAdmin, ctx.professionalId, date, time, horaFim, '', ctx.leadId)
+    : await createBooking(ctx.supabaseAdmin, ctx.professionalId, date, time, horaFim, '', ctx.leadId, bs.service_id || null)
 
   if (!result.ok) {
     await reply(ctx, result.mensagem || 'Esse horário acabou de ser preenchido. Vamos escolher outro? 🙂')
@@ -678,7 +785,7 @@ async function handlePick(ctx: Ctx, choice: Choice, bs: any): Promise<boolean> {
 
   // Temos dia + horário → verifica e segue pra confirmação
   if (date && time) {
-    const free = await isSlotFree(ctx.supabaseAdmin, ctx.professionalId, date, time)
+    const free = await isSlotFree(ctx.supabaseAdmin, ctx.professionalId, date, time, durationFromBs(bs))
     if (free) {
       const label = labelFromIso(date)
       const now = new Date().toISOString()
@@ -728,6 +835,9 @@ async function handleSchedulingTurn(ctx: Ctx, choice: Choice, bs: any): Promise<
     // confirm sem contexto válido → recomeça oferecendo dias
     await offerDays(ctx, bs, !!bs.rescheduling); return true
   }
+  if (choice.type === 'service') {
+    return await pickService(ctx, choice.id, bs)
+  }
   if (choice.type === 'day' || choice.type === 'time' || choice.type === 'datetime') {
     return await handlePick(ctx, choice, bs)
   }
@@ -741,17 +851,16 @@ async function handleSchedulingTurn(ctx: Ctx, choice: Choice, bs: any): Promise<
     if (bs.stage === 'confirming' && bs.selected_date && bs.selected_time) {
       await sendConfirm(ctx, bs.selected_day_label || labelFromIso(bs.selected_date), bs.selected_time); return true
     }
-    await offerDays(ctx, bs, false); return true
+    return await startBooking(ctx, bs)
   }
 
   // unknown no MEIO de um fluxo ativo → NÃO responde "Não entendi": devolve o
   // controle pro whatsapp-agent (LLM), que responde a dúvida/feedback e faz a ponte.
-  if (bs.stage === 'choosing_day' || (bs.stage === 'choosing_time' && bs.selected_date) || (bs.stage === 'confirming' && bs.selected_date && bs.selected_time)) {
+  if (bs.stage === 'choosing_service' || bs.stage === 'choosing_day' || (bs.stage === 'choosing_time' && bs.selected_date) || (bs.stage === 'confirming' && bs.selected_date && bs.selected_time)) {
     return false
   }
-  // Sem estado de fluxo → começa o fluxo
-  await offerDays(ctx, bs, false)
-  return true
+  // Sem estado de fluxo → começa o fluxo (resolve serviço/duração primeiro)
+  return await startBooking(ctx, bs)
 }
 
 // =============================================================================

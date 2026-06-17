@@ -695,7 +695,7 @@ export default function AdminLandingPage() {
     ...(hasPreviewProducts ? {
       products: {
         label: "Produtos e Serviços", icon: ShoppingBag, active: activeSection === "produtos", onClick: () => selectSection("produtos"),
-        node: <ProductsSection products={previewProducts as any} services={previewServices as any} slug={professional?.slug} whatsapp={contactWhatsapp || undefined} />,
+        node: <ProductsSection products={previewProducts as any} services={previewServices as any} slug={professional?.slug} whatsapp={contactWhatsapp || undefined} title={(professional as any)?.products_title ?? undefined} subtitle={(professional as any)?.products_subtitle ?? undefined} />,
       },
     } : {}),
   };
@@ -865,7 +865,7 @@ export default function AdminLandingPage() {
             { id: "dores",    label: "Dores",    icon: AlertCircle   },
             { id: "solucao",  label: "Solução",  icon: Lightbulb     },
             { id: "sobre",    label: "Sobre",    icon: BookOpen      },
-            { id: "produtos", label: "Produtos", icon: ShoppingBag   },
+            { id: "produtos", label: "Serviços", icon: ShoppingBag   },
             { id: "cores",    label: "Cores",    icon: Palette       },
             { id: "contatos", label: "Contatos", icon: MessageCircle },
           ] as { id: Section; label: string; icon: React.ElementType }[]).map(({ id, label, icon: Icon }) => (

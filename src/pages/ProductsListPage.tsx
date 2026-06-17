@@ -2,7 +2,7 @@ import { useParams, Link } from "react-router-dom";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, ShoppingBag, BookOpen, Package, Briefcase, MessageCircle, ExternalLink, ChevronDown } from "lucide-react";
+import { ArrowLeft, ShoppingBag, BookOpen, Package, Briefcase, MessageCircle, ExternalLink, ChevronDown, Clock, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { buildWhatsAppLink } from "@/lib/utils";
 import { formatPrice, type LandingProduct, type LandingService } from "@/components/landing/ProductsSection";
@@ -52,13 +52,18 @@ function ItemCard({ item, whatsapp }: { item: Unified; whatsapp?: string | null 
   const meta = KIND_META[kind] ?? KIND_META.other;
   const Icon = meta.icon;
   const externalUrl = isProduct ? item.data.external_url : null;
+  const durationMin = !isProduct ? item.data.duration_minutes : null;
 
-  const interesse = `Olá! Tenho interesse em "${title}". Pode me passar mais informações?`;
-  const cta = externalUrl
-    ? { href: externalUrl, label: "Comprar", icon: ExternalLink }
-    : whatsapp
-      ? { href: buildWhatsAppLink(whatsapp, interesse), label: "Tenho interesse", icon: MessageCircle }
-      : null;
+  // Sessão de terapia: "Agendar". Produto: "Comprar" (link externo) ou "Tenho interesse" (WhatsApp).
+  const cta = !isProduct
+    ? whatsapp
+      ? { href: buildWhatsAppLink(whatsapp, `Olá! Quero agendar uma sessão de "${title}".`), label: "Agendar", icon: Calendar }
+      : null
+    : externalUrl
+      ? { href: externalUrl, label: "Comprar", icon: ExternalLink }
+      : whatsapp
+        ? { href: buildWhatsAppLink(whatsapp, `Olá! Tenho interesse em "${title}". Pode me passar mais informações?`), label: "Tenho interesse", icon: MessageCircle }
+        : null;
 
   return (
     <div className="group rounded-2xl overflow-hidden border bg-card transition-all duration-300 flex flex-col hover:shadow-lg hover:-translate-y-0.5">
@@ -97,7 +102,14 @@ function ItemCard({ item, whatsapp }: { item: Unified; whatsapp?: string | null 
           </>
         )}
         <div className="flex-1" />
-        <p className="font-serif text-lg font-bold text-foreground mt-4">{formatPrice(price)}</p>
+        <div className="flex items-center justify-between gap-2 mt-4">
+          <p className="font-serif text-lg font-bold text-foreground">{formatPrice(price)}</p>
+          {durationMin != null && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
+              <Clock className="h-3 w-3" /> {durationMin} min
+            </span>
+          )}
+        </div>
         {cta && (
           <Button asChild className="w-full gap-2 mt-3" size="sm">
             <a href={cta.href} target="_blank" rel="noopener noreferrer">
@@ -117,9 +129,9 @@ export default function ProductsListPage() {
   const { data: professional, isLoading: loadingProf } = useQuery({
     queryKey: ["professional", slug],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("professionals")
-        .select("id, slug, full_name, primary_color, background_color, whatsapp")
+        .select("id, slug, full_name, primary_color, background_color, whatsapp, products_title, products_subtitle")
         .eq("slug", slug!)
         .single();
       if (error) throw error;
@@ -155,9 +167,10 @@ export default function ProductsListPage() {
     enabled: !!professional?.id,
   });
 
+  // Sessões de terapia (serviços) primeiro — o principal —, depois os produtos.
   const items: Unified[] = useMemo(() => [
-    ...(products as LandingProduct[]).map((p) => ({ type: "product" as const, id: `p_${p.id}`, data: p })),
     ...(services as LandingService[]).map((s) => ({ type: "service" as const, id: `s_${s.id}`, data: s })),
+    ...(products as LandingProduct[]).map((p) => ({ type: "product" as const, id: `p_${p.id}`, data: p })),
   ], [products, services]);
 
   const customStyles = useMemo(() => {
@@ -233,10 +246,10 @@ export default function ProductsListPage() {
             <span className="text-sm font-medium text-primary uppercase tracking-widest">Produtos e Serviços</span>
           </div>
           <h1 className="font-serif text-3xl md:text-5xl font-bold text-foreground mb-3">
-            Tudo o que {name} oferece
+            {(professional as any).products_title?.trim() || `Tudo o que ${name} oferece`}
           </h1>
           <p className="text-muted-foreground text-lg max-w-xl">
-            E-books, materiais e serviços para apoiar a sua jornada.
+            {(professional as any).products_subtitle?.trim() || "Sessões de terapia, e-books e materiais para apoiar a sua jornada."}
           </p>
         </div>
       </div>

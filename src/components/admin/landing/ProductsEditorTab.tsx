@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfessional } from "@/hooks/useProfessional";
@@ -11,10 +11,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Eye, FileText, Upload, ShoppingBag, BookOpen, Package } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, FileText, Upload, ShoppingBag, BookOpen, Package, Briefcase } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
 import { formatPrice } from "@/components/landing/ProductsSection";
+import ServicesEditor from "@/components/admin/landing/ServicesEditor";
 
 type ProductKind = "ebook" | "physical" | "other";
 
@@ -82,6 +83,36 @@ export default function ProductsEditorTab() {
     queryClient.invalidateQueries({ queryKey: ["landing-preview-products"] });
     queryClient.invalidateQueries({ queryKey: ["products"] });
     queryClient.invalidateQueries({ queryKey: ["products-all"] });
+  };
+
+  // Textos editáveis da seção (título + subtítulo). Salvam em professionals.products_title/subtitle.
+  const [secTitle, setSecTitle] = useState("");
+  const [secSubtitle, setSecSubtitle] = useState("");
+  const [savingTexts, setSavingTexts] = useState(false);
+  const [textsInit, setTextsInit] = useState(false);
+  useEffect(() => {
+    if (professional && !textsInit) {
+      setSecTitle((professional as any).products_title || "");
+      setSecSubtitle((professional as any).products_subtitle || "");
+      setTextsInit(true);
+    }
+  }, [professional, textsInit]);
+
+  const handleSaveTexts = async () => {
+    if (!professional) return;
+    setSavingTexts(true);
+    const { error } = await supabase
+      .from("professionals")
+      .update({ products_title: secTitle.trim() || null, products_subtitle: secSubtitle.trim() || null } as any)
+      .eq("id", professional.id);
+    setSavingTexts(false);
+    if (error) {
+      toast.error("Erro ao salvar os textos da seção");
+      return;
+    }
+    toast.success("Textos da seção salvos!");
+    queryClient.invalidateQueries({ queryKey: ["my-professional"] });
+    queryClient.invalidateQueries({ queryKey: ["landing-preview-products"] });
   };
 
   const openNew = () => {
@@ -178,10 +209,56 @@ export default function ProductsEditorTab() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-8">
       <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
-        Cadastre <strong>e-books, materiais e produtos</strong>. Eles aparecem na seção "Produtos e Serviços" da sua página (junto dos seus serviços de agenda). A seção fica oculta enquanto não houver nenhum item.
+        Esta seção reúne suas <strong>sessões de terapia</strong> (o principal) e seus <strong>produtos</strong> (e-books, materiais).
+        Tudo é editável. A seção fica oculta na página enquanto não houver nenhum item.
       </div>
+
+      {/* ── Textos da seção (editáveis) ── */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold text-foreground">Textos da seção</h3>
+        <div className="space-y-2">
+          <Label>Título <FieldHint text="Aparece como título da seção na sua página. Em branco usa o padrão." /></Label>
+          <Input
+            value={secTitle}
+            onChange={(e) => setSecTitle(e.target.value)}
+            placeholder="Produtos e Serviços"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Subtítulo</Label>
+          <Textarea
+            rows={2}
+            value={secSubtitle}
+            onChange={(e) => setSecSubtitle(e.target.value)}
+            placeholder="Sessões de terapia, e-books e materiais para apoiar a sua jornada."
+          />
+        </div>
+        <Button onClick={handleSaveTexts} disabled={savingTexts} variant="outline" size="sm">
+          {savingTexts ? "Salvando..." : "Salvar textos da seção"}
+        </Button>
+      </div>
+
+      {/* ── Sessões de terapia (principal) ── */}
+      <div className="space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <Briefcase className="h-4 w-4 text-primary" /> Sessões de terapia
+          </h3>
+          <p className="text-xs text-muted-foreground">As sessões que você oferece. São as mesmas usadas no agendamento.</p>
+        </div>
+        <ServicesEditor />
+      </div>
+
+      {/* ── Produtos e materiais (secundário) ── */}
+      <div className="space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <ShoppingBag className="h-4 w-4 text-primary" /> Produtos e materiais
+          </h3>
+          <p className="text-xs text-muted-foreground">E-books, PDFs e produtos físicos.</p>
+        </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
@@ -372,6 +449,7 @@ export default function ProductsEditorTab() {
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }

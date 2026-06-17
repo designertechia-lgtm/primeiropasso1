@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BookOpen, Package, Briefcase, ShoppingBag, MessageCircle, ExternalLink, ArrowRight, ChevronDown } from "lucide-react";
+import { BookOpen, Package, Briefcase, ShoppingBag, MessageCircle, ExternalLink, ArrowRight, ChevronDown, Clock, Calendar } from "lucide-react";
 import { buildWhatsAppLink } from "@/lib/utils";
 
 // Item de produto cadastrado pelo profissional (tabela professional_products).
@@ -31,9 +31,16 @@ interface ProductsSectionProps {
   services: LandingService[];
   slug?: string;
   whatsapp?: string | null;
+  // Textos editáveis da seção (professionals.products_title/subtitle); vazio usa o padrão.
+  title?: string;
+  subtitle?: string;
   // Quantos itens aparecem na seção da landing (a vitrine completa fica em /:slug/produtos).
   limit?: number;
 }
+
+// Defaults bem formatados (usados quando o profissional não personaliza os textos).
+const DEFAULT_TITLE = "Produtos e Serviços";
+const DEFAULT_SUBTITLE = "Sessões de terapia, e-books e materiais para apoiar a sua jornada.";
 
 export function formatPrice(value: number | null | undefined): string {
   if (value == null) return "Sob consulta";
@@ -47,15 +54,16 @@ const KIND_META: Record<LandingProduct["kind"], { label: string; icon: React.Ele
   other: { label: "Produto", icon: ShoppingBag },
 };
 
-// Unifica produtos e serviços numa lista só, na ordem: produtos primeiro, depois serviços.
+// Unifica numa lista só. Sessões de terapia (serviços) PRIMEIRO — são o principal da plataforma —,
+// depois os produtos.
 type Unified =
   | { type: "product"; id: string; data: LandingProduct }
   | { type: "service"; id: string; data: LandingService };
 
 function unify(products: LandingProduct[], services: LandingService[]): Unified[] {
   return [
-    ...products.map((p) => ({ type: "product" as const, id: `p_${p.id}`, data: p })),
     ...services.map((s) => ({ type: "service" as const, id: `s_${s.id}`, data: s })),
+    ...products.map((p) => ({ type: "product" as const, id: `p_${p.id}`, data: p })),
   ];
 }
 
@@ -71,14 +79,19 @@ function ItemCard({ item, whatsapp }: { item: Unified; whatsapp?: string | null 
   const meta = KIND_META[kind];
   const Icon = meta.icon;
   const externalUrl = isProduct ? item.data.external_url : null;
+  const durationMin = !isProduct ? item.data.duration_minutes : null;
 
-  // Fase 1: sem checkout integrado. Compra/contratação é via link externo (se houver) ou WhatsApp.
-  const interesse = `Olá! Tenho interesse em "${title}". Pode me passar mais informações?`;
-  const cta = externalUrl
-    ? { href: externalUrl, external: true, label: "Comprar", icon: ExternalLink }
-    : whatsapp
-      ? { href: buildWhatsAppLink(whatsapp, interesse), external: true, label: "Tenho interesse", icon: MessageCircle }
-      : null;
+  // Sessão de terapia: CTA "Agendar". Produto: link externo ("Comprar") ou WhatsApp ("Tenho interesse").
+  // Fase 1: sem checkout integrado — tudo passa pelo WhatsApp do profissional.
+  const cta = !isProduct
+    ? whatsapp
+      ? { href: buildWhatsAppLink(whatsapp, `Olá! Quero agendar uma sessão de "${title}".`), label: "Agendar", icon: Calendar }
+      : null
+    : externalUrl
+      ? { href: externalUrl, label: "Comprar", icon: ExternalLink }
+      : whatsapp
+        ? { href: buildWhatsAppLink(whatsapp, `Olá! Tenho interesse em "${title}". Pode me passar mais informações?`), label: "Tenho interesse", icon: MessageCircle }
+        : null;
 
   return (
     <Card className="overflow-hidden transition-shadow flex flex-col hover:shadow-md">
@@ -118,10 +131,17 @@ function ItemCard({ item, whatsapp }: { item: Unified; whatsapp?: string | null 
         )}
       </CardHeader>
       <CardContent className="pt-0 mt-auto space-y-3">
-        <p className="font-heading text-lg font-bold text-foreground">{formatPrice(price)}</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="font-heading text-lg font-bold text-foreground">{formatPrice(price)}</p>
+          {durationMin != null && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
+              <Clock className="h-3 w-3" /> {durationMin} min
+            </span>
+          )}
+        </div>
         {cta && (
           <Button asChild className="w-full gap-2" size="sm">
-            <a href={cta.href} target={cta.external ? "_blank" : undefined} rel={cta.external ? "noopener noreferrer" : undefined}>
+            <a href={cta.href} target="_blank" rel="noopener noreferrer">
               <cta.icon className="h-4 w-4" /> {cta.label}
             </a>
           </Button>
@@ -131,7 +151,7 @@ function ItemCard({ item, whatsapp }: { item: Unified; whatsapp?: string | null 
   );
 }
 
-export default function ProductsSection({ products, services, slug, whatsapp, limit = 3 }: ProductsSectionProps) {
+export default function ProductsSection({ products, services, slug, whatsapp, title, subtitle, limit = 3 }: ProductsSectionProps) {
   const items = unify(products, services);
   if (items.length === 0) return null;
 
@@ -142,10 +162,10 @@ export default function ProductsSection({ products, services, slug, whatsapp, li
     <div className="container mx-auto px-4 md:px-8">
       <div className="max-w-2xl mx-auto text-center mb-12">
         <h2 className="font-heading text-3xl md:text-4xl font-bold text-foreground mb-4">
-          Produtos e Serviços
+          {title?.trim() || DEFAULT_TITLE}
         </h2>
         <p className="text-muted-foreground text-lg">
-          Materiais, e-books e serviços para apoiar a sua jornada.
+          {subtitle?.trim() || DEFAULT_SUBTITLE}
         </p>
       </div>
 
@@ -159,7 +179,7 @@ export default function ProductsSection({ products, services, slug, whatsapp, li
         <div className="flex justify-center mt-10">
           <Button asChild variant="outline" size="lg" className="gap-2">
             <Link to={`/${slug}/produtos`}>
-              {hasMore ? `Ver tudo (${items.length})` : "Ver todos os produtos"}
+              {hasMore ? `Ver tudo (${items.length})` : "Ver tudo"}
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>

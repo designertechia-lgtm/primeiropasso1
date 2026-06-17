@@ -254,6 +254,8 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
               services={services as any}
               slug={professional.slug}
               whatsapp={professional.whatsapp}
+              title={(professional as any).products_title ?? undefined}
+              subtitle={(professional as any).products_subtitle ?? undefined}
             />
           ),
         }

@@ -16,6 +16,7 @@ import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
 import { formatPrice } from "@/components/landing/ProductsSection";
 import ServicesEditor from "@/components/admin/landing/ServicesEditor";
+import ReceivablesOnboarding from "@/components/admin/landing/ReceivablesOnboarding";
 
 type ProductKind = "ebook" | "physical" | "other";
 
@@ -214,6 +215,9 @@ export default function ProductsEditorTab() {
         Esta seção reúne suas <strong>sessões de terapia</strong> (o principal) e seus <strong>produtos</strong> (e-books, materiais).
         Tudo é editável. A seção fica oculta na página enquanto não houver nenhum item.
       </div>
+
+      {/* Ativação de recebimentos (subconta Asaas) — necessária para vender */}
+      <ReceivablesOnboarding />
 
       {/* ── Textos da seção (editáveis) ── */}
       <div className="space-y-3">

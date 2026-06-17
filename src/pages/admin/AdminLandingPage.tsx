@@ -27,6 +27,7 @@ import Section from "@/components/landing/Section";
 import { CONTENT_SECTION_KEYS, zebraTone } from "@/lib/landing/sections";
 import { buildLandingVars, getFontScale, FONTS, FONT_SIZES, GOOGLE_FONTS_URL } from "@/lib/landing/buildLandingVars";
 import GenerateAboutVideoDialog from "@/components/admin/landing/GenerateAboutVideoDialog";
+import ProductsEditorTab from "@/components/admin/landing/ProductsEditorTab";
 
 // ── Vídeo: detecção de arquivo direto vs embed (YouTube/Vimeo) ────────────
 // Espelha a lógica do AboutSection da landing pública, pro preview do editor
@@ -185,7 +186,7 @@ function SectionBlock({
   );
 }
 
-type Section = "secoes" | "hero" | "dores" | "solucao" | "sobre" | "cores" | "contatos";
+type Section = "secoes" | "hero" | "dores" | "solucao" | "sobre" | "produtos" | "cores" | "contatos";
 
 export default function AdminLandingPage() {
   const { data: professional, isLoading } = useProfessional();
@@ -248,7 +249,7 @@ export default function AdminLandingPage() {
     queryFn: async () => {
       const { data } = await (supabase as any)
         .from("professional_products")
-        .select("id, kind, title, description, price_brl, cover_image_url, external_url, active, sort_order")
+        .select("id, kind, title, description, description_full, price_brl, cover_image_url, external_url, active, sort_order")
         .eq("professional_id", professional!.id)
         .eq("active", true)
         .order("sort_order", { ascending: true });
@@ -345,6 +346,12 @@ export default function AdminLandingPage() {
       setAboutVideoDialogOpen(true);
     }
   }, [axelDraftId]);
+  // Deep-link da aba (ex.: /admin/landing?tab=produtos, usado pelo atalho do menu lateral).
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    const valid = ["secoes", "hero", "dores", "solucao", "sobre", "produtos", "cores", "contatos"];
+    if (tab && valid.includes(tab)) setActiveSection(tab as Section);
+  }, [searchParams]);
   const [saving, setSaving] = useState(false);
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
@@ -687,7 +694,7 @@ export default function AdminLandingPage() {
     } : {}),
     ...(hasPreviewProducts ? {
       products: {
-        label: "Produtos e Serviços", icon: ShoppingBag, active: false, onClick: () => navigate("/admin/produtos"),
+        label: "Produtos e Serviços", icon: ShoppingBag, active: activeSection === "produtos", onClick: () => selectSection("produtos"),
         node: <ProductsSection products={previewProducts as any} services={previewServices as any} slug={professional?.slug} whatsapp={contactWhatsapp || undefined} />,
       },
     } : {}),
@@ -858,6 +865,7 @@ export default function AdminLandingPage() {
             { id: "dores",    label: "Dores",    icon: AlertCircle   },
             { id: "solucao",  label: "Solução",  icon: Lightbulb     },
             { id: "sobre",    label: "Sobre",    icon: BookOpen      },
+            { id: "produtos", label: "Produtos", icon: ShoppingBag   },
             { id: "cores",    label: "Cores",    icon: Palette       },
             { id: "contatos", label: "Contatos", icon: MessageCircle },
           ] as { id: Section; label: string; icon: React.ElementType }[]).map(({ id, label, icon: Icon }) => (
@@ -878,6 +886,9 @@ export default function AdminLandingPage() {
         </div>
 
         <div className="p-5 space-y-5">
+
+          {/* ── PRODUTOS E SERVIÇOS (CRUD; reflete na seção do preview) ── */}
+          {activeSection === "produtos" && <ProductsEditorTab />}
 
           {/* ── SEÇÕES (ordem + ocultar) ── */}
           {activeSection === "secoes" && (

@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BookOpen, Package, Briefcase, ShoppingBag, MessageCircle, ExternalLink, ArrowRight } from "lucide-react";
+import { BookOpen, Package, Briefcase, ShoppingBag, MessageCircle, ExternalLink, ArrowRight, ChevronDown } from "lucide-react";
 import { buildWhatsAppLink } from "@/lib/utils";
 
 // Item de produto cadastrado pelo profissional (tabela professional_products).
@@ -10,6 +11,7 @@ export interface LandingProduct {
   kind: "ebook" | "physical" | "service" | "other";
   title: string;
   description: string | null;
+  description_full: string | null;
   price_brl: number | null;
   cover_image_url: string | null;
   external_url: string | null;
@@ -58,9 +60,11 @@ function unify(products: LandingProduct[], services: LandingService[]): Unified[
 }
 
 function ItemCard({ item, whatsapp }: { item: Unified; whatsapp?: string | null }) {
+  const [expanded, setExpanded] = useState(false);
   const isProduct = item.type === "product";
   const title = isProduct ? item.data.title : item.data.name;
   const description = item.data.description;
+  const descriptionFull = isProduct ? item.data.description_full : null;
   const price = item.data.price_brl;
   const cover = isProduct ? item.data.cover_image_url : null;
   const kind: LandingProduct["kind"] = isProduct ? item.data.kind : "service";
@@ -93,7 +97,24 @@ function ItemCard({ item, whatsapp }: { item: Unified; whatsapp?: string | null 
       <CardHeader className="pb-2">
         <CardTitle className="font-heading text-base leading-snug">{title}</CardTitle>
         {description && (
-          <p className="text-sm text-muted-foreground line-clamp-2">{description}</p>
+          <p className="text-sm text-muted-foreground">{description}</p>
+        )}
+        {descriptionFull && (
+          <>
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="flex items-center gap-1 text-xs font-medium text-primary hover:underline w-fit"
+            >
+              {expanded ? "Ver menos" : "Ver mais"}
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+            </button>
+            {expanded && (
+              <p className="text-sm text-muted-foreground whitespace-pre-line border-l-2 border-primary/30 pl-3">
+                {descriptionFull}
+              </p>
+            )}
+          </>
         )}
       </CardHeader>
       <CardContent className="pt-0 mt-auto space-y-3">

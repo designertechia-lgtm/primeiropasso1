@@ -91,7 +91,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     queryFn: async () => {
       const { data } = await (supabase as any)
         .from("professional_products")
-        .select("id, kind, title, description, price_brl, cover_image_url, external_url, active, sort_order")
+        .select("id, kind, title, description, description_full, price_brl, cover_image_url, external_url, active, sort_order")
         .eq("professional_id", professional!.id)
         .eq("active", true)
         .order("sort_order", { ascending: true });

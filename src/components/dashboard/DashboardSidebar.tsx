@@ -46,7 +46,7 @@ const sections = [
     label: "Gestão",
     items: [
       { title: "Agenda", url: "/admin/agenda", icon: CalendarDays },
-      { title: "Produtos", url: "/admin/produtos", icon: ShoppingBag },
+      { title: "Produtos", url: "/admin/landing?tab=produtos", icon: ShoppingBag },
       { title: "CRM Leads", url: "/admin/clientes", icon: LayoutList },
       { title: "Chat Axel", url: "/admin/chat", icon: Sparkles },
     ]

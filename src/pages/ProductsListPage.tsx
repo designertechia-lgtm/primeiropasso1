@@ -1,8 +1,8 @@
 import { useParams, Link } from "react-router-dom";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, ShoppingBag, BookOpen, Package, Briefcase, MessageCircle, ExternalLink } from "lucide-react";
+import { ArrowLeft, ShoppingBag, BookOpen, Package, Briefcase, MessageCircle, ExternalLink, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { buildWhatsAppLink } from "@/lib/utils";
 import { formatPrice, type LandingProduct, type LandingService } from "@/components/landing/ProductsSection";
@@ -41,9 +41,11 @@ type Unified =
   | { type: "service"; id: string; data: LandingService };
 
 function ItemCard({ item, whatsapp }: { item: Unified; whatsapp?: string | null }) {
+  const [expanded, setExpanded] = useState(false);
   const isProduct = item.type === "product";
   const title = isProduct ? item.data.title : item.data.name;
   const description = item.data.description;
+  const descriptionFull = isProduct ? item.data.description_full : null;
   const price = item.data.price_brl;
   const cover = isProduct ? item.data.cover_image_url : null;
   const kind = isProduct ? item.data.kind : "service";
@@ -75,8 +77,26 @@ function ItemCard({ item, whatsapp }: { item: Unified; whatsapp?: string | null 
       <div className="p-5 flex flex-col flex-1">
         <h2 className="font-serif text-lg font-semibold text-foreground leading-snug mb-2 line-clamp-2">{title}</h2>
         {description && (
-          <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed flex-1">{description}</p>
+          <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
         )}
+        {descriptionFull && (
+          <>
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="flex items-center gap-1 text-xs font-medium text-primary hover:underline w-fit mt-2"
+            >
+              {expanded ? "Ver menos" : "Ver mais"}
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+            </button>
+            {expanded && (
+              <p className="text-sm text-muted-foreground whitespace-pre-line border-l-2 border-primary/30 pl-3 mt-2">
+                {descriptionFull}
+              </p>
+            )}
+          </>
+        )}
+        <div className="flex-1" />
         <p className="font-serif text-lg font-bold text-foreground mt-4">{formatPrice(price)}</p>
         {cta && (
           <Button asChild className="w-full gap-2 mt-3" size="sm">
@@ -113,7 +133,7 @@ export default function ProductsListPage() {
     queryFn: async () => {
       const { data } = await (supabase as any)
         .from("professional_products")
-        .select("id, kind, title, description, price_brl, cover_image_url, external_url, active, sort_order")
+        .select("id, kind, title, description, description_full, price_brl, cover_image_url, external_url, active, sort_order")
         .eq("professional_id", professional!.id)
         .eq("active", true)
         .order("sort_order", { ascending: true });

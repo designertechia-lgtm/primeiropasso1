@@ -262,7 +262,7 @@ export default function AdminLandingPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("professional_services")
-        .select("id, name, description, price_brl:price, duration_minutes, active")
+        .select("id, name, description, price_brl:price, duration_minutes, cover_image_url, active")
         .eq("professional_id", professional!.id)
         .eq("active", true);
       return data ?? [];

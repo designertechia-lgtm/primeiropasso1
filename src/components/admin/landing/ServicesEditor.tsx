@@ -10,9 +10,10 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Clock } from "lucide-react";
+import { Plus, Pencil, Trash2, Clock, Briefcase } from "lucide-react";
 import { FieldHint } from "@/components/ui/FieldHint";
 import { formatPrice } from "@/components/landing/ProductsSection";
+import ImageUpload from "@/components/dashboard/ImageUpload";
 
 interface ServiceForm {
   id?: string;
@@ -20,6 +21,7 @@ interface ServiceForm {
   description: string;
   duration_minutes: string;
   price: string;
+  cover_image_url: string;
   active: boolean;
 }
 
@@ -28,6 +30,7 @@ const emptyForm: ServiceForm = {
   description: "",
   duration_minutes: "50",
   price: "",
+  cover_image_url: "",
   active: true,
 };
 
@@ -71,6 +74,7 @@ export default function ServicesEditor() {
       description: s.description ?? "",
       duration_minutes: s.duration_minutes != null ? String(s.duration_minutes) : "50",
       price: s.price != null ? String(s.price) : "",
+      cover_image_url: s.cover_image_url ?? "",
       active: s.active ?? true,
     });
     setOpen(true);
@@ -88,6 +92,7 @@ export default function ServicesEditor() {
       description: form.description.trim() || null,
       duration_minutes: form.duration_minutes.trim() ? Number(form.duration_minutes) : 50,
       price: form.price.trim() ? Number(form.price.replace(",", ".")) : null,
+      cover_image_url: form.cover_image_url || null,
       active: form.active,
     };
 
@@ -168,6 +173,16 @@ export default function ServicesEditor() {
               </div>
             </div>
 
+            <div className="space-y-2">
+              <Label>Imagem de capa <FieldHint text="Aparece no card da sessão na sua página. Opcional." /></Label>
+              <ImageUpload
+                currentUrl={form.cover_image_url || null}
+                onUploaded={(url) => setForm((p) => ({ ...p, cover_image_url: url }))}
+                folder="services"
+                variant="wide"
+              />
+            </div>
+
             <div className="flex items-center gap-2 pt-1">
               <Switch checked={form.active} onCheckedChange={(v) => setForm((p) => ({ ...p, active: v }))} />
               <Label>Ativa (aparece na página e no agendamento)</Label>
@@ -191,12 +206,21 @@ export default function ServicesEditor() {
           {services.map((s: any) => (
             <Card key={s.id}>
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
-                <div className="min-w-0">
+                <div className="flex items-center gap-3 min-w-0">
+                  {s.cover_image_url ? (
+                    <img src={s.cover_image_url} alt="" className="h-10 w-10 object-cover rounded shrink-0" />
+                  ) : (
+                    <div className="h-10 w-10 rounded bg-primary/10 flex items-center justify-center shrink-0">
+                      <Briefcase className="h-4 w-4 text-primary" />
+                    </div>
+                  )}
+                  <div className="min-w-0">
                   <CardTitle className="text-sm truncate">{s.name}</CardTitle>
                   <p className="text-[11px] text-muted-foreground flex items-center gap-1">
                     <Clock className="h-3 w-3" /> {s.duration_minutes ?? 50} min · {formatPrice(s.price)}
                     {!s.active && <span className="ml-1 text-amber-600">· oculta</span>}
                   </p>
+                  </div>
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(s)}>

@@ -24,6 +24,7 @@ export interface LandingService {
   description: string | null;
   price_brl: number | null;
   duration_minutes: number | null;
+  cover_image_url: string | null;
 }
 
 interface ProductsSectionProps {
@@ -74,7 +75,7 @@ function ItemCard({ item, whatsapp }: { item: Unified; whatsapp?: string | null 
   const description = item.data.description;
   const descriptionFull = isProduct ? item.data.description_full : null;
   const price = item.data.price_brl;
-  const cover = isProduct ? item.data.cover_image_url : null;
+  const cover = item.data.cover_image_url;
   const kind: LandingProduct["kind"] = isProduct ? item.data.kind : "service";
   const meta = KIND_META[kind];
   const Icon = meta.icon;

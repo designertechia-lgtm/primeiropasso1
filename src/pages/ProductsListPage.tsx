@@ -47,7 +47,7 @@ function ItemCard({ item, whatsapp }: { item: Unified; whatsapp?: string | null 
   const description = item.data.description;
   const descriptionFull = isProduct ? item.data.description_full : null;
   const price = item.data.price_brl;
-  const cover = isProduct ? item.data.cover_image_url : null;
+  const cover = item.data.cover_image_url;
   const kind = isProduct ? item.data.kind : "service";
   const meta = KIND_META[kind] ?? KIND_META.other;
   const Icon = meta.icon;
@@ -157,9 +157,9 @@ export default function ProductsListPage() {
   const { data: services = [], isLoading: loadingServices } = useQuery({
     queryKey: ["services-all", professional?.id],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await (supabase as any)
         .from("professional_services")
-        .select("id, name, description, price_brl:price, duration_minutes, active")
+        .select("id, name, description, price_brl:price, duration_minutes, cover_image_url, active")
         .eq("professional_id", professional!.id)
         .eq("active", true);
       return data ?? [];

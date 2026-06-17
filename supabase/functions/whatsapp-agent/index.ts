@@ -110,13 +110,17 @@ const DEFAULT_DURATION = 60             // minutos
 const dayNames  = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado']
 const dayShort  = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
-// Disponibilidade padrão se o profissional não cadastrou nada: 9-12h / 14-18h dias úteis (sex 17h).
+// Range de SUGESTÃO dos botões (07-21, todos os dias) quando o profissional não cadastrou
+// availability. NÃO é janela obrigatória — só gera a lista de botões. O que o sistema ACEITA é
+// qualquer horário livre e não-bloqueado (ver isSlotFree/createBooking). Agenda por bloqueio.
 const DEFAULT_WEEKLY: Array<{ day_of_week: number; start_time: string; end_time: string }> = [
-  { day_of_week: 1, start_time: '09:00', end_time: '12:00' }, { day_of_week: 1, start_time: '14:00', end_time: '18:00' },
-  { day_of_week: 2, start_time: '09:00', end_time: '12:00' }, { day_of_week: 2, start_time: '14:00', end_time: '18:00' },
-  { day_of_week: 3, start_time: '09:00', end_time: '12:00' }, { day_of_week: 3, start_time: '14:00', end_time: '18:00' },
-  { day_of_week: 4, start_time: '09:00', end_time: '12:00' }, { day_of_week: 4, start_time: '14:00', end_time: '18:00' },
-  { day_of_week: 5, start_time: '09:00', end_time: '12:00' }, { day_of_week: 5, start_time: '14:00', end_time: '17:00' },
+  { day_of_week: 0, start_time: '07:00', end_time: '21:00' },
+  { day_of_week: 1, start_time: '07:00', end_time: '21:00' },
+  { day_of_week: 2, start_time: '07:00', end_time: '21:00' },
+  { day_of_week: 3, start_time: '07:00', end_time: '21:00' },
+  { day_of_week: 4, start_time: '07:00', end_time: '21:00' },
+  { day_of_week: 5, start_time: '07:00', end_time: '21:00' },
+  { day_of_week: 6, start_time: '07:00', end_time: '21:00' },
 ]
 const durationFromBs = (bs: any): number => {
   const d = Number(bs?.duration_min)
@@ -318,40 +322,29 @@ async function computeFreeSlots(
   return dias
 }
 
+// Modelo "agenda por bloqueio": aceita QUALQUER horário (6h, 22h, quebrado) desde que
+// não esteja no passado e não colida com um agendamento OU um BLOQUEIO do profissional.
+// Sem janela de expediente fixa — o profissional bloqueia o que não atende.
 async function isSlotFree(
   supabaseAdmin: any, professionalId: string, dateIso: string, time: string,
   durationMin: number = SLOT_MINUTES,
 ): Promise<boolean> {
   const startMin = toMinutes(time)
   const endMin = startMin + durationMin
-  const dow = new Date(dateIso + 'T00:00:00').getDay()
 
-  // 1) cabe inteiro em alguma janela do dia?
-  const { data: avail } = await supabaseAdmin
-    .from('availability').select('start_time, end_time')
-    .eq('professional_id', professionalId).eq('day_of_week', dow)
-  const windows = (avail && avail.length > 0)
-    ? avail
-    : DEFAULT_WEEKLY.filter((w) => w.day_of_week === dow)
-  const cabe = windows.some((w: any) =>
-    startMin >= toMinutes((w.start_time as string).slice(0, 5)) &&
-    endMin <= toMinutes((w.end_time as string).slice(0, 5)))
-  if (!cabe) return false
-
-  // 2) não está no passado (se for hoje)
+  // 1) não está no passado (se for hoje)
   const todayIso = isoFromBRT(brtNow())
   if (dateIso === todayIso) {
     const nowMin = brtNow().getUTCHours() * 60 + brtNow().getUTCMinutes()
     if (startMin <= nowMin) return false
   }
 
-  // 3) não sobrepõe outro agendamento (mesma regra do createBooking)
+  // 2) não sobrepõe agendamento NEM bloqueio (booking ou block; cancelados não contam)
   const { data: conflitos } = await supabaseAdmin
     .from('appointments').select('id')
     .eq('professional_id', professionalId)
     .eq('appointment_date', dateIso)
     .in('status', ['pending', 'confirmed'])
-    .eq('appointment_type', 'booking')
     .lt('start_time', fromMinutes(endMin))
     .gt('end_time', time)
   return !(conflitos && conflitos.length > 0)
@@ -367,43 +360,26 @@ async function createBooking(
   leadId: string | null = null,
   serviceId: string | null = null,
 ): Promise<{ ok: boolean; appointment_id?: string; erro?: string; mensagem?: string }> {
-  // ── janela de disponibilidade ──
-  const reqDow = new Date(data + 'T00:00:00').getDay()
-  const { data: avail } = await supabaseAdmin
-    .from('availability')
-    .select('start_time, end_time')
-    .eq('professional_id', professionalId)
-    .eq('day_of_week', reqDow)
-
-  if (avail && avail.length > 0) {
-    const dentro = avail.some((w: any) => {
-      const s = (w.start_time as string).slice(0, 5)
-      const e = (w.end_time as string).slice(0, 5)
-      return horaInicio >= s && horaFim <= e
-    })
-    if (!dentro) {
-      const janelas = avail.map((w: any) => `${(w.start_time as string).slice(0, 5)}-${(w.end_time as string).slice(0, 5)}`).join(', ')
-      return { ok: false, erro: 'fora_da_grade', mensagem: `Esse horário está fora da grade de atendimento (${janelas}).` }
-    }
-  }
-
-  // ── anti-overlap ── existente.start < novo.fim E existente.fim > novo.inicio
+  // ── anti-overlap ── não pode colidir com agendamento NEM bloqueio (modelo "aceita
+  // tudo, exceto bloqueado"). Sem janela de expediente fixa.
   const { data: conflitos, error: conflictError } = await supabaseAdmin
     .from('appointments')
-    .select('id, start_time, end_time')
+    .select('id, start_time, end_time, appointment_type')
     .eq('professional_id', professionalId)
     .eq('appointment_date', data)
     .in('status', ['pending', 'confirmed'])
-    .eq('appointment_type', 'booking')
     .lt('start_time', horaFim)
     .gt('end_time', horaInicio)
-  if (conflictError) console.error('[scheduler] createBooking conflito:', conflictError.message)
+  if (conflictError) console.error('[agent] createBooking conflito:', conflictError.message)
   if (conflitos && conflitos.length > 0) {
     const c = conflitos[0]
+    const isBlock = c.appointment_type === 'block'
     return {
       ok: false,
-      erro: 'horario_indisponivel',
-      mensagem: `Esse horário se sobrepõe a outro agendamento (${(c.start_time || '').toString().slice(0, 5)} – ${(c.end_time || '').toString().slice(0, 5)}).`,
+      erro: isBlock ? 'horario_bloqueado' : 'horario_indisponivel',
+      mensagem: isBlock
+        ? 'Esse horário está bloqueado na agenda do profissional.'
+        : `Esse horário se sobrepõe a outro agendamento (${(c.start_time || '').toString().slice(0, 5)} – ${(c.end_time || '').toString().slice(0, 5)}).`,
     }
   }
 
@@ -447,7 +423,6 @@ async function rescheduleBooking(
     .eq('professional_id', professionalId)
     .eq('appointment_date', novaData)
     .in('status', ['pending', 'confirmed'])
-    .eq('appointment_type', 'booking')
     .neq('id', apptId)
     .lt('start_time', novaHf)
     .gt('end_time', novaHi)
@@ -907,7 +882,7 @@ async function handleToolCall(
     const svc = services[0] || null
     const dur = svc?.duration_minutes || DEFAULT_DURATION
     const free = await isSlotFree(supabaseAdmin, professionalId, data, hora, dur)
-    if (!free) return { ok: false, instrucao: `O horário ${hora} não está livre nesse dia (ocupado ou fora do horário de atendimento). EXPLIQUE isso ao lead em 1 frase, em TEXTO, e pergunte se ele quer ver os horários livres — só chame abrir_agenda se ele disser que sim. NÃO re-envie a lista de botões por conta própria.` }
+    if (!free) return { ok: false, instrucao: `O horário ${hora} não está livre nesse dia (já ocupado ou bloqueado pelo profissional). EXPLIQUE isso ao lead em 1 frase, em TEXTO, e pergunte se ele quer ver os horários livres — só chame abrir_agenda se ele disser que sim. NÃO re-envie a lista de botões por conta própria.` }
     const horaFim = fromMinutes(toMinutes(hora) + dur)
     const r = await createBooking(supabaseAdmin, professionalId, data, hora, horaFim, '', leadId, svc?.id || null)
     if (!r.ok) return { ok: false, instrucao: r.mensagem || 'Não consegui agendar agora; peça desculpa e ofereça outro horário.' }
@@ -927,12 +902,8 @@ async function handleToolCall(
     if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || !/^\d{1,2}:\d{2}$/.test(hora)) return { ok: false, instrucao: 'Data/hora nova inválida — confirme com o lead e tente de novo.' }
     const services = await getServices(supabaseAdmin, professionalId)
     const dur = (services.find((s: any) => s.id === appt.service_id)?.duration_minutes) || services[0]?.duration_minutes || DEFAULT_DURATION
-    const dow = new Date(data + 'T00:00:00').getDay()
-    const { data: avail } = await supabaseAdmin.from('availability').select('start_time, end_time').eq('professional_id', professionalId).eq('day_of_week', dow)
-    const windows = (avail && avail.length > 0) ? avail : DEFAULT_WEEKLY.filter((w: any) => w.day_of_week === dow)
-    const sMin = toMinutes(hora), eMin = sMin + dur
-    const cabe = windows.some((w: any) => sMin >= toMinutes(('' + w.start_time).slice(0, 5)) && eMin <= toMinutes(('' + w.end_time).slice(0, 5)))
-    if (!cabe) return { ok: false, instrucao: `${hora} está fora do horário de atendimento do profissional. EXPLIQUE ao lead em 1 frase (TEXTO) que esse horário não é atendido e pergunte se ele quer um dos horários livres OU manter o atual. NÃO abra a agenda nem re-envie a lista automaticamente.` }
+    const eMin = toMinutes(hora) + dur
+    // Sem janela de expediente: rescheduleBooking valida overlap com agendamento/bloqueio (exceto o próprio).
     const r = await rescheduleBooking(supabaseAdmin, professionalId, appt.id, data, hora, fromMinutes(eMin))
     if (!r.ok) return { ok: false, instrucao: (r.mensagem ? r.mensagem + ' ' : '') + 'EXPLIQUE em 1 frase (TEXTO) e pergunte se quer um dos horários livres. NÃO abra a agenda automaticamente.' }
     const label = labelFromIso(data)

@@ -22,11 +22,48 @@ const tools = [
     }
   },
   {
-    name: "iniciar_agendamento",
-    description: "Aciona o SISTEMA DE AGENDA (determinístico) para marcar, remarcar ou cancelar consulta. Chame assim que o lead demonstrar que QUER agendar/marcar/ver horários (ex: 'quero marcar', 'como faço pra agendar?', 'tem horário essa semana?', 'pode ser amanhã?'), OU se ele clicou em 'Agendar um horário'/'Conferir agenda'. IMPORTANTE: você NÃO oferece dias nem horários você mesmo, NÃO pergunta data por texto — esta tool entrega o controle pro sistema de agenda, que mostra os dias/horários livres em botões e conduz até a confirmação. Depois de chamá-la, NÃO escreva mais nada neste turno (o sistema de agenda já respondeu ao lead).",
+    name: "abrir_agenda",
+    description: "Mostra ao lead os horários livres do profissional, em botões/lista clicáveis. Chame quando o lead quiser ver/escolher quando marcar. SEM 'data': mostra os DIAS disponíveis. COM 'data' (YYYY-MM-DD): mostra os HORÁRIOS daquele dia. A tool envia os botões — depois de chamar, NÃO escreva texto neste turno.",
     input_schema: {
       type: "object",
-      properties: {},
+      properties: {
+        data: { type: "string", description: "Opcional. Dia em YYYY-MM-DD para listar os horários dele. Omita para listar os dias disponíveis. Use a data de HOJE (no topo do prompt) para converter 'amanhã', 'Qua 18/06' etc." }
+      },
+      required: []
+    }
+  },
+  {
+    name: "criar_agendamento",
+    description: "Agenda DE FATO o horário escolhido. Chame SÓ quando o lead já escolheu dia E horário. A tool valida (cabe no expediente + livre) e, se ok, registra e JÁ AVISA o lead que está marcado — você NÃO escreve a confirmação. REGRA ABSOLUTA: NUNCA diga 'agendado/marcado/confirmado' sem chamar esta tool e receber handoff:true. Aceita horário quebrado (ex.: 14:20) se estiver livre.",
+    input_schema: {
+      type: "object",
+      properties: {
+        data: { type: "string", description: "Dia em YYYY-MM-DD." },
+        hora: { type: "string", description: "Horário em HH:MM (ex.: 14:00 ou 14:20)." }
+      },
+      required: ["data", "hora"]
+    }
+  },
+  {
+    name: "remarcar_agendamento",
+    description: "Remarca o agendamento ativo do lead para um novo dia/horário. A tool encontra o agendamento atual sozinha, valida o novo horário e avisa o lead. Chame quando o lead pedir pra mudar um horário já marcado.",
+    input_schema: {
+      type: "object",
+      properties: {
+        nova_data: { type: "string", description: "Novo dia em YYYY-MM-DD." },
+        nova_hora: { type: "string", description: "Novo horário em HH:MM." }
+      },
+      required: ["nova_data", "nova_hora"]
+    }
+  },
+  {
+    name: "cancelar_agendamento",
+    description: "Cancela o agendamento ativo do lead. A tool encontra o agendamento sozinha e avisa o lead. Chame quando o lead pedir para desmarcar/cancelar.",
+    input_schema: {
+      type: "object",
+      properties: {
+        motivo: { type: "string", description: "Motivo curto, opcional." }
+      },
       required: []
     }
   },
@@ -61,6 +98,492 @@ const tools = [
     }
   }
 ]
+
+// ============================================================================
+// AGENDA — logica movida do whatsapp-scheduler (removido). Funcoes puras +
+// seletores + senders Evolution. As tools (abrir_agenda/criar/remarcar/cancelar)
+// usam isto e enviam os botoes/confirmacao direto.
+// ============================================================================
+
+const SLOT_MINUTES = 60                 // passo/duração padrão quando não há serviço cadastrado
+const DEFAULT_DURATION = 60             // minutos
+const dayNames  = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado']
+const dayShort  = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+
+// Disponibilidade padrão se o profissional não cadastrou nada: 9-12h / 14-18h dias úteis (sex 17h).
+const DEFAULT_WEEKLY: Array<{ day_of_week: number; start_time: string; end_time: string }> = [
+  { day_of_week: 1, start_time: '09:00', end_time: '12:00' }, { day_of_week: 1, start_time: '14:00', end_time: '18:00' },
+  { day_of_week: 2, start_time: '09:00', end_time: '12:00' }, { day_of_week: 2, start_time: '14:00', end_time: '18:00' },
+  { day_of_week: 3, start_time: '09:00', end_time: '12:00' }, { day_of_week: 3, start_time: '14:00', end_time: '18:00' },
+  { day_of_week: 4, start_time: '09:00', end_time: '12:00' }, { day_of_week: 4, start_time: '14:00', end_time: '18:00' },
+  { day_of_week: 5, start_time: '09:00', end_time: '12:00' }, { day_of_week: 5, start_time: '14:00', end_time: '17:00' },
+]
+const durationFromBs = (bs: any): number => {
+  const d = Number(bs?.duration_min)
+  return Number.isFinite(d) && d > 0 ? d : DEFAULT_DURATION
+}
+
+// ─── Helpers de data/hora ────────────────────────────────────────────────────
+const pad2 = (n: number) => String(n).padStart(2, '0')
+const brtNow = (): Date => new Date(Date.now() - 3 * 3600 * 1000)            // "agora" em BRT (UTC-3)
+const addDays = (d: Date, n: number): Date => new Date(d.getTime() + n * 86400000)
+const isoFromBRT = (d: Date): string =>
+  `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`
+const labelFromIso = (iso: string): string => {
+  const d = new Date(iso + 'T00:00:00')
+  return `${dayShort[d.getDay()]} ${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+}
+const toMinutes = (hhmm: string): number => {
+  const [h, m] = hhmm.split(':').map(Number)
+  return h * 60 + m
+}
+const fromMinutes = (mins: number): string => `${pad2(Math.floor(mins / 60))}:${pad2(mins % 60)}`
+
+type Selector =
+  | { kind: 'buttons'; title: string; description: string; buttons: Array<{ displayText: string; id: string }>; labels: string[]; ids: string[] }
+  | { kind: 'list'; title: string; description: string; buttonText: string; sections: Array<{ title: string; rows: Array<{ title: string; rowId: string }> }>; labels: string[]; ids: string[] }
+
+async function getServices(supabaseAdmin: any, professionalId: string): Promise<Array<{ id: string; name: string; duration_minutes: number }>> {
+  const { data } = await supabaseAdmin
+    .from('professional_services')
+    .select('id, name, duration_minutes, active, created_at')
+    .eq('professional_id', professionalId)
+    .eq('active', true)
+    .order('created_at', { ascending: true })
+  return (data || [])
+    .filter((s: any) => Number(s.duration_minutes) > 0)
+    .map((s: any) => ({ id: s.id, name: s.name, duration_minutes: Number(s.duration_minutes) }))
+}
+
+function evoEnv() {
+  return {
+    url: Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, ''),
+    key: Deno.env.get('EVOLUTION_API_KEY'),
+  }
+}
+
+async function sendText(instanceName: string, remoteJid: string, text: string) {
+  const { url, key } = evoEnv()
+  if (!url || !key || !instanceName) return
+  try {
+    await fetch(`${url}/message/sendText/${instanceName}`, {
+      method: 'POST',
+      headers: { 'apikey': key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number: remoteJid, text, options: { delay: 1000, presence: 'composing' } }),
+    })
+  } catch (e: any) {
+    console.error('[scheduler] sendText err', e.message)
+  }
+}
+
+async function sendButtons(
+  instanceName: string,
+  remoteJid: string,
+  opts: { title: string; description: string; footer?: string; buttons: Array<{ displayText: string; id: string }> },
+): Promise<boolean> {
+  const { url, key } = evoEnv()
+  if (!url || !key || !instanceName) { console.error('[scheduler] evo cfg missing'); return false }
+  const body = {
+    number: remoteJid,
+    title: opts.title,
+    description: opts.description,
+    footer: opts.footer || 'Atendimento Virtual',
+    buttons: opts.buttons.map((b) => ({ type: 'reply', displayText: (b.displayText || '').slice(0, 20), id: b.id })),
+  }
+  try {
+    const res = await fetch(`${url}/message/sendButtons/${instanceName}`, {
+      method: 'POST',
+      headers: { 'apikey': key, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const txt = await res.text()
+    console.log(`[scheduler] sendButtons status=${res.status} ${txt.slice(0, 150)}`)
+    if (!res.ok) {
+      // Fallback texto numerado (o parseChoice resolve a resposta "1/2/3" via offered_*)
+      const fb = `${opts.title}\n\n${opts.buttons.map((b, i) => `${i + 1}️⃣ ${b.displayText}`).join('\n')}\n\nResponda com o número da opção.`
+      await sendText(instanceName, remoteJid, fb)
+      return false
+    }
+    return true
+  } catch (e: any) {
+    console.error('[scheduler] sendButtons err', e.message)
+    return false
+  }
+}
+
+async function sendList(
+  instanceName: string,
+  remoteJid: string,
+  opts: { title: string; description: string; buttonText?: string; footerText?: string; sections: Array<{ title: string; rows: Array<{ title: string; description?: string; rowId: string }> }> },
+): Promise<boolean> {
+  const { url, key } = evoEnv()
+  if (!url || !key || !instanceName) { console.error('[scheduler] evo cfg missing'); return false }
+  const body = {
+    number: remoteJid,
+    title: opts.title,
+    description: opts.description,
+    buttonText: opts.buttonText || 'Ver opções',
+    footerText: opts.footerText || 'Atendimento Virtual',
+    sections: opts.sections,
+  }
+  try {
+    const res = await fetch(`${url}/message/sendList/${instanceName}`, {
+      method: 'POST',
+      headers: { 'apikey': key, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const txt = await res.text()
+    console.log(`[scheduler] sendList status=${res.status} ${txt.slice(0, 150)}`)
+    if (!res.ok) {
+      const rows = opts.sections.flatMap((s) => s.rows)
+      const fb = `${opts.title}\n\n${rows.map((r, i) => `${i + 1}️⃣ ${r.title}`).join('\n')}\n\nResponda com o número da opção.`
+      await sendText(instanceName, remoteJid, fb)
+      return false
+    }
+    return true
+  } catch (e: any) {
+    console.error('[scheduler] sendList err', e.message)
+    return false
+  }
+}
+
+async function computeFreeSlots(
+  supabaseAdmin: any,
+  professionalId: string,
+  dataInicio: string,
+  dataFim: string,
+  slotMin: number = SLOT_MINUTES,
+): Promise<Array<{ data: string; dia_semana: string; horarios_livres: string[] }>> {
+  const { data: availability } = await supabaseAdmin
+    .from('availability')
+    .select('day_of_week, start_time, end_time')
+    .eq('professional_id', professionalId)
+
+  const { data: occupied } = await supabaseAdmin
+    .from('appointments')
+    .select('appointment_date, start_time, end_time, status, appointment_type')
+    .eq('professional_id', professionalId)
+    .gte('appointment_date', dataInicio)
+    .lte('appointment_date', dataFim)
+    .in('status', ['pending', 'confirmed'])
+
+  const weekly = (availability && availability.length > 0) ? availability : DEFAULT_WEEKLY
+
+  // Intervalos ocupados [inícioMin, fimMin) por data — marca o BLOCO inteiro (não só o início),
+  // pra um slot quebrado/curto não cair em cima de um agendamento existente.
+  const occByDate: Record<string, Array<[number, number]>> = {}
+  for (const apt of (occupied || [])) {
+    const date = apt.appointment_date as string
+    const s = toMinutes((apt.start_time as string).slice(0, 5))
+    const e = toMinutes((apt.end_time as string).slice(0, 5))
+    if (!occByDate[date]) occByDate[date] = []
+    occByDate[date].push([s, e])
+  }
+  const overlaps = (m: number, dur: number, intervals: Array<[number, number]>) =>
+    (intervals || []).some(([s, e]) => m < e && (m + dur) > s)
+
+  const dias: Array<{ data: string; dia_semana: string; horarios_livres: string[] }> = []
+  const start = new Date(dataInicio + 'T00:00:00')
+  const end = new Date(dataFim + 'T00:00:00')
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    if (d < today) continue
+
+    const dow = d.getDay()
+    const dateStr = d.toISOString().slice(0, 10)
+    const isToday = d.getTime() === today.getTime()
+    const nowMin = new Date().getHours() * 60 + new Date().getMinutes()
+
+    const windowsForDow = weekly.filter((w: any) => w.day_of_week === dow)
+    if (windowsForDow.length === 0) continue
+
+    const slotsLivresDoDia: string[] = []
+    for (const w of windowsForDow) {
+      const startMin = toMinutes((w.start_time as string).slice(0, 5))
+      const endMin = toMinutes((w.end_time as string).slice(0, 5))
+      // o slot precisa CABER inteiro na janela (m + duração <= fim)
+      for (let m = startMin; m + slotMin <= endMin; m += slotMin) {
+        if (isToday && m <= nowMin) continue
+        if (overlaps(m, slotMin, occByDate[dateStr])) continue
+        slotsLivresDoDia.push(fromMinutes(m))
+      }
+    }
+
+    if (slotsLivresDoDia.length > 0) {
+      dias.push({ data: dateStr, dia_semana: dayNames[dow], horarios_livres: slotsLivresDoDia })
+    }
+  }
+  return dias
+}
+
+async function isSlotFree(
+  supabaseAdmin: any, professionalId: string, dateIso: string, time: string,
+  durationMin: number = SLOT_MINUTES,
+): Promise<boolean> {
+  const startMin = toMinutes(time)
+  const endMin = startMin + durationMin
+  const dow = new Date(dateIso + 'T00:00:00').getDay()
+
+  // 1) cabe inteiro em alguma janela do dia?
+  const { data: avail } = await supabaseAdmin
+    .from('availability').select('start_time, end_time')
+    .eq('professional_id', professionalId).eq('day_of_week', dow)
+  const windows = (avail && avail.length > 0)
+    ? avail
+    : DEFAULT_WEEKLY.filter((w) => w.day_of_week === dow)
+  const cabe = windows.some((w: any) =>
+    startMin >= toMinutes((w.start_time as string).slice(0, 5)) &&
+    endMin <= toMinutes((w.end_time as string).slice(0, 5)))
+  if (!cabe) return false
+
+  // 2) não está no passado (se for hoje)
+  const todayIso = isoFromBRT(brtNow())
+  if (dateIso === todayIso) {
+    const nowMin = brtNow().getUTCHours() * 60 + brtNow().getUTCMinutes()
+    if (startMin <= nowMin) return false
+  }
+
+  // 3) não sobrepõe outro agendamento (mesma regra do createBooking)
+  const { data: conflitos } = await supabaseAdmin
+    .from('appointments').select('id')
+    .eq('professional_id', professionalId)
+    .eq('appointment_date', dateIso)
+    .in('status', ['pending', 'confirmed'])
+    .eq('appointment_type', 'booking')
+    .lt('start_time', fromMinutes(endMin))
+    .gt('end_time', time)
+  return !(conflitos && conflitos.length > 0)
+}
+
+async function createBooking(
+  supabaseAdmin: any,
+  professionalId: string,
+  data: string,
+  horaInicio: string,
+  horaFim: string,
+  notes: string,
+  leadId: string | null = null,
+  serviceId: string | null = null,
+): Promise<{ ok: boolean; appointment_id?: string; erro?: string; mensagem?: string }> {
+  // ── janela de disponibilidade ──
+  const reqDow = new Date(data + 'T00:00:00').getDay()
+  const { data: avail } = await supabaseAdmin
+    .from('availability')
+    .select('start_time, end_time')
+    .eq('professional_id', professionalId)
+    .eq('day_of_week', reqDow)
+
+  if (avail && avail.length > 0) {
+    const dentro = avail.some((w: any) => {
+      const s = (w.start_time as string).slice(0, 5)
+      const e = (w.end_time as string).slice(0, 5)
+      return horaInicio >= s && horaFim <= e
+    })
+    if (!dentro) {
+      const janelas = avail.map((w: any) => `${(w.start_time as string).slice(0, 5)}-${(w.end_time as string).slice(0, 5)}`).join(', ')
+      return { ok: false, erro: 'fora_da_grade', mensagem: `Esse horário está fora da grade de atendimento (${janelas}).` }
+    }
+  }
+
+  // ── anti-overlap ── existente.start < novo.fim E existente.fim > novo.inicio
+  const { data: conflitos, error: conflictError } = await supabaseAdmin
+    .from('appointments')
+    .select('id, start_time, end_time')
+    .eq('professional_id', professionalId)
+    .eq('appointment_date', data)
+    .in('status', ['pending', 'confirmed'])
+    .eq('appointment_type', 'booking')
+    .lt('start_time', horaFim)
+    .gt('end_time', horaInicio)
+  if (conflictError) console.error('[scheduler] createBooking conflito:', conflictError.message)
+  if (conflitos && conflitos.length > 0) {
+    const c = conflitos[0]
+    return {
+      ok: false,
+      erro: 'horario_indisponivel',
+      mensagem: `Esse horário se sobrepõe a outro agendamento (${(c.start_time || '').toString().slice(0, 5)} – ${(c.end_time || '').toString().slice(0, 5)}).`,
+    }
+  }
+
+  const { data: agendamento, error } = await supabaseAdmin
+    .from('appointments')
+    .insert({
+      professional_id: professionalId,
+      lead_id: leadId,
+      appointment_date: data,
+      start_time: horaInicio,
+      end_time: horaFim,
+      appointment_type: 'booking',
+      service_id: serviceId,
+      notes: notes || '',
+      status: 'pending',
+    })
+    .select('id')
+    .single()
+
+  if (error) {
+    if (error.code === '23505') {
+      return { ok: false, erro: 'horario_indisponivel', mensagem: `O horário das ${horaInicio} acabou de ser reservado.` }
+    }
+    console.error('[scheduler] createBooking insert err:', error.message)
+    return { ok: false, erro: error.message, mensagem: 'Não consegui concluir o agendamento agora.' }
+  }
+  return { ok: true, appointment_id: (agendamento as any).id }
+}
+
+async function rescheduleBooking(
+  supabaseAdmin: any,
+  professionalId: string,
+  apptId: string,
+  novaData: string,
+  novaHi: string,
+  novaHf: string,
+): Promise<{ ok: boolean; appointment_id?: string; erro?: string; mensagem?: string }> {
+  const { data: conflitos } = await supabaseAdmin
+    .from('appointments')
+    .select('id, start_time, end_time')
+    .eq('professional_id', professionalId)
+    .eq('appointment_date', novaData)
+    .in('status', ['pending', 'confirmed'])
+    .eq('appointment_type', 'booking')
+    .neq('id', apptId)
+    .lt('start_time', novaHf)
+    .gt('end_time', novaHi)
+  if (conflitos && conflitos.length > 0) {
+    const c = conflitos[0]
+    return {
+      ok: false,
+      erro: 'horario_indisponivel',
+      mensagem: `Esse novo horário se sobrepõe a outro agendamento (${(c.start_time || '').toString().slice(0, 5)}-${(c.end_time || '').toString().slice(0, 5)}).`,
+    }
+  }
+  const { data: updated, error } = await supabaseAdmin
+    .from('appointments')
+    .update({ appointment_date: novaData, start_time: novaHi, end_time: novaHf, status: 'pending', updated_at: new Date().toISOString() })
+    .eq('id', apptId)
+    .eq('professional_id', professionalId)
+    .select('id')
+    .single()
+  if (error) {
+    console.error('[scheduler] rescheduleBooking err:', error.message)
+    return { ok: false, erro: error.message, mensagem: 'Não consegui remarcar agora.' }
+  }
+  return { ok: true, appointment_id: (updated as any).id }
+}
+
+async function cancelBooking(supabaseAdmin: any, professionalId: string, apptId: string, motivo: string): Promise<{ ok: boolean; erro?: string }> {
+  const { error } = await supabaseAdmin
+    .from('appointments')
+    .update({ status: 'cancelled', notes: motivo || 'Cancelado pelo lead via agendador.', updated_at: new Date().toISOString() })
+    .eq('id', apptId)
+    .eq('professional_id', professionalId)
+  if (error) {
+    console.error('[scheduler] cancelBooking err:', error.message)
+    return { ok: false, erro: error.message }
+  }
+  return { ok: true }
+}
+
+function buildDaySelector(dias: Array<{ data: string }>): Selector {
+  const items = dias.map((d) => ({ label: labelFromIso(d.data), id: `day:${d.data}` }))
+  const labels = items.map((i) => i.label)
+  const ids = items.map((i) => i.id)
+  if (items.length <= 3) {
+    return { kind: 'buttons', title: 'Qual dia fica melhor?', description: 'Toque no dia desejado:', buttons: items.map((i) => ({ displayText: i.label, id: i.id })), labels, ids }
+  }
+  return {
+    kind: 'list',
+    title: 'Dias disponíveis',
+    description: 'Escolha um dia para o atendimento:',
+    buttonText: 'Ver dias',
+    sections: [{ title: 'Dias disponíveis', rows: items.map((i) => ({ title: i.label, rowId: i.id })) }],
+    labels, ids,
+  }
+}
+
+function buildTimeSelector(horarios: string[]): Selector {
+  const items = horarios.map((h) => ({ label: h, id: `time:${h}` }))
+  const labels = items.map((i) => i.label)
+  const ids = items.map((i) => i.id)
+
+  if (items.length <= 3) {
+    return { kind: 'buttons', title: 'Qual horário?', description: 'Toque no horário:', buttons: items.map((i) => ({ displayText: i.label, id: i.id })), labels, ids }
+  }
+  if (items.length <= 10) {
+    return {
+      kind: 'list', title: 'Horários disponíveis', description: 'Escolha um horário:', buttonText: 'Ver horários',
+      sections: [{ title: 'Horários', rows: items.map((i) => ({ title: i.label, rowId: i.id })) }], labels, ids,
+    }
+  }
+  // >10 → agrupa por período
+  const manha = items.filter((i) => toMinutes(i.label) < 12 * 60)
+  const tarde = items.filter((i) => { const m = toMinutes(i.label); return m >= 12 * 60 && m < 18 * 60 })
+  const noite = items.filter((i) => toMinutes(i.label) >= 18 * 60)
+  const sections: Array<{ title: string; rows: Array<{ title: string; rowId: string }> }> = []
+  if (manha.length) sections.push({ title: 'Manhã', rows: manha.map((i) => ({ title: i.label, rowId: i.id })) })
+  if (tarde.length) sections.push({ title: 'Tarde', rows: tarde.map((i) => ({ title: i.label, rowId: i.id })) })
+  if (noite.length) sections.push({ title: 'Noite', rows: noite.map((i) => ({ title: i.label, rowId: i.id })) })
+  // offered_* deve seguir a ordem EXIBIDA (manhã→tarde→noite) p/ o fallback numerado bater.
+  const ordered = [...manha, ...tarde, ...noite]
+  return { kind: 'list', title: 'Horários disponíveis', description: 'Escolha um horário:', buttonText: 'Ver horários', sections, labels: ordered.map((i) => i.label), ids: ordered.map((i) => i.id) }
+}
+
+function buildConfirmButtons(dayLabel: string, time: string, serviceName?: string | null): Selector {
+  return {
+    kind: 'buttons',
+    title: `Confirma ${dayLabel} às ${time}?`,
+    description: serviceName ? `${serviceName} · É só tocar:` : 'É só tocar:',
+    buttons: [
+      { displayText: 'Confirmar ✅', id: 'act:confirm' },
+      { displayText: 'Remarcar', id: 'act:reschedule' },
+      { displayText: 'Cancelar', id: 'act:cancel' },
+    ],
+    labels: ['Confirmar ✅', 'Remarcar', 'Cancelar'],
+    ids: ['act:confirm', 'act:reschedule', 'act:cancel'],
+  }
+}
+
+function buildServiceSelector(services: Array<{ id: string; name: string; duration_minutes: number }>): Selector {
+  const items = services.map((s) => ({ label: `${s.name} (${s.duration_minutes}min)`, id: `svc:${s.id}` }))
+  const labels = items.map((i) => i.label)
+  const ids = items.map((i) => i.id)
+  if (items.length <= 3) {
+    return { kind: 'buttons', title: 'Qual atendimento?', description: 'Toque na opção:', buttons: items.map((i) => ({ displayText: i.label, id: i.id })), labels, ids }
+  }
+  return {
+    kind: 'list', title: 'Atendimentos', description: 'Escolha o tipo de atendimento:', buttonText: 'Ver opções',
+    sections: [{ title: 'Atendimentos', rows: items.map((i) => ({ title: i.label, rowId: i.id })) }], labels, ids,
+  }
+}
+
+// Envia o seletor (botões ≤3 / lista) ao lead e registra um marcador legível no histórico.
+async function sendSelector(instanceName: string, remoteJid: string, sel: Selector) {
+  if (sel.kind === 'buttons') {
+    await sendButtons(instanceName, remoteJid, { title: sel.title, description: sel.description, buttons: sel.buttons })
+  } else {
+    await sendList(instanceName, remoteJid, { title: sel.title, description: sel.description, buttonText: sel.buttonText, sections: sel.sections })
+  }
+}
+async function enviarSelecao(supabaseAdmin: any, leadId: string, instanceName: string, remoteJid: string, sel: Selector, logLabel: string) {
+  await sendSelector(instanceName, remoteJid, sel)
+  await supabaseAdmin.from('chat_messages').insert({ lead_id: leadId, role: 'assistant', content: logLabel, processed: true })
+}
+// Agendamento ativo do lead — pra remarcar/cancelar sem o LLM precisar passar id.
+async function getActiveAppointment(supabaseAdmin: any, professionalId: string, leadId: string): Promise<any | null> {
+  const { data } = await supabaseAdmin
+    .from('appointments')
+    .select('id, appointment_date, start_time, end_time, service_id')
+    .eq('professional_id', professionalId)
+    .eq('lead_id', leadId)
+    .eq('appointment_type', 'booking')
+    .in('status', ['pending', 'confirmed'])
+    .order('appointment_date', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  return data || null
+}
 
 // =============================================
 // CONTEXTO POR CATEGORIA (vocabulário coerente)
@@ -101,7 +624,7 @@ Se ser persuasivo custar confiança, escolha a confiança. Sempre.
 2. Pergunte o motivo da busca ANTES de qualquer outra ação. Espere a resposta.
 3. ENTENDA o contexto PRÁTICO com no máximo 1 pergunta curta — o que a pessoa busca, se é a primeira vez, se prefere online/presencial. NUNCA uma pergunta que aprofunda o sofrimento ou investiga a causa emocional ("há quanto tempo se sente assim?", "o que pesa mais?", "o que desencadeou?") — isso é o trabalho do profissional, NÃO seu (ver LIMITE CLÍNICO). NÃO empurre agendamento na primeira frase do lead, mas TAMBÉM não conduza uma mini-sessão: o aprofundamento de verdade acontece NA consulta, com o profissional.
 4. Reconheça de forma ESPECÍFICA o que o lead trouxe (sem elogio vazio) e mostre em 1 frase que isso é exatamente o que o profissional ajuda a resolver — sem jargão técnico, sem interpretar.
-5. Quando o lead quiser marcar/agendar/ver horários, chame \`iniciar_agendamento\` e PARE — o sistema de agenda assume daqui.
+5. Quando o lead quiser marcar/ver horários, use \`abrir_agenda\` (mostra dias/horários em botões); quando ele escolher dia E hora, use \`criar_agendamento\`. As ferramentas enviam os botões e a confirmação — você não escreve isso.
 
 ━━━ VENDA A CONVERSA, NÃO O MÉTODO ━━━
 O lead não compra técnica nem teoria — compra a sensação de ter sido compreendido e a esperança de melhorar. NÃO liste abordagens, nomes de técnicas nem termos clínicos pra "provar" competência do profissional.
@@ -113,13 +636,16 @@ Fale do RESULTADO que a pessoa sente (mais clareza, menos peso, voltar a dar con
 ━━━ REGRA DA PONTE (leve a um próximo passo, não sustente conversa infinita) ━━━
 Seu objetivo é conduzir a um próximo passo humano (agendar), não bater papo sem fim nem fazer o atendimento. Depois de acolher e entender o essencial — em geral 2 a 4 trocas — faça o convite pro próximo passo. NÃO responda perguntas que, na verdade, SÃO a consulta: quando a dúvida pede o trabalho do profissional (orientação clínica, emocional, "o que eu faço no meu caso?", desabafo), acolha em 1 frase, diga que é exatamente isso que o profissional cuida, e convide pro atendimento — em vez de tentar resolver ou explorar ali. Quanto mais profundo/emocional o que a pessoa trouxer, MAIS curto deve ser seu acolhimento e MAIS rápido você faz a ponte: você não puxa o fio, você abre a porta pro profissional. Envolvente sim; substituto do profissional, nunca.
 
-━━━ AGENDAMENTO É DO SISTEMA, NÃO SEU ━━━
-Você NUNCA oferece dias ou horários, NUNCA pergunta data/hora por texto, NUNCA confirma agendamento você mesmo — isso é tudo do SISTEMA DE AGENDA.
-Assim que o lead sinalizar intenção de marcar ("quero agendar", "tem horário?", "pode ser amanhã?", "como marco?") OU pedir pra remarcar/cancelar, chame \`iniciar_agendamento\`. Depois de chamar, NÃO escreva texto neste turno — o sistema já respondeu.
-Se o lead estiver escolhendo dia/horário, o sistema cuida das SELEÇÕES (cliques, números, horários da lista). Mas se ele trouxer OUTRA coisa no meio — uma dúvida, um desabafo, um horário fora da lista, um pedido — VOCÊ assume o turno: responda conforme suas funções e, se ele voltar a querer marcar, chame \`iniciar_agendamento\` de novo.
+━━━ AGENDAMENTO É SEU — mas SEMPRE pelas FERRAMENTAS (nunca confirme de boca) ━━━
+Você conduz o agendamento, porém SÓ através das ferramentas — nunca invente dias/horários nem diga "agendado" de cabeça:
+• Lead quer ver/marcar ("quero agendar", "tem horário?", "pode ser amanhã?") → \`abrir_agenda\` (sem data = dias; com data = horários daquele dia). A ferramenta envia os botões; você não escreve nada depois.
+• Lead escolheu dia E horário → \`criar_agendamento(data, hora)\`. Ela valida, marca e JÁ AVISA o lead — você NÃO escreve a confirmação.
+• Mudar um horário já marcado → \`remarcar_agendamento\`. Desmarcar → \`cancelar_agendamento\`.
+• Horário quebrado (ex.: 14:20) é aceito SE estiver livre — quem decide é a ferramenta; você só chama \`criar_agendamento\` com o horário pedido.
+REGRA ABSOLUTA (anti-erro): você NUNCA diz "agendado/marcado/confirmado/te espero às X" sem ter chamado \`criar_agendamento\` (ou \`remarcar_agendamento\`) e recebido handoff:true. Já houve o erro real de inventar "Agendado! 14:00 hoje" — JAMAIS repita. Sem ferramenta chamada, o horário NÃO está marcado.
 
 ━━━ SUAS FUNÇÕES (foque nelas) ━━━
-Você resolve três coisas, sempre curto: (1) tirar dúvidas sobre o profissional e o trabalho dele; (2) agendar/remarcar/cancelar via \`iniciar_agendamento\`; (3) levar quem chega interessado até marcar um horário.
+Você resolve três coisas, sempre curto: (1) tirar dúvidas sobre o profissional e o trabalho dele; (2) agendar/remarcar/cancelar com as ferramentas de agenda (\`abrir_agenda\`/\`criar_agendamento\`/\`remarcar_agendamento\`/\`cancelar_agendamento\`); (3) levar quem chega interessado até marcar um horário.
 Quando o assunto FOGE dessas funções, responda em 1 frase e faça a ponte — sem assumir o tema:
 • FEEDBACK sobre o atendimento ou sobre você (reclamação de como você responde, sugestão, "isso tá errado", "não é sua função") → registre e tranquilize, curtíssimo: "Anotei seu recado — o profissional vai dar uma olhada nisso. Enquanto isso, posso te ajudar a agendar ou tirar uma dúvida? 🙂". Depois siga disponível pras suas funções. (Frases banidas: "prompt", "configuração do sistema", "você está testando", "não consigo registrar/escalar".)
 • TERAPIA / clínico / desabafo (o que É o trabalho do profissional) → acolhe em 1 frase e passa pra ele: "Isso é mais com o profissional mesmo — ele te responde em breve 🙂" e chame \`rotear_conversa\` modo='silenciar'.
@@ -273,37 +799,21 @@ function buildTurnLayer(opts: {
   // Consciência do estado de agendamento — pro agente NÃO contradizer o sistema de agenda
   const bs: any = bookingState || {}
   let agendaStatus = ''
-  if (bs.stage === 'done' && bs.appointment_id) {
-    const quando = `${bs.selected_day_label || bs.selected_date} às ${bs.selected_time}`
+  if (bs.appointment_id && bs.status !== 'cancelled') {
+    const quando = (bs.label && bs.hora) ? `${bs.label} às ${bs.hora}` : 'um horário já marcado'
     agendaStatus = `
 
-━━━ ⚠️ ${leadName.toUpperCase()} JÁ TEM AGENDAMENTO CONFIRMADO ━━━
-FATO do sistema: ${leadName} JÁ está agendado para **${quando}** — está FINALIZADO.
-• Se ele perguntar "foi agendado?", "tá certo?", "confirmou?", "será que marcou?" → confirme que SIM, ${quando}, com naturalidade. NUNCA diga "está sendo confirmado" nem "quer finalizar" — já está pronto.
-• NÃO chame \`iniciar_agendamento\` aqui. Só chame se ${leadName} pedir EXPLICITAMENTE para REMARCAR, CANCELAR ou marcar OUTRO horário.`
-  } else if (bs.stage === 'cancelled') {
-    agendaStatus = `
-
-━━━ AGENDA: ${leadName} cancelou o último horário ━━━
-Se ${leadName} quiser marcar de novo, aí sim chame \`iniciar_agendamento\`.`
-  } else if (bs.stage === 'choosing_day' || bs.stage === 'choosing_time' || bs.stage === 'confirming') {
-    const dia = bs.selected_day_label || bs.selected_date || ''
-    const horas = Array.isArray(bs.offered_times) && bs.offered_times.length ? bs.offered_times.join(' · ') : ''
-    agendaStatus = `
-
-━━━ AGENDAMENTO EM ANDAMENTO — ${leadName} está no seletor ━━━
-${leadName} está no meio do agendamento pelo SISTEMA de agenda${dia ? ` (dia ${dia})` : ''}. O dia/horário já escolhido deve ser PRESERVADO — não recomece o agendamento por conta própria. O sistema ACEITA horários flexíveis (inclusive quebrados, tipo 14:20), desde que caibam no expediente de ${proFirst} e estejam livres — então NÃO diga que "só tem horários fixos".
-• Pediu um horário e o sistema NÃO aceitou${horas ? ` (livres por perto: ${horas})` : ''} → é porque aquele horário está ocupado ou fora do expediente de ${proFirst}. Diga isso de forma leve e ofereça um horário próximo ou os livres. NÃO invente horário nem prometa encaixe.
-• Reclamou, se irritou ou insistiu → ACOLHA em 1 frase e reaponte os horários livres VOCÊ MESMO, por texto. NÃO chame \`iniciar_agendamento\` aqui — isso ZERA o seletor e volta pra lista de dias (é o que mais irrita).
-• Quer outro DIA → pergunte qual dia ele prefere; quando ele disser, o sistema mostra os horários. Só chame \`iniciar_agendamento\` se ele pedir pra recomeçar do zero.
-• Perguntou/comentou outra coisa (dúvida, feedback) → responda curto e reaponte o próximo passo.`
+━━━ ⚠️ ${leadName.toUpperCase()} JÁ TEM AGENDAMENTO ━━━
+${leadName} JÁ está agendado${(bs.label && bs.hora) ? ` para **${quando}**` : ''}${bs.service_name ? ` (${bs.service_name})` : ''}.
+• Se perguntar "foi agendado?", "tá certo?", "confirmou?" → confirme que SIM${(bs.label && bs.hora) ? `, ${quando}` : ''}, com naturalidade. NÃO crie outro agendamento.
+• Quer MUDAR o horário → \`remarcar_agendamento\`. Quer DESMARCAR → \`cancelar_agendamento\`.`
   }
 
   const triagemBloco = triageMode ? `
 
 ━━━ TRIAGEM — PRIMEIRO CONTATO ━━━
 Este é o PRIMEIRO contato de ${leadName}. Abra SE APRESENTANDO pelo nome e oferecendo os três caminhos, espelhando o calor da mensagem dele — ex.: "Olá, tudo bem? Sou o Axel, assistente virtual de ${proFirst}. Você precisa agendar, conhecer o trabalho de ${proFirst} ou o assunto é particular?". NÃO abra frio. Espere a resposta e conduza conforme o caminho:
-• AGENDAR / marcar horário → siga seu papel; quando ${leadName} confirmar que quer marcar, libere o fluxo com \`iniciar_agendamento\`.
+• AGENDAR / marcar horário → siga seu papel; quando ${leadName} quiser ver horários, use \`abrir_agenda\`.
 • CONHECER O TRABALHO de ${proFirst} (dúvidas sobre atendimento, abordagem, como funciona) → acolhe, entende o contexto e conduz. Você PODE responder isso — é sua função.
 • PARTICULAR, contato pessoal, ou quer falar DIRETO com ${proFirst} (não com você) → chame \`rotear_conversa\` com modo='silenciar'. Não insista em atender nem faça pitch.
 • Mensagem é claramente SPAM / disparo automático / número errado (oferta comercial sem relação com ${proFirst}, link de venda de outro serviço, texto de robô) → NÃO engaje com o conteúdo: diga em 1 frase que aqui é o atendimento de ${proName} e pergunte se a pessoa procura isso. Se não vier resposta humana de verdade, não puxe assunto.` : ''
@@ -312,7 +822,7 @@ Este é o PRIMEIRO contato de ${leadName}. Abra SE APRESENTANDO pelo nome e ofer
 
 ━━━ ${leadName.toUpperCase()} JÁ É CLIENTE/PACIENTE (Fluxo B — seja eficiente) ━━━
 Não re-qualifique nem reapresente o trabalho — ele já conhece ${proFirst}. Cumprimente pelo nome e resolva conforme o que ele pedir:
-• OPERACIONAL (remarcar, confirmar, dúvida simples, agendar de novo) → resolva você (use \`iniciar_agendamento\` pra agenda).
+• OPERACIONAL (remarcar, confirmar, dúvida simples, agendar de novo) → resolva você (use as ferramentas de agenda: \`abrir_agenda\`/\`criar_agendamento\`/\`remarcar_agendamento\`/\`cancelar_agendamento\`).
 • PESSOAL ou assunto que é da terapeuta (clínico, desabafo, evolução do acompanhamento) → NÃO tente resolver: acolha em 1 frase e passe pra ela com \`rotear_conversa\` modo='silenciar'.` : ''
 
   return `━━━ PARTES DA CONVERSA ━━━
@@ -367,33 +877,80 @@ async function handleToolCall(
   instanceName: string,
   remoteJid: string,
 ): Promise<any> {
-  // HANDOFF: entrega o agendamento pro motor determinístico (whatsapp-scheduler).
-  // O scheduler relê booking_state do banco, oferece dias/horários e responde direto
-  // ao lead via Evolution. O agente não escreve nada neste turno.
-  if (toolName === 'iniciar_agendamento') {
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEYS') || ''
-    const schedulerUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/whatsapp-scheduler`
-    try {
-      await fetch(schedulerUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
-        body: JSON.stringify({
-          lead_id: leadId,
-          professional_id: professionalId,
-          instance_name: instanceName,
-          remote_jid: remoteJid,
-          lead_name: '',
-          message: '',
-          click_id: null,
-          parsed_intent: null,
-          action: 'start',
-        }),
-      })
-    } catch (e: any) {
-      console.error('[iniciar_agendamento] erro ao chamar scheduler:', e.message)
-      return { erro: 'scheduler_indisponivel', instrucao: 'Não consegui abrir a agenda agora. Peça desculpa em 1 frase e diga que já já retorna com os horários.' }
+  // AGENDAMENTO no AGENTE (LLM-driven). As tools validam, gravam e ENVIAM os botões/
+  // confirmação direto via Evolution — o agente nunca escreve "marcado" por conta própria.
+  if (toolName === 'abrir_agenda') {
+    const services = await getServices(supabaseAdmin, professionalId)
+    const svc = services[0] || null
+    const dur = svc?.duration_minutes || DEFAULT_DURATION
+    const dataArg = (args.data || '').toString().trim()
+    if (dataArg) {
+      const dias = await computeFreeSlots(supabaseAdmin, professionalId, dataArg, dataArg, dur)
+      const horarios = (dias.find((d: any) => d.data === dataArg)?.horarios_livres) || []
+      if (horarios.length === 0) return { vazio: true, instrucao: `Sem horários livres em ${dataArg}. Diga isso em 1 frase e ofereça ver outros dias (chame abrir_agenda sem data).` }
+      await enviarSelecao(supabaseAdmin, leadId, instanceName, remoteJid, buildTimeSelector(horarios), `[Agenda: horários ${labelFromIso(dataArg)}]`)
+      return { handoff: true, instrucao: 'Os horários foram enviados em botões ao lead. NÃO escreva mais nada neste turno.' }
     }
-    return { handoff: true, instrucao: 'O sistema de agenda assumiu e JÁ enviou as opções ao lead. NÃO escreva mais nada neste turno.' }
+    const hoje = isoFromBRT(brtNow()); const fim = isoFromBRT(addDays(brtNow(), 7))
+    const dias = await computeFreeSlots(supabaseAdmin, professionalId, hoje, fim, dur)
+    if (dias.length === 0) return { vazio: true, instrucao: 'Sem horários livres nos próximos dias. Avise o lead com gentileza que o profissional retorna com novas datas.' }
+    await enviarSelecao(supabaseAdmin, leadId, instanceName, remoteJid, buildDaySelector(dias.slice(0, 6)), '[Agenda: dias]')
+    return { handoff: true, instrucao: 'Os dias foram enviados em botões ao lead. NÃO escreva mais nada neste turno.' }
+  }
+
+  if (toolName === 'criar_agendamento') {
+    const data = (args.data || '').toString().trim()
+    const hora = (args.hora || '').toString().trim().padStart(5, '0')
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || !/^\d{1,2}:\d{2}$/.test(hora)) return { ok: false, instrucao: 'Data ou hora em formato inválido — confirme o horário com o lead e tente de novo.' }
+    const services = await getServices(supabaseAdmin, professionalId)
+    const svc = services[0] || null
+    const dur = svc?.duration_minutes || DEFAULT_DURATION
+    const free = await isSlotFree(supabaseAdmin, professionalId, data, hora, dur)
+    if (!free) return { ok: false, instrucao: `O horário ${hora} de ${data} não está livre (ocupado ou fora do expediente). Avise em 1 frase e mostre os livres (abrir_agenda com data=${data}).` }
+    const horaFim = fromMinutes(toMinutes(hora) + dur)
+    const r = await createBooking(supabaseAdmin, professionalId, data, hora, horaFim, '', leadId, svc?.id || null)
+    if (!r.ok) return { ok: false, instrucao: r.mensagem || 'Não consegui agendar agora; peça desculpa e ofereça outro horário.' }
+    await supabaseAdmin.from('leads').update({ pipeline_stage: 'agendado', booking_state: { appointment_id: r.appointment_id, status: 'confirmed' } }).eq('id', leadId)
+    const label = labelFromIso(data)
+    const msg = svc?.name ? `Marcado! Sua ${svc.name}, ${label} às ${hora}. 🙌` : `Marcado! Te espero ${label} às ${hora}. 🙌`
+    await sendWhatsAppMessage(instanceName, remoteJid, msg)
+    await supabaseAdmin.from('chat_messages').insert({ lead_id: leadId, role: 'assistant', content: msg, processed: true })
+    return { handoff: true, instrucao: 'Agendamento confirmado e avisado ao lead. NÃO escreva mais nada neste turno.' }
+  }
+
+  if (toolName === 'remarcar_agendamento') {
+    const appt = await getActiveAppointment(supabaseAdmin, professionalId, leadId)
+    if (!appt) return { ok: false, instrucao: 'O lead não tem agendamento ativo. Ofereça marcar um novo (abrir_agenda).' }
+    const data = (args.nova_data || '').toString().trim()
+    const hora = (args.nova_hora || '').toString().trim().padStart(5, '0')
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || !/^\d{1,2}:\d{2}$/.test(hora)) return { ok: false, instrucao: 'Data/hora nova inválida — confirme com o lead e tente de novo.' }
+    const services = await getServices(supabaseAdmin, professionalId)
+    const dur = (services.find((s: any) => s.id === appt.service_id)?.duration_minutes) || services[0]?.duration_minutes || DEFAULT_DURATION
+    const dow = new Date(data + 'T00:00:00').getDay()
+    const { data: avail } = await supabaseAdmin.from('availability').select('start_time, end_time').eq('professional_id', professionalId).eq('day_of_week', dow)
+    const windows = (avail && avail.length > 0) ? avail : DEFAULT_WEEKLY.filter((w: any) => w.day_of_week === dow)
+    const sMin = toMinutes(hora), eMin = sMin + dur
+    const cabe = windows.some((w: any) => sMin >= toMinutes(('' + w.start_time).slice(0, 5)) && eMin <= toMinutes(('' + w.end_time).slice(0, 5)))
+    if (!cabe) return { ok: false, instrucao: `${hora} está fora do expediente em ${data}. Mostre os horários livres (abrir_agenda com data=${data}).` }
+    const r = await rescheduleBooking(supabaseAdmin, professionalId, appt.id, data, hora, fromMinutes(eMin))
+    if (!r.ok) return { ok: false, instrucao: r.mensagem || 'Esse horário não deu; ofereça ver os livres (abrir_agenda).' }
+    await supabaseAdmin.from('leads').update({ booking_state: { appointment_id: appt.id, status: 'confirmed' } }).eq('id', leadId)
+    const msg = `Pronto, remarquei! Agora é ${labelFromIso(data)} às ${hora}. 🙌`
+    await sendWhatsAppMessage(instanceName, remoteJid, msg)
+    await supabaseAdmin.from('chat_messages').insert({ lead_id: leadId, role: 'assistant', content: msg, processed: true })
+    return { handoff: true, instrucao: 'Remarcado e avisado ao lead. NÃO escreva mais nada neste turno.' }
+  }
+
+  if (toolName === 'cancelar_agendamento') {
+    const appt = await getActiveAppointment(supabaseAdmin, professionalId, leadId)
+    if (!appt) return { ok: false, instrucao: 'O lead não tem agendamento ativo pra cancelar. Responda com gentileza.' }
+    const r = await cancelBooking(supabaseAdmin, professionalId, appt.id, (args.motivo || '').toString())
+    if (!r.ok) return { ok: false, instrucao: 'Não consegui cancelar agora; peça desculpa em 1 frase.' }
+    await supabaseAdmin.from('leads').update({ pipeline_stage: 'em_conversa', booking_state: {} }).eq('id', leadId)
+    const msg = 'Pronto, cancelei seu horário. Quando quiser remarcar é só me chamar. 🙂'
+    await sendWhatsAppMessage(instanceName, remoteJid, msg)
+    await supabaseAdmin.from('chat_messages').insert({ lead_id: leadId, role: 'assistant', content: msg, processed: true })
+    return { handoff: true, instrucao: 'Cancelado e avisado ao lead. NÃO escreva mais nada neste turno.' }
   }
 
   if (toolName === 'consultar_documentos') {
@@ -600,7 +1157,8 @@ async function callClaude(
       let sentDirect = false  // alguma tool já RESPONDEU o lead direto (handoff de agenda)?
       for (const tu of toolUseBlocks) {
         const out = await handleToolCall(tu.name, tu.input, supabaseAdmin, professionalId, leadId, instanceName, remoteJid)
-        if ((tu.name === 'iniciar_agendamento' || tu.name === 'rotear_conversa') && (out as any)?.handoff) {
+        // Qualquer tool que JÁ respondeu o lead direto (agenda: botões/confirmação; rotear: aviso).
+        if ((out as any)?.handoff) {
           sentDirect = true
         }
         toolResults.push({

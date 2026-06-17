@@ -958,82 +958,11 @@ serve(async (req) => {
       return new Response(JSON.stringify({ success: true, action: 'satisfaction', nota }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    // 3.65. ROTEAMENTO DETERMINÍSTICO DE AGENDAMENTO → whatsapp-scheduler
-    //        O motor (código, não LLM) cuida de oferecer dias/horários, confirmar e
-    //        criar/remarcar/cancelar. Dispara por: estado de agendamento ativo, clique
-    //        estruturado (day:/time:/act:), opção de menu, intenção temporal ou regex gatilho.
-    //        Responde imediatamente (sem debounce, sem chamar o agent).
-    {
-      const { data: leadBooking } = await supabaseAdmin
-        .from('leads')
-        .select('booking_state')
-        .eq('id', leadId)
-        .maybeSingle()
-      const stage = (leadBooking?.booking_state as any)?.stage || ''
-      const inSchedulingFlow = ['choosing_service', 'choosing_day', 'choosing_time', 'confirming'].includes(stage)
-      const isDone = stage === 'done'
-
-      const isStructuredClick = !!clickId &&
-        (clickId.startsWith('day:') || clickId.startsWith('time:') || clickId.startsWith('act:') || clickId.startsWith('svc:'))
-      const isMenuAgendar = clickId === 'opt_agendar' || clickId === 'opt_agenda'
-        || messageText.trim() === 'Agendar um horário' || messageText.trim() === 'Conferir agenda'
-      const parsedIntent = parseUserIntent(messageText)
-      const regexGatilho = /\b(agendar|marcar|remarcar)\b/i.test(messageText)
-        || /\bhor[áa]rios?\b/i.test(messageText) || /tem\s+hor[áa]rio/i.test(messageText)
-      // comando EXPLÍCITO de ação de agenda no INÍCIO da msg (evita menção casual virar roteamento)
-      const cmdAgenda = /^\s*(remarcar|cancelar|reagendar|desmarcar)\b/i.test(messageText.trim())
-
-      let shouldRouteToScheduler: boolean
-      if (inSchedulingFlow || isStructuredClick) {
-        shouldRouteToScheduler = true            // meio do fluxo ou clique estruturado → sempre scheduler
-      } else if (isDone) {
-        // já agendado: CONVERSA vai pro agent; scheduler só se clicar menu de agenda
-        // ou der comando explícito (remarcar/cancelar/reagendar) no início da mensagem
-        shouldRouteToScheduler = isMenuAgendar || cmdAgenda
-      } else {
-        // sem agendamento ativo: gatilhos de início de agendamento
-        shouldRouteToScheduler = isMenuAgendar || regexGatilho
-          || (!!parsedIntent && !!(parsedIntent.date || parsedIntent.time))
-      }
-
-      if (shouldRouteToScheduler) {
-        console.log(`[FLUXO] → whatsapp-scheduler (stage=${stage || '-'}, click=${clickId || '-'})`)
-        await sendPresence(instanceName, remoteJid)
-        const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEYS') || ''
-        const schedulerUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/whatsapp-scheduler`
-        try {
-          const schedRes = await fetch(schedulerUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
-            body: JSON.stringify({
-              lead_id: leadId,
-              professional_id: professional.id,
-              instance_name: instanceName,
-              remote_jid: remoteJid,
-              lead_name: pushName,
-              message: messageText,
-              click_id: clickId || null,
-              parsed_intent: parsedIntent,
-              action: isMenuAgendar ? 'start' : null,
-            }),
-          })
-          const schedJson = await schedRes.json().catch(() => ({}))
-          // INVERSÃO (combinado): se o scheduler não reconheceu uma seleção
-          // (handled:false), ele DEVOLVEU o controle — não retornamos aqui, deixamos
-          // o fluxo seguir pro agent (LLM) responder a dúvida/feedback/horário livre.
-          if (schedJson?.handled !== false) {
-            return new Response(JSON.stringify({ success: true, action: 'scheduler', result: schedJson }), {
-              status: 200,
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            })
-          }
-          console.log('[FLUXO] scheduler devolveu controle (handoff_llm) → segue pro agent')
-        } catch (e: any) {
-          console.error('[FLUXO] Erro ao chamar scheduler:', e.message)
-          // Em falha do scheduler, cai no fluxo do agent como rede de segurança.
-        }
-      }
-    }
+    // 3.65. (REMOVIDO 17/06) O agendamento determinístico (whatsapp-scheduler) foi
+    //        descontinuado. Agora o AGENTE (LLM) conduz agendar/remarcar/cancelar pelas
+    //        tools abrir_agenda/criar_agendamento/remarcar_agendamento/cancelar_agendamento.
+    //        Toda mensagem (inclusive cliques de botão, lidos pelo displayText) segue
+    //        pro fluxo do agent abaixo (debounce + whatsapp-agent).
 
     // 3.7. Mostrar "digitando" enquanto o agente processa
     await sendPresence(instanceName, remoteJid)

@@ -61,8 +61,9 @@ Deno.serve(async (req) => {
       province: body.province,
       postalCode: String(body.postalCode).replace(/\D/g, ""),
     };
+    if (body.birthDate) payload.birthDate = body.birthDate;       // obrigatório p/ CPF (pessoa física)
     if (body.complement) payload.complement = body.complement;
-    if (body.companyType) payload.companyType = body.companyType;
+    if (body.companyType) payload.companyType = body.companyType; // p/ CNPJ
 
     const r = await fetch(`${ASAAS_BASE}/accounts`, {
       method: "POST",

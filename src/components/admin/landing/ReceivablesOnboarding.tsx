@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfessional } from "@/hooks/useProfessional";
@@ -13,6 +13,7 @@ import { FieldHint } from "@/components/ui/FieldHint";
 interface OnboardingForm {
   email: string;
   cpfCnpj: string;
+  birthDate: string;
   mobilePhone: string;
   incomeValue: string;
   postalCode: string;
@@ -23,9 +24,19 @@ interface OnboardingForm {
 }
 
 const empty: OnboardingForm = {
-  email: "", cpfCnpj: "", mobilePhone: "", incomeValue: "", postalCode: "",
+  email: "", cpfCnpj: "", birthDate: "", mobilePhone: "", incomeValue: "", postalCode: "",
   address: "", addressNumber: "", province: "", complement: "",
 };
+
+// Rascunho persistido no navegador: o profissional pode sair e voltar sem perder o que digitou.
+// Limpo após ativar com sucesso (aí os dados já viraram a subconta no Asaas).
+const DRAFT_KEY = "pp_asaas_onboarding_draft";
+function loadDraft(): OnboardingForm {
+  try {
+    const s = localStorage.getItem(DRAFT_KEY);
+    return s ? { ...empty, ...JSON.parse(s) } : empty;
+  } catch { return empty; }
+}
 
 // Card de ativação de recebimentos: cria a subconta Asaas do profissional (one-time).
 // Sem a subconta, ele não consegue receber pelas vendas do marketplace.
@@ -33,15 +44,20 @@ export default function ReceivablesOnboarding() {
   const { data: professional } = useProfessional();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<OnboardingForm>(empty);
+  const [form, setForm] = useState<OnboardingForm>(loadDraft);
   const [saving, setSaving] = useState(false);
 
   const active = !!(professional as any)?.asaas_wallet_id;
 
+  // Persiste o rascunho a cada mudança (enquanto não ativado).
+  useEffect(() => {
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(form)); } catch { /* quota/privado */ }
+  }, [form]);
+
   const set = (k: keyof OnboardingForm, v: string) => setForm((p) => ({ ...p, [k]: v }));
 
   const handleSubmit = async () => {
-    const required: (keyof OnboardingForm)[] = ["email", "cpfCnpj", "mobilePhone", "incomeValue", "postalCode", "address", "addressNumber", "province"];
+    const required: (keyof OnboardingForm)[] = ["email", "cpfCnpj", "birthDate", "mobilePhone", "incomeValue", "postalCode", "address", "addressNumber", "province"];
     const missing = required.filter((k) => !form[k].trim());
     if (missing.length) {
       toast.error("Preencha todos os campos obrigatórios.");
@@ -52,6 +68,7 @@ export default function ReceivablesOnboarding() {
       body: {
         email: form.email,
         cpfCnpj: form.cpfCnpj,
+        birthDate: form.birthDate,
         mobilePhone: form.mobilePhone,
         incomeValue: Number(form.incomeValue.replace(",", ".")),
         postalCode: form.postalCode,
@@ -67,6 +84,8 @@ export default function ReceivablesOnboarding() {
       return;
     }
     toast.success("Recebimentos ativados!");
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* noop */ }
+    setForm(empty);
     setOpen(false);
     queryClient.invalidateQueries({ queryKey: ["my-professional"] });
   };
@@ -92,7 +111,7 @@ export default function ReceivablesOnboarding() {
           </p>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button size="sm" className="mt-1.5" onClick={() => setForm(empty)}>Ativar recebimentos</Button>
+              <Button size="sm" className="mt-1.5">Ativar recebimentos</Button>
             </DialogTrigger>
             <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
@@ -114,9 +133,14 @@ export default function ReceivablesOnboarding() {
                     <Input value={form.cpfCnpj} onChange={(e) => set("cpfCnpj", e.target.value)} placeholder="Só números" />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>Celular</Label>
-                    <Input value={form.mobilePhone} onChange={(e) => set("mobilePhone", e.target.value)} placeholder="(DDD) 9...." />
+                    <Label>Data de nascimento</Label>
+                    <Input type="date" value={form.birthDate} onChange={(e) => set("birthDate", e.target.value)} />
                   </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>Celular</Label>
+                  <Input value={form.mobilePhone} onChange={(e) => set("mobilePhone", e.target.value)} placeholder="(DDD) 9...." />
                 </div>
 
                 <div className="space-y-1.5">

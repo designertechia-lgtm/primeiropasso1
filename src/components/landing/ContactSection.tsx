@@ -1,7 +1,7 @@
 import { MessageCircle, Phone, Mail, Instagram, Linkedin, Facebook } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TikTokIcon } from "@/components/icons/TikTokIcon";
-import { buildWhatsAppLink } from "@/lib/utils";
+import { buildWhatsAppLink, buildLandingCtaMessage } from "@/lib/utils";
 
 interface ContactSectionProps {
   title?: string;
@@ -19,8 +19,6 @@ interface ContactSectionProps {
   facebook?: string;
   onWhatsAppClick?: () => void;
 }
-
-const DEFAULT_CTA_MESSAGE = "Olá! Gostaria de agendar um horário.";
 
 function buildSocialUrl(value: string, base: string): string {
   const trimmed = value.trim();
@@ -42,10 +40,9 @@ export default function ContactSection({
   facebook,
   onWhatsAppClick,
 }: ContactSectionProps) {
-  const message =
-    (ctaMessage?.trim() || DEFAULT_CTA_MESSAGE) +
-    (campaignRef ? ` (ref: ${campaignRef})` : "");
-  const whatsappLink = whatsapp ? buildWhatsAppLink(whatsapp, message) : null;
+  const whatsappLink = whatsapp
+    ? buildWhatsAppLink(whatsapp, buildLandingCtaMessage(ctaMessage, campaignRef))
+    : null;
 
   const hasSecondary = phone || email || instagram || linkedin || tiktok || facebook;
   const hasAnyContact = whatsapp || hasSecondary;

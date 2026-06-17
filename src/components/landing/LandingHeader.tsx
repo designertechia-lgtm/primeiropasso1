@@ -3,23 +3,29 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Leaf, Menu, X, Moon, Sun } from "lucide-react";
 import { useState } from "react";
-import { buildWhatsAppLink } from "@/lib/utils";
+import { buildWhatsAppLink, buildLandingCtaMessage } from "@/lib/utils";
 
 interface LandingHeaderProps {
   professionalName?: string;
   whatsapp?: string;
+  /** Mensagem pré-preenchida do botão (editável na tab Contatos). */
+  ctaMessage?: string;
+  /** Código de campanha (utm/gclid) anexado à mensagem p/ atribuição. */
+  campaignRef?: string;
+  /** Registra a visita com atribuição ao clicar no CTA. */
+  onWhatsAppClick?: () => void;
   logoUrl?: string;
   slug?: string;
   dark?: boolean;
   onToggleDark?: () => void;
 }
 
-export default function LandingHeader({ professionalName, whatsapp, logoUrl, slug, dark, onToggleDark }: LandingHeaderProps) {
+export default function LandingHeader({ professionalName, whatsapp, ctaMessage, campaignRef, onWhatsAppClick, logoUrl, slug, dark, onToggleDark }: LandingHeaderProps) {
   const { user, isProfessional } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const whatsappLink = whatsapp
-    ? buildWhatsAppLink(whatsapp, "Olá! Gostaria de agendar um horário.")
+    ? buildWhatsAppLink(whatsapp, buildLandingCtaMessage(ctaMessage, campaignRef))
     : "#";
 
   const scrollTo = (id: string) => {
@@ -62,7 +68,7 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
             </Link>
           )}
           {whatsapp && (
-            <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
+            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" onClick={onWhatsAppClick}>
               <Button size="sm">Agendar</Button>
             </a>
           )}
@@ -93,7 +99,7 @@ export default function LandingHeader({ professionalName, whatsapp, logoUrl, slu
             <Link to={slug ? `/login?ref=${slug}` : "/login"} className="block"><Button variant="outline" size="sm" className="w-full">Entrar</Button></Link>
           )}
           {whatsapp && (
-            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="block"><Button size="sm" className="w-full">Agendar</Button></a>
+            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="block" onClick={onWhatsAppClick}><Button size="sm" className="w-full">Agendar</Button></a>
           )}
         </div>
       )}

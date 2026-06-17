@@ -161,3 +161,21 @@ export function toWhatsAppNumber(raw: string | null | undefined): string {
 export function buildWhatsAppLink(raw: string, message: string): string {
   return `https://wa.me/${toWhatsAppNumber(raw)}?text=${encodeURIComponent(message)}`;
 }
+
+/**
+ * Mensagem padrão dos botões de WhatsApp da landing quando o profissional não personaliza
+ * (tab Contato → professionals.contact_cta_message). Texto NEUTRO de propósito: mensagens com
+ * "agendar"/"marcar" caem direto no fluxo determinístico de agendamento; um texto neutro faz
+ * o lead passar pela apresentação do Axel antes de agendar.
+ */
+export const DEFAULT_LANDING_CTA_MESSAGE = "Olá, gostaria de mais informações!";
+
+/**
+ * Monta a mensagem pré-preenchida dos CTAs de WhatsApp da landing: usa o texto editável do
+ * profissional ou o padrão neutro, e anexa "(ref: <code>)" quando o clique vem de campanha
+ * (utm/gclid) para atribuição no webhook. Fonte única para todos os botões de agendamento.
+ */
+export function buildLandingCtaMessage(ctaMessage?: string, campaignRef?: string): string {
+  const base = ctaMessage?.trim() || DEFAULT_LANDING_CTA_MESSAGE;
+  return campaignRef ? `${base} (ref: ${campaignRef})` : base;
+}

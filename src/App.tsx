@@ -13,6 +13,7 @@ import Reset from "./pages/Reset.tsx";
 import ProfessionalLanding from "./pages/ProfessionalLanding.tsx";
 import ArticlePage from "./pages/ArticlePage.tsx";
 import ArticlesListPage from "./pages/ArticlesListPage.tsx";
+import ProductsListPage from "./pages/ProductsListPage.tsx";
 import VideosListPage from "./pages/VideosListPage.tsx";
 import VideoPage from "./pages/VideoPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
@@ -38,6 +39,7 @@ import AdminGerente from "./pages/admin/AdminGerente.tsx";
 import AdminFeedback from "./pages/admin/AdminFeedback.tsx";
 import AdminAxelChat from "./pages/admin/AdminAxelChat.tsx";
 import AdminTrafegoPago from "./pages/admin/AdminTrafegoPago.tsx";
+import AdminProdutos from "./pages/admin/AdminProdutos.tsx";
 
 import PatientBuscar from "./pages/paciente/PatientBuscar.tsx";
 import PatientAgendamentos from "./pages/paciente/PatientAgendamentos.tsx";
@@ -109,12 +111,14 @@ const App = () => (
             <Route path="/admin/feedback" element={<AdminRoute><AdminFeedback /></AdminRoute>} />
             <Route path="/admin/chat" element={<AdminRoute><AdminAxelChat /></AdminRoute>} />
             <Route path="/admin/trafego-pago" element={<AdminRoute><AdminTrafegoPago /></AdminRoute>} />
+            <Route path="/admin/produtos" element={<AdminRoute><AdminProdutos /></AdminRoute>} />
             <Route path="/admin-gerente" element={<OwnerOnlyRoute><AdminGerente /></OwnerOnlyRoute>} />
             <Route path="/admin-proprietario" element={<Navigate to="/admin-gerente" replace />} />
 
             {/* Dynamic professional landing page - MUST be last before catch-all */}
             <Route path="/:slug" element={<ProfessionalLanding />} />
             <Route path="/:slug/artigos" element={<ArticlesListPage />} />
+            <Route path="/:slug/produtos" element={<ProductsListPage />} />
             <Route path="/:slug/artigo/:articleSlug" element={<ArticlePage />} />
             <Route path="/:slug/videos" element={<VideosListPage />} />
             <Route path="/:slug/video/:videoId" element={<VideoPage />} />

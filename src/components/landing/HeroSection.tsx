@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { DEMO_PROFESSIONAL } from "@/data/demoProfessional";
-import { buildWhatsAppLink } from "@/lib/utils";
+import { buildWhatsAppLink, buildLandingCtaMessage } from "@/lib/utils";
 
 type PhotoStyle = "portrait" | "circle" | "square" | "horizontal";
 
@@ -23,6 +23,12 @@ interface HeroSectionProps {
   title?: string;
   subtitle?: string;
   whatsapp?: string;
+  /** Mensagem pré-preenchida do botão (editável na tab Contatos). */
+  ctaMessage?: string;
+  /** Código de campanha (utm/gclid) anexado à mensagem p/ atribuição. */
+  campaignRef?: string;
+  /** Registra a visita com atribuição ao clicar no CTA. */
+  onWhatsAppClick?: () => void;
   photoUrl?: string;
   heroImageUrl?: string;
   heroBgUrl?: string;
@@ -37,7 +43,7 @@ interface HeroSectionProps {
 
 const DEFAULT_HERO_BG = "/hero-bg-default.jpg";
 
-export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroImageUrl, heroBgUrl, heroBgOpacity = 70, heroBgOverlay = "dark", slug, professionalName, crp, photoStyle = "portrait", photoFit = "contain" }: HeroSectionProps) {
+export default function HeroSection({ title, subtitle, whatsapp, ctaMessage, campaignRef, onWhatsAppClick, photoUrl, heroImageUrl, heroBgUrl, heroBgOpacity = 70, heroBgOverlay = "dark", slug, professionalName, crp, photoStyle = "portrait", photoFit = "contain" }: HeroSectionProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const activeBgUrl = heroBgUrl || DEFAULT_HERO_BG;
@@ -57,7 +63,7 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
   const displayTitle = title || DEMO_PROFESSIONAL.hero_title;
   const displaySubtitle = subtitle || DEMO_PROFESSIONAL.hero_subtitle;
   const whatsappLink = whatsapp
-    ? buildWhatsAppLink(whatsapp, "Olá! Gostaria de agendar um horário.")
+    ? buildWhatsAppLink(whatsapp, buildLandingCtaMessage(ctaMessage, campaignRef))
     : "#";
 
   const isDefaultBg = !heroBgUrl; // usando fallback, sem bg customizado
@@ -164,7 +170,7 @@ export default function HeroSection({ title, subtitle, whatsapp, photoUrl, heroI
             {/* CTA Buttons */}
             {whatsapp && (
               <div className="flex flex-col sm:flex-row gap-3 pt-4 w-full justify-center lg:justify-start">
-                <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
+                <a href={whatsappLink} target="_blank" rel="noopener noreferrer" onClick={onWhatsAppClick}>
                   <Button size="lg" className="text-base gap-2 shadow-lg hover:shadow-xl transition-shadow duration-300 w-full sm:w-auto">
                     Agendar Horário <ArrowRight className="h-4 w-4" />
                   </Button>

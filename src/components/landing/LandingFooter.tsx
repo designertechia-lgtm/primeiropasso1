@@ -1,15 +1,21 @@
 import { Leaf, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { buildWhatsAppLink } from "@/lib/utils";
+import { buildWhatsAppLink, buildLandingCtaMessage } from "@/lib/utils";
 
 interface LandingFooterProps {
   professionalName?: string;
   whatsapp?: string;
+  /** Mensagem pré-preenchida do botão (editável na tab Contatos). */
+  ctaMessage?: string;
+  /** Código de campanha (utm/gclid) anexado à mensagem p/ atribuição. */
+  campaignRef?: string;
+  /** Registra a visita com atribuição ao clicar no CTA. */
+  onWhatsAppClick?: () => void;
 }
 
-export default function LandingFooter({ professionalName, whatsapp }: LandingFooterProps) {
+export default function LandingFooter({ professionalName, whatsapp, ctaMessage, campaignRef, onWhatsAppClick }: LandingFooterProps) {
   const whatsappLink = whatsapp
-    ? buildWhatsAppLink(whatsapp, "Olá! Gostaria de agendar um horário.")
+    ? buildWhatsAppLink(whatsapp, buildLandingCtaMessage(ctaMessage, campaignRef))
     : "#";
 
   return (
@@ -23,7 +29,7 @@ export default function LandingFooter({ professionalName, whatsapp }: LandingFoo
           <p className="text-muted-foreground text-lg">
             Agende uma conversa e dê o primeiro passo em direção a um reencontro consigo.
           </p>
-          <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
+          <a href={whatsappLink} target="_blank" rel="noopener noreferrer" onClick={onWhatsAppClick}>
             <Button size="lg" variant="secondary" className="text-base mt-2">
               Agendar
             </Button>

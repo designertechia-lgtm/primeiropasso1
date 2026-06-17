@@ -8,6 +8,7 @@ import PainSection from "@/components/landing/PainSection";
 import SolutionSection from "@/components/landing/SolutionSection";
 import AboutSection from "@/components/landing/AboutSection";
 import ContentSection from "@/components/landing/ContentSection";
+import ProductsSection from "@/components/landing/ProductsSection";
 import ContactSection from "@/components/landing/ContactSection";
 import LandingFooter from "@/components/landing/LandingFooter";
 import { buildLandingVars, getFontScale, GOOGLE_FONTS_URL } from "@/lib/landing/buildLandingVars";
@@ -82,6 +83,35 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
       .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())
       .slice(0, 3);
   }, [rawVideos]);
+
+  // Produtos vendáveis (ebook/PDF, físico, serviço avulso) e serviços agendáveis — vitrine pública.
+  // Tabela professional_products ainda não está no types.ts gerado → cast (padrão do projeto).
+  const { data: products = [] } = useQuery({
+    queryKey: ["products", professional?.id],
+    queryFn: async () => {
+      const { data } = await (supabase as any)
+        .from("professional_products")
+        .select("id, kind, title, description, price_brl, cover_image_url, external_url, active, sort_order")
+        .eq("professional_id", professional!.id)
+        .eq("active", true)
+        .order("sort_order", { ascending: true });
+      return data ?? [];
+    },
+    enabled: !!professional?.id,
+  });
+
+  const { data: services = [] } = useQuery({
+    queryKey: ["services", professional?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("professional_services")
+        .select("id, name, description, price_brl:price, duration_minutes, active")
+        .eq("professional_id", professional!.id)
+        .eq("active", true);
+      return data ?? [];
+    },
+    enabled: !!professional?.id,
+  });
 
   const darkKey = `dark_${slug}`;
   const [dark, setDark] = useState(() => localStorage.getItem(`dark_${slug}`) === "1");
@@ -170,6 +200,8 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
   // ContentSection se esconde quando não há artigos/vídeos; guardamos a inclusão aqui também
   // para a zebra não criar uma faixa vazia e a alternância de fundo seguir certa.
   const hasContent = articles.length > 0 || videos.length > 0;
+  // Mesma lógica para Produtos e Serviços: a seção só entra quando há algo para mostrar.
+  const hasProducts = products.length > 0 || services.length > 0;
 
   // Seções de conteúdo entre o Hero e o Contato, como DADOS (mapa key → nó). O profissional pode
   // reordenar e ocultar (tier Grátis, Fase 1): section_order define a ordem, section_hidden remove.
@@ -178,6 +210,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
   const sectionMeta: Record<string, { id?: string; clip?: boolean }> = {
     about: { id: "about", clip: false },
     content: { id: "content" },
+    products: { id: "produtos" },
   };
   const sectionNodes: Record<string, React.ReactNode> = {
     pain: (
@@ -213,6 +246,18 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
           ),
         }
       : {}),
+    ...(hasProducts
+      ? {
+          products: (
+            <ProductsSection
+              products={products as any}
+              services={services as any}
+              slug={professional.slug}
+              whatsapp={professional.whatsapp}
+            />
+          ),
+        }
+      : {}),
   };
   const orderedKeys = orderContentSections(
     Object.keys(sectionNodes),
@@ -227,6 +272,9 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
       <LandingHeader
         professionalName={name}
         whatsapp={professional.whatsapp ?? undefined}
+        ctaMessage={(professional as any).contact_cta_message ?? undefined}
+        campaignRef={campaignRef}
+        onWhatsAppClick={handleCtaClick}
         logoUrl={professional.logo_url ?? undefined}
         slug={professional.slug}
         dark={dark}
@@ -236,6 +284,9 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         title={professional.hero_title ?? undefined}
         subtitle={professional.hero_subtitle ?? undefined}
         whatsapp={professional.whatsapp ?? undefined}
+        ctaMessage={(professional as any).contact_cta_message ?? undefined}
+        campaignRef={campaignRef}
+        onWhatsAppClick={handleCtaClick}
         photoUrl={professional.photo_url ?? undefined}
         heroImageUrl={professional.hero_image_url ?? undefined}
         heroBgUrl={(professional as any).hero_bg_url ?? undefined}
@@ -268,7 +319,13 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
           onWhatsAppClick={handleCtaClick}
         />
       </Section>
-      <LandingFooter professionalName={name} whatsapp={professional.whatsapp ?? undefined} />
+      <LandingFooter
+        professionalName={name}
+        whatsapp={professional.whatsapp ?? undefined}
+        ctaMessage={(professional as any).contact_cta_message ?? undefined}
+        campaignRef={campaignRef}
+        onWhatsAppClick={handleCtaClick}
+      />
     </div>
   );
 }

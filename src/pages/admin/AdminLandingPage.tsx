@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun, ListOrdered, ArrowUp, ArrowDown, Eye, EyeOff, Newspaper, PlayCircle } from "lucide-react";
+import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun, ListOrdered, ArrowUp, ArrowDown, Eye, EyeOff, Newspaper, PlayCircle, ShoppingBag } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
 import { TikTokIcon } from "@/components/icons/TikTokIcon";
@@ -21,6 +21,7 @@ import SolutionSection from "@/components/landing/SolutionSection";
 import PainSection from "@/components/landing/PainSection";
 import ContactSection from "@/components/landing/ContactSection";
 import ContentSection from "@/components/landing/ContentSection";
+import ProductsSection from "@/components/landing/ProductsSection";
 import LandingFooter from "@/components/landing/LandingFooter";
 import Section from "@/components/landing/Section";
 import { CONTENT_SECTION_KEYS, zebraTone } from "@/lib/landing/sections";
@@ -145,6 +146,7 @@ const CONTENT_SECTION_LABELS: Record<string, { label: string; icon: React.Elemen
   solution: { label: "Solução",   icon: Lightbulb   },
   about:    { label: "Sobre",     icon: BookOpen    },
   content:  { label: "Conteúdos", icon: Newspaper, hint: "Aparece na página quando você publica artigos ou vídeos." },
+  products: { label: "Produtos e Serviços", icon: ShoppingBag, hint: "Aparece na página quando você cadastra produtos ou serviços." },
 };
 
 // ── section overlay wrapper ────────────────────────────────
@@ -239,6 +241,34 @@ export default function AdminLandingPage() {
       .slice(0, 3);
   }, [rawPreviewVideos]);
   const hasPreviewContent = previewArticles.length > 0 || previewVideos.length > 0;
+
+  // Produtos e serviços para o preview da seção "Produtos e Serviços" (gestão fica em /admin/produtos).
+  const { data: previewProducts = [] } = useQuery({
+    queryKey: ["landing-preview-products", professional?.id],
+    queryFn: async () => {
+      const { data } = await (supabase as any)
+        .from("professional_products")
+        .select("id, kind, title, description, price_brl, cover_image_url, external_url, active, sort_order")
+        .eq("professional_id", professional!.id)
+        .eq("active", true)
+        .order("sort_order", { ascending: true });
+      return data ?? [];
+    },
+    enabled: !!professional?.id,
+  });
+  const { data: previewServices = [] } = useQuery({
+    queryKey: ["landing-preview-services", professional?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("professional_services")
+        .select("id, name, description, price_brl:price, duration_minutes, active")
+        .eq("professional_id", professional!.id)
+        .eq("active", true);
+      return data ?? [];
+    },
+    enabled: !!professional?.id,
+  });
+  const hasPreviewProducts = previewProducts.length > 0 || previewServices.length > 0;
 
   // hero
   const [heroTitle, setHeroTitle] = useState("");
@@ -653,6 +683,12 @@ export default function AdminLandingPage() {
       content: {
         label: "Conteúdos", icon: Newspaper, active: false, onClick: () => navigate("/admin/artigos"),
         node: <ContentSection articles={previewArticles as any} videos={previewVideos as any} slug={professional?.slug} whatsapp={contactWhatsapp || undefined} />,
+      },
+    } : {}),
+    ...(hasPreviewProducts ? {
+      products: {
+        label: "Produtos e Serviços", icon: ShoppingBag, active: false, onClick: () => navigate("/admin/produtos"),
+        node: <ProductsSection products={previewProducts as any} services={previewServices as any} slug={professional?.slug} whatsapp={contactWhatsapp || undefined} />,
       },
     } : {}),
   };
@@ -1535,7 +1571,7 @@ export default function AdminLandingPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="contactCtaMessage" className="flex items-center gap-2"><MessageCircle className="h-4 w-4 text-green-500" />Mensagem do botão de agendamento <FieldHint text="Texto que já vai escrito no WhatsApp quando o lead clica no botão. Se contiver 'agendar' ou 'marcar', o assistente leva direto pra agenda; um texto neutro faz passar pela apresentação do Axel. Em branco usa o padrão." /></Label>
-                <Textarea id="contactCtaMessage" rows={2} value={contactCtaMessage} onChange={(e) => setContactCtaMessage(e.target.value)} placeholder="Olá! Gostaria de agendar um horário." />
+                <Textarea id="contactCtaMessage" rows={2} value={contactCtaMessage} onChange={(e) => setContactCtaMessage(e.target.value)} placeholder="Olá, gostaria de mais informações!" />
               </div>
 
               <div className="space-y-2">

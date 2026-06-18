@@ -116,12 +116,17 @@ export function useAxelMemory() {
   const { data: dbMessages = [] } = useQuery({
     queryKey: ["axel-conversations", user?.id],
     queryFn: async (): Promise<AxelMessage[]> => {
+      // Pega as 100 mensagens MAIS RECENTES (desc) e reordena cronologicamente pra render.
+      // Antes era ascending+limit(100) = as 100 mais ANTIGAS → quando a conversa passa de
+      // 100 msgs, as respostas novas ficam ALÉM do corte e somem da tela (parecia "o Axel
+      // não responde", mas estavam no banco; a conta da Daiane tinha 112 e travava no
+      // histórico de dias atrás).
       const { data } = await (supabase as any)
         .from("axel_conversations")
         .select("id, role, content, actions, created_at")
-        .order("created_at", { ascending: true })
+        .order("created_at", { ascending: false })
         .limit(100);
-      return (data || []) as AxelMessage[];
+      return ((data || []) as AxelMessage[]).slice().reverse();
     },
     enabled: !!user?.id,
     staleTime: 1000 * 60,

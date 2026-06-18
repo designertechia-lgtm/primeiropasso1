@@ -101,6 +101,9 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
 
   const [feedback, setFeedback] = useState<FeedbackDialogState>(INITIAL_FEEDBACK);
   const [isProcessing, setIsProcessing] = useState(false);
+  // Mensagem do usuário renderizada NA HORA (otimista), antes dos "..." e do round-trip.
+  // O histórico real vem da edge (axel_conversations); ao chegar, limpamos a otimista.
+  const [pendingUser, setPendingUser] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -114,7 +117,15 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
       ) as HTMLElement | null;
       if (viewport) viewport.scrollTop = viewport.scrollHeight;
     }
-  }, [messages, isProcessing]);
+  }, [messages, isProcessing, pendingUser]);
+
+  // Quando a mensagem otimista aparece de verdade no histórico (refetch da edge),
+  // limpa a versão otimista pra não duplicar.
+  useEffect(() => {
+    if (pendingUser && messages.some((m) => m.role === "user" && m.content === pendingUser)) {
+      setPendingUser(null);
+    }
+  }, [messages, pendingUser]);
 
   // Mensagem de boas-vindas contextual com memória (Fase 2)
   useEffect(() => {
@@ -264,6 +275,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
 
     setInput("");
     setIsProcessing(true);
+    setPendingUser(text);
 
     addMessage({ role: "user", content: text });
     incrementInteraction();
@@ -542,6 +554,24 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
                   <span className="text-xs font-medium">Feedback</span>
 
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* Mensagem otimista do usuário — aparece NA HORA, antes dos "..." */}
+          {pendingUser && !messages.some((m) => m.role === "user" && m.content === pendingUser) && (
+            <div className="flex gap-2 sm:gap-2.5 mt-3 sm:mt-4 justify-end">
+              <div className="max-w-[85%] sm:max-w-[75%]">
+                <div className="rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 text-sm leading-relaxed bg-gradient-to-r from-purple-500 to-blue-600 text-white rounded-tr-md shadow-lg shadow-purple-500/10">
+                  <p className="whitespace-pre-wrap break-words text-[13px] sm:text-sm">{pendingUser}</p>
+                </div>
+              </div>
+              <div className="shrink-0">
+                <Avatar className="h-7 w-7 sm:h-8 sm:w-8 ring-2 ring-purple-500/20 ring-offset-1 ring-offset-background">
+                  <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-600 text-white text-[9px] sm:text-[10px]">
+                    <User className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                  </AvatarFallback>
+                </Avatar>
               </div>
             </div>
           )}

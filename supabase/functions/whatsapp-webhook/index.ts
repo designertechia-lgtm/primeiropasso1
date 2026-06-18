@@ -944,35 +944,84 @@ serve(async (req) => {
     const mergedText = pendingMessages.map((m: any) => m.content).join('\n')
     console.log(`[DEBOUNCE] Processando ${pendingMessages.length} mensagem(ns) merged`)
 
-    // 5. Chamar o agente IA para gerar resposta
+    // 5. Chamar o agente IA para gerar resposta.
+    //    ROBUSTEZ (fix 18/06): as mensagens JÁ foram marcadas processed=true logo acima.
+    //    Se a chamada do agente falhar (Anthropic sobrecarregada/timeout/cold start), NÃO
+    //    podemos deixar o lead no silêncio — era essa a causa do "Axel não responde"
+    //    intermitente: a mensagem sumia sem resposta e sem rastro. Então: tenta 2x e, se
+    //    ainda assim nada for entregue, manda um fallback gentil + grava no histórico.
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEYS') || ''
-    console.log(`[DEBUG] Invocando whatsapp-agent...`)
     const agentUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/whatsapp-agent`
-    const agentResponse = await fetch(agentUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${anonKey}`,
-      },
-      body: JSON.stringify({
-        lead_id: leadId,
-        lead_name: pushName,
-        lead_phone: formattedNumber,
-        message: mergedText,
-        remote_jid: remoteJid,
-        professional_id: professional.id,
-        instance_name: instanceName,
-        contact_status: (existingLead?.pipeline_stage === 'agendado' || existingLead?.pipeline_stage === 'cliente_ativo') ? 'cliente' : 'em_conversa',
-      }),
-    })
+    const agentPayload = {
+      lead_id: leadId,
+      lead_name: pushName,
+      lead_phone: formattedNumber,
+      message: mergedText,
+      remote_jid: remoteJid,
+      professional_id: professional.id,
+      instance_name: instanceName,
+      contact_status: (existingLead?.pipeline_stage === 'agendado' || existingLead?.pipeline_stage === 'cliente_ativo') ? 'cliente' : 'em_conversa',
+    }
 
-    console.log(`[DEBUG] Agent response status: ${agentResponse.status}`)
-    const agentResult = await agentResponse.json()
-    console.log(`[DEBUG] Agent result:`, JSON.stringify(agentResult).substring(0, 200))
+    // Marco do início do turno — pra saber se o agente chegou a GRAVAR uma resposta
+    // (evita resposta dupla no retry e fallback indevido se só a resposta HTTP caiu).
+    const turnStartIso = new Date().toISOString()
+    const assistantRepliedSince = async (): Promise<boolean> => {
+      const { data } = await supabaseAdmin
+        .from('chat_messages')
+        .select('id')
+        .eq('lead_id', leadId)
+        .eq('role', 'assistant')
+        .gt('created_at', turnStartIso)
+        .limit(1)
+      return !!(data && data.length > 0)
+    }
+    const callAgent = async (): Promise<{ ok: boolean; status: number; result: any }> => {
+      try {
+        const res = await fetch(agentUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
+          body: JSON.stringify(agentPayload),
+        })
+        const result = await res.json().catch(() => ({}))
+        // Sucesso real = HTTP ok + o agente reportou success (ele devolve {error} no catch dele).
+        return { ok: res.ok && result?.success === true && !result?.error, status: res.status, result }
+      } catch (e: any) {
+        return { ok: false, status: 0, result: { error: e?.message || String(e) } }
+      }
+    }
 
-    console.log(`[WEBHOOK] ✅ SUCESSO COMPLETO: Webhook processado, agente respondeu`)
+    console.log(`[DEBUG] Invocando whatsapp-agent (tentativa 1)...`)
+    let attempt = await callAgent()
+    if (!attempt.ok && !(await assistantRepliedSince())) {
+      console.warn(`[WEBHOOK] agente falhou (status=${attempt.status}, err=${attempt.result?.error}) — retry`)
+      attempt = await callAgent()
+    }
 
-    return new Response(JSON.stringify({ success: true, agent: agentResult, merged: pendingMessages.length }), {
+    if (attempt.ok || await assistantRepliedSince()) {
+      console.log(`[WEBHOOK] ✅ SUCESSO: agente respondeu`)
+      return new Response(JSON.stringify({ success: true, agent: attempt.result, merged: pendingMessages.length }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Falhou nas 2 tentativas E nada foi gravado → nunca deixar o lead no vácuo.
+    const proFirst = (professional.full_name || 'o profissional').split(' ')[0]
+    const recado = `Oi! 💛 Sua mensagem chegou. Estou com uma instabilidade pra responder agora, mas já já retomo — ${proFirst} também acompanha por aqui.`
+    const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
+    const evoKey = Deno.env.get('EVOLUTION_API_KEY')
+    if (evoUrl && evoKey && instanceName) {
+      await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
+        method: 'POST',
+        headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ number: remoteJid, text: recado }),
+      }).catch(() => {})
+    }
+    await supabaseAdmin.from('chat_messages').insert({ lead_id: leadId, role: 'assistant', content: recado, processed: true })
+    console.warn(`[WEBHOOK] ⚠️ agente falhou 2x — fallback gentil enviado ao lead (lead ${leadId})`)
+
+    return new Response(JSON.stringify({ success: false, fallback: true, merged: pendingMessages.length }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })

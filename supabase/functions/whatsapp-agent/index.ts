@@ -542,9 +542,28 @@ async function sendSelector(instanceName: string, remoteJid: string, sel: Select
   }
 }
 async function enviarSelecao(supabaseAdmin: any, leadId: string, instanceName: string, remoteJid: string, sel: Selector, logLabel: string) {
+  // anti-eco: se a última resposta já foram estes mesmos botões, não reenvia (evita loop)
+  const { data: last } = await supabaseAdmin
+    .from('chat_messages').select('content')
+    .eq('lead_id', leadId).eq('role', 'assistant')
+    .order('created_at', { ascending: false }).limit(1).maybeSingle()
+  if (last?.content && (last.content as string).trim() === logLabel.trim()) return
   await sendSelector(instanceName, remoteJid, sel)
   await supabaseAdmin.from('chat_messages').insert({ lead_id: leadId, role: 'assistant', content: logLabel, processed: true })
 }
+// Anti-eco: NÃO reenvia ao lead uma mensagem idêntica à última resposta do agente.
+// Mata o loop de "Pronto, remarquei"/"08:45 fora..." repetido a cada turno (viés do LLM).
+async function enviarTextoLead(supabaseAdmin: any, leadId: string, instanceName: string, remoteJid: string, msg: string): Promise<boolean> {
+  const { data: last } = await supabaseAdmin
+    .from('chat_messages').select('content')
+    .eq('lead_id', leadId).eq('role', 'assistant')
+    .order('created_at', { ascending: false }).limit(1).maybeSingle()
+  if (last?.content && (last.content as string).trim() === msg.trim()) return false // já disse isso → não repete
+  await sendWhatsAppMessage(instanceName, remoteJid, msg)
+  await supabaseAdmin.from('chat_messages').insert({ lead_id: leadId, role: 'assistant', content: msg, processed: true })
+  return true
+}
+
 // Agendamento ativo do lead — pra remarcar/cancelar sem o LLM precisar passar id.
 async function getActiveAppointment(supabaseAdmin: any, professionalId: string, leadId: string): Promise<any | null> {
   const { data } = await supabaseAdmin
@@ -889,8 +908,7 @@ async function handleToolCall(
     const label = labelFromIso(data)
     await supabaseAdmin.from('leads').update({ pipeline_stage: 'agendado', booking_state: { appointment_id: r.appointment_id, status: 'confirmed', data, hora, label, service_name: svc?.name || null } }).eq('id', leadId)
     const msg = svc?.name ? `Marcado! Sua ${svc.name}, ${label} às ${hora}. 🙌` : `Marcado! Te espero ${label} às ${hora}. 🙌`
-    await sendWhatsAppMessage(instanceName, remoteJid, msg)
-    await supabaseAdmin.from('chat_messages').insert({ lead_id: leadId, role: 'assistant', content: msg, processed: true })
+    await enviarTextoLead(supabaseAdmin, leadId, instanceName, remoteJid, msg)
     return { handoff: true, instrucao: 'Agendamento confirmado e avisado ao lead. NÃO escreva mais nada neste turno.' }
   }
 
@@ -900,6 +918,16 @@ async function handleToolCall(
     const data = (args.nova_data || '').toString().trim()
     const hora = (args.nova_hora || '').toString().trim().padStart(5, '0')
     if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || !/^\d{1,2}:\d{2}$/.test(hora)) return { ok: false, instrucao: 'Data/hora nova inválida — confirme com o lead e tente de novo.' }
+    // já está EXATAMENTE nesse horário? não remarca pro mesmo (evita "Pronto, remarquei" em loop)
+    if (appt.appointment_date === data && (('' + appt.start_time).slice(0, 5)) === hora) {
+      return { ok: false, instrucao: `O lead JÁ está agendado para ${labelFromIso(data)} às ${hora} — não precisa remarcar. Confirme isso a ele em 1 frase e PARE (não chame tool de novo).` }
+    }
+    // horário no passado? não remarca pra trás
+    const hojeBRT = isoFromBRT(brtNow())
+    const nowMinBRT = brtNow().getUTCHours() * 60 + brtNow().getUTCMinutes()
+    if (data < hojeBRT || (data === hojeBRT && toMinutes(hora) <= nowMinBRT)) {
+      return { ok: false, instrucao: `${labelFromIso(data)} às ${hora} já passou. Diga isso ao lead em 1 frase e ofereça um horário FUTURO — não chame tool até ele escolher outro.` }
+    }
     const services = await getServices(supabaseAdmin, professionalId)
     const dur = (services.find((s: any) => s.id === appt.service_id)?.duration_minutes) || services[0]?.duration_minutes || DEFAULT_DURATION
     const eMin = toMinutes(hora) + dur
@@ -909,8 +937,7 @@ async function handleToolCall(
     const label = labelFromIso(data)
     await supabaseAdmin.from('leads').update({ booking_state: { appointment_id: appt.id, status: 'confirmed', data, hora, label, service_name: (services.find((s: any) => s.id === appt.service_id)?.name) || null } }).eq('id', leadId)
     const msg = `Pronto, remarquei! Agora é ${labelFromIso(data)} às ${hora}. 🙌`
-    await sendWhatsAppMessage(instanceName, remoteJid, msg)
-    await supabaseAdmin.from('chat_messages').insert({ lead_id: leadId, role: 'assistant', content: msg, processed: true })
+    await enviarTextoLead(supabaseAdmin, leadId, instanceName, remoteJid, msg)
     return { handoff: true, instrucao: 'Remarcado e avisado ao lead. NÃO escreva mais nada neste turno.' }
   }
 
@@ -921,8 +948,7 @@ async function handleToolCall(
     if (!r.ok) return { ok: false, instrucao: 'Não consegui cancelar agora; peça desculpa em 1 frase.' }
     await supabaseAdmin.from('leads').update({ pipeline_stage: 'em_conversa', booking_state: {} }).eq('id', leadId)
     const msg = 'Pronto, cancelei seu horário. Quando quiser remarcar é só me chamar. 🙂'
-    await sendWhatsAppMessage(instanceName, remoteJid, msg)
-    await supabaseAdmin.from('chat_messages').insert({ lead_id: leadId, role: 'assistant', content: msg, processed: true })
+    await enviarTextoLead(supabaseAdmin, leadId, instanceName, remoteJid, msg)
     return { handoff: true, instrucao: 'Cancelado e avisado ao lead. NÃO escreva mais nada neste turno.' }
   }
 

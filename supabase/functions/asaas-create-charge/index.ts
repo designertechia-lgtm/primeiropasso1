@@ -109,9 +109,8 @@ Deno.serve(async (req) => {
   }).select("id").single();
   if (oerr || !order) return json({ error: "Erro ao criar pedido: " + (oerr?.message ?? "") }, 500);
 
-  // 5. Cobrança com split (PIX ou cartão na página do Asaas).
-  // Após pagar, o Asaas devolve o comprador para a página de acompanhamento/entrega do pedido.
-  const origin = req.headers.get("origin") || Deno.env.get("PUBLIC_SITE_URL") || "";
+  // 5. Cobrança com split. NÃO usamos callback.successUrl do Asaas (exigiria domínio cadastrado
+  // na conta e não escala p/ multi-tenant); o comprador acompanha tudo na nossa página /pedido/:token.
   const today = new Date().toISOString().slice(0, 10);
   const pay = await asaas("/payments", "POST", apiKey, {
     customer: cust.data.id,
@@ -121,7 +120,6 @@ Deno.serve(async (req) => {
     description: title,
     externalReference: order.id,
     split: [{ walletId: pro.asaas_wallet_id, fixedValue: sellerAmount }],
-    ...(origin ? { callback: { successUrl: `${origin}/pedido/${deliveryToken}`, autoRedirect: true } } : {}),
   });
   if (!pay.ok || !pay.data?.id) {
     await admin.from("product_orders").update({ status: "failed" }).eq("id", order.id);
@@ -132,5 +130,5 @@ Deno.serve(async (req) => {
     .update({ asaas_payment_id: pay.data.id, asaas_invoice_url: pay.data.invoiceUrl })
     .eq("id", order.id);
 
-  return json({ ok: true, orderId: order.id, invoiceUrl: pay.data.invoiceUrl, value: price });
+  return json({ ok: true, orderId: order.id, deliveryToken, invoiceUrl: pay.data.invoiceUrl, value: price });
 });

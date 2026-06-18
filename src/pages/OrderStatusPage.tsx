@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { formatPrice } from "@/components/landing/ProductsSection";
-import { CheckCircle2, Clock, Download, XCircle, Loader2, Truck, Calendar } from "lucide-react";
+import { CheckCircle2, Clock, Download, XCircle, Loader2, Truck, Calendar, CreditCard } from "lucide-react";
 
 interface OrderInfo {
   status: string;
@@ -14,6 +14,7 @@ interface OrderInfo {
   has_download: boolean;
   download_url?: string;
   professional_name?: string;
+  invoice_url?: string | null;
 }
 
 // Página de retorno do pagamento (o Asaas redireciona o comprador para cá após pagar).
@@ -93,10 +94,10 @@ export default function OrderStatusPage() {
         </div>
 
         <h1 className="font-serif text-xl font-bold text-foreground mb-1">
-          {paid ? "Pagamento confirmado!" : cancelled ? "Pagamento não concluído" : "Aguardando confirmação"}
+          {paid ? "Pagamento confirmado!" : cancelled ? "Pagamento não concluído" : "Quase lá!"}
         </h1>
         <p className="text-sm text-muted-foreground mb-5">
-          {paid ? "Obrigado pela compra." : cancelled ? "Seu pedido não foi concluído." : "Assim que o pagamento for confirmado, atualizamos aqui automaticamente."}
+          {paid ? "Obrigado pela compra." : cancelled ? "Seu pedido não foi concluído." : "Finalize o pagamento para concluir o seu pedido."}
         </p>
 
         {/* Resumo do item */}
@@ -131,9 +132,17 @@ export default function OrderStatusPage() {
           </div>
         )}
 
+        {!paid && !cancelled && order.invoice_url && (
+          <Button asChild className="w-full gap-2 mb-3">
+            <a href={order.invoice_url} target="_blank" rel="noopener noreferrer">
+              <CreditCard className="h-4 w-4" /> Pagar agora
+            </a>
+          </Button>
+        )}
+
         {!paid && !cancelled && (
           <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Verificando o pagamento...
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Aguardando o pagamento...
           </div>
         )}
       </div>

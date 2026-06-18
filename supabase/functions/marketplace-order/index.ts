@@ -29,18 +29,21 @@ Deno.serve(async (req) => {
 
   const { data: order } = await admin
     .from("product_orders")
-    .select("id, item_type, item_title, amount_brl, status, product_id, delivered_at, professional_id")
+    .select("id, item_type, item_title, amount_brl, status, product_id, delivered_at, professional_id, asaas_invoice_url")
     .eq("delivery_token", token)
     .maybeSingle();
   if (!order) return json({ error: "Pedido não encontrado" }, 404);
 
+  const isPaid = order.status === "paid" || order.status === "delivered";
   const out: Record<string, unknown> = {
     status: order.status,
     item_type: order.item_type,
     item_title: order.item_title,
     amount_brl: order.amount_brl,
-    is_paid: order.status === "paid" || order.status === "delivered",
+    is_paid: isPaid,
     has_download: false,
+    // Link de pagamento (Asaas) enquanto não foi pago — a página mostra o botão "Pagar agora".
+    invoice_url: isPaid ? null : order.asaas_invoice_url,
   };
 
   // Nome do profissional (vem de profiles) só para exibição amigável.

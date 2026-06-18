@@ -87,14 +87,15 @@ function CheckoutDialog({
       },
     });
 
-    if (error || (data as any)?.error || !(data as any)?.invoiceUrl) {
+    const token = (data as any)?.deliveryToken;
+    if (error || (data as any)?.error || !token) {
       setLoading(false);
       const msg = await readEdgeError(error, data);
       toast.error("Não foi possível iniciar o pagamento", { description: msg });
       return;
     }
-    // Redireciona para a página de pagamento do Asaas (PIX/cartão). Mantém loading até sair.
-    window.location.href = (data as any).invoiceUrl;
+    // Vai para a NOSSA página do pedido: lá o comprador paga (PIX/cartão) e recebe o material.
+    window.location.href = `/pedido/${token}`;
   };
 
   return (

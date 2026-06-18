@@ -81,6 +81,16 @@ Deno.serve(async (req) => {
       .update({ asaas_account_id: data.id, asaas_wallet_id: data.walletId })
       .eq("id", pro.id);
 
+    // A apiKey da subconta vem SÓ agora (não dá p/ recuperar depois). Guarda na tabela
+    // só-servidor — é a chave usada p/ consultar saldo e fazer saque (Carteira).
+    if (data.apiKey) {
+      await admin.from("asaas_subaccount_credentials").upsert({
+        professional_id: pro.id,
+        api_key: data.apiKey,
+        updated_at: new Date().toISOString(),
+      });
+    }
+
     return json({ ok: true, walletId: data.walletId, accountId: data.id });
   } catch (e) {
     return json({ error: String(e) }, 500);

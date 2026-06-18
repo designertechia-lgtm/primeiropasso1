@@ -18,6 +18,7 @@ import { formatPrice } from "@/components/landing/ProductsSection";
 import ServicesEditor from "@/components/admin/landing/ServicesEditor";
 import ReceivablesOnboarding from "@/components/admin/landing/ReceivablesOnboarding";
 import OrdersPanel from "@/components/admin/landing/OrdersPanel";
+import WalletPanel from "@/components/admin/landing/WalletPanel";
 
 type ProductKind = "ebook" | "physical" | "other";
 
@@ -222,6 +223,9 @@ export default function ProductsEditorTab() {
 
       {/* Painel de vendas (pedidos do marketplace) */}
       <OrdersPanel />
+
+      {/* Carteira: saldo, chave PIX de saque e saque */}
+      <WalletPanel />
 
       {/* ── Textos da seção (editáveis) ── */}
       <div className="space-y-3">

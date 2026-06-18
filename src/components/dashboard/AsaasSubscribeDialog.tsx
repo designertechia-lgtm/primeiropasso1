@@ -106,7 +106,7 @@ export function AsaasSubscribeDialog({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => (v ? onOpenChange(true) : close())}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Adicionar forma de pagamento</DialogTitle>
           <DialogDescription>Assinatura PrimeiroPasso — R$ 349/mês</DialogDescription>

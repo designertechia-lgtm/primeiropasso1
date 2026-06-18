@@ -53,7 +53,7 @@ export function CreditCheckoutDialog({ open, onOpenChange, pack, onManualFallbac
 
   return (
     <Dialog open={open} onOpenChange={(v) => (v ? onOpenChange(true) : close())}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Recarga de créditos</DialogTitle>
           <DialogDescription>

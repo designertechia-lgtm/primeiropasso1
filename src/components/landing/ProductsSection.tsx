@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BookOpen, Package, Briefcase, ShoppingBag, ArrowRight, ChevronDown, Clock } from "lucide-react";
 import { ItemCTA } from "@/components/landing/CheckoutDialog";
@@ -86,58 +85,61 @@ function ItemCard({ item, whatsapp, professionalName }: { item: Unified; whatsap
   const durationMin = !isProduct ? item.data.duration_minutes : null;
 
   return (
-    <Card className="overflow-hidden transition-shadow flex flex-col hover:shadow-md">
-      <div className="aspect-[4/3] relative bg-muted overflow-hidden">
+    <div className="group rounded-2xl overflow-hidden border bg-card transition-all duration-300 flex flex-col hover:shadow-xl hover:-translate-y-1">
+      <div className="aspect-[3/2] relative bg-muted overflow-hidden">
         {cover ? (
-          <img src={cover} alt={title} className="w-full h-full object-cover" />
+          <img src={cover} alt={title} className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-700" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/15 to-accent/15">
-            <Icon className="h-10 w-10 text-primary/30" />
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/12 to-accent/12">
+            <Icon className="h-9 w-9 text-primary/25" />
           </div>
         )}
-        <div className="absolute top-3 left-3 flex items-center gap-1 bg-background/85 text-foreground text-[10px] font-semibold px-2 py-1 rounded-full backdrop-blur-sm">
+        <div className="absolute inset-0 bg-gradient-to-t from-black/15 via-transparent to-transparent" />
+        <div className="absolute top-3 left-3 flex items-center gap-1 bg-background/85 text-foreground text-[10px] font-medium px-2 py-1 rounded-full backdrop-blur-sm">
           <Icon className="h-3 w-3 text-primary" /> {meta.label}
         </div>
       </div>
-      <CardHeader className="pb-2">
-        <CardTitle className="font-heading text-base leading-snug">{title}</CardTitle>
+      <div className="p-4 flex flex-col flex-1">
+        <h3 className="font-heading text-[15px] font-semibold text-foreground leading-snug line-clamp-2">{title}</h3>
         {description && (
-          <p className="text-sm text-muted-foreground">{description}</p>
+          <p className="text-[13px] text-muted-foreground leading-relaxed mt-1.5 line-clamp-2">{description}</p>
         )}
         {descriptionFull && (
           <>
             <button
               type="button"
               onClick={() => setExpanded((v) => !v)}
-              className="flex items-center gap-1 text-xs font-medium text-primary hover:underline w-fit"
+              className="flex items-center gap-1 text-xs font-medium text-primary hover:underline w-fit mt-2"
             >
               {expanded ? "Ver menos" : "Ver mais"}
               <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
             </button>
             {expanded && (
-              <p className="text-sm text-muted-foreground whitespace-pre-line border-l-2 border-primary/30 pl-3">
+              <p className="text-[13px] text-muted-foreground whitespace-pre-line border-l-2 border-primary/30 pl-3 mt-2">
                 {descriptionFull}
               </p>
             )}
           </>
         )}
-      </CardHeader>
-      <CardContent className="pt-0 mt-auto space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <p className="font-heading text-lg font-bold text-foreground">{formatPrice(price)}</p>
+        <div className="flex-1" />
+        <div className="flex items-center gap-2 mt-4">
+          <span className="h-px w-5 bg-primary/40 shrink-0" />
+          <span className="font-heading text-base font-bold text-foreground">{formatPrice(price)}</span>
           {durationMin != null && (
-            <span className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
+            <span className="ml-auto text-xs text-muted-foreground flex items-center gap-1 shrink-0">
               <Clock className="h-3 w-3" /> {durationMin} min
             </span>
           )}
         </div>
-        <ItemCTA
-          item={{ isProduct, id: item.data.id, title, price, kind, externalUrl, serviceMode: item.type === "service" ? item.data.checkout_mode : undefined }}
-          whatsapp={whatsapp}
-          professionalName={professionalName}
-        />
-      </CardContent>
-    </Card>
+        <div className="mt-3">
+          <ItemCTA
+            item={{ isProduct, id: item.data.id, title, price, kind, externalUrl, serviceMode: item.type === "service" ? item.data.checkout_mode : undefined }}
+            whatsapp={whatsapp}
+            professionalName={professionalName}
+          />
+        </div>
+      </div>
+    </div>
   );
 }
 

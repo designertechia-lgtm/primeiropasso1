@@ -60,23 +60,24 @@ function ItemCard({ item, whatsapp, professionalName }: { item: Unified; whatsap
   const durationMin = !isProduct ? item.data.duration_minutes : null;
 
   return (
-    <div className="group rounded-2xl overflow-hidden border bg-card transition-all duration-300 flex flex-col hover:shadow-lg hover:-translate-y-0.5">
-      <div className="aspect-[4/3] overflow-hidden bg-muted relative">
+    <div className="group rounded-2xl overflow-hidden border bg-card transition-all duration-300 flex flex-col hover:shadow-xl hover:-translate-y-1">
+      <div className="aspect-[3/2] overflow-hidden bg-muted relative">
         {cover ? (
-          <img src={cover} alt={title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+          <img src={cover} alt={title} className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-700" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/15 to-accent/15">
-            <Icon className="h-10 w-10 text-primary/30" />
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/12 to-accent/12">
+            <Icon className="h-9 w-9 text-primary/25" />
           </div>
         )}
-        <div className="absolute top-3 left-3 flex items-center gap-1 bg-background/85 text-foreground text-[10px] font-semibold px-2 py-1 rounded-full backdrop-blur-sm">
+        <div className="absolute inset-0 bg-gradient-to-t from-black/15 via-transparent to-transparent" />
+        <div className="absolute top-3 left-3 flex items-center gap-1 bg-background/85 text-foreground text-[10px] font-medium px-2 py-1 rounded-full backdrop-blur-sm">
           <Icon className="h-3 w-3 text-primary" /> {meta.label}
         </div>
       </div>
-      <div className="p-5 flex flex-col flex-1">
-        <h2 className="font-serif text-lg font-semibold text-foreground leading-snug mb-2 line-clamp-2">{title}</h2>
+      <div className="p-4 flex flex-col flex-1">
+        <h2 className="font-serif text-[15px] font-semibold text-foreground leading-snug line-clamp-2">{title}</h2>
         {description && (
-          <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
+          <p className="text-[13px] text-muted-foreground leading-relaxed mt-1.5 line-clamp-2">{description}</p>
         )}
         {descriptionFull && (
           <>
@@ -89,17 +90,18 @@ function ItemCard({ item, whatsapp, professionalName }: { item: Unified; whatsap
               <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
             </button>
             {expanded && (
-              <p className="text-sm text-muted-foreground whitespace-pre-line border-l-2 border-primary/30 pl-3 mt-2">
+              <p className="text-[13px] text-muted-foreground whitespace-pre-line border-l-2 border-primary/30 pl-3 mt-2">
                 {descriptionFull}
               </p>
             )}
           </>
         )}
         <div className="flex-1" />
-        <div className="flex items-center justify-between gap-2 mt-4">
-          <p className="font-serif text-lg font-bold text-foreground">{formatPrice(price)}</p>
+        <div className="flex items-center gap-2 mt-4">
+          <span className="h-px w-5 bg-primary/40 shrink-0" />
+          <span className="font-serif text-base font-semibold text-foreground">{formatPrice(price)}</span>
           {durationMin != null && (
-            <span className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
+            <span className="ml-auto text-xs text-muted-foreground flex items-center gap-1 shrink-0">
               <Clock className="h-3 w-3" /> {durationMin} min
             </span>
           )}

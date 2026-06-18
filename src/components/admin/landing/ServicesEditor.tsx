@@ -15,6 +15,8 @@ import { FieldHint } from "@/components/ui/FieldHint";
 import { formatPrice } from "@/components/landing/ProductsSection";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 
+type CheckoutMode = "schedule" | "pay" | "both";
+
 interface ServiceForm {
   id?: string;
   name: string;
@@ -23,6 +25,7 @@ interface ServiceForm {
   price: string;
   cover_image_url: string;
   active: boolean;
+  checkout_mode: CheckoutMode;
 }
 
 const emptyForm: ServiceForm = {
@@ -32,6 +35,7 @@ const emptyForm: ServiceForm = {
   price: "",
   cover_image_url: "",
   active: true,
+  checkout_mode: "both",
 };
 
 // CRUD das sessões de terapia (tabela professional_services) — o serviço principal da plataforma.
@@ -76,6 +80,7 @@ export default function ServicesEditor() {
       price: s.price != null ? String(s.price) : "",
       cover_image_url: s.cover_image_url ?? "",
       active: s.active ?? true,
+      checkout_mode: (s.checkout_mode as CheckoutMode) ?? "schedule",
     });
     setOpen(true);
   };
@@ -94,6 +99,7 @@ export default function ServicesEditor() {
       price: form.price.trim() ? Number(form.price.replace(",", ".")) : null,
       cover_image_url: form.cover_image_url || null,
       active: form.active,
+      checkout_mode: form.checkout_mode,
     };
 
     const res = form.id
@@ -181,6 +187,28 @@ export default function ServicesEditor() {
                 folder="services"
                 variant="wide"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Como o cliente contrata <FieldHint text="'Pagar' e 'Ambos' exigem preço definido. Sem preço, a sessão mostra só 'Agendar'." /></Label>
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  { v: "schedule", label: "Agendar" },
+                  { v: "both", label: "Ambos" },
+                  { v: "pay", label: "Pagar" },
+                ] as const).map((o) => (
+                  <button
+                    key={o.v}
+                    type="button"
+                    onClick={() => setForm((p) => ({ ...p, checkout_mode: o.v }))}
+                    className={`rounded-xl border-2 py-2 text-sm font-medium transition-all ${
+                      form.checkout_mode === o.v ? "border-primary bg-primary/5 text-foreground" : "border-border text-muted-foreground hover:border-primary/40"
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="flex items-center gap-2 pt-1">

@@ -2,9 +2,15 @@ import { useParams, Link } from "react-router-dom";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, ShoppingBag, BookOpen, Package, Briefcase, ChevronDown, Clock } from "lucide-react";
+import { ArrowLeft, ShoppingBag, BookOpen, Package, Briefcase, ChevronDown, Clock, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { formatPrice, type LandingProduct, type LandingService } from "@/components/landing/ProductsSection";
 import { ItemCTA } from "@/components/landing/CheckoutDialog";
+
+// Rótulos dos chips de filtro por tipo (só aparecem os tipos que existirem).
+const TYPE_FILTER_LABELS: Record<string, string> = {
+  all: "Tudo", service: "Sessões", ebook: "E-books", physical: "Produtos", other: "Outros",
+};
 
 // Mesmo esquema de tematização da ArticlesListPage, para as duas páginas de lista combinarem.
 function hexToHSL(hex: string): string | null {
@@ -100,7 +106,7 @@ function ItemCard({ item, whatsapp, professionalName }: { item: Unified; whatsap
         </div>
         <div className="mt-3">
           <ItemCTA
-            item={{ isProduct, id: item.data.id, title, price, kind, externalUrl }}
+            item={{ isProduct, id: item.data.id, title, price, kind, externalUrl, serviceMode: item.type === "service" ? item.data.checkout_mode : undefined }}
             whatsapp={whatsapp}
             professionalName={professionalName}
           />
@@ -147,7 +153,7 @@ export default function ProductsListPage() {
     queryFn: async () => {
       const { data } = await (supabase as any)
         .from("professional_services")
-        .select("id, name, description, price_brl:price, duration_minutes, cover_image_url, active")
+        .select("id, name, description, price_brl:price, duration_minutes, cover_image_url, checkout_mode, active")
         .eq("professional_id", professional!.id)
         .eq("active", true);
       return data ?? [];
@@ -160,6 +166,27 @@ export default function ProductsListPage() {
     ...(services as LandingService[]).map((s) => ({ type: "service" as const, id: `s_${s.id}`, data: s })),
     ...(products as LandingProduct[]).map((p) => ({ type: "product" as const, id: `p_${p.id}`, data: p })),
   ], [products, services]);
+
+  // Busca + filtro por tipo. A barra só aparece quando há itens suficientes p/ valer a pena
+  // (profissional com 1 produto não vê nada disso); com muitos itens, vira fácil de navegar.
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const typeOf = (it: Unified) => (it.type === "service" ? "service" : it.data.kind);
+  const presentTypes = useMemo(() => {
+    const s = new Set<string>();
+    items.forEach((it) => s.add(typeOf(it)));
+    return s;
+  }, [items]);
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return items.filter((it) => {
+      if (typeFilter !== "all" && typeOf(it) !== typeFilter) return false;
+      if (!q) return true;
+      const title = it.type === "service" ? it.data.name : it.data.title;
+      return `${title} ${it.data.description ?? ""}`.toLowerCase().includes(q);
+    });
+  }, [items, search, typeFilter]);
+  const showToolbar = items.length >= 4;
 
   const customStyles = useMemo(() => {
     if (!professional) return undefined;
@@ -250,11 +277,53 @@ export default function ProductsListPage() {
             <p className="text-muted-foreground">Nenhum produto ou serviço disponível ainda.</p>
           </div>
         ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {items.map((item) => (
-              <ItemCard key={item.id} item={item} whatsapp={whatsapp} professionalName={name} />
-            ))}
-          </div>
+          <>
+            {showToolbar && (
+              <div className="mb-8 space-y-4">
+                <div className="relative max-w-md">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Buscar..."
+                    className="pl-9"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {["all", "service", "ebook", "physical", "other"]
+                    .filter((t) => t === "all" || presentTypes.has(t))
+                    .map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setTypeFilter(t)}
+                        className={`text-sm font-medium px-3.5 py-1.5 rounded-full border transition-colors ${
+                          typeFilter === t
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border text-muted-foreground hover:border-primary/40"
+                        }`}
+                      >
+                        {TYPE_FILTER_LABELS[t]}
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {filtered.length === 0 ? (
+              <p className="text-center text-muted-foreground py-16">Nada encontrado para esse filtro.</p>
+            ) : filtered.length === 1 ? (
+              <div className="max-w-sm mx-auto">
+                <ItemCard item={filtered[0]} whatsapp={whatsapp} professionalName={name} />
+              </div>
+            ) : (
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filtered.map((item) => (
+                  <ItemCard key={item.id} item={item} whatsapp={whatsapp} professionalName={name} />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </main>
 

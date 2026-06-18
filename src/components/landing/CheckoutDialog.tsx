@@ -17,6 +17,8 @@ export interface CTAItem {
   price: number | null;
   kind: LandingProduct["kind"];
   externalUrl: string | null;
+  // Só p/ sessões: como o profissional permite contratar (Agendar / Pagar / ambos).
+  serviceMode?: "schedule" | "pay" | "both" | null;
 }
 
 // Extrai a mensagem de erro real da edge (invoke esconde o corpo em respostas não-2xx).
@@ -32,15 +34,16 @@ async function readEdgeError(error: unknown, data: any): Promise<string | undefi
 // Diálogo de compra: coleta os dados do comprador (não-logado), cria a cobrança no Asaas
 // (com split p/ o profissional) e redireciona para a página de pagamento PIX/cartão.
 function CheckoutDialog({
-  open, onOpenChange, product, professionalName,
+  open, onOpenChange, product, professionalName, itemType = "product",
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   product: { id: string; title: string; price: number; kind: LandingProduct["kind"] };
   professionalName?: string;
+  itemType?: "product" | "service";
 }) {
-  const isPhysical = product.kind === "physical";
-  const isDigital = product.kind === "ebook";
+  const isPhysical = itemType === "product" && product.kind === "physical";
+  const isDigital = itemType === "product" && product.kind === "ebook";
   const [loading, setLoading] = useState(false);
   const [method, setMethod] = useState<"pix" | "credit">("pix");
   const [f, setF] = useState({
@@ -65,7 +68,7 @@ function CheckoutDialog({
     setLoading(true);
     const { data, error } = await supabase.functions.invoke("asaas-create-charge", {
       body: {
-        item_type: "product",
+        item_type: itemType,
         item_id: product.id,
         payment_method: method,
         buyer: {
@@ -202,8 +205,8 @@ function CheckoutDialog({
 }
 
 // CTA unificado usado nos cards da landing e da vitrine.
-// Sessão -> "Agendar" (WhatsApp). Produto com preço -> checkout integrado (Asaas).
-// Produto sem preço -> link externo ("Comprar") ou WhatsApp ("Tenho interesse").
+// Sessão -> Agendar / Pagar / ambos (escolha do profissional, item.serviceMode).
+// Produto com preço -> checkout integrado (Asaas). Produto sem preço -> link externo / WhatsApp.
 export function ItemCTA({
   item, whatsapp, professionalName, size = "sm",
 }: {
@@ -215,15 +218,36 @@ export function ItemCTA({
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const hasPrice = item.price != null && item.price > 0;
 
-  // Sessão de terapia
+  // Sessão de terapia: modos Agendar / Pagar / ambos (degrada p/ Agendar se 'pay/both' sem preço).
   if (!item.isProduct) {
-    if (!whatsapp) return null;
+    const mode = item.serviceMode ?? "schedule";
+    const showPay = hasPrice && (mode === "pay" || mode === "both");
+    const showSchedule = !!whatsapp && (mode !== "pay" || !showPay);
+    if (!showPay && !showSchedule) return null;
     return (
-      <Button asChild className="w-full gap-2" size={size}>
-        <a href={buildWhatsAppLink(whatsapp, `Olá! Quero agendar uma sessão de "${item.title}".`)} target="_blank" rel="noopener noreferrer">
-          <Calendar className="h-4 w-4" /> Agendar
-        </a>
-      </Button>
+      <div className="flex flex-col gap-2">
+        {showSchedule && (
+          <Button asChild className="w-full gap-2" size={size}>
+            <a href={buildWhatsAppLink(whatsapp!, `Olá! Quero agendar uma sessão de "${item.title}".`)} target="_blank" rel="noopener noreferrer">
+              <Calendar className="h-4 w-4" /> Agendar
+            </a>
+          </Button>
+        )}
+        {showPay && (
+          <Button className="w-full gap-2" size={size} onClick={() => setCheckoutOpen(true)}>
+            <ShoppingCart className="h-4 w-4" /> Pagar
+          </Button>
+        )}
+        {showPay && (
+          <CheckoutDialog
+            open={checkoutOpen}
+            onOpenChange={setCheckoutOpen}
+            product={{ id: item.id, title: item.title, price: item.price as number, kind: item.kind }}
+            professionalName={professionalName}
+            itemType="service"
+          />
+        )}
+      </div>
     );
   }
 

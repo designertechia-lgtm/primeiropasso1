@@ -25,6 +25,8 @@ export interface LandingService {
   price_brl: number | null;
   duration_minutes: number | null;
   cover_image_url: string | null;
+  // Como o cliente contrata: 'schedule' (Agendar), 'pay' (Pagar online), 'both' (os dois).
+  checkout_mode?: "schedule" | "pay" | "both" | null;
 }
 
 interface ProductsSectionProps {
@@ -130,7 +132,7 @@ function ItemCard({ item, whatsapp, professionalName }: { item: Unified; whatsap
           )}
         </div>
         <ItemCTA
-          item={{ isProduct, id: item.data.id, title, price, kind, externalUrl }}
+          item={{ isProduct, id: item.data.id, title, price, kind, externalUrl, serviceMode: item.type === "service" ? item.data.checkout_mode : undefined }}
           whatsapp={whatsapp}
           professionalName={professionalName}
         />

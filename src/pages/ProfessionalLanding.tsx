@@ -105,7 +105,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     queryFn: async () => {
       const { data } = await supabase
         .from("professional_services")
-        .select("id, name, description, price_brl:price, duration_minutes, cover_image_url, active")
+        .select("id, name, description, price_brl:price, duration_minutes, cover_image_url, checkout_mode, active")
         .eq("professional_id", professional!.id)
         .eq("active", true);
       return data ?? [];

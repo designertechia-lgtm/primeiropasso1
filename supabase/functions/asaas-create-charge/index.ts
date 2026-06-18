@@ -72,9 +72,11 @@ Deno.serve(async (req) => {
     return json({ error: cust.data?.errors?.[0]?.description ?? "Erro ao registrar o comprador", asaas: cust.data }, 400);
   }
 
-  // 4. Pedido (status pending)
+  // 4. Pedido (status pending). O delivery_token já nasce aqui p/ montar a URL de retorno
+  // (página /pedido/:token) e a entrega do PDF assim que o pagamento confirmar.
   const platformFee = money(price * PLATFORM_FEE_PCT);
   const sellerAmount = money(price * (1 - PLATFORM_FEE_PCT));
+  const deliveryToken = crypto.randomUUID();
   const { data: order, error: oerr } = await admin.from("product_orders").insert({
     professional_id: professionalId,
     item_type,
@@ -88,10 +90,13 @@ Deno.serve(async (req) => {
     buyer_phone: buyer.phone ?? null,
     shipping_address: shipping_address ?? null,
     status: "pending",
+    delivery_token: deliveryToken,
   }).select("id").single();
   if (oerr || !order) return json({ error: "Erro ao criar pedido: " + (oerr?.message ?? "") }, 500);
 
-  // 5. Cobrança com split (PIX ou cartão na página do Asaas)
+  // 5. Cobrança com split (PIX ou cartão na página do Asaas).
+  // Após pagar, o Asaas devolve o comprador para a página de acompanhamento/entrega do pedido.
+  const origin = req.headers.get("origin") || Deno.env.get("PUBLIC_SITE_URL") || "";
   const today = new Date().toISOString().slice(0, 10);
   const pay = await asaas("/payments", "POST", apiKey, {
     customer: cust.data.id,
@@ -101,6 +106,7 @@ Deno.serve(async (req) => {
     description: title,
     externalReference: order.id,
     split: [{ walletId: pro.asaas_wallet_id, fixedValue: sellerAmount }],
+    ...(origin ? { callback: { successUrl: `${origin}/pedido/${deliveryToken}`, autoRedirect: true } } : {}),
   });
   if (!pay.ok || !pay.data?.id) {
     await admin.from("product_orders").update({ status: "failed" }).eq("id", order.id);

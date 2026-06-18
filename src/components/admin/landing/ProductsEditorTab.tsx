@@ -17,6 +17,7 @@ import { FieldHint } from "@/components/ui/FieldHint";
 import { formatPrice } from "@/components/landing/ProductsSection";
 import ServicesEditor from "@/components/admin/landing/ServicesEditor";
 import ReceivablesOnboarding from "@/components/admin/landing/ReceivablesOnboarding";
+import OrdersPanel from "@/components/admin/landing/OrdersPanel";
 
 type ProductKind = "ebook" | "physical" | "other";
 
@@ -218,6 +219,9 @@ export default function ProductsEditorTab() {
 
       {/* Ativação de recebimentos (subconta Asaas) — necessária para vender */}
       <ReceivablesOnboarding />
+
+      {/* Painel de vendas (pedidos do marketplace) */}
+      <OrdersPanel />
 
       {/* ── Textos da seção (editáveis) ── */}
       <div className="space-y-3">

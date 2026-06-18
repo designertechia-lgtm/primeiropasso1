@@ -14,6 +14,7 @@ import ProfessionalLanding from "./pages/ProfessionalLanding.tsx";
 import ArticlePage from "./pages/ArticlePage.tsx";
 import ArticlesListPage from "./pages/ArticlesListPage.tsx";
 import ProductsListPage from "./pages/ProductsListPage.tsx";
+import OrderStatusPage from "./pages/OrderStatusPage.tsx";
 import VideosListPage from "./pages/VideosListPage.tsx";
 import VideoPage from "./pages/VideoPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
@@ -116,6 +117,7 @@ const App = () => (
             <Route path="/admin-proprietario" element={<Navigate to="/admin-gerente" replace />} />
 
             {/* Dynamic professional landing page - MUST be last before catch-all */}
+            <Route path="/pedido/:token" element={<OrderStatusPage />} />
             <Route path="/:slug" element={<ProfessionalLanding />} />
             <Route path="/:slug/artigos" element={<ArticlesListPage />} />
             <Route path="/:slug/produtos" element={<ProductsListPage />} />

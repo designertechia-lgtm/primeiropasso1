@@ -11,6 +11,7 @@ import {
   Globe,
   KeyRound,
   BookOpen,
+  LayoutGrid,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import ReceitaTab from "@/components/admin-gerente/ReceitaTab";
@@ -23,6 +24,7 @@ import AcessoTab from "@/components/admin-gerente/AcessoTab";
 import LandingOficialTab from "@/components/admin-gerente/LandingOficialTab";
 import AssinaturasTab from "@/components/admin-gerente/AssinaturasTab";
 import ConhecimentoTab from "@/components/admin-gerente/ConhecimentoTab";
+import WorkspacesTab from "@/components/admin-gerente/WorkspacesTab";
 
 const VALID_TABS = [
   "overview",
@@ -35,16 +37,19 @@ const VALID_TABS = [
   "assinaturas",
   "landing-oficial",
   "conhecimento",
+  "workspaces",
 ] as const;
 type TabValue = (typeof VALID_TABS)[number];
 
 export default function AdminGerente() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { user } = useAuth();
+  const { user, isDeveloper } = useAuth();
   const tabParam = searchParams.get("tab");
-  const activeTab: TabValue = (VALID_TABS as readonly string[]).includes(tabParam ?? "")
-    ? (tabParam as TabValue)
-    : "overview";
+  const isValidTab =
+    (VALID_TABS as readonly string[]).includes(tabParam ?? "") &&
+    // a aba "workspaces" é exclusiva da conta de desenvolvedor
+    !(tabParam === "workspaces" && !isDeveloper);
+  const activeTab: TabValue = isValidTab ? (tabParam as TabValue) : "overview";
 
   const handleTabChange = (value: string) => {
     if (value === "overview") {
@@ -109,6 +114,12 @@ export default function AdminGerente() {
             <BookOpen className="h-4 w-4" />
             <span className="hidden sm:inline">Conhecimento</span>
           </TabsTrigger>
+          {isDeveloper && (
+            <TabsTrigger value="workspaces" className="gap-2">
+              <LayoutGrid className="h-4 w-4" />
+              <span className="hidden sm:inline">Workspaces</span>
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
@@ -150,6 +161,12 @@ export default function AdminGerente() {
         <TabsContent value="conhecimento" className="mt-6">
           <ConhecimentoTab />
         </TabsContent>
+
+        {isDeveloper && (
+          <TabsContent value="workspaces" className="mt-6">
+            <WorkspacesTab />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

@@ -558,3 +558,43 @@ export function useOwnerGrantCredits() {
     },
   });
 }
+
+// ── Fatia 6: Workspaces (snapshot de saúde por conta — aba do desenvolvedor) ──
+
+export interface WorkspaceDetail {
+  professional_id: string;
+  full_name: string | null;
+  email: string | null;
+  slug: string | null;
+  whatsapp: string | null;
+  photo_url: string | null;
+  created_at: string | null;
+  // checklist de onboarding
+  has_profile: boolean;
+  has_slug: boolean;
+  landing_published: boolean;
+  whatsapp_connected: boolean;
+  has_availability: boolean;
+  has_services: boolean;
+  // contadores de uso
+  posts_count: number;
+  leads_count: number;
+  appointments_count: number;
+  messages_count: number;
+  credit_balance: number;
+}
+
+export function useOwnerWorkspaceDetail(professionalId: string | null) {
+  return useQuery({
+    queryKey: ["owner-workspace-detail", professionalId],
+    enabled: !!professionalId,
+    queryFn: async (): Promise<WorkspaceDetail> => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc("owner_workspace_detail", {
+        p_professional_id: professionalId,
+      });
+      if (error) throw error;
+      return data as WorkspaceDetail;
+    },
+  });
+}

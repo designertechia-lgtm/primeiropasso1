@@ -4,6 +4,8 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
+import { ImpersonationProvider } from "@/hooks/useImpersonation";
+import ImpersonationExitButton from "@/components/ImpersonationExitButton";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import OwnerRoute from "@/components/OwnerRoute";
 import Index from "./pages/Index.tsx";
@@ -76,8 +78,10 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
+          <ImpersonationProvider>
           <FaviconUpdater />
           <AppAnnouncements />
+          <ImpersonationExitButton />
           <RouteErrorBoundary>
           <Routes>
             <Route path="/" element={<Index />} />
@@ -127,6 +131,7 @@ const App = () => (
             <Route path="*" element={<NotFound />} />
           </Routes>
           </RouteErrorBoundary>
+          </ImpersonationProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

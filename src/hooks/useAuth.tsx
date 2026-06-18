@@ -5,6 +5,11 @@ import type { Database } from "@/integrations/supabase/types";
 
 type AppRole = Database["public"]["Enums"]["app_role"];
 
+// Contas de desenvolvedor (dono técnico) que enxergam ferramentas de manutenção
+// exclusivas, como a aba "Workspaces". Diferente de isOwner/super-admin: outros
+// super-admins (ex.: a Daiane) NÃO entram aqui.
+const DEVELOPER_EMAILS = ["designertech.ia@gmail.com"];
+
 interface AuthContextType {
   session: Session | null;
   user: User | null;
@@ -14,12 +19,13 @@ interface AuthContextType {
   isProfessional: boolean;
   isPatient: boolean;
   isOwner: boolean;
+  isDeveloper: boolean;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const AUTH_INIT_TIMEOUT_MS = 4000;
+const AUTH_INIT_TIMEOUT_MS = 10000;
 
 function clearSupabaseStorage() {
   try {
@@ -61,17 +67,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(false);
     };
 
-    // Safety net: se nada resolver em 4s (token corrompido travando refresh),
-    // libera a UI como deslogada e limpa storage para o próximo carregamento.
+    // Backstop NÃO-destrutivo: se a inicialização demora (máquina/rede lenta
+    // carregando perfil+papéis+RPC), apenas libera a UI — NUNCA derruba uma
+    // sessão válida nem limpa o storage. Init lento não pode deslogar o usuário
+    // a cada refresh. Corrupção REAL é tratada no erro do getSession e no
+    // TOKEN_REFRESHED nulo (refresh falhou de verdade).
     const safetyTimer = window.setTimeout(() => {
       if (initResolved || !mounted) return;
-      console.warn("[Auth] init timeout — clearing supabase storage and continuing as anonymous");
-      clearSupabaseStorage();
-      setSession(null);
-      setUser(null);
-      setProfile(null);
-      setRoles([]);
-      setIsOwner(false);
+      console.warn("[Auth] init demorou — liberando a UI sem derrubar a sessão");
       resolveInit();
     }, AUTH_INIT_TIMEOUT_MS);
 
@@ -168,6 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isProfessional: roles.includes("professional"),
         isPatient: roles.includes("patient"),
         isOwner,
+        isDeveloper: !!user?.email && DEVELOPER_EMAILS.includes(user.email.toLowerCase()),
         signOut,
       }}
     >

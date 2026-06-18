@@ -255,19 +255,15 @@ export default function ProductsListPage() {
         </div>
       </header>
 
-      {/* Hero */}
+      {/* Hero compacto: só o título "Produtos e Serviços" (ou o título personalizado). */}
       <div className="bg-primary/5 border-b">
-        <div className="container mx-auto px-4 py-12 md:py-16">
-          <div className="flex items-center gap-3 mb-3">
-            <ShoppingBag className="h-6 w-6 text-primary" />
-            <span className="text-sm font-medium text-primary uppercase tracking-widest">Produtos e Serviços</span>
+        <div className="container mx-auto px-4 py-6 md:py-7">
+          <div className="flex items-center gap-2.5">
+            <ShoppingBag className="h-5 w-5 text-primary shrink-0" />
+            <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">
+              {(professional as any).products_title?.trim() || "Produtos e Serviços"}
+            </h1>
           </div>
-          <h1 className="font-serif text-3xl md:text-5xl font-bold text-foreground mb-3">
-            {(professional as any).products_title?.trim() || `Tudo o que ${name} oferece`}
-          </h1>
-          <p className="text-muted-foreground text-lg max-w-xl">
-            {(professional as any).products_subtitle?.trim() || "Sessões de terapia, e-books e materiais para apoiar a sua jornada."}
-          </p>
         </div>
       </div>
 

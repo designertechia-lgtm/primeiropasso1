@@ -25,7 +25,8 @@ export const FONT_SIZES = [
   { value: "xl", label: "Maior",   scale: "1.2" },
 ] as const;
 
-// Carrega as 8 fontes que NÃO vêm no index.html (lá só há Lora + Roboto).
+// Carrega as fontes das landings (inclui Roboto e Lora). O index.html global agora tem só
+// Lora + Plus Jakarta Sans (fonte da plataforma/admin); a landing é autossuficiente aqui.
 // Precisa ser injetado tanto no preview do editor quanto na página pública,
 // senão a fonte escolhida cai no fallback do sistema.
 export const GOOGLE_FONTS_URL =

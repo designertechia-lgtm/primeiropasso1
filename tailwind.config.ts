@@ -6,11 +6,11 @@ export default {
   prefix: "",
   theme: {
     fontFamily: {
-      sans: ['Roboto', 'system-ui', 'sans-serif'],
+      sans: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
       serif: ['Lora', 'Georgia', 'serif'],
-      // Fonte dos títulos da landing: respeita a escolha do profissional (--font-heading),
-      // setada pelo helper buildLandingVars. Fora da landing cai no fallback Lora.
-      heading: ['var(--font-heading)', 'Lora', 'Georgia', 'serif'],
+      // Títulos da landing: respeitam a escolha do profissional (--font-heading, via buildLandingVars).
+      // Fora da landing, --font-heading cai no padrão da plataforma (Plus Jakarta Sans, ver index.css).
+      heading: ['var(--font-heading)', 'Plus Jakarta Sans', 'system-ui', 'sans-serif'],
     },
     container: {
       center: true,

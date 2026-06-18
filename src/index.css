@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&family=Roboto:wght@300;400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,8 +6,10 @@
 
 @layer base {
   :root {
-    --font-heading: 'Lora', Georgia, serif;
-    --font-body: 'Roboto', system-ui, sans-serif;
+    /* Fonte padrão da plataforma (admin/painéis): Plus Jakarta Sans.
+       A landing sobrescreve estes vars no próprio container (buildLandingVars). */
+    --font-heading: 'Plus Jakarta Sans', system-ui, sans-serif;
+    --font-body: 'Plus Jakarta Sans', system-ui, sans-serif;
     --background: 184 86% 96%;
     --foreground: 190 64% 26%;
     --card: 0 0% 100%;

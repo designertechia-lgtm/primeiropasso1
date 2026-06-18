@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BookOpen, Package, Briefcase, ShoppingBag, MessageCircle, ExternalLink, ArrowRight, ChevronDown, Clock, Calendar } from "lucide-react";
-import { buildWhatsAppLink } from "@/lib/utils";
+import { BookOpen, Package, Briefcase, ShoppingBag, ArrowRight, ChevronDown, Clock } from "lucide-react";
+import { ItemCTA } from "@/components/landing/CheckoutDialog";
 
 // Item de produto cadastrado pelo profissional (tabela professional_products).
 export interface LandingProduct {
@@ -32,6 +32,7 @@ interface ProductsSectionProps {
   services: LandingService[];
   slug?: string;
   whatsapp?: string | null;
+  professionalName?: string;
   // Textos editáveis da seção (professionals.products_title/subtitle); vazio usa o padrão.
   title?: string;
   subtitle?: string;
@@ -68,7 +69,7 @@ function unify(products: LandingProduct[], services: LandingService[]): Unified[
   ];
 }
 
-function ItemCard({ item, whatsapp }: { item: Unified; whatsapp?: string | null }) {
+function ItemCard({ item, whatsapp, professionalName }: { item: Unified; whatsapp?: string | null; professionalName?: string }) {
   const [expanded, setExpanded] = useState(false);
   const isProduct = item.type === "product";
   const title = isProduct ? item.data.title : item.data.name;
@@ -81,18 +82,6 @@ function ItemCard({ item, whatsapp }: { item: Unified; whatsapp?: string | null 
   const Icon = meta.icon;
   const externalUrl = isProduct ? item.data.external_url : null;
   const durationMin = !isProduct ? item.data.duration_minutes : null;
-
-  // Sessão de terapia: CTA "Agendar". Produto: link externo ("Comprar") ou WhatsApp ("Tenho interesse").
-  // Fase 1: sem checkout integrado — tudo passa pelo WhatsApp do profissional.
-  const cta = !isProduct
-    ? whatsapp
-      ? { href: buildWhatsAppLink(whatsapp, `Olá! Quero agendar uma sessão de "${title}".`), label: "Agendar", icon: Calendar }
-      : null
-    : externalUrl
-      ? { href: externalUrl, label: "Comprar", icon: ExternalLink }
-      : whatsapp
-        ? { href: buildWhatsAppLink(whatsapp, `Olá! Tenho interesse em "${title}". Pode me passar mais informações?`), label: "Tenho interesse", icon: MessageCircle }
-        : null;
 
   return (
     <Card className="overflow-hidden transition-shadow flex flex-col hover:shadow-md">
@@ -140,19 +129,17 @@ function ItemCard({ item, whatsapp }: { item: Unified; whatsapp?: string | null 
             </span>
           )}
         </div>
-        {cta && (
-          <Button asChild className="w-full gap-2" size="sm">
-            <a href={cta.href} target="_blank" rel="noopener noreferrer">
-              <cta.icon className="h-4 w-4" /> {cta.label}
-            </a>
-          </Button>
-        )}
+        <ItemCTA
+          item={{ isProduct, id: item.data.id, title, price, kind, externalUrl }}
+          whatsapp={whatsapp}
+          professionalName={professionalName}
+        />
       </CardContent>
     </Card>
   );
 }
 
-export default function ProductsSection({ products, services, slug, whatsapp, title, subtitle, limit = 3 }: ProductsSectionProps) {
+export default function ProductsSection({ products, services, slug, whatsapp, professionalName, title, subtitle, limit = 3 }: ProductsSectionProps) {
   const items = unify(products, services);
   if (items.length === 0) return null;
 
@@ -172,7 +159,7 @@ export default function ProductsSection({ products, services, slug, whatsapp, ti
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {visible.map((item) => (
-          <ItemCard key={item.id} item={item} whatsapp={whatsapp} />
+          <ItemCard key={item.id} item={item} whatsapp={whatsapp} professionalName={professionalName} />
         ))}
       </div>
 

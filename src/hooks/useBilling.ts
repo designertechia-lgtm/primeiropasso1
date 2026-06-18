@@ -138,30 +138,96 @@ export function useMyPayments() {
   });
 }
 
+export type PixPaymentResponse =
+  | {
+      provider: "manual";
+      payment_id: string;
+      amount_brl: number;
+      kind: string;
+      expires_at: string;
+      pix: {
+        pix_key: string;
+        pix_key_type: string;
+        beneficiary_name: string;
+        bank_name: string;
+        instructions: string | null;
+      } | null;
+    }
+  | {
+      provider: "asaas";
+      payment_id: string;
+      amount_brl: number;
+      kind: string;
+      expires_at: string;
+      invoiceUrl: string;
+    };
+
 export function useCreatePixPayment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (params: { kind: "subscription_renewal" | "credit_pack"; reference_id?: string }) => {
+    mutationFn: async (params: {
+      kind: "subscription_renewal" | "credit_pack";
+      reference_id?: string;
+      provider?: "manual" | "asaas";
+      cpfCnpj?: string;
+      name?: string;
+      phone?: string;
+    }) => {
       const { data, error } = await supabase.functions.invoke("create-pix-payment", {
         body: params,
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
+      return data as PixPaymentResponse;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["my-payments"] });
+    },
+  });
+}
+
+// Assinatura recorrente via Asaas (cartão = débito automático; PIX/boleto = cobrança mensal manual).
+export type SubscribeParams = {
+  billing_type: "CREDIT_CARD" | "PIX" | "BOLETO";
+  cpfCnpj: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  creditCard?: {
+    holderName: string;
+    number: string;
+    expiryMonth: string;
+    expiryYear: string;
+    ccv: string;
+  };
+  holderInfo?: {
+    name?: string;
+    email?: string;
+    cpfCnpj?: string;
+    postalCode: string;
+    addressNumber: string;
+    phone?: string;
+  };
+};
+
+export function useSubscribeAsaas() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (params: SubscribeParams) => {
+      const { data, error } = await supabase.functions.invoke("asaas-subscribe", { body: params });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
       return data as {
-        payment_id: string;
-        amount_brl: number;
-        kind: string;
-        expires_at: string;
-        pix: {
-          pix_key: string;
-          pix_key_type: string;
-          beneficiary_name: string;
-          bank_name: string;
-          instructions: string | null;
-        } | null;
+        ok: boolean;
+        subscriptionId: string;
+        billingType: string;
+        invoiceUrl: string | null;
+        card: { last4: string; brand: string } | null;
+        already?: boolean;
       };
     },
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["subscription"] });
       qc.invalidateQueries({ queryKey: ["my-payments"] });
     },
   });

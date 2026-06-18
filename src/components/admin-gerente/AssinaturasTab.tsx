@@ -17,13 +17,21 @@ import {
   useOwnerCancelSubscription,
   useOwnerGrantCredits,
   useOwnerDeleteProfessional,
+  useOwnerSetBillingExempt,
   type OwnerUserRow,
 } from "@/hooks/useOwnerStats";
 import { useCreditBalance } from "@/hooks/useBilling";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+
+const PAYMENT_METHOD_SHORT: Record<string, string> = {
+  credit_card: "Cartão",
+  pix: "PIX",
+  boleto: "Boleto",
+};
 import {
   Dialog,
   DialogContent,
@@ -365,6 +373,7 @@ function DeleteProfessionalDialog({
 export default function AssinaturasTab() {
   const { data, isLoading } = useOwnerListAllUsers();
   const cancel = useOwnerCancelSubscription();
+  const setExempt = useOwnerSetBillingExempt();
   const [search, setSearch] = useState("");
   const [grantUser, setGrantUser] = useState<OwnerUserRow | null>(null);
   const [creditUser, setCreditUser] = useState<OwnerUserRow | null>(null);
@@ -390,6 +399,19 @@ export default function AssinaturasTab() {
       else toast.info("Nenhuma assinatura ativa para cancelar");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao cancelar");
+    }
+  };
+
+  const handleToggleExempt = async (u: OwnerUserRow, next: boolean) => {
+    try {
+      await setExempt.mutateAsync({ professional_id: u.professional_id, exempt: next });
+      toast.success(
+        next
+          ? `${u.full_name ?? u.email} agora está em cortesia (isento de cobrança)`
+          : `Cobrança reativada para ${u.full_name ?? u.email}`,
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao alterar cobrança");
     }
   };
 
@@ -423,6 +445,7 @@ export default function AssinaturasTab() {
               <Users className="h-4 w-4 text-primary" /> Profissionais cadastrados
             </CardTitle>
             <CardDescription>
+              Coluna <strong>Cobrança</strong>: ligue para isentar (cortesia) — desligado, a mensalidade é cobrada.
               🎁 libera X dias de assinatura sem PIX. 💰 adiciona créditos de vídeo. ❌ cancela. 🗑️ apaga a conta.
             </CardDescription>
           </div>
@@ -453,6 +476,7 @@ export default function AssinaturasTab() {
                     <TableHead>Profissional</TableHead>
                     <TableHead>Slug</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Cobrança</TableHead>
                     <TableHead className="text-right">R$/mês</TableHead>
                     <TableHead>Vence em</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
@@ -481,6 +505,25 @@ export default function AssinaturasTab() {
                             >
                               <RefreshCw className="h-2.5 w-2.5" /> Auto
                             </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={u.billing_exempt}
+                            disabled={setExempt.isPending}
+                            onCheckedChange={(v) => handleToggleExempt(u, v)}
+                            title="Cortesia: isenta este profissional da cobrança"
+                          />
+                          {u.billing_exempt ? (
+                            <span className="text-xs text-blue-600 dark:text-blue-400">Cortesia</span>
+                          ) : u.payment_method ? (
+                            <Badge variant="outline" className="text-[10px]">
+                              {PAYMENT_METHOD_SHORT[u.payment_method] ?? u.payment_method}
+                            </Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">Cobrando</span>
                           )}
                         </div>
                       </TableCell>

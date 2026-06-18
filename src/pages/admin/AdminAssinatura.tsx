@@ -40,9 +40,18 @@ import {
   useSetMyAutoRenew,
 } from "@/hooks/useBilling";
 import { PixCheckoutModal } from "@/components/dashboard/PixCheckoutModal";
+import { AsaasSubscribeDialog } from "@/components/dashboard/AsaasSubscribeDialog";
+import { CreditCheckoutDialog } from "@/components/dashboard/CreditCheckoutDialog";
+import { useProfessional } from "@/hooks/useProfessional";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+
+const PAYMENT_METHOD_LABEL: Record<string, string> = {
+  credit_card: "Cartão de crédito",
+  pix: "PIX",
+  boleto: "Boleto",
+};
 
 /* ── helpers ─────────────────────────────────────────── */
 
@@ -86,16 +95,26 @@ export default function AdminAssinatura() {
   const { data: pricing, isLoading: loadingPricing } = useServicePricing();
   const { data: packs, isLoading: loadingPacks } = useCreditPacks();
 
+  const { data: professional } = useProfessional();
+
   const [pixOpen, setPixOpen] = useState(false);
   const [pixKind, setPixKind] = useState<"subscription_renewal" | "credit_pack">("subscription_renewal");
   const [pixRef, setPixRef] = useState<string | undefined>(undefined);
   const [pixLabel, setPixLabel] = useState("");
   const [pixAmount, setPixAmount] = useState("");
+  const [subscribeOpen, setSubscribeOpen] = useState(false);
+  const [creditPack, setCreditPack] = useState<any | null>(null);
 
   const status = subscriptionStatus(sub);
   const StatusIcon = status.icon;
 
-  const openRenew = () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const billingExempt = !!(professional as any)?.billing_exempt;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const s = sub as any;
+  const hasAsaasSub = !!s?.asaas_subscription_id;
+
+  const openRenewManual = () => {
     setPixKind("subscription_renewal");
     setPixRef(undefined);
     setPixLabel("Renovação da mensalidade");
@@ -103,7 +122,10 @@ export default function AdminAssinatura() {
     setPixOpen(true);
   };
 
-  const openPack = (pack: any) => {
+  // Abre o checkout Asaas do pacote; o fallback manual reabre o PixCheckoutModal.
+  const openPack = (pack: any) => setCreditPack(pack);
+
+  const openPackManual = (pack: any) => {
     setPixKind("credit_pack");
     setPixRef(pack.id);
     setPixLabel(`Recarga de créditos — ${pack.name}`);
@@ -159,12 +181,56 @@ export default function AdminAssinatura() {
               </span>
             </p>
           )}
-          <Button onClick={openRenew} className="gap-2">
-            <RefreshCw className="h-4 w-4" />
-            Renovar agora via PIX
-          </Button>
 
-          <AutoRenewSection autoRenew={!!sub?.auto_renew} />
+          {billingExempt ? (
+            <div className="flex items-start gap-3 rounded-lg border bg-blue-50/60 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900 p-3">
+              <Sparkles className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">Cortesia ativa</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Sua conta está isenta de cobrança. Aproveite a plataforma sem mensalidade.
+                </p>
+              </div>
+            </div>
+          ) : hasAsaasSub ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-3 text-sm">
+                <CreditCard className="h-4 w-4 text-primary shrink-0" />
+                <span>
+                  Forma de pagamento:{" "}
+                  <span className="font-medium text-foreground">
+                    {PAYMENT_METHOD_LABEL[s?.payment_method] ?? "Configurada"}
+                    {s?.payment_method === "credit_card" && s?.card_last4 ? ` •••• ${s.card_last4}` : ""}
+                  </span>
+                </span>
+              </div>
+              {s?.payment_method === "credit_card" ? (
+                <p className="text-xs text-muted-foreground">
+                  A mensalidade é debitada automaticamente todo mês.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Você recebe a cobrança mensal por {PAYMENT_METHOD_LABEL[s?.payment_method] ?? "PIX/boleto"} e paga a cada ciclo.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Button onClick={() => setSubscribeOpen(true)} className="gap-2">
+                <CreditCard className="h-4 w-4" />
+                Adicionar forma de pagamento
+              </Button>
+              <button
+                type="button"
+                onClick={openRenewManual}
+                className="block text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Prefiro renovar via PIX manual (enviar comprovante)
+              </button>
+            </div>
+          )}
+
+          {!billingExempt && <AutoRenewSection autoRenew={!!sub?.auto_renew} />}
         </CardContent>
       </Card>
 
@@ -417,7 +483,18 @@ export default function AdminAssinatura() {
         </CardContent>
       </Card>
 
-      {/* PIX Modal */}
+      {/* Assinatura recorrente via Asaas (cartão/PIX/boleto) */}
+      <AsaasSubscribeDialog open={subscribeOpen} onOpenChange={setSubscribeOpen} />
+
+      {/* Checkout de créditos via Asaas (com fallback PIX manual) */}
+      <CreditCheckoutDialog
+        open={!!creditPack}
+        onOpenChange={(v) => !v && setCreditPack(null)}
+        pack={creditPack}
+        onManualFallback={() => { if (creditPack) openPackManual(creditPack); }}
+      />
+
+      {/* PIX Modal (fallback manual) */}
       <PixCheckoutModal
         open={pixOpen}
         onOpenChange={setPixOpen}

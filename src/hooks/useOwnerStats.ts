@@ -430,6 +430,8 @@ export interface OwnerUserRow {
   cancelled_at: string | null;
   days_until_expiry: number | null;
   auto_renew: boolean;
+  billing_exempt: boolean;
+  payment_method: string | null;
 }
 
 export function useOwnerListAllUsers() {
@@ -509,6 +511,24 @@ export function useOwnerDeleteProfessional() {
       qc.invalidateQueries({ queryKey: ["owner-list-all-users"] });
       qc.invalidateQueries({ queryKey: ["owner-mrr"] });
       qc.invalidateQueries({ queryKey: ["owner-sub-status"] });
+    },
+  });
+}
+
+export function useOwnerSetBillingExempt() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { professional_id: string; exempt: boolean }) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc("owner_set_billing_exempt", {
+        p_professional_id: args.professional_id,
+        p_exempt: args.exempt,
+      });
+      if (error) throw error;
+      return data as boolean;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["owner-list-all-users"] });
     },
   });
 }

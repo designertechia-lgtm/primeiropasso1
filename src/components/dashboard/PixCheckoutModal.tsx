@@ -91,8 +91,8 @@ export function PixCheckoutModal({ open, onOpenChange, kind, referenceId, label,
     if (!open) return;
     if (payment || createPayment.isPending) return;
     createPayment
-      .mutateAsync({ kind, reference_id: referenceId })
-      .then(setPayment)
+      .mutateAsync({ kind, reference_id: referenceId, provider: "manual" })
+      .then((d) => setPayment(d as PaymentData))
       .catch((e: unknown) => {
         toast.error(e instanceof Error ? e.message : "Erro ao criar pagamento");
         onOpenChange(false);

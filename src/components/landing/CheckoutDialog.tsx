@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { ShoppingCart, Calendar, ExternalLink, MessageCircle, Lock, Loader2 } from "lucide-react";
+import { ShoppingCart, Calendar, ExternalLink, MessageCircle, Lock, Loader2, QrCode, CreditCard } from "lucide-react";
 import { buildWhatsAppLink } from "@/lib/utils";
 import { formatPrice, type LandingProduct } from "@/components/landing/ProductsSection";
 
@@ -42,6 +42,7 @@ function CheckoutDialog({
   const isPhysical = product.kind === "physical";
   const isDigital = product.kind === "ebook";
   const [loading, setLoading] = useState(false);
+  const [method, setMethod] = useState<"pix" | "credit">("pix");
   const [f, setF] = useState({
     name: "", cpfCnpj: "", email: "", phone: "",
     postalCode: "", address: "", number: "", province: "", city: "", complement: "",
@@ -66,6 +67,7 @@ function CheckoutDialog({
       body: {
         item_type: "product",
         item_id: product.id,
+        payment_method: method,
         buyer: {
           name: f.name.trim(),
           cpfCnpj: f.cpfCnpj.replace(/\D/g, ""),
@@ -163,6 +165,28 @@ function CheckoutDialog({
               </div>
             </div>
           )}
+
+          <div className="space-y-1.5 border-t pt-3">
+            <Label>Como você quer pagar?</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { id: "pix", label: "PIX", hint: "na hora", icon: QrCode },
+                { id: "credit", label: "Cartão", hint: "crédito", icon: CreditCard },
+              ] as const).map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setMethod(m.id)}
+                  className={`flex items-center justify-center gap-2 rounded-xl border-2 py-2.5 text-sm font-medium transition-all ${
+                    method === m.id ? "border-primary bg-primary/5 text-foreground" : "border-border text-muted-foreground hover:border-primary/40"
+                  }`}
+                >
+                  <m.icon className="h-4 w-4 text-primary" /> {m.label}
+                  <span className="text-[10px] text-muted-foreground">{m.hint}</span>
+                </button>
+              ))}
+            </div>
+          </div>
 
           <Button onClick={submit} disabled={loading} className="w-full gap-2">
             {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Gerando pagamento...</> : <>Ir para o pagamento</>}

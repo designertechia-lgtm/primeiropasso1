@@ -1,7 +1,8 @@
 // Cria um pedido (product_orders) + cobrança no Asaas com split para o profissional.
-// Público (comprador não-logado). A cobrança é emitida pela conta-mãe (plataforma) e o split
-// manda 88% (1 - PLATFORM_FEE_PCT) para a carteira do profissional; o resto fica com a plataforma
-// (que absorve a taxa do Asaas). Retorna o invoiceUrl (página de pagamento PIX/cartão do Asaas).
+// Público (comprador não-logado). A cobrança é emitida pela conta-mãe (plataforma); o split
+// manda (preço − comissão) para a carteira do profissional e a plataforma fica com a comissão
+// (que cobre a taxa do Asaas com margem). A comissão depende do MÉTODO escolhido pelo comprador
+// no checkout (ver tabela COMMISSION). Retorna o invoiceUrl (página de pagamento do Asaas).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const cors = {
@@ -9,7 +10,6 @@ const cors = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 const ASAAS_BASE = Deno.env.get("ASAAS_BASE_URL") ?? "https://api-sandbox.asaas.com/v3";
-const PLATFORM_FEE_PCT = 0.12; // comissão da plataforma (ajustável). Profissional recebe (1 - fee).
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
@@ -26,6 +26,16 @@ async function asaas(path: string, method: string, apiKey: string, body?: unknow
 }
 const money = (n: number) => Math.round(n * 100) / 100;
 
+// Comissão da plataforma POR MÉTODO de pagamento (margem segura, cobre a taxa do Asaas).
+// PIX/Boleto = valor fixo em R$; Crédito/Débito = percentual do preço. PONTO CENTRAL: ajustar aqui.
+// (Tabela Asaas 17/06: PIX/Boleto R$1,99; débito R$0,35+1,89%; crédito R$0,49+2,99%→4,29%.)
+const COMMISSION: Record<string, { billingType: string; method: string; fee: (p: number) => number }> = {
+  pix:    { billingType: "PIX",         method: "pix",         fee: () => 4.0 },
+  boleto: { billingType: "BOLETO",      method: "boleto",      fee: () => 4.0 },
+  credit: { billingType: "CREDIT_CARD", method: "credit_card", fee: (p) => money(p * 0.08) },
+  debit:  { billingType: "DEBIT_CARD",  method: "debit_card",  fee: (p) => money(p * 0.05) },
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
@@ -38,6 +48,9 @@ Deno.serve(async (req) => {
   const { item_type, item_id, buyer, shipping_address } = body ?? {};
   if (!["product", "service"].includes(item_type) || !item_id) return json({ error: "Item inválido" }, 400);
   if (!buyer?.name || !buyer?.cpfCnpj) return json({ error: "Informe nome e CPF do comprador" }, 400);
+
+  // Método de pagamento escolhido no checkout (define billingType + comissão). Default: PIX.
+  const pm = COMMISSION[body?.payment_method as string] ?? COMMISSION.pix;
 
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -74,8 +87,9 @@ Deno.serve(async (req) => {
 
   // 4. Pedido (status pending). O delivery_token já nasce aqui p/ montar a URL de retorno
   // (página /pedido/:token) e a entrega do PDF assim que o pagamento confirmar.
-  const platformFee = money(price * PLATFORM_FEE_PCT);
-  const sellerAmount = money(price * (1 - PLATFORM_FEE_PCT));
+  const platformFee = pm.fee(price);                 // comissão da plataforma (por método)
+  const sellerAmount = money(price - platformFee);   // o que cai na carteira do profissional
+  if (sellerAmount <= 0) return json({ error: "Valor abaixo do mínimo para este método de pagamento." }, 400);
   const deliveryToken = crypto.randomUUID();
   const { data: order, error: oerr } = await admin.from("product_orders").insert({
     professional_id: professionalId,
@@ -90,6 +104,7 @@ Deno.serve(async (req) => {
     buyer_phone: buyer.phone ?? null,
     shipping_address: shipping_address ?? null,
     status: "pending",
+    payment_method: pm.method,
     delivery_token: deliveryToken,
   }).select("id").single();
   if (oerr || !order) return json({ error: "Erro ao criar pedido: " + (oerr?.message ?? "") }, 500);
@@ -100,7 +115,7 @@ Deno.serve(async (req) => {
   const today = new Date().toISOString().slice(0, 10);
   const pay = await asaas("/payments", "POST", apiKey, {
     customer: cust.data.id,
-    billingType: "UNDEFINED",
+    billingType: pm.billingType,
     value: price,
     dueDate: today,
     description: title,

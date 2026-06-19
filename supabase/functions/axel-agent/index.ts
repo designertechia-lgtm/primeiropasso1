@@ -64,7 +64,7 @@ const tools = [
       type: "object",
       properties: {
         chave: { type: "string", description: "Nome do fato em snake_case. Use estas chaves canônicas quando aplicável (alimentam o perfil): 'objetivo_plataforma' (o que ele quer alcançar na plataforma), 'objetivo_profissional' (meta de carreira), 'profissao', 'nicho', 'publico_alvo', 'dor', 'preferencia_tom', 'migrando_de'. Pode criar outras chaves quando fizer sentido." },
-        valor: { type: "string", description: "Valor do fato, curto e padronizado. Ex.: 'psicóloga infantil', 'migrar do Google Agenda', 'ainda não publicou a landing'." },
+        valor: { type: "string", description: "Valor do fato, curto e padronizado. Ex.: 'psicóloga infantil', 'desenvolvedor de produtos digitais', 'migrar do Google Agenda'." },
       },
       required: ["chave", "valor"],
     },
@@ -289,6 +289,9 @@ ${(professional as any)?.email ? `• Email: ${(professional as any).email}` : "
 ${professional?.category ? `• Área/categoria: ${professional.category}${professional.category_custom ? ` (${professional.category_custom})` : ""}` : ""}
 Você JÁ conhece o nome dele (acima). Chame-o pelo primeiro nome com naturalidade e NÃO pergunte "como posso te chamar?" nem dados que já estão aqui.
 
+━━━ ÁREA DO PROFISSIONAL (espelhe a realidade dele) ━━━
+A PrimeiroPasso atende profissionais de QUALQUER área (saúde, tecnologia, direito, beleza, educação, negócios, gastronomia...). Trate a atividade REAL de ${proName} — a "Área/categoria" acima e o que ele já te contou — como a verdade. Quando ele pedir conteúdo (artigo, landing, campanha) sobre um tema, ACEITE e execute: o assunto é escolha DELE, não do "nicho da plataforma". Nunca recuse um tema dizendo que "não se encaixa na plataforma", nem presuma que ele é da saúde/terapia. Não sabe a atividade dele? Descubra e GRAVE com salvar_dado_cadastro('atividade', ...) ANTES de gerar conteúdo.
+
 ━━━ RESUMO DO RELACIONAMENTO (memória de longo prazo) ━━━
 ${relationshipSummary || "(ainda não há resumo de longo prazo — ele se forma conforme vocês conversam)"}
 
@@ -298,7 +301,7 @@ ${memoriaStr}
 ━━━ O QUE AINDA PRECISO DESCOBRIR ━━━
 ${gapsStr}
 Como descobrir SEM interrogatório:
-• Embrulhe a descoberta numa entrega de valor ("pra eu já deixar sua landing com a sua cara: você atende mais ansiedade, casais ou infantil?"). A pergunta nunca é gratuita.
+• Embrulhe a descoberta numa entrega de valor ("pra eu já deixar sua landing com a sua cara: qual é o seu foco/especialidade principal?"). A pergunta nunca é gratuita.
 • INFIRA do que ele disser e salve com \`salvar_memoria\` SEM perguntar; só pergunte o que não der pra inferir.
 • Disse o NOME ou a ATIVIDADE/profissão? NÃO basta lembrar: chame \`salvar_dado_cadastro\` pra GRAVAR no perfil — é o que faz o site e a geração de landing/conteúdo refletirem a área REAL dele (corrige o padrão "psicologia"). ANTES de gerar landing ou artigo, garanta que a atividade real está gravada.
 • No MÁXIMO 1 descoberta por resposta, e só quando couber naturalmente. Nunca interrogue.

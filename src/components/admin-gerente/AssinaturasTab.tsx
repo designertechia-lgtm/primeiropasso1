@@ -12,10 +12,10 @@ import {
 } from "lucide-react";
 import {
   useOwnerListAllUsers,
-  useOwnerCancelSubscription,
   useOwnerSetBillingExempt,
   type OwnerUserRow,
 } from "@/hooks/useOwnerStats";
+import { useCancelSubscriptionAsaas } from "@/hooks/useBilling";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -50,7 +50,7 @@ function statusBadge(row: OwnerUserRow) {
 
 export default function AssinaturasTab() {
   const { data, isLoading } = useOwnerListAllUsers();
-  const cancel = useOwnerCancelSubscription();
+  const cancelSub = useCancelSubscriptionAsaas();
   const setExempt = useOwnerSetBillingExempt();
   const [search, setSearch] = useState("");
   const [grantUser, setGrantUser] = useState<OwnerUserRow | null>(null);
@@ -70,11 +70,10 @@ export default function AssinaturasTab() {
   }, [data, search]);
 
   const handleCancel = async (u: OwnerUserRow) => {
-    if (!confirm(`Cancelar assinatura de ${u.full_name ?? u.email}?`)) return;
+    if (!confirm(`Cancelar assinatura de ${u.full_name ?? u.email}? Interrompe a cobrança no Asaas; o acesso vale até o fim do período já pago.`)) return;
     try {
-      const affected = await cancel.mutateAsync(u.professional_id);
-      if (affected > 0) toast.success("Assinatura cancelada");
-      else toast.info("Nenhuma assinatura ativa para cancelar");
+      await cancelSub.mutateAsync({ professional_id: u.professional_id });
+      toast.success("Assinatura cancelada (cobrança interrompida no Asaas)");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao cancelar");
     }
@@ -83,6 +82,10 @@ export default function AssinaturasTab() {
   const handleToggleExempt = async (u: OwnerUserRow, next: boolean) => {
     try {
       await setExempt.mutateAsync({ professional_id: u.professional_id, exempt: next });
+      // Ao LIGAR cortesia, interrompe a cobrança recorrente no Asaas (mantém o acesso).
+      if (next && u.payment_method) {
+        await cancelSub.mutateAsync({ professional_id: u.professional_id, mode: "cortesia" });
+      }
       toast.success(
         next
           ? `${u.full_name ?? u.email} agora está em cortesia (isento de cobrança)`

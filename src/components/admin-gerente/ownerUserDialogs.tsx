@@ -9,7 +9,7 @@ import {
   useOwnerDeleteProfessional,
   type OwnerUserRow,
 } from "@/hooks/useOwnerStats";
-import { useCreditBalance } from "@/hooks/useBilling";
+import { useCreditBalance, useCancelSubscriptionAsaas } from "@/hooks/useBilling";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -247,6 +247,7 @@ export function DeleteProfessionalDialog({
   onClose: () => void;
 }) {
   const del = useOwnerDeleteProfessional();
+  const cancelSub = useCancelSubscriptionAsaas();
   const [confirmText, setConfirmText] = useState("");
 
   // Reseta o campo ao trocar de usuário/fechar.
@@ -260,6 +261,16 @@ export function DeleteProfessionalDialog({
 
   const handleSubmit = async () => {
     if (!user || !canDelete) return;
+    // Cancela a recorrência no Asaas ANTES de apagar — senão o cartão continua sendo cobrado
+    // de uma conta que não existe mais. Se falhar, aborta a exclusão para o admin tentar de novo.
+    try {
+      await cancelSub.mutateAsync({ professional_id: user.professional_id });
+    } catch (err) {
+      toast.error("Não foi possível cancelar a assinatura no Asaas. Tente novamente antes de apagar.", {
+        description: err instanceof Error ? err.message : undefined,
+      });
+      return;
+    }
     try {
       const res = await del.mutateAsync(user.professional_id);
       const pix = res?.deleted_pix_payments ?? 0;
@@ -326,8 +337,8 @@ export function DeleteProfessionalDialog({
           <Button type="button" variant="ghost" onClick={handleClose}>
             Cancelar
           </Button>
-          <Button variant="destructive" onClick={handleSubmit} disabled={!canDelete || del.isPending}>
-            {del.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+          <Button variant="destructive" onClick={handleSubmit} disabled={!canDelete || del.isPending || cancelSub.isPending}>
+            {del.isPending || cancelSub.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
             Apagar definitivamente
           </Button>
         </DialogFooter>

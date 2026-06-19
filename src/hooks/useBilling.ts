@@ -210,6 +210,30 @@ export type SubscribeParams = {
   };
 };
 
+// Cancela a assinatura recorrente no Asaas (para cobranças futuras; mantém o período pago).
+// Sem professional_id age sobre o próprio; com professional_id exige super_admin.
+// mode 'cortesia' só desacopla a cobrança (não revoga acesso).
+export function useCancelSubscriptionAsaas() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args?: { professional_id?: string; mode?: "cancel" | "cortesia" }) => {
+      const payload: Record<string, unknown> = {};
+      if (args?.professional_id) payload.professional_id = args.professional_id;
+      if (args?.mode === "cortesia") payload.mode = "cortesia";
+      const { data, error } = await supabase.functions.invoke("asaas-cancel-subscription", { body: payload });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data as { ok: boolean; cancelled: boolean; asaas_cancelled: boolean };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["subscription"] });
+      qc.invalidateQueries({ queryKey: ["owner-list-all-users"] });
+      qc.invalidateQueries({ queryKey: ["owner-mrr"] });
+      qc.invalidateQueries({ queryKey: ["owner-sub-status"] });
+    },
+  });
+}
+
 export function useSubscribeAsaas() {
   const qc = useQueryClient();
   return useMutation({

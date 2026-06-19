@@ -38,6 +38,7 @@ import {
   useServicePricing,
   useCreditPacks,
   useSetMyAutoRenew,
+  useCancelSubscriptionAsaas,
 } from "@/hooks/useBilling";
 import { PixCheckoutModal } from "@/components/dashboard/PixCheckoutModal";
 import { AsaasSubscribeDialog } from "@/components/dashboard/AsaasSubscribeDialog";
@@ -96,6 +97,7 @@ export default function AdminAssinatura() {
   const { data: packs, isLoading: loadingPacks } = useCreditPacks();
 
   const { data: professional } = useProfessional();
+  const cancelSub = useCancelSubscriptionAsaas();
 
   const [pixOpen, setPixOpen] = useState(false);
   const [pixKind, setPixKind] = useState<"subscription_renewal" | "credit_pack">("subscription_renewal");
@@ -133,6 +135,16 @@ export default function AdminAssinatura() {
       pack.price_brl.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
     );
     setPixOpen(true);
+  };
+
+  const handleCancelSubscription = async () => {
+    if (!confirm("Cancelar a renovação automática? Você mantém o acesso até o fim do período já pago.")) return;
+    try {
+      await cancelSub.mutateAsync(undefined);
+      toast.success("Assinatura cancelada. O acesso continua até o fim do período já pago.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao cancelar a assinatura");
+    }
   };
 
   const isLoading = loadingSub || loadingBal || loadingLedger || loadingPricing || loadingPacks;
@@ -213,6 +225,14 @@ export default function AdminAssinatura() {
                   Você recebe a cobrança mensal por {PAYMENT_METHOD_LABEL[s?.payment_method] ?? "PIX/boleto"} e paga a cada ciclo.
                 </p>
               )}
+              <button
+                type="button"
+                onClick={handleCancelSubscription}
+                disabled={cancelSub.isPending}
+                className="text-xs text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50"
+              >
+                {cancelSub.isPending ? "Cancelando…" : "Cancelar assinatura"}
+              </button>
             </div>
           ) : (
             <div className="space-y-2">

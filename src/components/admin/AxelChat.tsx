@@ -403,8 +403,11 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
   return (
     <>
       {/* Messages */}
-      <ScrollArea className="flex-1" ref={scrollRef}>
-        <div className="p-3 sm:p-4 space-y-0.5">
+      {/* [&_[data-radix-scroll-area-viewport]>div]:!block — o Radix embrulha o conteúdo
+          num display:table que estoura a largura no widget estreito (380px) e corta os
+          balões da direita. Forçar block faz respeitar 100% da largura. */}
+      <ScrollArea className="flex-1 min-w-0 [&_[data-radix-scroll-area-viewport]>div]:!block" ref={scrollRef}>
+        <div className="p-3 sm:p-4 space-y-0.5 min-w-0">
           {messages.map((msg, idx) => {
             const isAxel = msg.role === "axel";
             const prevMsg = idx > 0 ? messages[idx - 1] : null;
@@ -429,7 +432,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
                 )}
 
                 <div
-                  className={`max-w-[85%] sm:max-w-[75%] ${!showAvatar && isAxel ? "ml-9 sm:ml-10" : ""} ${
+                  className={`max-w-[85%] sm:max-w-[75%] min-w-0 ${!showAvatar && isAxel ? "ml-9 sm:ml-10" : ""} ${
                     !showAvatar && !isAxel ? "mr-9 sm:mr-10" : ""
                   }`}
                 >

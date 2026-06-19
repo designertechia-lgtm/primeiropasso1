@@ -1458,7 +1458,7 @@ serve(async (req) => {
       .select("role, content")
       .eq("professional_id", professionalId)
       .order("created_at", { ascending: false })
-      .limit(20)
+      .limit(40)
     const history = (historyRows || []).reverse() as Array<{ role: string; content: string }>
 
     const { data: memoryRows } = await supabaseAdmin

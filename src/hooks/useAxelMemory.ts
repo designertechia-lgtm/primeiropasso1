@@ -272,9 +272,12 @@ export function useAxelMemory() {
 
   // Marcar primeiro contato
   const markFirstContact = useCallback(async () => {
-    if (!user?.id) return;
+    // professional_id é NOT NULL e faz parte do onConflict; sem ele o upsert falhava
+    // silenciosamente (a saudação contextual nunca persistia).
+    if (!user?.id || !professionalId) return;
     await (supabase as any).from("axel_user_memory").upsert(
       {
+        professional_id: professionalId,
         key: "primeiro_contato",
         value: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -282,23 +285,25 @@ export function useAxelMemory() {
       { onConflict: "professional_id,key" },
     );
     queryClient.invalidateQueries({ queryKey: ["axel-memory-facts", user?.id] });
-  }, [user?.id, queryClient]);
+  }, [user?.id, professionalId, queryClient]);
 
   // Incrementar contagem de interações
   const incrementInteraction = useCallback(async () => {
-    if (!user?.id) return;
+    // idem markFirstContact: sem professional_id o upsert violava NOT NULL e a
+    // contagem/recência (usadas no greetingType) nunca gravavam.
+    if (!user?.id || !professionalId) return;
     const count = memory.interactionCount + 1;
     const now = new Date().toISOString();
     await (supabase as any).from("axel_user_memory").upsert(
-      { key: "interaction_count", value: String(count), updated_at: now },
+      { professional_id: professionalId, key: "interaction_count", value: String(count), updated_at: now },
       { onConflict: "professional_id,key" },
     );
     await (supabase as any).from("axel_user_memory").upsert(
-      { key: "last_interaction_at", value: now, updated_at: now },
+      { professional_id: professionalId, key: "last_interaction_at", value: now, updated_at: now },
       { onConflict: "professional_id,key" },
     );
     queryClient.invalidateQueries({ queryKey: ["axel-memory-facts", user?.id] });
-  }, [memory.interactionCount, user?.id, queryClient]);
+  }, [memory.interactionCount, user?.id, professionalId, queryClient]);
 
   // ===== Onboarding status =====
   const onboarding: OnboardingStatus = (() => {

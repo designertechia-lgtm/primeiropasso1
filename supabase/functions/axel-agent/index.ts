@@ -116,6 +116,19 @@ const tools = [
     },
   },
   {
+    name: "trocar_imagens_artigo",
+    description:
+      "Troca as imagens (capa + slides do carrossel) de um artigo JÁ criado, buscando novas em bancos de imagem conforme o TEMA VISUAL que o profissional pedir. CHAME quando ele disser 'as imagens não combinam/não condizem', 'troca as imagens por X', 'quero imagens de Y' sobre um artigo. NÃO consome créditos. Localiza o artigo pelo título (parcial) ou usa o mais recente se não informado. Depois confirme e ofereça abrir a página de artigos pra ele revisar.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tema_visual: { type: "string", description: "O que ele quer ver nas imagens, nas palavras dele. Ex.: 'tecnologia e computadores', 'consultório acolhedor', 'comida saudável'." },
+        titulo: { type: "string", description: "Trecho do título do artigo pra localizar. Vazio = artigo mais recente do profissional." },
+      },
+      required: ["tema_visual"],
+    },
+  },
+  {
     name: "abrir_pagina",
     description:
       "LEVA o profissional até uma página da plataforma (ele está logado no painel; o app navega na hora e o chat continua aberto por cima). CHAME quando ele quiser IR a uma área — 'quero mexer na agenda', 'cadê minha landing', 'me leva pro perfil', 'como configuro o WhatsApp' — ou quando o próximo passo que você sugerir exigir uma tela específica. Use a ROTA EXATA do MAPA DA PLATAFORMA (campo entre parênteses). Depois de chamar, continue a conversa em texto: diga o que ele vai encontrar lá e o que fazer. NÃO invente rotas.",
@@ -408,6 +421,89 @@ async function gerarTextoIA(campo: string, ctx: any, apiKey: string): Promise<st
   // remove cercas de código (relevante para os campos _items em JSON)
   txt = txt.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim()
   return txt
+}
+
+// =============================================
+// IMAGENS DE ARTIGO — busca multi-fonte (Pexels/Unsplash/Pixabay) p/ a tool trocar_imagens_artigo.
+// NUNCA usa imagem aleatória (sem picsum): se nada bater, devolve null e o chamador mantém a atual.
+// =============================================
+type ImgKeys = { pexels?: string; unsplash?: string; pixabay?: string }
+function imageKeys(): ImgKeys {
+  return {
+    pexels: Deno.env.get("PEXELS_API_KEY") || undefined,
+    unsplash: Deno.env.get("UNSPLASH_ACCESS_KEY") || undefined,
+    pixabay: Deno.env.get("PIXABAY_API_KEY") || undefined,
+  }
+}
+
+async function buscarImagemMultiFonte(query: string, keys: ImgKeys, usadas: Set<string>): Promise<string | null> {
+  if (keys.pexels) {
+    try {
+      const page = Math.floor(Math.random() * 5) + 1
+      const r = await fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=30&page=${page}&orientation=square`,
+        { headers: { Authorization: keys.pexels } })
+      if (r.ok) {
+        const d = await r.json()
+        for (const p of (d.photos ?? [])) {
+          const url = p.src?.large2x ?? p.src?.large
+          if (url && !usadas.has(url)) { usadas.add(url); return url }
+        }
+      }
+    } catch (_) { /* tenta próxima fonte */ }
+  }
+  if (keys.unsplash) {
+    try {
+      const r = await fetch(`https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=20&orientation=squarish`,
+        { headers: { Authorization: `Client-ID ${keys.unsplash}` } })
+      if (r.ok) {
+        const d = await r.json()
+        for (const p of (d.results ?? [])) {
+          const url = p.urls?.regular
+          if (url && !usadas.has(url)) { usadas.add(url); return url }
+        }
+      }
+    } catch (_) { /* tenta próxima fonte */ }
+  }
+  if (keys.pixabay) {
+    try {
+      const r = await fetch(`https://pixabay.com/api/?key=${keys.pixabay}&q=${encodeURIComponent(query)}&per_page=30&image_type=photo&safesearch=true`)
+      if (r.ok) {
+        const d = await r.json()
+        for (const p of (d.hits ?? [])) {
+          const url = p.largeImageURL ?? p.webformatURL
+          if (url && !usadas.has(url)) { usadas.add(url); return url }
+        }
+      }
+    } catch (_) { /* sem mais fontes */ }
+  }
+  return null
+}
+
+// Gera termos de busca (em INGLÊS) por slide, casando o tema que o profissional pediu com o texto do slide.
+async function gerarQueriesImagem(temaVisual: string, captions: string[], apiKey: string): Promise<{ cover: string; slides: string[] }> {
+  const fallback = { cover: temaVisual, slides: captions.map(() => temaVisual) }
+  if (!apiKey) return fallback
+  const prompt = `Tema visual desejado: "${temaVisual}".
+Para uma CAPA e ${captions.length} slides, gere termos de busca de banco de imagens (Pexels/Unsplash), em INGLÊS, curtos (2-4 palavras), concretos e fotografáveis, casando o tema visual com o conteúdo de cada slide. Evite termos abstratos.
+Slides:
+${captions.map((c, i) => `${i + 1}. ${c}`).join("\n")}
+Responda APENAS um JSON: {"cover":"...","slides":["...", ...]} com exatamente ${captions.length} itens em slides.`
+  try {
+    const r = await fetch(CLAUDE_URL, {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 600, temperature: 0.3, messages: [{ role: "user", content: prompt }] }),
+    })
+    if (!r.ok) return fallback
+    const d = await r.json()
+    let txt = (d.content?.find((b: any) => b.type === "text")?.text || "").trim()
+    txt = txt.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim()
+    const parsed = JSON.parse(txt)
+    const slides = Array.isArray(parsed.slides) ? parsed.slides.map((s: any) => String(s)) : fallback.slides
+    return { cover: String(parsed.cover || temaVisual), slides }
+  } catch (_) {
+    return fallback
+  }
 }
 
 // =============================================
@@ -726,6 +822,68 @@ async function handleToolCall(
       }
     } catch (e: any) {
       return { erro: e.message, instrucao: "Avise o profissional que houve erro técnico ao gerar o artigo." }
+    }
+  }
+
+  if (toolName === "trocar_imagens_artigo") {
+    const temaVisual = (args.tema_visual || "").toString().trim()
+    const titulo = (args.titulo || "").toString().trim()
+    if (!temaVisual) return { erro: "tema_visual obrigatório", instrucao: "Pergunte que tipo de imagem ele quer (ex.: tecnologia, natureza, consultório)." }
+
+    const keys = imageKeys()
+    if (!keys.pexels && !keys.unsplash && !keys.pixabay) {
+      return { erro: "sem_fonte_imagem", instrucao: "Avise com honestidade que a troca de imagens ainda não está ativa (faltam as chaves dos bancos de imagem na plataforma) e que o time já foi avisado. NÃO diga que trocou." }
+    }
+
+    // Localiza o artigo (título parcial ou o mais recente)
+    let q = supabaseAdmin
+      .from("articles")
+      .select("id, title, cover_image_url, carousel_items")
+      .eq("professional_id", professionalId)
+      .order("created_at", { ascending: false })
+      .limit(titulo ? 5 : 1)
+    if (titulo) q = q.ilike("title", `%${titulo}%`)
+    const { data: arts, error: artErr } = await q
+    if (artErr) return { erro: artErr.message, instrucao: "Avise que houve erro ao buscar o artigo." }
+    if (!arts || arts.length === 0) {
+      return { encontrado: false, instrucao: titulo ? "Não achei artigo com esse título. Peça pra confirmar o nome." : "Ele ainda não tem artigo criado. Ofereça criar um com criar_artigo." }
+    }
+    if (titulo && arts.length > 1) {
+      return { ambiguo: true, candidatos: arts.map((a: any) => a.title), instrucao: "Há mais de um artigo com esse título. Liste os títulos e peça pra ele escolher." }
+    }
+    const art = arts[0]
+    const items = Array.isArray(art.carousel_items) ? art.carousel_items : []
+    const captions = items.map((it: any) => (it?.caption || "").toString())
+
+    // Queries por slide (inglês) casando tema + conteúdo
+    const apiKey = Deno.env.get("ANTHROPIC_API_KEY") || ""
+    const queries = await gerarQueriesImagem(temaVisual, captions, apiKey)
+
+    const usadas = new Set<string>()
+    const capaImg = await buscarImagemMultiFonte(queries.cover, keys, usadas)
+    const novaCapa = capaImg || art.cover_image_url
+    let trocadas = capaImg ? 1 : 0
+    const novosItens: any[] = []
+    for (let i = 0; i < items.length; i++) {
+      const img = await buscarImagemMultiFonte(queries.slides[i] || queries.cover, keys, usadas)
+      if (img) trocadas++
+      novosItens.push({ ...items[i], image_url: img || items[i]?.image_url })
+    }
+
+    const { error: updErr } = await supabaseAdmin
+      .from("articles")
+      .update({ cover_image_url: novaCapa, carousel_items: novosItens })
+      .eq("id", art.id)
+      .eq("professional_id", professionalId)
+    if (updErr) return { erro: updErr.message, instrucao: "Avise que houve erro ao salvar as novas imagens." }
+
+    console.log(`[trocar_imagens_artigo] artigo ${art.id}: ${trocadas} trocada(s) (tema: ${temaVisual})`)
+    return {
+      sucesso: true,
+      titulo: art.title,
+      imagens_trocadas: trocadas,
+      total: items.length + 1,
+      instrucao: `Troquei ${trocadas} imagem(ns) do artigo "${art.title}" pro tema "${temaVisual}". Confirme em 1 frase e chame abrir_pagina('/admin/redes-sociais?tab=artigos') pra ele revisar. Se alguma não ficou boa, ele pode pedir outro tema.`,
     }
   }
 

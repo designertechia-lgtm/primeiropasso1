@@ -106,7 +106,7 @@ const tools = [
   {
     name: "criar_artigo",
     description:
-      "Cria um artigo + carrossel de imagens para o profissional. Gera título, conteúdo (legenda Instagram) e slides do carrossel com sugestões de imagem. Chame quando o profissional pedir 'crie um artigo', 'quero postar sobre ansiedade', 'sugira um post'. ANTES de chamar, avise que isso consome créditos da plataforma. Se o profissional não tiver créditos suficientes, a tool retornará erro.",
+      "Cria um artigo + carrossel de imagens para o profissional. Gera título, conteúdo (legenda Instagram) e slides do carrossel com sugestões de imagem. Chame quando o profissional pedir 'crie um artigo', 'quero postar sobre ansiedade', 'sugira um post'. É GRÁTIS — incluído na assinatura, NÃO consome créditos. NÃO avise sobre custo nem peça confirmação de crédito: confirme só o tema (se ainda não veio) e crie.",
     input_schema: {
       type: "object",
       properties: {

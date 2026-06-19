@@ -24,6 +24,16 @@ const corsHeaders = {
 const CLAUDE_MODEL = "claude-sonnet-4-6"
 const CLAUDE_URL = "https://api.anthropic.com/v1/messages"
 
+// Memória de longo prazo (Fase C): resumo do relacionamento + marca da última msg já resumida.
+// Vivem em axel_user_memory com chaves prefixadas "_" (não entram na lista de fatos do prompt).
+const SUMMARY_KEY = "_resumo_relacionamento"
+const SUMMARY_MARK_KEY = "_resumo_marca"
+const SUMMARY_THRESHOLD = 15 // nº de mensagens novas que dispara a reescrita do resumo
+// Chaves internas/comportamentais que NÃO são "fatos de relacionamento" pro prompt.
+const INTERNAL_MEM_KEYS = new Set([
+  SUMMARY_KEY, SUMMARY_MARK_KEY, "interaction_count", "last_interaction_at", "primeiro_contato",
+])
+
 // =============================================
 // TOOL DEFINITIONS — formato Anthropic (Tool Use)
 // =============================================
@@ -228,11 +238,12 @@ const tools = [
 function buildSystemPrompt(opts: {
   professional: any
   memoryFacts: Array<{ key: string; value: string }>
+  relationshipSummary: string
   now: string
   kbSections: Array<{ key: string; title: string; route?: string; keywords?: string[] }>
   profileGaps: string[]
 }): string {
-  const { professional, memoryFacts, now, kbSections, profileGaps } = opts
+  const { professional, memoryFacts, relationshipSummary, now, kbSections, profileGaps } = opts
   const rawFirst = professional?.full_name?.split(" ")?.[0] || ""
   const proName = rawFirst ? rawFirst.charAt(0).toUpperCase() + rawFirst.slice(1).toLowerCase() : "você"
 
@@ -278,7 +289,10 @@ ${(professional as any)?.email ? `• Email: ${(professional as any).email}` : "
 ${professional?.category ? `• Área/categoria: ${professional.category}${professional.category_custom ? ` (${professional.category_custom})` : ""}` : ""}
 Você JÁ conhece o nome dele (acima). Chame-o pelo primeiro nome com naturalidade e NÃO pergunte "como posso te chamar?" nem dados que já estão aqui.
 
-━━━ O QUE EU JÁ SEI SOBRE ELE (memória) ━━━
+━━━ RESUMO DO RELACIONAMENTO (memória de longo prazo) ━━━
+${relationshipSummary || "(ainda não há resumo de longo prazo — ele se forma conforme vocês conversam)"}
+
+━━━ O QUE EU JÁ SEI SOBRE ELE (fatos, mais confiáveis primeiro) ━━━
 ${memoriaStr}
 
 ━━━ O QUE AINDA PRECISO DESCOBRIR ━━━
@@ -477,18 +491,35 @@ async function handleToolCall(
     const chave = (args.chave || "").toString().trim()
     const valor = (args.valor ?? "").toString().trim()
     if (!chave || !valor) return { erro: "chave e valor são obrigatórios" }
+    if (chave.startsWith("_")) return { erro: "chave reservada para uso interno" }
+
+    // Curadoria de confiança: fato repetido REFORÇA (até 5), fato que muda REINICIA em 1.
+    // Assim o que ele confirma várias vezes sobe na ordem do prompt; o que muda não acumula ruído.
+    const { data: existing } = await supabaseAdmin
+      .from("axel_user_memory")
+      .select("value, confidence")
+      .eq("professional_id", professionalId)
+      .eq("key", chave)
+      .maybeSingle()
+    const norm = (s: string) => s.toLowerCase().trim()
+    let confidence = 1
+    if (existing) {
+      confidence = norm(existing.value) === norm(valor)
+        ? Math.min(Number(existing.confidence ?? 1) + 0.5, 5)
+        : 1
+    }
 
     const { error } = await supabaseAdmin
       .from("axel_user_memory")
       .upsert(
-        { professional_id: professionalId, key: chave, value: valor, updated_at: new Date().toISOString() },
+        { professional_id: professionalId, key: chave, value: valor, confidence, updated_at: new Date().toISOString() },
         { onConflict: "professional_id,key" },
       )
     if (error) {
       console.error("[salvar_memoria] erro:", error.message)
       return { erro: error.message }
     }
-    console.log(`[salvar_memoria] ${chave}=${valor}`)
+    console.log(`[salvar_memoria] ${chave}=${valor} (confidence ${confidence})`)
     return { sucesso: true, chave, valor }
   }
 
@@ -1387,6 +1418,93 @@ async function callClaude(opts: {
 }
 
 // =============================================
+// MEMÓRIA DE LONGO PRAZO (Fase C) — reescreve o "resumo do relacionamento"
+// incorporando as mensagens novas desde a última vez. Roda em background
+// (EdgeRuntime.waitUntil) pra não atrasar a resposta ao profissional.
+// =============================================
+async function updateRelationshipSummary(
+  supabaseAdmin: any,
+  professionalId: string,
+  apiKey: string,
+  professionalName: string,
+): Promise<void> {
+  if (!apiKey) return
+  try {
+    // Marca da última mensagem já resumida (1ª vez: pega tudo)
+    const { data: markRow } = await supabaseAdmin
+      .from("axel_user_memory")
+      .select("value")
+      .eq("professional_id", professionalId)
+      .eq("key", SUMMARY_MARK_KEY)
+      .maybeSingle()
+    const since = markRow?.value || "1970-01-01"
+
+    const { data: newRows } = await supabaseAdmin
+      .from("axel_conversations")
+      .select("role, content, created_at")
+      .eq("professional_id", professionalId)
+      .gt("created_at", since)
+      .order("created_at", { ascending: true })
+      .limit(200)
+    const novas = (newRows || []) as Array<{ role: string; content: string; created_at: string }>
+    if (novas.length < SUMMARY_THRESHOLD) return // ainda não vale reescrever
+
+    const { data: prevRow } = await supabaseAdmin
+      .from("axel_user_memory")
+      .select("value")
+      .eq("professional_id", professionalId)
+      .eq("key", SUMMARY_KEY)
+      .maybeSingle()
+    const resumoAnterior = prevRow?.value || "(sem resumo anterior)"
+
+    const transcript = novas
+      .map((m) => `${m.role === "axel" ? "Axel" : (professionalName || "Profissional")}: ${m.content}`)
+      .join("\n")
+      .slice(-8000)
+
+    const prompt = `Você mantém a memória de longo prazo do Axel sobre o profissional ${professionalName || ""}.
+Atualize o RESUMO DO RELACIONAMENTO incorporando as novas mensagens. Conciso (máx 180 palavras), em tópicos curtos cobrindo: quem ele é e o que faz; objetivos (com a plataforma e de carreira); preferências de tom/estilo; decisões e entregas recentes; onde a conversa parou. Mantenha o que ainda é verdade, descarte o obsoleto. Texto puro, sem markdown.
+
+RESUMO ATUAL:
+${resumoAnterior}
+
+NOVAS MENSAGENS:
+${transcript}
+
+RESUMO ATUALIZADO:`
+
+    const resp = await fetch(CLAUDE_URL, {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 500,
+        temperature: 0.3,
+        system: "Você condensa memória de relacionamento de forma fiel e concisa.",
+        messages: [{ role: "user", content: prompt }],
+      }),
+    })
+    if (!resp.ok) { console.error("[summary] claude", resp.status); return }
+    const data = await resp.json()
+    const novoResumo = (data.content?.find((b: any) => b.type === "text")?.text || "").trim()
+    if (!novoResumo) return
+
+    const novaMarca = novas[novas.length - 1].created_at
+    const nowIso = new Date().toISOString()
+    await supabaseAdmin.from("axel_user_memory").upsert(
+      [
+        { professional_id: professionalId, key: SUMMARY_KEY, value: novoResumo, confidence: 1, updated_at: nowIso },
+        { professional_id: professionalId, key: SUMMARY_MARK_KEY, value: novaMarca, confidence: 1, updated_at: nowIso },
+      ],
+      { onConflict: "professional_id,key" },
+    )
+    console.log(`[summary] resumo atualizado para ${professionalId} (${novas.length} msgs incorporadas)`)
+  } catch (e: any) {
+    console.error("[summary] erro:", e?.message || e)
+  }
+}
+
+// =============================================
 // MAIN HANDLER
 // =============================================
 serve(async (req) => {
@@ -1463,11 +1581,17 @@ serve(async (req) => {
 
     const { data: memoryRows } = await supabaseAdmin
       .from("axel_user_memory")
-      .select("key, value")
+      .select("key, value, confidence")
       .eq("professional_id", professionalId)
+      .order("confidence", { ascending: false })
       .order("updated_at", { ascending: false })
-      .limit(40)
-    const memoryFacts = (memoryRows || []) as Array<{ key: string; value: string }>
+      .limit(60)
+    const allMem = (memoryRows || []) as Array<{ key: string; value: string; confidence?: number }>
+    // Resumo de longo prazo é injetado à parte; chaves internas/comportamentais não viram "fatos".
+    const relationshipSummary = allMem.find((m) => m.key === SUMMARY_KEY)?.value || ""
+    const memoryFacts = allMem
+      .filter((m) => !INTERNAL_MEM_KEYS.has(m.key))
+      .map((m) => ({ key: m.key, value: m.value }))
 
     // Base de conhecimento seccionada (mapa do site) — schema axel via RPC facade
     const { data: kbRows, error: kbErr } = await supabaseAdmin.rpc("axel_kb_sections", { p_scope: "platform" })
@@ -1492,7 +1616,7 @@ serve(async (req) => {
 
     // 6. Chama o Claude
     const now = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })
-    const systemPrompt = buildSystemPrompt({ professional, memoryFacts, now, kbSections, profileGaps })
+    const systemPrompt = buildSystemPrompt({ professional, memoryFacts, relationshipSummary, now, kbSections, profileGaps })
 
     let reply: string
     let toolsUsed: string[] = []
@@ -1521,6 +1645,20 @@ serve(async (req) => {
       tool_calls: toolsUsed.length > 0 ? toolsUsed : null,
       actions: actions.length > 0 ? actions : null,
     })
+
+    // 8. Memória de longo prazo (Fase C): reescreve o resumo do relacionamento.
+    // Em background quando o runtime suporta (waitUntil); senão, aguarda (raro: só cruza o
+    // limiar ~1x a cada 15 msgs, e sai cedo nas demais).
+    const summaryTask = updateRelationshipSummary(
+      supabaseAdmin, professionalId, Deno.env.get("ANTHROPIC_API_KEY") || "", professional.full_name || "",
+    )
+    // @ts-ignore EdgeRuntime é global no runtime do Supabase Edge
+    if (typeof EdgeRuntime !== "undefined" && (EdgeRuntime as any)?.waitUntil) {
+      // @ts-ignore
+      ;(EdgeRuntime as any).waitUntil(summaryTask)
+    } else {
+      await summaryTask
+    }
 
     return new Response(JSON.stringify({ reply, tools_used: toolsUsed, actions, navigate }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

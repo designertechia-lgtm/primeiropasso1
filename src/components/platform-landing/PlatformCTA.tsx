@@ -17,7 +17,7 @@ export default function PlatformCTA() {
           />
 
           <div className="relative flex flex-col items-center gap-6">
-            <h2 className="font-serif text-3xl md:text-4xl lg:text-5xl font-semibold text-primary-foreground leading-tight tracking-tight max-w-2xl">
+            <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl font-semibold text-primary-foreground leading-tight tracking-tight max-w-2xl">
               Pronto para postar consistente, sem queimar suas tardes editando?
             </h2>
             <p className="text-base md:text-lg text-primary-foreground/85 max-w-xl leading-relaxed">

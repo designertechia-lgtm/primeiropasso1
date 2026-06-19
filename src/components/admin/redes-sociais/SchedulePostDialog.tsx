@@ -337,7 +337,7 @@ export default function SchedulePostDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-[560px]">
           <DialogHeader>
-            <DialogTitle className="font-serif text-xl flex items-center gap-2">
+            <DialogTitle className="font-heading text-xl flex items-center gap-2">
               {isEditing ? "Editar publicação" : "Agendar publicação"}
               {isEditing && editing && (
                 <Badge variant="outline" style={{ color: PLATFORM_META[editing.platform].color }}>

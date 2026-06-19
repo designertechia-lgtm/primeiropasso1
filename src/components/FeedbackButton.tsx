@@ -89,7 +89,7 @@ export default function FeedbackButton() {
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle className="font-serif text-xl">💬 Como podemos melhorar?</DialogTitle>
+          <DialogTitle className="font-heading text-xl">💬 Como podemos melhorar?</DialogTitle>
           <DialogDescription>
             Sua opinião é fundamental para evoluirmos a plataforma.
           </DialogDescription>

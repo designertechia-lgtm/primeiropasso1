@@ -43,7 +43,7 @@ export default function PlatformAIShowcase() {
           <p className="text-sm uppercase tracking-[0.18em] text-accent font-semibold mb-3">
             Sob o capô
           </p>
-          <h2 className="font-serif text-3xl md:text-4xl lg:text-5xl font-semibold text-foreground leading-tight tracking-tight">
+          <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl font-semibold text-foreground leading-tight tracking-tight">
             Quatro IAs especializadas{" "}
             <span className="text-primary">trabalham por você.</span>
           </h2>
@@ -67,7 +67,7 @@ export default function PlatformAIShowcase() {
                 <div className="w-11 h-11 rounded-xl bg-muted flex items-center justify-center mb-3">
                   <Icon className={`h-5 w-5 ${iconColor}`} aria-hidden />
                 </div>
-                <h3 className="font-serif text-lg font-semibold text-foreground leading-tight">
+                <h3 className="font-heading text-lg font-semibold text-foreground leading-tight">
                   {title}
                 </h3>
                 <p className="text-xs text-foreground/55 mt-1 font-mono tracking-tight">

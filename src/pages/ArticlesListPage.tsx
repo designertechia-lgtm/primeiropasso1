@@ -160,7 +160,7 @@ export default function ArticlesListPage() {
             <ArrowLeft className="h-4 w-4" />
             Voltar para o site
           </Link>
-          <span className="font-serif font-semibold text-foreground text-sm">{name}</span>
+          <span className="font-heading font-semibold text-foreground text-sm">{name}</span>
         </div>
       </header>
 
@@ -171,7 +171,7 @@ export default function ArticlesListPage() {
             <BookOpen className="h-6 w-6 text-primary" />
             <span className="text-sm font-medium text-primary uppercase tracking-widest">Artigos</span>
           </div>
-          <h1 className="font-serif text-3xl md:text-5xl font-bold text-foreground mb-3">
+          <h1 className="font-heading text-3xl md:text-5xl font-bold text-foreground mb-3">
             Conteúdo para você
           </h1>
           <p className="text-muted-foreground text-lg max-w-xl">
@@ -249,12 +249,12 @@ export default function ArticlesListPage() {
                         </div>
                       )}
                       {isDraft ? (
-                        <h2 className="font-serif text-lg font-semibold text-foreground leading-snug mb-2 line-clamp-2">
+                        <h2 className="font-heading text-lg font-semibold text-foreground leading-snug mb-2 line-clamp-2">
                           {article.title}
                         </h2>
                       ) : (
                         <Link to={articleUrl}>
-                          <h2 className="font-serif text-lg font-semibold text-foreground leading-snug mb-2 line-clamp-2 hover:text-primary transition-colors">
+                          <h2 className="font-heading text-lg font-semibold text-foreground leading-snug mb-2 line-clamp-2 hover:text-primary transition-colors">
                             {article.title}
                           </h2>
                         </Link>

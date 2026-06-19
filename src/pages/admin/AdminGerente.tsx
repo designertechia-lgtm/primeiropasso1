@@ -63,7 +63,7 @@ export default function AdminGerente() {
   return (
     <div className="space-y-6">
       <header className="space-y-1">
-        <h1 className="font-serif text-3xl text-foreground">Painel do Gerente</h1>
+        <h1 className="font-heading text-3xl text-foreground">Painel do Gerente</h1>
         <p className="text-sm text-muted-foreground">
           Métricas, receita, usuários e configurações do SaaS — visível apenas para você e usuários liberados.
         </p>

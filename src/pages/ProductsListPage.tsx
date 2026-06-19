@@ -75,7 +75,7 @@ function ItemCard({ item, whatsapp, professionalName }: { item: Unified; whatsap
         </div>
       </div>
       <div className="p-4 flex flex-col flex-1">
-        <h2 className="font-serif text-[15px] font-semibold text-foreground leading-snug line-clamp-2">{title}</h2>
+        <h2 className="font-heading text-[15px] font-semibold text-foreground leading-snug line-clamp-2">{title}</h2>
         {description && (
           <p className="text-[13px] text-muted-foreground leading-relaxed mt-1.5 line-clamp-2">{description}</p>
         )}
@@ -99,7 +99,7 @@ function ItemCard({ item, whatsapp, professionalName }: { item: Unified; whatsap
         <div className="flex-1" />
         <div className="flex items-center gap-2 mt-4">
           <span className="h-px w-5 bg-primary/40 shrink-0" />
-          <span className="font-serif text-base font-semibold text-foreground">{formatPrice(price)}</span>
+          <span className="font-heading text-base font-semibold text-foreground">{formatPrice(price)}</span>
           {durationMin != null && (
             <span className="ml-auto text-xs text-muted-foreground flex items-center gap-1 shrink-0">
               <Clock className="h-3 w-3" /> {durationMin} min
@@ -251,7 +251,7 @@ export default function ProductsListPage() {
             <ArrowLeft className="h-4 w-4" />
             Voltar para o site
           </Link>
-          <span className="font-serif font-semibold text-foreground text-sm">{name}</span>
+          <span className="font-heading font-semibold text-foreground text-sm">{name}</span>
         </div>
       </header>
 
@@ -260,7 +260,7 @@ export default function ProductsListPage() {
         <div className="container mx-auto px-4 py-6 md:py-7">
           <div className="flex items-center gap-2.5">
             <ShoppingBag className="h-5 w-5 text-primary shrink-0" />
-            <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">
+            <h1 className="font-heading text-2xl md:text-3xl font-bold text-foreground">
               {(professional as any).products_title?.trim() || "Produtos e Serviços"}
             </h1>
           </div>

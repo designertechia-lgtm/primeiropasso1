@@ -134,7 +134,7 @@ function VideoCard({ video, whatsapp, slug, isDraft }: { video: Video; whatsapp?
           </div>
         )}
         <Link to={`/${slug}/video/${video.id}`} className="hover:text-primary transition-colors">
-          <h2 className="font-serif text-lg font-semibold text-foreground leading-snug mb-2 line-clamp-2">
+          <h2 className="font-heading text-lg font-semibold text-foreground leading-snug mb-2 line-clamp-2">
             {video.title}
           </h2>
         </Link>
@@ -275,7 +275,7 @@ export default function VideosListPage() {
             <ArrowLeft className="h-4 w-4" />
             Voltar para o site
           </Link>
-          <span className="font-serif font-semibold text-foreground text-sm">{name}</span>
+          <span className="font-heading font-semibold text-foreground text-sm">{name}</span>
         </div>
       </header>
 
@@ -286,7 +286,7 @@ export default function VideosListPage() {
             <Play className="h-6 w-6 text-primary" />
             <span className="text-sm font-medium text-primary uppercase tracking-widest">Vídeos</span>
           </div>
-          <h1 className="font-serif text-3xl md:text-5xl font-bold text-foreground mb-3">
+          <h1 className="font-heading text-3xl md:text-5xl font-bold text-foreground mb-3">
             Vídeos para você
           </h1>
           <p className="text-muted-foreground text-lg max-w-xl">

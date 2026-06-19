@@ -58,7 +58,7 @@ export default function Login() {
           <div className="flex justify-center mb-2">
             <Leaf className="h-10 w-10 text-primary" />
           </div>
-          <CardTitle className="font-serif text-2xl">Entrar</CardTitle>
+          <CardTitle className="font-heading text-2xl">Entrar</CardTitle>
           <CardDescription>Acesse sua conta no Primeiro Passo</CardDescription>
         </CardHeader>
         <form onSubmit={handleLogin}>

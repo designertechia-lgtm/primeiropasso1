@@ -12,7 +12,7 @@ export default function OwnerRoute({ children }: OwnerRouteProps) {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-pulse text-muted-foreground font-serif text-lg">Carregando...</div>
+        <div className="animate-pulse text-muted-foreground font-heading text-lg">Carregando...</div>
       </div>
     );
   }

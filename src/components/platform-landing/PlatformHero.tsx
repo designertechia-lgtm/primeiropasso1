@@ -32,7 +32,7 @@ export default function PlatformHero() {
               {hero.badge_text}
             </div>
 
-            <h1 className="font-serif text-4xl md:text-5xl lg:text-6xl font-semibold text-foreground leading-[1.1] tracking-tight">
+            <h1 className="font-heading text-4xl md:text-5xl lg:text-6xl font-semibold text-foreground leading-[1.1] tracking-tight">
               {hero.headline_before}{" "}
               <span className="text-primary">{hero.headline_highlight}</span>
               {" "}{hero.headline_after}
@@ -89,7 +89,7 @@ export default function PlatformHero() {
                   <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center">
                     <PlayCircle className="h-10 w-10 text-primary" aria-hidden />
                   </div>
-                  <p className="font-serif text-xl text-center text-foreground/80">
+                  <p className="font-heading text-xl text-center text-foreground/80">
                     "{hero.preview_quote}"
                   </p>
                   <div className="flex items-center gap-2 text-xs text-foreground/60">

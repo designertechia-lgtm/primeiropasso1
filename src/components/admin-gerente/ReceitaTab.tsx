@@ -118,7 +118,7 @@ export default function ReceitaTab() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="font-serif text-2xl text-foreground">Receita</h2>
+          <h2 className="font-heading text-2xl text-foreground">Receita</h2>
           <p className="text-sm text-muted-foreground">
             MRR, status das assinaturas e inadimplência em tempo real.
           </p>

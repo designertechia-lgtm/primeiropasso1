@@ -128,7 +128,7 @@ export default function AutomacoesTab() {
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground flex items-center gap-2">
+          <h1 className="font-heading text-2xl md:text-3xl font-bold text-foreground flex items-center gap-2">
             <Bot className="h-6 w-6 text-purple-500" />
             Automações PRO
           </h1>

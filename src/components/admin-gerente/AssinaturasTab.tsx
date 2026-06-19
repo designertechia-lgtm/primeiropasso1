@@ -101,7 +101,7 @@ export default function AssinaturasTab() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="font-serif text-2xl text-foreground">Assinaturas & Acessos</h2>
+        <h2 className="font-heading text-2xl text-foreground">Assinaturas & Acessos</h2>
         <p className="text-sm text-muted-foreground mt-1">
           Libere acesso manual com prazo definido (cortesia, parceria, trial estendido) ou cancele
           assinaturas. {totalActive > 0 && (

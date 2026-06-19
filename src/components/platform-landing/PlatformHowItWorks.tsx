@@ -29,7 +29,7 @@ export default function PlatformHowItWorks() {
           <p className="text-sm uppercase tracking-[0.18em] text-accent font-semibold mb-3">
             Como funciona
           </p>
-          <h2 className="font-serif text-3xl md:text-4xl lg:text-5xl font-semibold text-foreground leading-tight tracking-tight">
+          <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl font-semibold text-foreground leading-tight tracking-tight">
             Três passos.{" "}
             <span className="text-primary">Do tema ao Reels publicado.</span>
           </h2>
@@ -46,11 +46,11 @@ export default function PlatformHowItWorks() {
                 <div className="w-24 h-24 rounded-2xl bg-primary text-primary-foreground flex items-center justify-center shadow-lg">
                   <Icon className="h-10 w-10" aria-hidden />
                 </div>
-                <span className="absolute -top-2 -right-2 w-9 h-9 rounded-full bg-accent text-accent-foreground font-serif font-bold text-sm flex items-center justify-center shadow">
+                <span className="absolute -top-2 -right-2 w-9 h-9 rounded-full bg-accent text-accent-foreground font-heading font-bold text-sm flex items-center justify-center shadow">
                   {n}
                 </span>
               </div>
-              <h3 className="font-serif text-xl md:text-2xl font-semibold text-foreground mb-3">
+              <h3 className="font-heading text-xl md:text-2xl font-semibold text-foreground mb-3">
                 {title}
               </h3>
               <p className="text-base text-foreground/75 leading-relaxed max-w-xs">

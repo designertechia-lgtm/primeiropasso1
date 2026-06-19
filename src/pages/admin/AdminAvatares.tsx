@@ -486,7 +486,7 @@ export default function AdminAvatares() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">Personagens</h1>
+          <h1 className="font-heading text-2xl md:text-3xl font-bold text-foreground">Personagens</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             Crie personagens para usar em vídeos e artigos
           </p>

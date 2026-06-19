@@ -297,7 +297,7 @@ export default function AdminArtigos() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">Artigos</h1>
+        <h1 className="font-heading text-2xl md:text-3xl font-bold text-foreground">Artigos</h1>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Novo Artigo</Button>

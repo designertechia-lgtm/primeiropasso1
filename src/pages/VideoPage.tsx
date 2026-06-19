@@ -144,7 +144,7 @@ export default function VideoPage() {
             <ArrowLeft className="h-4 w-4" />
             Todos os vídeos
           </Link>
-          <span className="font-serif font-semibold text-foreground text-sm">{name}</span>
+          <span className="font-heading font-semibold text-foreground text-sm">{name}</span>
         </div>
       </header>
 
@@ -193,7 +193,7 @@ export default function VideoPage() {
             </p>
           )}
 
-          <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground leading-snug">
+          <h1 className="font-heading text-2xl md:text-3xl font-bold text-foreground leading-snug">
             {video.title}
           </h1>
 

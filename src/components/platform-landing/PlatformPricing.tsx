@@ -45,7 +45,7 @@ export default function PlatformPricing() {
           <p className="text-sm uppercase tracking-[0.18em] text-accent font-semibold mb-3">
             Preços
           </p>
-          <h2 className="font-serif text-3xl md:text-4xl lg:text-5xl font-semibold text-foreground leading-tight tracking-tight">
+          <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl font-semibold text-foreground leading-tight tracking-tight">
             Plano mensal + créditos.{" "}
             <span className="text-primary">Cancele quando quiser.</span>
           </h2>
@@ -70,7 +70,7 @@ export default function PlatformPricing() {
                 </span>
               )}
               <div>
-                <h3 className="font-serif text-2xl font-semibold text-foreground mb-2">
+                <h3 className="font-heading text-2xl font-semibold text-foreground mb-2">
                   {tier.name}
                 </h3>
                 <p className="text-sm text-foreground/70 leading-relaxed">
@@ -79,7 +79,7 @@ export default function PlatformPricing() {
               </div>
 
               <div className="flex items-baseline gap-1">
-                <span className="font-serif text-5xl font-bold text-foreground tracking-tight">
+                <span className="font-heading text-5xl font-bold text-foreground tracking-tight">
                   {brl(tier.monthly_price_brl)}
                 </span>
                 <span className="text-foreground/60 text-base">/mês</span>
@@ -122,7 +122,7 @@ export default function PlatformPricing() {
         <div className="bg-muted/40 border border-border rounded-2xl p-7 md:p-9 max-w-3xl mx-auto">
           <div className="flex flex-col md:flex-row items-center gap-6 md:gap-8">
             <div className="flex-1 text-center md:text-left">
-              <h3 className="font-serif text-xl font-semibold text-foreground mb-2">
+              <h3 className="font-heading text-xl font-semibold text-foreground mb-2">
                 Precisa de mais? Compre créditos avulsos.
               </h3>
               <p className="text-sm text-foreground/70">
@@ -135,7 +135,7 @@ export default function PlatformPricing() {
                   key={p.id}
                   className="bg-card border border-border rounded-xl px-4 py-3 text-center min-w-[6rem]"
                 >
-                  <div className="font-serif text-lg font-semibold text-foreground">
+                  <div className="font-heading text-lg font-semibold text-foreground">
                     {p.credits} créditos
                   </div>
                   <div className="text-sm text-accent font-medium">{brl(p.price_brl)}</div>

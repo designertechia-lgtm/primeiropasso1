@@ -39,7 +39,7 @@ export default function AdminLeads() {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">Novos Pacientes</h1>
+      <h1 className="font-heading text-2xl md:text-3xl font-bold text-foreground">Novos Pacientes</h1>
 
       {leads.length === 0 ? (
         <p className="text-muted-foreground text-center py-12">Nenhum novo paciente ainda.</p>

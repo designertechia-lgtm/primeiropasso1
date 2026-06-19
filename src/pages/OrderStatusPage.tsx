@@ -93,7 +93,7 @@ export default function OrderStatusPage() {
             : <Clock className="h-7 w-7 text-muted-foreground" />}
         </div>
 
-        <h1 className="font-serif text-xl font-bold text-foreground mb-1">
+        <h1 className="font-heading text-xl font-bold text-foreground mb-1">
           {paid ? "Pagamento confirmado!" : cancelled ? "Pagamento não concluído" : "Quase lá!"}
         </h1>
         <p className="text-sm text-muted-foreground mb-5">

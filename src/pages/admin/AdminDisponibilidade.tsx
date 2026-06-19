@@ -303,7 +303,7 @@ export default function AdminDisponibilidade() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">Bloqueios de Horário</h1>
+          <h1 className="font-heading text-2xl md:text-3xl font-bold text-foreground">Bloqueios de Horário</h1>
           <p className="text-muted-foreground mt-1">Impeça agendamentos em períodos específicos.</p>
         </div>
         <div className="flex gap-2">
@@ -644,7 +644,7 @@ export default function AdminDisponibilidade() {
 
       {/* Bloqueios existentes */}
       <div className="space-y-3">
-        <h2 className="font-serif text-xl font-semibold">
+        <h2 className="font-heading text-xl font-semibold">
           Bloqueios Existentes
           {blockGroups.length > 0 && (
             <span className="ml-2 text-sm font-normal text-muted-foreground">({blockGroups.length})</span>

@@ -31,7 +31,7 @@ export default function PlatformHeader() {
     >
       <div className="container mx-auto max-w-6xl px-4 h-16 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2 group">
-          <span className="font-serif text-xl font-semibold text-foreground tracking-tight">
+          <span className="font-heading text-xl font-semibold text-foreground tracking-tight">
             Primeiro Passo
           </span>
         </Link>

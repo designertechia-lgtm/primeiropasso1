@@ -291,7 +291,7 @@ export default function AdminVideos() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground flex-1">Vídeos</h1>
+        <h1 className="font-heading text-2xl md:text-3xl font-bold text-foreground flex-1">Vídeos</h1>
 
         {/* Botões de criação de vídeo com IA */}
         <div className="flex flex-wrap gap-2">

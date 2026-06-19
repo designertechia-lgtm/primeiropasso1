@@ -289,7 +289,7 @@ export default function WorkspacesTab() {
   return (
     <div className="space-y-4 animate-in fade-in duration-500">
       <div>
-        <h2 className="font-serif text-2xl text-foreground">Workspaces</h2>
+        <h2 className="font-heading text-2xl text-foreground">Workspaces</h2>
         <p className="text-sm text-muted-foreground mt-1">
           Manutenção conta-a-conta: veja o estado de configuração de cada profissional e ajude a
           completar/consertar a conta. Visível apenas para a conta de desenvolvedor.

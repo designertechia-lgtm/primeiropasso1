@@ -89,7 +89,7 @@ export default function Cadastro() {
           <div className="flex justify-center mb-2">
             <Leaf className="h-10 w-10 text-primary" />
           </div>
-          <CardTitle className="font-serif text-2xl">Criar Conta</CardTitle>
+          <CardTitle className="font-heading text-2xl">Criar Conta</CardTitle>
           <CardDescription>Junte-se ao Primeiro Passo</CardDescription>
         </CardHeader>
         <form onSubmit={handleSignUp}>

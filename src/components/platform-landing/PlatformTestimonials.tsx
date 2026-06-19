@@ -35,7 +35,7 @@ export default function PlatformTestimonials() {
           <p className="text-sm uppercase tracking-[0.18em] text-accent font-semibold mb-3">
             Quem já usa
           </p>
-          <h2 className="font-serif text-3xl md:text-4xl lg:text-5xl font-semibold text-foreground leading-tight tracking-tight">
+          <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl font-semibold text-foreground leading-tight tracking-tight">
             Terapeutas que recuperaram suas{" "}
             <span className="text-primary">tardes de quarta-feira.</span>
           </h2>
@@ -55,7 +55,7 @@ export default function PlatformTestimonials() {
                 "{quote}"
               </blockquote>
               <figcaption className="flex items-center gap-3 pt-2 border-t border-border">
-                <div className="w-11 h-11 rounded-full bg-gradient-to-br from-primary/30 to-accent/30 flex items-center justify-center font-serif font-semibold text-primary text-sm">
+                <div className="w-11 h-11 rounded-full bg-gradient-to-br from-primary/30 to-accent/30 flex items-center justify-center font-heading font-semibold text-primary text-sm">
                   {initials}
                 </div>
                 <div>

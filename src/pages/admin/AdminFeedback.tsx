@@ -82,7 +82,7 @@ export default function AdminFeedback() {
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       <div>
-        <h1 className="text-3xl font-serif text-foreground">Feedback</h1>
+        <h1 className="text-3xl font-heading text-foreground">Feedback</h1>
         <p className="text-muted-foreground">Sua opinião nos ajuda a construir uma ferramenta melhor para você.</p>
       </div>
 

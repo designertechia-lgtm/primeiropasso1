@@ -72,7 +72,7 @@ export default function PlatformFeatureGrid() {
           <p className="text-sm uppercase tracking-[0.18em] text-accent font-semibold mb-3">
             Tudo no painel
           </p>
-          <h2 className="font-serif text-3xl md:text-4xl lg:text-5xl font-semibold text-foreground leading-tight tracking-tight">
+          <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl font-semibold text-foreground leading-tight tracking-tight">
             Mais que vídeo.{" "}
             <span className="text-primary">Operação completa do consultório.</span>
           </h2>
@@ -87,7 +87,7 @@ export default function PlatformFeatureGrid() {
               <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
                 <Icon className="h-4 w-4 text-primary" aria-hidden />
               </div>
-              <h3 className="font-serif text-base font-semibold text-foreground mb-1.5 leading-tight">
+              <h3 className="font-heading text-base font-semibold text-foreground mb-1.5 leading-tight">
                 {title}
               </h3>
               <p className="text-sm text-foreground/65 leading-relaxed">{body}</p>

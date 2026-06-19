@@ -9,7 +9,7 @@ export default function PlatformFooter() {
       <div className="container mx-auto max-w-6xl px-4 py-12 md:py-16">
         <div className="grid md:grid-cols-4 gap-10 md:gap-8">
           <div className="md:col-span-2 max-w-sm">
-            <span className="font-serif text-xl font-semibold text-foreground">
+            <span className="font-heading text-xl font-semibold text-foreground">
               Primeiro Passo
             </span>
             <p className="text-sm text-foreground/70 leading-relaxed mt-3">
@@ -30,7 +30,7 @@ export default function PlatformFooter() {
           </div>
 
           <div>
-            <h3 className="font-serif text-sm font-semibold text-foreground mb-4 uppercase tracking-wider">
+            <h3 className="font-heading text-sm font-semibold text-foreground mb-4 uppercase tracking-wider">
               Plataforma
             </h3>
             <ul className="flex flex-col gap-2.5">
@@ -78,7 +78,7 @@ export default function PlatformFooter() {
           </div>
 
           <div>
-            <h3 className="font-serif text-sm font-semibold text-foreground mb-4 uppercase tracking-wider">
+            <h3 className="font-heading text-sm font-semibold text-foreground mb-4 uppercase tracking-wider">
               Legal
             </h3>
             <ul className="flex flex-col gap-2.5">

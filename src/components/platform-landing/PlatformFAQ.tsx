@@ -48,7 +48,7 @@ export default function PlatformFAQ() {
           <p className="text-sm uppercase tracking-[0.18em] text-accent font-semibold mb-3">
             FAQ
           </p>
-          <h2 className="font-serif text-3xl md:text-4xl lg:text-5xl font-semibold text-foreground leading-tight tracking-tight">
+          <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl font-semibold text-foreground leading-tight tracking-tight">
             Perguntas frequentes
           </h2>
         </div>

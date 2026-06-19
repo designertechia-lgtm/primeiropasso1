@@ -206,7 +206,7 @@ export default function LandingOficialTab() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="font-serif text-xl text-foreground">Landing Oficial</h2>
+        <h2 className="font-heading text-xl text-foreground">Landing Oficial</h2>
         <p className="text-sm text-muted-foreground mt-1">
           Edite o conteúdo da landing institucional. Alterações aparecem imediatamente em{" "}
           <strong>primeiropasso.online</strong> sem novo deploy.

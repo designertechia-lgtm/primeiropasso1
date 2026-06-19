@@ -75,7 +75,7 @@ export default function PatientAgendamentos() {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">Meus Agendamentos</h1>
+      <h1 className="font-heading text-2xl md:text-3xl font-bold text-foreground">Meus Agendamentos</h1>
 
       {appointments.length === 0 ? (
         <p className="text-muted-foreground text-center py-12">Você ainda não tem agendamentos.</p>

@@ -148,7 +148,7 @@ export default function FeedbackTab() {
         ) : filteredFeedbacks?.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center border border-dashed rounded-xl bg-muted/20">
             <MessageSquare className="h-12 w-12 text-muted-foreground/30 mb-4" />
-            <h3 className="font-serif text-lg">Nenhum feedback encontrado</h3>
+            <h3 className="font-heading text-lg">Nenhum feedback encontrado</h3>
             <p className="text-sm text-muted-foreground max-w-xs mx-auto mt-2">
               Parece que não há mensagens nesta categoria no momento.
             </p>

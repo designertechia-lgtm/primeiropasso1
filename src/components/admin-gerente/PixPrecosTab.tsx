@@ -918,7 +918,7 @@ export default function PixPrecosTab() {
   return (
     <div className="space-y-6">
       <header className="space-y-1">
-        <h2 className="font-serif text-2xl text-foreground">PIX & Preços</h2>
+        <h2 className="font-heading text-2xl text-foreground">PIX & Preços</h2>
         <p className="text-sm text-muted-foreground">
           Configure a chave PIX, planos de assinatura, pacotes de créditos e o custo de cada serviço.
         </p>

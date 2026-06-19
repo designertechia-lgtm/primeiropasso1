@@ -196,7 +196,7 @@ export default function PatientBuscar() {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center space-y-4">
         <CalendarX className="h-16 w-16 text-muted-foreground" />
-        <h1 className="font-serif text-2xl font-bold text-foreground">Nenhum profissional vinculado</h1>
+        <h1 className="font-heading text-2xl font-bold text-foreground">Nenhum profissional vinculado</h1>
         <p className="text-muted-foreground max-w-md">
           Para agendar uma consulta, acesse a página do seu profissional e cadastre-se a partir de lá.
         </p>
@@ -210,7 +210,7 @@ export default function PatientBuscar() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">
+      <h1 className="font-heading text-2xl md:text-3xl font-bold text-foreground">
         Agendar Consulta
       </h1>
 
@@ -225,7 +225,7 @@ export default function PatientBuscar() {
             </div>
           )}
           <div>
-            <h2 className="font-serif text-xl font-bold">{name}</h2>
+            <h2 className="font-heading text-xl font-bold">{name}</h2>
             {professional.crp && <p className="text-sm text-muted-foreground">{professional.crp}</p>}
             {professional.approaches && professional.approaches.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-1">

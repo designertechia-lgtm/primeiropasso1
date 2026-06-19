@@ -179,7 +179,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-pulse text-muted-foreground font-serif text-lg">Carregando...</div>
+        <div className="animate-pulse text-muted-foreground font-heading text-lg">Carregando...</div>
       </div>
     );
   }
@@ -188,7 +188,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center space-y-4">
-          <h1 className="font-serif text-3xl font-bold text-foreground">Profissional não encontrado</h1>
+          <h1 className="font-heading text-3xl font-bold text-foreground">Profissional não encontrado</h1>
           <p className="text-muted-foreground">Verifique o endereço e tente novamente.</p>
         </div>
       </div>

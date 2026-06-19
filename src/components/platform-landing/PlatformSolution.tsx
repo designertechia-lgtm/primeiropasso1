@@ -31,7 +31,7 @@ export default function PlatformSolution() {
           <p className="text-sm uppercase tracking-[0.18em] text-accent font-semibold mb-3">
             A solução
           </p>
-          <h2 className="font-serif text-3xl md:text-4xl lg:text-5xl font-semibold text-foreground leading-tight tracking-tight">
+          <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl font-semibold text-foreground leading-tight tracking-tight">
             Quatro pilares.{" "}
             <span className="text-primary">Um consultório que cresce sozinho.</span>
           </h2>
@@ -46,7 +46,7 @@ export default function PlatformSolution() {
               <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-5">
                 <Icon className="h-6 w-6 text-primary" aria-hidden />
               </div>
-              <h3 className="font-serif text-xl md:text-2xl font-semibold text-foreground mb-3">
+              <h3 className="font-heading text-xl md:text-2xl font-semibold text-foreground mb-3">
                 {title}
               </h3>
               <p className="text-base text-foreground/75 leading-relaxed">

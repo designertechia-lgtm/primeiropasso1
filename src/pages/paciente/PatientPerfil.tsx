@@ -42,7 +42,7 @@ export default function PatientPerfil() {
         <Button variant="ghost" size="icon" onClick={() => navigate("/minha-conta")}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">Meu Perfil</h1>
+        <h1 className="font-heading text-2xl md:text-3xl font-bold text-foreground">Meu Perfil</h1>
       </div>
 
       <Card>

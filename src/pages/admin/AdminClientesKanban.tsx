@@ -31,7 +31,7 @@ export default function AdminClientesKanban() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">
+        <h1 className="font-heading text-2xl md:text-3xl font-bold text-foreground">
           CRM — Pipeline de Clientes
         </h1>
         <div className="flex flex-col sm:flex-row gap-3 items-center">

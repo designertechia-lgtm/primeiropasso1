@@ -282,6 +282,31 @@ const tools = [
 // =============================================
 // SYSTEM PROMPT DO AXEL
 // =============================================
+// Notifica via WhatsApp (Evolution) com timeout — best-effort, NUNCA trava o fluxo.
+// I/O externo lento jamais pode pendurar a edge (era a causa do "Axel parou de responder").
+async function notifyWhatsApp(instance: string, tel: string, text: string): Promise<boolean> {
+  const evoUrl = Deno.env.get("EVOLUTION_API_URL")?.replace(/\/$/, "")
+  const evoKey = Deno.env.get("EVOLUTION_API_KEY")
+  if (!instance || !tel || !evoUrl || !evoKey) return false
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 5000)
+  try {
+    const res = await fetch(`${evoUrl}/message/sendText/${instance}`, {
+      method: "POST",
+      headers: { "apikey": evoKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ number: tel, text, options: { delay: 1000, presence: "composing" } }),
+      signal: ctrl.signal,
+    })
+    if (!res.ok) console.error("[notifyWhatsApp] status", res.status)
+    return res.ok
+  } catch (e: any) {
+    console.error("[notifyWhatsApp]", e?.name === "AbortError" ? "timeout(5s)" : e?.message)
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 function buildSystemPrompt(opts: {
   professional: any
   memoryFacts: Array<{ key: string; value: string }>
@@ -1157,27 +1182,16 @@ async function handleToolCall(
     let notificados = 0
     if (n > 0 && (alvos || []).length > 0) {
       const { data: prof } = await supabaseAdmin.from("professionals").select("evolution_instance_name, full_name").eq("id", professionalId).single()
-      const instance = prof?.evolution_instance_name
+      const instance = prof?.evolution_instance_name || ""
       const proNome = (prof?.full_name || "o profissional").split(" ")[0]
-      const evoUrl = Deno.env.get("EVOLUTION_API_URL")?.replace(/\/$/, "")
-      const evoKey = Deno.env.get("EVOLUTION_API_KEY")
-      if (instance && evoUrl && evoKey) {
-        for (const a of (alvos as any[])) {
-          const tel = a.leads?.whatsapp
-          if (!tel) continue
-          const cliente = a.leads?.name || "Olá"
-          const dataBR = (a.appointment_date || "").split("-").reverse().join("/")
-          const hora = (a.start_time || "").slice(0, 5)
-          const msg = `Olá, ${cliente}! Precisei cancelar o atendimento com ${proNome} que estava marcado para ${dataBR} às ${hora}. Em breve entro em contato pra reagendar. 🙂`
-          try {
-            const res = await fetch(`${evoUrl}/message/sendText/${instance}`, {
-              method: "POST",
-              headers: { "apikey": evoKey, "Content-Type": "application/json" },
-              body: JSON.stringify({ number: tel, text: msg, options: { delay: 1000, presence: "composing" } }),
-            })
-            if (res.ok) notificados++; else console.error("[cancelar_agendamentos] evo status", res.status)
-          } catch (e: any) { console.error("[cancelar_agendamentos] evo err", e.message) }
-        }
+      for (const a of (alvos as any[])) {
+        const tel = a.leads?.whatsapp
+        if (!tel) continue
+        const cliente = a.leads?.name || "Olá"
+        const dataBR = (a.appointment_date || "").split("-").reverse().join("/")
+        const hora = (a.start_time || "").slice(0, 5)
+        const msg = `Olá, ${cliente}! Precisei cancelar o atendimento com ${proNome} que estava marcado para ${dataBR} às ${hora}. Em breve entro em contato pra reagendar. 🙂`
+        if (await notifyWhatsApp(instance, tel, msg)) notificados++
       }
     }
     console.log(`[cancelar_agendamentos] ${n} cancelado(s), ${notificados} notificado(s) para ${professionalId}`)
@@ -1316,26 +1330,12 @@ async function handleToolCall(
       return { erro: apptErr.message, instrucao: "Avise que houve erro ao agendar." }
     }
 
-    // notifica o cliente no WhatsApp pela instância do profissional
+    // notifica o cliente no WhatsApp (best-effort com timeout — nunca trava o agendamento)
     const dataBR = data.split("-").reverse().join("/")
-    let notificado = false
     const { data: prof } = await supabaseAdmin.from("professionals").select("evolution_instance_name, full_name").eq("id", professionalId).single()
-    const instance = prof?.evolution_instance_name
     const proNome = (prof?.full_name || "o profissional").split(" ")[0]
-    const evoUrl = Deno.env.get("EVOLUTION_API_URL")?.replace(/\/$/, "")
-    const evoKey = Deno.env.get("EVOLUTION_API_KEY")
-    if (instance && evoUrl && evoKey) {
-      const msg = `Olá, ${nome}! Seu atendimento com ${proNome} está agendado para ${dataBR} às ${startT.slice(0, 5)}. Qualquer coisa, é só responder por aqui. 🙂`
-      try {
-        const res = await fetch(`${evoUrl}/message/sendText/${instance}`, {
-          method: "POST",
-          headers: { "apikey": evoKey, "Content-Type": "application/json" },
-          body: JSON.stringify({ number: tel, text: msg, options: { delay: 1000, presence: "composing" } }),
-        })
-        notificado = res.ok
-        if (!res.ok) console.error("[agendar_cliente] evo status", res.status)
-      } catch (e: any) { console.error("[agendar_cliente] evo err", e.message) }
-    }
+    const msgCli = `Olá, ${nome}! Seu atendimento com ${proNome} está agendado para ${dataBR} às ${startT.slice(0, 5)}. Qualquer coisa, é só responder por aqui. 🙂`
+    const notificado = await notifyWhatsApp(prof?.evolution_instance_name || "", tel, msgCli)
 
     console.log(`[agendar_cliente] appt ${appt?.id} lead ${leadId} ${data} ${startT} notif=${notificado}`)
     return {

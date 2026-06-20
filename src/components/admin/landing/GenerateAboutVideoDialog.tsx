@@ -31,6 +31,14 @@ const EDGE_VOICES = [
   { id: "pt-BR-AntonioNeural", label: "Antônio (masculina)" },
 ];
 
+// Cenários do caminho "Criar personagem" (espelha CENARIOS do worker criar_institucional.py)
+const CENARIOS = [
+  { id: "escritorio", label: "Escritório" },
+  { id: "consultorio", label: "Consultório" },
+  { id: "acolhedor", label: "Acolhedor" },
+  { id: "neutro", label: "Estúdio neutro" },
+];
+
 type Tier = "premium" | "pro";
 type VoiceMode = "neural" | "clone";
 
@@ -168,6 +176,7 @@ export default function GenerateAboutVideoDialog({
 }: GenerateAboutVideoDialogProps) {
   const qc = useQueryClient();
   const [tier, setTier] = useState<Tier>(initialTier ?? "premium");
+  const [cenario, setCenario] = useState("escritorio");
   const [voice, setVoice] = useState(EDGE_VOICES[0].id);
   const [voiceMode, setVoiceMode] = useState<VoiceMode>(savedVoiceId ? "clone" : "neural");
   const [cloneVoiceId, setCloneVoiceId] = useState<string | null>(savedVoiceId);
@@ -364,6 +373,41 @@ export default function GenerateAboutVideoDialog({
     }
   }
 
+  // Fluxo "Criar personagem": foto → personagem 3D animado + voz clonada (Veo + LatentSync).
+  async function gerarCriado() {
+    if (!script || !photoUrl) return;
+    if (voiceMode === "clone" && !cloneVoiceId) return;
+    setPhase("gerando");
+    setProgress({ pct: 5, step: "Enviando..." });
+    try {
+      const finalScript = { ...script, narracao: narracao.trim() };
+      const res = await fetch(`${VIDEO_API}/criar-institucional`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          professional_slug: professionalSlug,
+          script: finalScript,
+          cenario,
+          foto_url: photoUrl,
+          voice,
+          voice_provider: voiceMode === "clone" && cloneVoiceId ? "elevenlabs" : "edge",
+          elevenlabs_voice_id: voiceMode === "clone" ? cloneVoiceId : undefined,
+          set_about_video: true,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Erro ${res.status}`);
+      }
+      const { job_id } = await res.json();
+      startPolling(job_id, "Seu personagem animado está pronto e aplicado na página! 🎉", "apply");
+    } catch (e: any) {
+      setPhase("pronto");
+      setProgress(null);
+      toast.error("Erro ao iniciar a geração", { description: e?.message });
+    }
+  }
+
   // Polling compartilhado. mode "apply" (foto): aplica e fecha. mode "gallery"
   // (editar): empilha o resultado na galeria à esquerda e fica aberto pra iterar.
   function startPolling(jobId: string, successMsg: string, mode: "apply" | "gallery" = "apply") {
@@ -456,7 +500,7 @@ export default function GenerateAboutVideoDialog({
           </DialogTitle>
           <DialogDescription>
             {source === "foto"
-              ? "Sua foto ganha vida com movimento suave, narração e legendas — e o vídeo entra direto na seção Sobre. (A narração é em voz off, sem sincronia labial.)"
+              ? "Você vira um personagem 3D animado, com a sua voz, falando num cenário à sua escolha — e o vídeo entra direto na seção Sobre."
               : "Envie um vídeo seu falando à câmera: a IA corta as hesitações e os silêncios, sincroniza legendas e equaliza o áudio — e aplica direto na seção Sobre."}
           </DialogDescription>
         </DialogHeader>
@@ -470,7 +514,7 @@ export default function GenerateAboutVideoDialog({
               onClick={() => setSource("foto")}
               className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 transition ${source === "foto" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:text-foreground"}`}
             >
-              <ImageIcon className="h-3.5 w-3.5" /> Animar minha foto
+              <ImageIcon className="h-3.5 w-3.5" /> Criar personagem
             </button>
             <button
               type="button"
@@ -491,37 +535,25 @@ export default function GenerateAboutVideoDialog({
             <div className="flex gap-3 items-start">
               <img src={photoUrl} alt="Foto a animar" className="w-20 h-20 rounded-lg object-cover border" />
               <div className="flex-1 space-y-2">
-                <Label>Plano</Label>
-                <div className="flex gap-2">
-                  {(["premium", "pro"] as Tier[]).map((t) => {
-                    const cost = t === "premium" ? premiumCost.data?.credits_required : proCost.data?.credits_required;
-                    return (
-                      <button
-                        key={t}
-                        type="button"
-                        disabled={gerando}
-                        onClick={() => setTier(t)}
-                        className={`flex-1 rounded-lg border p-2.5 text-left transition ${
-                          tier === t ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:bg-muted/50"
-                        }`}
-                      >
-                        <span className="flex items-center gap-1.5 text-sm font-medium">
-                          {t === "pro" ? <Crown className="h-3.5 w-3.5" /> : <Sparkles className="h-3.5 w-3.5" />}
-                          {t === "pro" ? "PRO" : "Premium"}
-                        </span>
-                        <span className="block text-xs text-muted-foreground">
-                          {cost != null ? `${cost} créditos` : "..."}
-                          {t === "pro" ? " · roteiro Opus + Kling topo" : " · Kling"}
-                        </span>
-                      </button>
-                    );
-                  })}
+                <Label>Cenário</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {CENARIOS.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      disabled={gerando}
+                      onClick={() => setCenario(c.id)}
+                      className={`rounded-lg border px-3 py-2 text-sm text-left transition ${
+                        cenario === c.id ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:bg-muted/50"
+                      }`}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
                 </div>
-                {!canAfford && selectedCost != null && (
-                  <p className="text-xs text-destructive">
-                    Saldo insuficiente ({balance ?? 0}/{selectedCost}).
-                  </p>
-                )}
+                <p className="text-xs text-muted-foreground">
+                  Você vira um personagem animado nesse cenário, falando com a sua voz.
+                </p>
               </div>
             </div>
 
@@ -788,14 +820,14 @@ export default function GenerateAboutVideoDialog({
           </Button>
           {source === "foto" ? (
             <Button
-              onClick={gerarVideo}
-              disabled={!script || !narracao.trim() || gerando || !canAfford || !photoUrl || (voiceMode === "clone" && !cloneVoiceId)}
+              onClick={gerarCriado}
+              disabled={!script || !narracao.trim() || gerando || !photoUrl || (voiceMode === "clone" && !cloneVoiceId)}
               title={voiceMode === "clone" && !cloneVoiceId ? "Grave e clone sua voz primeiro (ou use a voz neural)" : undefined}
               className="gap-2"
             >
               {gerando
-                ? <><Loader2 className="h-4 w-4 animate-spin" /> Gerando vídeo…</>
-                : <><Clapperboard className="h-4 w-4" /> Gerar por {selectedCost ?? "…"} créditos</>}
+                ? <><Loader2 className="h-4 w-4 animate-spin" /> Criando seu vídeo…</>
+                : <><Clapperboard className="h-4 w-4" /> Criar meu personagem</>}
             </Button>
           ) : (
             <Button onClick={editarVideo} disabled={!hasFootage || gerando} className="gap-2">

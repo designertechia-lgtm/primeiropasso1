@@ -172,7 +172,7 @@ export default function HeroSection({ title, subtitle, whatsapp, ctaMessage, cam
               <div className="flex flex-col sm:flex-row gap-3 pt-4 w-full justify-center lg:justify-start">
                 <a href={whatsappLink} target="_blank" rel="noopener noreferrer" onClick={onWhatsAppClick}>
                   <Button size="lg" className="text-base gap-2 shadow-lg hover:shadow-xl transition-shadow duration-300 w-full sm:w-auto">
-                    Agendar Horário <ArrowRight className="h-4 w-4" />
+                    Quero mais informações <ArrowRight className="h-4 w-4" />
                   </Button>
                 </a>
               </div>

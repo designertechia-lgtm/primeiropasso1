@@ -70,7 +70,7 @@ export default function LandingHeader({ professionalName, whatsapp, ctaMessage, 
           )}
           {whatsapp && (
             <a href={whatsappLink} target="_blank" rel="noopener noreferrer" onClick={onWhatsAppClick}>
-              <Button size="sm">Agendar</Button>
+              <Button size="sm">Quero mais informações</Button>
             </a>
           )}
         </nav>
@@ -101,7 +101,7 @@ export default function LandingHeader({ professionalName, whatsapp, ctaMessage, 
             <Link to={slug ? `/login?ref=${slug}` : "/login"} className="block"><Button variant="outline" size="sm" className="w-full">Entrar</Button></Link>
           )}
           {whatsapp && (
-            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="block" onClick={onWhatsAppClick}><Button size="sm" className="w-full">Agendar</Button></a>
+            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="block" onClick={onWhatsAppClick}><Button size="sm" className="w-full">Quero mais informações</Button></a>
           )}
         </div>
       )}

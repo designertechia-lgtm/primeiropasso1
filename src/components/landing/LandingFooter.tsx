@@ -31,7 +31,7 @@ export default function LandingFooter({ professionalName, whatsapp, ctaMessage, 
           </p>
           <a href={whatsappLink} target="_blank" rel="noopener noreferrer" onClick={onWhatsAppClick}>
             <Button size="lg" variant="secondary" className="text-base mt-2">
-              Agendar
+              Quero mais informações
             </Button>
           </a>
         </div>

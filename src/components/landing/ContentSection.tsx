@@ -217,7 +217,7 @@ export default function ContentSection({ articles, videos, slug, whatsapp }: Con
                           >
                             {contact.isWa
                               ? <><MessageCircle className="h-4 w-4" /> Falar pelo WhatsApp</>
-                              : <><Calendar className="h-4 w-4" /> Agendar uma conversa</>
+                              : <><Calendar className="h-4 w-4" /> Quero mais informações</>
                             }
                           </a>
                         </Button>

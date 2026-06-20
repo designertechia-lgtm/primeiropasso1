@@ -71,7 +71,7 @@ export default function ContactSection({
                   onClick={onWhatsAppClick}
                 >
                   <MessageCircle className="h-5 w-5" />
-                  Agendar pelo WhatsApp
+                  Quero mais informações
                 </a>
               </Button>
             )}

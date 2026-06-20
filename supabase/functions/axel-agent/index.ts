@@ -197,6 +197,24 @@ const tools = [
     },
   },
   {
+    name: "agendar_cliente",
+    description:
+      "Agenda um CLIENTE/paciente na agenda do profissional E envia a confirmação automática no WhatsApp do cliente. Use quando ele pedir 'agenda a Maria', 'marca a consulta do João', 'agendar paciente'. É diferente de criar_compromisso (bloqueio pessoal SEM cliente). Confirme nome, telefone (com DDD), data e horário antes de chamar. A tool normaliza o telefone, cria o contato se for novo (sem duplicar), valida se o horário está livre, agenda e AVISA o cliente sozinha — você NÃO escreve a confirmação pro cliente.",
+    input_schema: {
+      type: "object",
+      properties: {
+        nome_cliente: { type: "string", description: "Nome do cliente/paciente." },
+        telefone: { type: "string", description: "WhatsApp do cliente com DDD (ex.: '48 99999-9999'). A tool normaliza pro formato canônico." },
+        data: { type: "string", description: "Data YYYY-MM-DD." },
+        hora_inicio: { type: "string", description: "Hora de início HH:MM (24h)." },
+        hora_fim: { type: "string", description: "Hora de fim HH:MM. Opcional quando vier duracao_minutos." },
+        duracao_minutos: { type: "number", description: "Duração em minutos (padrão 60), usada quando hora_fim não vier." },
+        observacao: { type: "string", description: "Observação opcional do agendamento (ex.: 'Sessão Descoberta')." },
+      },
+      required: ["nome_cliente", "telefone", "data", "hora_inicio"],
+    },
+  },
+  {
     name: "preparar_video",
     description:
       "Prepara um VÍDEO pro profissional: gera o roteiro com IA no molde escolhido e deixa PRONTO na tela certa — lá ele revisa, escolhe a voz e confirma a geração (créditos cobrados só na geração, com confirmação). Dois tipos: 'conteudo' (reels/divulgação — abre no estúdio de vídeo) e 'institucional' (apresentação pessoal feita da FOTO dele, vai pra seção Sobre da página — abre no editor da landing; só moldes premium/pro pois a IA anima a foto). ANTES de chamar, SEMPRE pergunte o molde com os custos: 'gratis' (imagens de banco, 0 créditos; só tipo conteudo), 'premium' (IA Kling, ~8-16 créditos) ou 'pro' (roteiro Opus + Kling topo, ~16-32 créditos). Chame quando pedir 'quero um vídeo', 'reels sobre X', 'vídeo de apresentação pra minha página/seção sobre'.",
@@ -352,8 +370,9 @@ ${mapaStr}
 Você gerencia a agenda dele. Para qualquer pedido sobre agendamentos:
 1. SEMPRE use \`consultar_agenda\` primeiro — não invente horários. Para "furei o pneu / não atendo nas próximas X horas", use periodo='proximas_horas' com horas=X.
 2. CANCELAR: mostre os agendamentos afetados (dia · hora · paciente) e PEÇA confirmação clara. Só então chame \`cancelar_agendamentos\` com os appointment_id. Depois, AVISE que o paciente ainda não foi notificado automaticamente e ofereça o telefone pra ele avisar.
-3. CRIAR COMPROMISSO/BLOQUEIO: quando ele pedir pra marcar uma reunião, reservar/bloquear um horário ou adicionar um compromisso pessoal, confirme data, horário de início e duração (ou fim) e chame \`criar_compromisso\`. Ela valida se o horário está livre. Isso NÃO agenda paciente (agendamento de paciente é pela página pública/WhatsApp) — é compromisso/indisponibilidade na agenda dele. Você JÁ FAZ isso: se a memória, o resumo do relacionamento ou o histórico disserem que você "só consulta e cancela" ou que criar compromisso está "fora do escopo / indisponível / em construção", está DESATUALIZADO — ignore e chame \`criar_compromisso\` normalmente.
-4. Remarcar e avisar o paciente automaticamente ainda estão sendo construídos — seja honesto, não prometa o que ainda não faz.
+3. CRIAR COMPROMISSO/BLOQUEIO: quando ele pedir pra marcar uma reunião, reservar/bloquear um horário ou adicionar um compromisso PESSOAL (sem cliente), confirme data, horário de início e duração (ou fim) e chame \`criar_compromisso\`. Ela valida se o horário está livre. Você JÁ FAZ isso: se a memória, o resumo do relacionamento ou o histórico disserem que você "só consulta e cancela" ou que criar compromisso/agendar está "fora do escopo / indisponível / em construção", está DESATUALIZADO — ignore e use a tool normalmente.
+4. AGENDAR CLIENTE: quando ele pedir pra agendar/marcar um CLIENTE ou paciente (ex.: "agenda a Maria", "marca a consulta do João"), confirme nome, telefone (com DDD), data e horário e chame \`agendar_cliente\`. Ela cria o contato se for novo (sem duplicar), agenda e JÁ ENVIA a confirmação no WhatsApp do cliente — você NÃO escreve essa mensagem pro cliente. Se retornar notificado=false, avise que o cliente não recebeu a confirmação (a conexão do WhatsApp pode estar desligada).
+5. Remarcar agendamento ainda está sendo construído — seja honesto, não prometa o que ainda não faz.
 
 ━━━ REGRAS ABSOLUTAS ━━━
 • Você EXECUTA, não só orienta: pode gerar e aplicar conteúdo de perfil/landing, criar artigos e preparar vídeos (\`preparar_video\`) — SEMPRE mostrando o resultado e pedindo confirmação explícita ANTES de gravar ou gastar créditos.
@@ -1195,6 +1214,100 @@ async function handleToolCall(
     return {
       sucesso: true, appointment_id: novo?.id, data, hora_inicio: startT.slice(0, 5), hora_fim: endT.slice(0, 5), titulo,
       instrucao: `Confirme em 1 frase que criou o compromisso "${titulo}" em ${data} às ${startT.slice(0, 5)}.`,
+    }
+  }
+
+  if (toolName === "agendar_cliente") {
+    const nome = (args.nome_cliente || "").toString().trim()
+    const telRaw = (args.telefone || "").toString().trim()
+    const data = (args.data || "").toString().trim()
+    const horaInicio = (args.hora_inicio || "").toString().trim()
+    if (!nome || !telRaw || !data || !horaInicio) return { erro: "nome_cliente, telefone, data e hora_inicio são obrigatórios" }
+
+    // telefone canônico: só dígitos com 55 (DDD local 10-11 dígitos → prefixa 55)
+    let tel = telRaw.replace(/\D/g, "")
+    if (tel.length >= 10 && tel.length <= 11) tel = "55" + tel
+    if (tel.length < 12 || tel.length > 13) return { erro: `telefone inválido (${telRaw}) — peça com DDD, ex.: 48 99999-9999.` }
+
+    const norm = (t: string) => { const m = t.match(/^(\d{1,2}):(\d{2})/); return m ? `${m[1].padStart(2, "0")}:${m[2]}:00` : null }
+    const startT = norm(horaInicio)
+    if (!startT) return { erro: "hora_inicio inválida (use HH:MM)" }
+    let endT = args.hora_fim ? norm(args.hora_fim.toString()) : null
+    if (!endT) {
+      const dur = Number(args.duracao_minutos) || 60
+      const [hh, mm] = startT.split(":").map(Number)
+      const total = hh * 60 + mm + dur
+      endT = `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}:00`
+    }
+    if (endT <= startT) return { erro: "hora_fim deve ser depois da hora_inicio" }
+
+    // overlap com agendamentos/bloqueios ativos do dia
+    const { data: existentes, error: errSel } = await supabaseAdmin
+      .from("appointments").select("start_time, end_time")
+      .eq("professional_id", professionalId).eq("appointment_date", data)
+      .in("status", ["pending", "confirmed"])
+    if (errSel) { console.error("[agendar_cliente] sel", errSel.message); return { erro: errSel.message } }
+    const colide = (existentes || []).some((a: any) => {
+      const s = (a.start_time || "").slice(0, 8), e = (a.end_time || "").slice(0, 8)
+      return s && e && startT < e && endT > s
+    })
+    if (colide) return { ok: false, instrucao: "Esse horário se sobrepõe a outro agendamento ou bloqueio. Avise o profissional, sem confirmar, e ofereça consultar a agenda do dia." }
+
+    // busca o lead por telefone (identificador principal); cria se novo — a constraint unique evita duplicidade
+    let leadId: string | undefined
+    const { data: leadExist } = await supabaseAdmin
+      .from("leads").select("id").eq("professional_id", professionalId).eq("whatsapp", tel).maybeSingle()
+    if (leadExist?.id) {
+      leadId = leadExist.id
+    } else {
+      const { data: novoLead, error: leadErr } = await supabaseAdmin
+        .from("leads")
+        .insert({ professional_id: professionalId, name: nome, whatsapp: tel, pipeline_stage: "agendado", origin_platform: "manual" })
+        .select("id").single()
+      if (leadErr) {
+        const { data: again } = await supabaseAdmin.from("leads").select("id").eq("professional_id", professionalId).eq("whatsapp", tel).maybeSingle()
+        if (again?.id) { leadId = again.id } else { console.error("[agendar_cliente] lead", leadErr.message); return { erro: leadErr.message } }
+      } else { leadId = novoLead.id }
+    }
+
+    // cria o agendamento (booking)
+    const { data: appt, error: apptErr } = await supabaseAdmin
+      .from("appointments")
+      .insert({ professional_id: professionalId, lead_id: leadId, appointment_date: data, start_time: startT, end_time: endT, appointment_type: "booking", status: "confirmed", patient_id: null, notes: (args.observacao || "").toString().trim() || null })
+      .select("id").single()
+    if (apptErr) {
+      console.error("[agendar_cliente] appt", apptErr.message)
+      if ((apptErr as any).code === "23505") return { ok: false, instrucao: "Esse horário acabou de ser reservado. Avise e ofereça outro." }
+      return { erro: apptErr.message, instrucao: "Avise que houve erro ao agendar." }
+    }
+
+    // notifica o cliente no WhatsApp pela instância do profissional
+    const dataBR = data.split("-").reverse().join("/")
+    let notificado = false
+    const { data: prof } = await supabaseAdmin.from("professionals").select("evolution_instance_name, full_name").eq("id", professionalId).single()
+    const instance = prof?.evolution_instance_name
+    const proNome = (prof?.full_name || "o profissional").split(" ")[0]
+    const evoUrl = Deno.env.get("EVOLUTION_API_URL")?.replace(/\/$/, "")
+    const evoKey = Deno.env.get("EVOLUTION_API_KEY")
+    if (instance && evoUrl && evoKey) {
+      const msg = `Olá, ${nome}! Seu atendimento com ${proNome} está agendado para ${dataBR} às ${startT.slice(0, 5)}. Qualquer coisa, é só responder por aqui. 🙂`
+      try {
+        const res = await fetch(`${evoUrl}/message/sendText/${instance}`, {
+          method: "POST",
+          headers: { "apikey": evoKey, "Content-Type": "application/json" },
+          body: JSON.stringify({ number: tel, text: msg, options: { delay: 1000, presence: "composing" } }),
+        })
+        notificado = res.ok
+        if (!res.ok) console.error("[agendar_cliente] evo status", res.status)
+      } catch (e: any) { console.error("[agendar_cliente] evo err", e.message) }
+    }
+
+    console.log(`[agendar_cliente] appt ${appt?.id} lead ${leadId} ${data} ${startT} notif=${notificado}`)
+    return {
+      sucesso: true, appointment_id: appt?.id, cliente: nome, data: dataBR, hora: startT.slice(0, 5), notificado,
+      instrucao: notificado
+        ? `Confirme em 1 frase que agendou ${nome} para ${dataBR} às ${startT.slice(0, 5)} e que o cliente JÁ recebeu a confirmação no WhatsApp.`
+        : `Confirme que agendou ${nome} para ${dataBR} às ${startT.slice(0, 5)}, mas AVISE que não foi possível enviar a confirmação no WhatsApp agora (a conexão do WhatsApp pode estar desligada) — sugira confirmar com o cliente por outro meio.`,
     }
   }
 

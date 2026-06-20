@@ -181,6 +181,22 @@ const tools = [
     },
   },
   {
+    name: "criar_compromisso",
+    description:
+      "Cria um COMPROMISSO/bloqueio na agenda do profissional (reunião, horário pessoal, indisponibilidade). Use quando ele pedir 'marca uma reunião às 15h', 'bloqueia/reserva tal horário', 'adiciona um compromisso'. NÃO serve pra agendar paciente (isso é pela página pública/WhatsApp). Antes de chamar, confirme data, horário de início e duração (ou fim). A tool valida se o horário está livre (não sobrepõe outro agendamento ou bloqueio) e cria o compromisso.",
+    input_schema: {
+      type: "object",
+      properties: {
+        data: { type: "string", description: "Data YYYY-MM-DD do compromisso." },
+        hora_inicio: { type: "string", description: "Hora de início HH:MM (24h)." },
+        hora_fim: { type: "string", description: "Hora de fim HH:MM (24h). Opcional quando vier duracao_minutos." },
+        duracao_minutos: { type: "number", description: "Duração em minutos (padrão 60) — usada quando hora_fim não vier." },
+        titulo: { type: "string", description: "Título/descrição do compromisso (ex.: 'Reunião com a Daia'). Vira a nota do bloqueio." },
+      },
+      required: ["data", "hora_inicio", "titulo"],
+    },
+  },
+  {
     name: "preparar_video",
     description:
       "Prepara um VÍDEO pro profissional: gera o roteiro com IA no molde escolhido e deixa PRONTO na tela certa — lá ele revisa, escolhe a voz e confirma a geração (créditos cobrados só na geração, com confirmação). Dois tipos: 'conteudo' (reels/divulgação — abre no estúdio de vídeo) e 'institucional' (apresentação pessoal feita da FOTO dele, vai pra seção Sobre da página — abre no editor da landing; só moldes premium/pro pois a IA anima a foto). ANTES de chamar, SEMPRE pergunte o molde com os custos: 'gratis' (imagens de banco, 0 créditos; só tipo conteudo), 'premium' (IA Kling, ~8-16 créditos) ou 'pro' (roteiro Opus + Kling topo, ~16-32 créditos). Chame quando pedir 'quero um vídeo', 'reels sobre X', 'vídeo de apresentação pra minha página/seção sobre'.",
@@ -336,7 +352,8 @@ ${mapaStr}
 Você gerencia a agenda dele. Para qualquer pedido sobre agendamentos:
 1. SEMPRE use \`consultar_agenda\` primeiro — não invente horários. Para "furei o pneu / não atendo nas próximas X horas", use periodo='proximas_horas' com horas=X.
 2. CANCELAR: mostre os agendamentos afetados (dia · hora · paciente) e PEÇA confirmação clara. Só então chame \`cancelar_agendamentos\` com os appointment_id. Depois, AVISE que o paciente ainda não foi notificado automaticamente e ofereça o telefone pra ele avisar.
-3. Remarcar e avisar o paciente automaticamente ainda estão sendo construídos — seja honesto, não prometa o que ainda não faz.
+3. CRIAR COMPROMISSO/BLOQUEIO: quando ele pedir pra marcar uma reunião, reservar/bloquear um horário ou adicionar um compromisso pessoal, confirme data, horário de início e duração (ou fim) e chame \`criar_compromisso\`. Ela valida se o horário está livre. Isso NÃO agenda paciente (agendamento de paciente é pela página pública/WhatsApp) — é compromisso/indisponibilidade na agenda dele.
+4. Remarcar e avisar o paciente automaticamente ainda estão sendo construídos — seja honesto, não prometa o que ainda não faz.
 
 ━━━ REGRAS ABSOLUTAS ━━━
 • Você EXECUTA, não só orienta: pode gerar e aplicar conteúdo de perfil/landing, criar artigos e preparar vídeos (\`preparar_video\`) — SEMPRE mostrando o resultado e pedindo confirmação explícita ANTES de gravar ou gastar créditos.
@@ -1115,6 +1132,69 @@ async function handleToolCall(
     return {
       sucesso: true, cancelados: n,
       instrucao: `Confirme que cancelou ${n} agendamento(s). AVISE que o paciente ainda NÃO foi notificado automaticamente (esse aviso pelo Axel está chegando em breve) — por ora ofereça o telefone pra ele avisar.`,
+    }
+  }
+
+  if (toolName === "criar_compromisso") {
+    const data = (args.data || "").toString().trim()
+    const horaInicio = (args.hora_inicio || "").toString().trim()
+    const horaFim = (args.hora_fim || "").toString().trim()
+    const titulo = (args.titulo || "").toString().trim() || "Compromisso"
+    if (!data || !horaInicio) return { erro: "data e hora_inicio são obrigatórios" }
+
+    const norm = (t: string) => {
+      const m = t.match(/^(\d{1,2}):(\d{2})/)
+      return m ? `${m[1].padStart(2, "0")}:${m[2]}:00` : null
+    }
+    const startT = norm(horaInicio)
+    if (!startT) return { erro: "hora_inicio inválida (use HH:MM)" }
+    let endT = horaFim ? norm(horaFim) : null
+    if (!endT) {
+      const dur = Number(args.duracao_minutos) || 60
+      const [hh, mm] = startT.split(":").map(Number)
+      const total = hh * 60 + mm + dur
+      endT = `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}:00`
+    }
+    if (endT <= startT) return { erro: "hora_fim deve ser depois da hora_inicio" }
+
+    // overlap: agendamentos/bloqueios ativos do dia
+    const { data: existentes, error: errSel } = await supabaseAdmin
+      .from("appointments")
+      .select("start_time, end_time, notes")
+      .eq("professional_id", professionalId)
+      .eq("appointment_date", data)
+      .in("status", ["pending", "confirmed"])
+    if (errSel) { console.error("[criar_compromisso] sel", errSel.message); return { erro: errSel.message } }
+    const colide = (existentes || []).some((a: any) => {
+      const s = (a.start_time || "").slice(0, 8), e = (a.end_time || "").slice(0, 8)
+      return s && e && startT < e && endT > s
+    })
+    if (colide) return { ok: false, instrucao: "Esse horário se sobrepõe a outro agendamento ou bloqueio. Avise o profissional, sem confirmar, e ofereça consultar a agenda do dia." }
+
+    const { data: novo, error } = await supabaseAdmin
+      .from("appointments")
+      .insert({
+        professional_id: professionalId,
+        appointment_date: data,
+        start_time: startT,
+        end_time: endT,
+        notes: titulo,
+        block_type: "personal",
+        appointment_type: "block",
+        status: "confirmed",
+        patient_id: null,
+      })
+      .select("id")
+      .single()
+    if (error) {
+      console.error("[criar_compromisso]", error.message)
+      if ((error as any).code === "23505") return { ok: false, instrucao: "Esse horário acabou de ser reservado. Avise e ofereça outro." }
+      return { erro: error.message, instrucao: "Avise que houve erro ao criar o compromisso." }
+    }
+    console.log(`[criar_compromisso] ${novo?.id} ${data} ${startT}-${endT} prof ${professionalId}`)
+    return {
+      sucesso: true, appointment_id: novo?.id, data, hora_inicio: startT.slice(0, 5), hora_fim: endT.slice(0, 5), titulo,
+      instrucao: `Confirme em 1 frase que criou o compromisso "${titulo}" em ${data} às ${startT.slice(0, 5)}.`,
     }
   }
 

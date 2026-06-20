@@ -80,6 +80,10 @@ interface AxelResponse {
   openFeedback?: boolean;
 }
 
+// Rascunho do chat: chave única no localStorage (compartilhada entre o chat
+// flutuante e a página dedicada, pra continuidade ao alternar).
+const CHAT_DRAFT_KEY = "axel:chatDraft";
+
 export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?: boolean }) {
   const {
     memory,
@@ -97,7 +101,10 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
   const { profile } = useAuth();
   const navigate = useNavigate();
 
-  const [input, setInput] = useState("");
+  // Rascunho persistente: o que está sendo digitado sobrevive a fechar/reabrir o chat.
+  const [input, setInput] = useState(() => {
+    try { return localStorage.getItem(CHAT_DRAFT_KEY) || ""; } catch { return ""; }
+  });
 
   const [feedback, setFeedback] = useState<FeedbackDialogState>(INITIAL_FEEDBACK);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -108,6 +115,14 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
   const inputRef = useRef<HTMLInputElement>(null);
 
   const firstName = memory.name ? memory.name.split(" ")[0] : "";
+
+  // Persiste o rascunho a cada tecla; some quando enviado (input vira "").
+  useEffect(() => {
+    try {
+      if (input) localStorage.setItem(CHAT_DRAFT_KEY, input);
+      else localStorage.removeItem(CHAT_DRAFT_KEY);
+    } catch { /* localStorage indisponível (modo privado restrito) — ignora */ }
+  }, [input]);
 
   // Auto-scroll
   useEffect(() => {

@@ -1675,11 +1675,14 @@ REGRAS:
 // ("não consegui responder, reformule" apareceu 2x na auditoria 13/06).
 async function requestTextOnly(messages: any[], systemPrompt: string, apiKey: string): Promise<string> {
   try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 20000)
     const resp = await fetch(CLAUDE_URL, {
       method: "POST",
       headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 1024, temperature: 0.7, system: systemPrompt, messages }),
-    })
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(timer))
     if (!resp.ok) return ""
     const data = await resp.json()
     return (data.content?.find((b: any) => b.type === "text")?.text || "").trim()
@@ -1733,8 +1736,16 @@ async function callClaude(opts: {
   const toolsUsed: string[] = []
   const navActions: Array<{ label: string; href: string }> = []
   let maxIterations = 8
+  // Deadline global: o turno SEMPRE responde dentro do limite do gateway/edge —
+  // nenhuma tool ou chamada externa pode pendurar o chat (era a causa do "Axel parou de responder").
+  const deadline = Date.now() + 40000
 
   while (maxIterations-- > 0) {
+    if (Date.now() > deadline) {
+      console.warn("[callClaude] deadline de 40s atingido — encerrando o loop de tools e fechando com texto")
+      break
+    }
+
     const payload = {
       model: CLAUDE_MODEL,
       max_tokens: 1024,
@@ -1744,23 +1755,26 @@ async function callClaude(opts: {
       tools,
     }
 
-    const response = await fetch(CLAUDE_URL, {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    })
-
-    if (!response.ok) {
-      const errText = await response.text()
-      console.error(`[Claude Error] ${response.status}`, errText)
-      throw new Error(`Claude API Error: ${response.status}`)
+    let result: any
+    try {
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(), 25000)
+      const response = await fetch(CLAUDE_URL, {
+        method: "POST",
+        headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: ctrl.signal,
+      }).finally(() => clearTimeout(timer))
+      if (!response.ok) {
+        console.error(`[Claude Error] ${response.status}`, (await response.text()).slice(0, 300))
+        break // erro da Anthropic (529/429/400) NÃO derruba o turno: sai e fecha com texto
+      }
+      result = await response.json()
+    } catch (e: any) {
+      console.error("[callClaude] chamada Claude falhou:", e?.name === "AbortError" ? "timeout(25s)" : e?.message)
+      break
     }
 
-    const result = await response.json()
     const content = result.content || []
     const stopReason = result.stop_reason
 
@@ -1784,7 +1798,14 @@ async function callClaude(opts: {
     const toolResults = []
     for (const tu of toolUseBlocks) {
       toolsUsed.push(tu.name)
-      const out = await handleToolCall(tu.name, tu.input, supabaseAdmin, professionalId, kbSections, genContext)
+      // Cada tool é isolada: um erro/exceção numa tool vira tool_result e segue — nunca derruba o turno.
+      let out: any
+      try {
+        out = await handleToolCall(tu.name, tu.input, supabaseAdmin, professionalId, kbSections, genContext)
+      } catch (e: any) {
+        console.error(`[handleToolCall] ${tu.name} lançou:`, e?.message)
+        out = { erro: `falha técnica em ${tu.name}`, instrucao: "Diga em 1 frase que tropeçou nessa ação e ofereça tentar de novo." }
+      }
       // Navegação: o Axel pediu pra levar o profissional a uma página válida.
       if (tu.name === "abrir_pagina" && out?.sucesso && out?.rota) {
         navActions.push({ label: out.titulo || "Abrir página", href: out.rota })

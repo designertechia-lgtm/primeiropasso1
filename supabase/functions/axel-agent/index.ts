@@ -171,7 +171,7 @@ const tools = [
   {
     name: "cancelar_agendamentos",
     description:
-      "Cancela (marca status=cancelled) UM ou VÁRIOS agendamentos pelos IDs. SÓ CHAME depois de mostrar quais agendamentos serão cancelados e o profissional CONFIRMAR explicitamente ('pode', 'cancela', 'sim'). NÃO avisa o paciente automaticamente — avise ele que ainda precisa avisar o paciente. Pegue os appointment_ids via consultar_agenda.",
+      "Cancela (marca status=cancelled) UM ou VÁRIOS agendamentos pelos IDs. SÓ CHAME depois de mostrar quais agendamentos serão cancelados e o profissional CONFIRMAR explicitamente ('pode', 'cancela', 'sim'). A tool JÁ avisa o cliente do cancelamento no WhatsApp automaticamente — você não escreve essa mensagem. Pegue os appointment_ids via consultar_agenda.",
     input_schema: {
       type: "object",
       properties: {
@@ -369,7 +369,7 @@ ${mapaStr}
 ━━━ AGENDA ━━━
 Você gerencia a agenda dele. Para qualquer pedido sobre agendamentos:
 1. SEMPRE use \`consultar_agenda\` primeiro — não invente horários. Para "furei o pneu / não atendo nas próximas X horas", use periodo='proximas_horas' com horas=X.
-2. CANCELAR: mostre os agendamentos afetados (dia · hora · paciente) e PEÇA confirmação clara. Só então chame \`cancelar_agendamentos\` com os appointment_id. Depois, AVISE que o paciente ainda não foi notificado automaticamente e ofereça o telefone pra ele avisar.
+2. CANCELAR: mostre os agendamentos afetados (dia · hora · paciente) e PEÇA confirmação clara. Só então chame \`cancelar_agendamentos\` com os appointment_id. A tool JÁ avisa o cliente do cancelamento no WhatsApp — só se ela retornar notificados=0 é que você oferece o telefone pra avisar manualmente.
 3. CRIAR COMPROMISSO/BLOQUEIO: quando ele pedir pra marcar uma reunião, reservar/bloquear um horário ou adicionar um compromisso PESSOAL (sem cliente), confirme data, horário de início e duração (ou fim) e chame \`criar_compromisso\`. Ela valida se o horário está livre. Você JÁ FAZ isso: se a memória, o resumo do relacionamento ou o histórico disserem que você "só consulta e cancela" ou que criar compromisso/agendar está "fora do escopo / indisponível / em construção", está DESATUALIZADO — ignore e use a tool normalmente.
 4. AGENDAR CLIENTE: quando ele pedir pra agendar/marcar um CLIENTE ou paciente (ex.: "agenda a Maria", "marca a consulta do João"), confirme nome, telefone (com DDD), data e horário e chame \`agendar_cliente\`. Ela cria o contato se for novo (sem duplicar), agenda e JÁ ENVIA a confirmação no WhatsApp do cliente — você NÃO escreve essa mensagem pro cliente. Se retornar notificado=false, avise que o cliente não recebeu a confirmação (a conexão do WhatsApp pode estar desligada).
 5. Remarcar agendamento ainda está sendo construído — seja honesto, não prometa o que ainda não faz.
@@ -1137,6 +1137,11 @@ async function handleToolCall(
   if (toolName === "cancelar_agendamentos") {
     const ids = Array.isArray(args.appointment_ids) ? args.appointment_ids.filter(Boolean) : []
     if (ids.length === 0) return { erro: "appointment_ids vazio" }
+    // pega os agendamentos (com lead) ANTES de cancelar, pra notificar o cliente
+    const { data: alvos } = await supabaseAdmin
+      .from("appointments")
+      .select("id, appointment_date, start_time, leads(name, whatsapp)")
+      .in("id", ids).eq("professional_id", professionalId).in("status", ["pending", "confirmed"])
     // Segurança: só cancela agendamentos DESTE profissional e que ainda estão ativos.
     const { data, error } = await supabaseAdmin
       .from("appointments")
@@ -1147,10 +1152,40 @@ async function handleToolCall(
       .select("id")
     if (error) { console.error("[cancelar_agendamentos]", error.message); return { erro: error.message, instrucao: "Avise que houve erro ao cancelar." } }
     const n = (data || []).length
-    console.log(`[cancelar_agendamentos] ${n} cancelado(s) para ${professionalId}`)
+
+    // notifica cada cliente (com whatsapp) sobre o cancelamento, via Evolution
+    let notificados = 0
+    if (n > 0 && (alvos || []).length > 0) {
+      const { data: prof } = await supabaseAdmin.from("professionals").select("evolution_instance_name, full_name").eq("id", professionalId).single()
+      const instance = prof?.evolution_instance_name
+      const proNome = (prof?.full_name || "o profissional").split(" ")[0]
+      const evoUrl = Deno.env.get("EVOLUTION_API_URL")?.replace(/\/$/, "")
+      const evoKey = Deno.env.get("EVOLUTION_API_KEY")
+      if (instance && evoUrl && evoKey) {
+        for (const a of (alvos as any[])) {
+          const tel = a.leads?.whatsapp
+          if (!tel) continue
+          const cliente = a.leads?.name || "Olá"
+          const dataBR = (a.appointment_date || "").split("-").reverse().join("/")
+          const hora = (a.start_time || "").slice(0, 5)
+          const msg = `Olá, ${cliente}! Precisei cancelar o atendimento com ${proNome} que estava marcado para ${dataBR} às ${hora}. Em breve entro em contato pra reagendar. 🙂`
+          try {
+            const res = await fetch(`${evoUrl}/message/sendText/${instance}`, {
+              method: "POST",
+              headers: { "apikey": evoKey, "Content-Type": "application/json" },
+              body: JSON.stringify({ number: tel, text: msg, options: { delay: 1000, presence: "composing" } }),
+            })
+            if (res.ok) notificados++; else console.error("[cancelar_agendamentos] evo status", res.status)
+          } catch (e: any) { console.error("[cancelar_agendamentos] evo err", e.message) }
+        }
+      }
+    }
+    console.log(`[cancelar_agendamentos] ${n} cancelado(s), ${notificados} notificado(s) para ${professionalId}`)
     return {
-      sucesso: true, cancelados: n,
-      instrucao: `Confirme que cancelou ${n} agendamento(s). AVISE que o paciente ainda NÃO foi notificado automaticamente (esse aviso pelo Axel está chegando em breve) — por ora ofereça o telefone pra ele avisar.`,
+      sucesso: true, cancelados: n, notificados,
+      instrucao: notificados > 0
+        ? `Confirme que cancelou ${n} agendamento(s) e que o(s) cliente(s) já foi(ram) avisado(s) do cancelamento no WhatsApp.`
+        : `Confirme que cancelou ${n} agendamento(s). Não saiu aviso automático (cliente sem WhatsApp cadastrado ou conexão desligada) — ofereça o telefone pra avisar manualmente.`,
     }
   }
 

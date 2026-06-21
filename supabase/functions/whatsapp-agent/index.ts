@@ -670,7 +670,7 @@ Você pode chamar várias vezes na mesma resposta. Crie novas chaves quando o co
 • TOM FIRME: NUNCA use "Hmm, parece que...", "Olhando aqui...", "Acho que...". Você consulta o sistema, não chuta. Fale direto: "O horário das 14h está livre" / "Esse horário não está disponível".
 • NÃO INVENTE: datas/horários só do calendário e da tool. Valores só os listados na seção SOBRE O PROFISSIONAL.
 • NÃO DECIDA PELO PROFISSIONAL: você não é ele. Não dê parecer técnico nem se comprometa por ele em questões que dependem da avaliação dele — encaminhe. NÃO tente RESOLVER o problema/dúvida que É o trabalho dele: seu papel é mostrar que ELE resolve e fazer a ponte pro atendimento, nunca substituí-lo. (Regras específicas do setor, quando houver, vêm na seção SOBRE O PROFISSIONAL.)
-• PREÇO POR ÚLTIMO: foque no benefício antes de falar valor. Só cite valor se o lead perguntar OU no momento de fechar.
+• PREÇO POR ÚLTIMO: foque no benefício antes de falar valor. Só cite valor se o lead perguntar OU no momento de fechar. Ao citar, siga a seção VALORES E NEGOCIAÇÃO: um número só (o cheio), nunca um intervalo nem o piso.
 • NÃO ASSUMA: se o motivo não está claro, pergunte. Não invente dor que o lead não disse.
 
 ━━━ CONSULTAR DOCUMENTOS DO PROFISSIONAL (tool consultar_documentos) ━━━
@@ -711,13 +711,13 @@ NUNCA prefixe sua resposta com fórmulas que sinalizam dúvida quando você TEM 
 ❌ "Os documentos não especificam, mas..."
 Se você está prestes a dar a resposta, DÊ A RESPOSTA. Direto. Sem desculpa nem ressalva preventiva.
 
-✅ Pergunta: "Quanto custa?" → "A primeira sessão sai R$ 100. Os planos mensais ficam entre R$ 250 e R$ 300, depende do que você precisa. Quer ver isso de perto com ela?"
+✅ Pergunta: "Quanto custa?" → reancore no valor e diga UM número só (o valor cheio da seção VALORES E NEGOCIAÇÃO), NUNCA um intervalo. Ex.: "A sessão é [valor cheio]. Antes do número, o que costuma fazer diferença é ver se faz sentido pra você — quer que eu te explique como funciona?"
 ✅ Pergunta: "Funciona online?" → (use bio/approaches) "Sim, atende online via vídeo." (sem hedge)
 
 Use o fallback "vou confirmar com o profissional" SOMENTE quando a info GENUINAMENTE não está aqui nem nos documentos. Não como prefixo defensivo antes de dar uma resposta que você JÁ tem.
 
 ━━━ TRATAMENTO DE OBJEÇÕES (princípio antes do script — adapte às palavras da pessoa) ━━━
-• PREÇO ("quanto custa?"): antes do número, reancore no que importa — ver se faz sentido pra ela. Nunca defenda preço; reposicione pro valor do próximo passo. Se a primeira consulta tem valor promocional, lembre disso com leveza. Ex.: "Entendo total. Antes do valor: o que costuma fazer diferença é ver se faz sentido pra você — por isso a primeira consulta é mais acessível. Quer que eu te explique como funciona?"
+• PREÇO ("quanto custa?"): antes do número, reancore no que importa — ver se faz sentido pra ela. Nunca defenda preço; reposicione pro valor do próximo passo. Se a primeira consulta tem valor promocional, lembre disso com leveza. Apresente sempre o valor cheio; NUNCA revele um intervalo nem o piso. Se o preço for mesmo o obstáculo, ceda um passo de cada vez em direção ao piso (uso interno), sem alarde — nunca abra com desconto. Ex.: "Entendo total. Antes do valor: o que costuma fazer diferença é ver se faz sentido pra você — por isso a primeira consulta é mais acessível. Quer que eu te explique como funciona?"
 • TEMPO ("tô sem tempo"): valide, mostre que o passo é curto e leve, ofereça flexibilidade de horário.
 Depois de rebater UMA objeção, NÃO emende um CTA na mesma mensagem — dê espaço pra pessoa responder.
 
@@ -727,10 +727,11 @@ Comece reconhecendo o que o lead trouxe, com naturalidade humana.`
 
 // ── Camada 2: quem é o profissional (estável dentro da conversa) ──
 function buildProfileLayer(professional: any, ctx: { area: string; publico: string; oferta: string }): string {
-  const priceFirst = professional.price_first_session ? `R$ ${professional.price_first_session}` : 'sob consulta'
-  const priceMin   = professional.price_min ? `R$ ${professional.price_min}` : null
-  const priceMax   = professional.price_max ? `R$ ${professional.price_max}` : null
-  const priceRange = (priceMin && priceMax) ? `${priceMin} a ${priceMax}` : (priceMin || priceMax || 'não informado')
+  const priceFirstStr = professional.price_first_session ? `R$ ${professional.price_first_session}` : null
+  const priceMinStr   = professional.price_min ? `R$ ${professional.price_min}` : null
+  const priceMaxStr   = professional.price_max ? `R$ ${professional.price_max}` : null
+  const precoAncora   = priceMaxStr || priceMinStr             // valor "cheio" que se apresenta primeiro
+  const precoPiso     = (priceMinStr && priceMaxStr) ? priceMinStr : null  // piso (USO INTERNO, nunca revelar)
   const approaches = Array.isArray(professional.approaches) && professional.approaches.length > 0
     ? professional.approaches.join(', ')
     : null
@@ -743,6 +744,14 @@ function buildProfileLayer(professional: any, ctx: { area: string; publico: stri
   const labelValor = isSaude
     ? `Valor da primeira ${ctx.oferta === 'psicoterapia' ? 'sessão' : 'consulta'}`
     : 'Valor inicial'
+  // Preço como MARGEM DE NEGOCIAÇÃO: apresenta o valor cheio, cede em direção ao piso só se preciso,
+  // NUNCA revela os dois números nem um intervalo "de X a Y".
+  const precoBloco = (priceFirstStr || precoAncora)
+    ? `\n\n━━━ VALORES E NEGOCIAÇÃO (regra de venda — siga à risca) ━━━`
+      + (priceFirstStr ? `\n• ${labelValor}: ${priceFirstStr} — é o primeiro passo, mais acessível.${precoAncora ? ` As sessões seguintes ficam em ${precoAncora}` : ''}, e o formato pode ser combinado com ${proFirstName} na própria conversa.` : '')
+      + (precoAncora ? `\n• Ao falar do valor das sessões, apresente SEMPRE ${precoAncora} (valor cheio) — um número só. NUNCA anuncie um intervalo "de X a Y".` : '')
+      + (precoPiso ? `\n• MARGEM (USO INTERNO — NUNCA revele este piso nem os dois números): se o lead hesitar SÓ pelo preço, você pode ceder em direção a ${precoPiso}, um passo de cada vez e sem alarde. Nunca comece pelo piso nem ofereça desconto antes de o preço aparecer como o real obstáculo.` : '')
+    : `\n\n━━━ VALORES ━━━\nValores não preenchidos — se perguntarem, diga que ${proFirstName} combina o valor diretamente, e siga conduzindo ao agendamento.`
   const limiteSetor = isSaude
     ? `\n\n━━━ LIMITE CLÍNICO — VOCÊ NÃO FAZ TERAPIA (regra dura) ━━━
 Você é a RECEPÇÃO de ${proFirstName}, NÃO o profissional. Diante de sofrimento, seu papel é UM só: acolher e mostrar que ${proFirstName} é quem cuida disso — nunca atender você mesmo.
@@ -802,9 +811,7 @@ PROIBIDO (isso é o trabalho de ${proFirstName}, não seu):
   return `━━━ SOBRE O PROFISSIONAL ━━━
 • Área: ${ctx.area}
 ${approaches ? `• Abordagens: ${approaches}` : ''}
-${bio ? `• Bio: ${bio}` : ''}
-• ${labelValor}: ${priceFirst}
-${priceMin || priceMax ? `• Faixa de valor: ${priceRange}` : ''}${landingBloco}${limiteSetor}${estilo}${pacotesStr}`
+${bio ? `• Bio: ${bio}` : ''}${landingBloco}${precoBloco}${limiteSetor}${estilo}${pacotesStr}`
 }
 
 // ── Camada 3: contexto do turno atual (lead, data, estado da agenda) ──

@@ -1363,6 +1363,36 @@ async function sendWhatsAppMessage(instanceName: string, remoteJid: string, text
 // =============================================
 // MAIN HANDLER
 // =============================================
+// PRÉVIA REAL (modo simulação): roda o MESMO system prompt do agente, SEM tools, SEM enviar/persistir.
+// Usado pelo Axel pai (painel) pra o profissional ver como o agente responde de verdade.
+async function simulateClaude(systemPrompt: string, history: any[], userMessage: string): Promise<string> {
+  const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
+  if (!apiKey) return ''
+  const wrap = (c: any) => `<mensagem_do_contato>\n${String(c).replace(/<\/?mensagem_do_contato>/gi, '')}\n</mensagem_do_contato>`
+  const messages: any[] = []
+  let lastRole = ''
+  for (const m of (Array.isArray(history) ? history : [])) {
+    if (!m?.content) continue
+    const role = m.role === 'assistant' ? 'assistant' : 'user'
+    const piece = role === 'user' ? wrap(m.content) : String(m.content)
+    if (role === lastRole) messages[messages.length - 1].content += `\n${piece}`
+    else { messages.push({ role, content: piece }); lastRole = role }
+  }
+  if (lastRole === 'user') messages[messages.length - 1].content += `\n${wrap(userMessage || 'Olá')}`
+  else messages.push({ role: 'user', content: wrap(userMessage || 'Olá') })
+  try {
+    const res = await fetch(CLAUDE_URL, {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 700, temperature: 0.7, system: systemPrompt, messages }),
+    })
+    if (!res.ok) { console.error('[simulate] claude', res.status); return '' }
+    const data = await res.json()
+    const tb = (data.content || []).find((b: any) => b.type === 'text')
+    return (tb?.text || '').trim()
+  } catch (e: any) { console.error('[simulate] erro', e?.message); return '' }
+}
+
 serve(async (req) => {
   console.log(`[Agent] Request received: ${req.method}`)
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -1372,6 +1402,21 @@ serve(async (req) => {
     const { lead_id, lead_name, lead_phone, message, remote_jid, professional_id, instance_name, triage, contact_status } = body
     console.log(`[Request] Incoming from ${lead_name} (${lead_phone}). Message: ${message}`)
     console.log(`[Data] lead_id: ${lead_id}, prof_id: ${professional_id}, instance: ${instance_name}`)
+
+    // ── MODO SIMULAÇÃO (Axel pai testando o agente real) — NÃO envia, NÃO persiste, SEM tools ──
+    if (body.simulate === true) {
+      const sUrl = Deno.env.get('SUPABASE_URL'); const sKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+      if (!professional_id || !sUrl || !sKey) {
+        return new Response(JSON.stringify({ reply: '' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      }
+      const sim = createClient(sUrl, sKey)
+      const { data: simPro } = await sim.from('professionals').select('*').eq('id', professional_id).single()
+      if (!simPro) return new Response(JSON.stringify({ reply: '' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      const histSim = Array.isArray(body.history) ? body.history : []
+      const simSystem = buildSystemPrompt(simPro, 'a pessoa', '', {}, histSim.length === 0, 'novo', '')
+      const simReply = formatarParaWhatsApp(await simulateClaude(simSystem, histSim, (message || 'Olá').toString()))
+      return new Response(JSON.stringify({ reply: simReply }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
 
     if (!professional_id || !lead_id) {
       console.error("[Error] Missing professional_id or lead_id")

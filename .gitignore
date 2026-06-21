@@ -38,3 +38,6 @@ supabase/.temp/
 __pycache__/
 *.pyc
 *.pyo
+
+# Arquivo local de versoes do CORE_RULES (fica fora do repo, em PrimeiroPassoProjeto/)
+CORE_RULES_versoes/

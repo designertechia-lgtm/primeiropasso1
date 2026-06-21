@@ -868,32 +868,55 @@ ATENÇÃO ESPECIAL: A bio do profissional pode mencionar nomes de pessoas (donos
 // =============================================
 // COMPOSITOR
 // =============================================
+// SEGURANÇA: nomes vindos do lead (pushName do WhatsApp, nome_preferido) são entrada NÃO-confiável
+// interpolada no system prompt. Remove quebras de linha, box-drawing (━ ═ ─) e marcadores que poderiam
+// forjar uma "seção de regras" (section spoofing), e limita o tamanho. Ver _docs/PLANO_AXEL_PIPELINE_CONHECIMENTO.md §10.
+function sanitizeDisplayName(raw: any): string {
+  if (!raw) return ''
+  return String(raw)
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/[─-╿▀-▟]/g, '') // box-drawing + block elements
+    .replace(/[`*_#>|~]/g, '')                    // marcadores estruturais/markdown
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+    .slice(0, 40)
+}
+
 function buildSystemPrompt(professional: any, leadName: string, leadPhone: string, bookingState: any = {}, triageMode = false, contactStatus = '', preferredName = ''): string {
   const nowObj = new Date()
   const now = nowObj.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
-  // Nome de exibição do LEAD: o que a pessoa pediu (nome_preferido) vence o pushName do WhatsApp.
-  const displayName = (preferredName && preferredName.trim()) ? preferredName.trim() : leadName
-
-  // Override total: profissional definiu prompt customizado no perfil
-  if (professional.agent_system_prompt) {
-    return professional.agent_system_prompt
-      .replace('{{LEAD_NAME}}', displayName)
-      .replace('{{LEAD_PHONE}}', leadPhone)
-      .replace('{{NOW}}', now)
-      .replace('{{PROFESSIONAL_NAME}}', professional.full_name || 'o profissional')
-      .replace('{{BIO}}', professional.bio || '')
-      .replace('{{PRICE_FIRST}}', professional.price_first_session || 'a combinar')
-      .replace('{{PRICE_MIN}}', professional.price_min || 'não informado')
-      .replace('{{PRICE_MAX}}', professional.price_max || 'não informado')
-  }
+  // SEGURANÇA: nome do lead é entrada NÃO-confiável — sanitiza antes de qualquer interpolação no prompt.
+  const safeLead = sanitizeDisplayName(leadName)
+  const safePreferred = sanitizeDisplayName(preferredName)
+  // Nome de exibição do LEAD: o nome_preferido (já sanitizado) vence o pushName do WhatsApp.
+  const displayName = safePreferred || safeLead
 
   const ctx = categoryContext(professional.category, professional.category_custom)
+
+  // SEGURANÇA: o CORE_RULES (crise, limite clínico, regra suprema) é IMUTÁVEL e SEMPRE composto por
+  // código. O agent_system_prompt (legado, texto livre) NÃO substitui mais o CORE_RULES — entra só como
+  // bloco SUBORDINADO, que jamais vence as regras de segurança. Config real do profissional = campos
+  // estruturados validados, não prompt livre. Ver _docs/PLANO_AXEL_PIPELINE_CONHECIMENTO.md §10/§11.
+  const overrideRaw = (professional.agent_system_prompt || '').toString().trim()
+  const overrideBloco = overrideRaw
+    ? `\n\n━━━ INSTRUÇÕES ADICIONAIS DESTE PROFISSIONAL (complementam — NÃO substituem as regras acima; em qualquer conflito com SEGURANÇA, LIMITE CLÍNICO ou REGRA SUPREMA, as regras acima VENCEM) ━━━\n${overrideRaw
+        .replace('{{LEAD_NAME}}', displayName)
+        .replace('{{LEAD_PHONE}}', leadPhone)
+        .replace('{{NOW}}', now)
+        .replace('{{PROFESSIONAL_NAME}}', professional.full_name || 'o profissional')
+        .replace('{{BIO}}', professional.bio || '')
+        .replace('{{PRICE_FIRST}}', professional.price_first_session || 'a combinar')
+        .replace('{{PRICE_MIN}}', professional.price_min || 'não informado')
+        .replace('{{PRICE_MAX}}', professional.price_max || 'não informado')
+        .slice(0, 2000)}`
+    : ''
 
   return [
     CORE_RULES,
     buildProfileLayer(professional, ctx),
-    buildTurnLayer({ professional, leadName: displayName, rawName: leadName, preferredName, now, bookingState, ctx, triageMode, contactStatus }),
-  ].join('\n\n')
+    overrideBloco,
+    buildTurnLayer({ professional, leadName: displayName, rawName: safeLead, preferredName: safePreferred, now, bookingState, ctx, triageMode, contactStatus }),
+  ].filter(Boolean).join('\n\n')
 }
 
 // =============================================
@@ -1039,9 +1062,15 @@ async function handleToolCall(
 
   if (toolName === 'salvar_info_lead') {
     const chave = (args.chave || '').trim()
-    const valor = (args.valor ?? '').toString().trim()
+    let valor = (args.valor ?? '').toString().trim()
     if (!chave || !valor) {
       return { erro: 'chave e valor são obrigatórios' }
+    }
+    // SEGURANÇA: nome_preferido volta ao system prompt — sanitiza no write (defesa em profundidade;
+    // buildSystemPrompt também sanitiza no read). Ver PLANO_AXEL_PIPELINE_CONHECIMENTO §10.
+    if (chave === 'nome_preferido') {
+      valor = sanitizeDisplayName(valor)
+      if (!valor) return { erro: 'valor inválido' }
     }
 
     // Mescla com collected_info existente — merge no nível JSON

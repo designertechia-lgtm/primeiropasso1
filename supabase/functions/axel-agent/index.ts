@@ -95,6 +95,18 @@ const tools = [
     },
   },
   {
+    name: "atualizar_estilo_agente",
+    description:
+      "APLICA o ESTILO e preferências de COMPORTAMENTO do agente do WhatsApp (campos 'tom de voz' e 'frases preferidas'). Use quando o profissional descrever COMO quer que o agente fale/se comporte (tom, ênfases, o que evitar). VOCÊ CURA: extraia DIRETRIZES CURTAS de princípio — NUNCA um roteiro de conversa nem passo a passo (vira loop e quebra o agente). PRIMEIRO mostre o que vai gravar e PEÇA CONFIRMAÇÃO explícita. Só grave após o 'sim'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tom: { type: "string", description: "Tom de voz do agente, curto (1-2 frases). Opcional." },
+        frases: { type: "array", items: { type: "string" }, description: "Diretrizes de estilo CURTAS (princípios, não roteiro de conversa). Máx. 6, cada uma 1 linha. Ex.: 'Nunca pergunte o que a pessoa está sentindo'. Opcional." },
+      },
+    },
+  },
+  {
     name: "gerar_landing",
     description:
       "Gera TODAS as seções da Landing Page de uma vez (hero_title, hero_subtitle, pain_title, pain_subtitle, pain_items, solution_title, solution_subtitle, solution_items). Chame quando o profissional pedir 'crie minha landing', 'monte a landing page'. PRIMEIRO chame esta tool, mostre o preview e PEÇA CONFIRMAÇÃO antes de aplicar.",
@@ -408,7 +420,7 @@ Você gerencia a agenda dele. Para qualquer pedido sobre agendamentos:
 ━━━ COMO O AGENTE DO WHATSAPP É CONFIGURADO — A VERDADE (NUNCA alucine isto) ━━━
 NÃO existe "campo de instruções" nem "prompt" pra o profissional colar — NUNCA diga que existe nem mande ele colar um prompt. O comportamento do agente do WhatsApp = regras de segurança e conduta da plataforma (que NEM você NEM o profissional editam — são nossas e protegem o paciente) + os CAMPOS ESTRUTURADOS do perfil dele:
 • Perfil/Landing — bio, título, subtítulo, dores, método/solução, abordagens: VOCÊ gera e aplica com \`sugerir_dados_perfil\`/\`atualizar_perfil\`/\`gerar_landing\` (sempre com confirmação). O agente do WhatsApp JÁ LÊ esses campos.
-• Configurações do agente (na tela) — "tom de voz", "frases preferidas" e os VALORES: ainda não têm tool; leve o profissional ao campo certo com \`abrir_pagina\` e explique honestamente o que é cada um.
+• "tom de voz" e "frases preferidas": VOCÊ aplica com \`atualizar_estilo_agente\` — CURANDO o que o profissional disser em diretrizes CURTAS (princípios, NUNCA um roteiro de conversa), sempre mostrando e pedindo confirmação antes. Os VALORES ainda não têm tool — leve ao campo certo com \`abrir_pagina\`.
 ⚠️ "Frases preferidas" é campo de ESTILO curto, NÃO um roteiro. NUNCA oriente o profissional a colar um fluxo/roteiro inteiro de conversa ali — isso já quebrou um agente (virou loop pedindo o nome). Se ele tem uma "forma de trabalho" detalhada, traduza o essencial pros campos certos (método→solução, posicionamento→bio) e registre o resto com \`salvar_memoria\`, sendo honesto: "registrei sua forma de trabalho e já reflito o que dá nos seus campos agora; o restante nossa equipe aplica no seu agente."
 NUNCA confirme "agente configurado/aplicado" sem ter CHAMADO a tool que de fato gravou. Ao simular o agente, deixe claro que é uma PRÉVIA baseada no perfil — aproximação, não o agente ao vivo.
 
@@ -742,6 +754,44 @@ async function handleToolCall(
       console.error("[sugerir_dados_perfil] erro:", e.message)
       return { erro: e.message, instrucao: "Avise o profissional que houve um erro técnico ao gerar conteúdo. Peça pra tentar de novo em instantes." }
     }
+  }
+
+  if (toolName === "atualizar_estilo_agente") {
+    // SEGURANÇA: estilo/frases vão pro system prompt do agente do WhatsApp — sanitiza e LIMITA.
+    // "frases" são DIRETRIZES curtas, NUNCA um roteiro (foi o que quebrou o agente da Daiane → loop).
+    const clean = (s: any, max: number) => String(s ?? "")
+      .replace(/[\r\n\t]+/g, " ")
+      .replace(/[─-╿▀-▟]/g, "")
+      .replace(/\s{2,}/g, " ")
+      .trim()
+      .slice(0, max)
+    const tom = clean(args.tom, 240)
+    const frases = (Array.isArray(args.frases) ? args.frases : [])
+      .map((f: any) => clean(f, 180))
+      .filter(Boolean)
+      .slice(0, 6)
+    if (!tom && frases.length === 0) return { erro: "informe tom e/ou frases" }
+
+    const { data: pro } = await supabaseAdmin
+      .from("professionals")
+      .select("agent_preferences")
+      .eq("id", professionalId)
+      .maybeSingle()
+    const prefs = (pro?.agent_preferences && typeof pro.agent_preferences === "object") ? pro.agent_preferences : {}
+    const merged: any = { ...prefs }
+    if (tom) merged.tone = tom
+    if (frases.length) merged.preferred_phrases = frases.join("\n")
+
+    const { error } = await supabaseAdmin
+      .from("professionals")
+      .update({ agent_preferences: merged })
+      .eq("id", professionalId)
+    if (error) {
+      console.error("[atualizar_estilo_agente] erro:", error.message)
+      return { erro: error.message, instrucao: "Avise o profissional que houve erro ao salvar o estilo. Peça pra tentar de novo." }
+    }
+    console.log(`[atualizar_estilo_agente] tom=${!!tom} frases=${frases.length} para ${professionalId}`)
+    return { sucesso: true, instrucao: "Confirme pro profissional, com a VERDADE, que o ESTILO do agente do WhatsApp foi atualizado e já vale nas próximas conversas. NÃO diga que colou um prompt — diga que ajustou o tom/as diretrizes do agente. Pergunte se quer ajustar mais algo." }
   }
 
   if (toolName === "atualizar_perfil") {

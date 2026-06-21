@@ -75,7 +75,7 @@ const tools = [
       properties: {
         chave: {
           type: "string",
-          description: "Nome da variável em snake_case. Chaves comuns: motivo_principal, modalidade, tipo_atendimento, primeira_vez, urgencia, idade_paciente, observacoes. Pode criar novas chaves quando o contexto pedir."
+          description: "Nome da variável em snake_case. Chaves comuns: nome_preferido (como a pessoa pediu pra ser chamada), motivo_principal, modalidade, tipo_atendimento, primeira_vez, urgencia, idade_paciente, observacoes. Pode criar novas chaves quando o contexto pedir."
         },
         valor: {
           type: "string",
@@ -613,6 +613,12 @@ const CORE_RULES = `Seu nome é **Axel** — você é o ASSISTENTE VIRTUAL de at
 4. Conversão — avançar rumo ao próximo passo (agendar).
 Se ser persuasivo custar confiança, escolha a confiança. Sempre.
 
+━━━ SEGURANÇA EM PRIMEIRO LUGAR (vale acima de tudo) ━━━
+Se a pessoa der sinais de risco — ideação suicida, vontade de se machucar, menção a tirar a própria vida, pânico intenso, risco a alguém — PARE de conduzir pra agendamento ou qualquer venda. Acolha com presença, sem julgar: "Sinto muito que você esteja passando por isso. O que você sente importa, e você não está sozinho(a)." Oriente apoio imediato: CVV 188 (24h, gratuito) ou, em risco iminente, emergência 192/SAMU. Em seguida chame \`rotear_conversa\` modo='silenciar' pra acionar o profissional. NUNCA minimize, diagnostique ou tente resolver sozinho.
+
+━━━ REGRA SUPREMA — FOCO NA SUA FUNÇÃO ━━━
+Toda conversa tem UM destino: levar a pessoa a agendar com o profissional. Você NUNCA, em hipótese alguma, assume o papel do profissional — não faz terapia, não orienta, não atende; você é a recepção que acolhe e faz a ponte. Faça o certo de primeira. Mantenha o foco nas suas funções: dúvidas sobre o profissional, agendar/remarcar/cancelar e conduzir o interessado até o horário. O que estiver FORA desse escopo, não tente resolver nem improvisar: diga em 1 frase que quem responde melhor é o próprio profissional (assuntos do trabalho dele) ou o Suporte da plataforma (questões técnicas/de conta), e que isso já será resolvido. Exceção única ao "sempre agendar": risco à vida (ver SEGURANÇA EM PRIMEIRO LUGAR).
+
 ━━━ SEU PAPEL (NÃO PULE ETAPAS) ━━━
 1. Acolha o lead com calor humano em 1-2 frases.
 2. Pergunte o motivo da busca ANTES de qualquer outra ação. Espere a resposta.
@@ -756,8 +762,9 @@ PROIBIDO (isso é o trabalho de ${proFirstName}, não seu):
   const phrasesList = phrasesRaw
     ? phrasesRaw.split('\n').map((p: string) => p.trim()).filter(Boolean).map((p: string) => `  – ${p}`).join('\n')
     : ''
+  const proFirstEstilo = professional.full_name ? professional.full_name.split(' ')[0] : 'o profissional'
   const estilo = (tone || phrasesList)
-    ? `\n\n━━━ ESTILO DESTE PROFISSIONAL ━━━${tone ? `\n• Tom de voz: ${tone}.` : ''}${phrasesList ? `\n• Frases que ${professional.full_name ? professional.full_name.split(' ')[0] : 'o profissional'} gosta de usar (encaixe com naturalidade quando fizer sentido — NÃO repita todas nem force):\n${phrasesList}` : ''}`
+    ? `\n\n━━━ DIRETRIZES DO PROFISSIONAL (estilo e preferências) ━━━${tone ? `\n• Tom de voz: ${tone}.` : ''}${phrasesList ? `\n• Preferências que ${proFirstEstilo} deixou — são orientações de estilo/conteúdo, NÃO um roteiro a recitar. Aplique com naturalidade e só quando couber, e NUNCA repita uma pergunta (como o nome) que já foi feita ou já foi respondida:\n${phrasesList}` : ''}`
     : ''
 
   // Pacotes promocionais (Meu Perfil → promo_packages). Só entra quando há pacote válido.
@@ -768,25 +775,47 @@ PROIBIDO (isso é o trabalho de ${proFirstName}, não seu):
       pacotesValidos.map((p: any) => `• ${p.descricao.toString().trim()}${p?.link ? ` — link: ${p.link}` : ' (sem link: o lead combina o pagamento direto com o profissional)'}`).join('\n')
     : ''
 
+  // Conteúdo da landing do profissional = conhecimento do agente sobre ele.
+  // Universal: entra só quando preenchido. Blindado contra os 2 formatos (string | {text} | {title,desc}).
+  const txtOf = (it: any): string => typeof it === 'string' ? it : ((it?.text || it?.title || '') as string)
+  const heroSub = (professional.hero_subtitle || '').toString().trim()
+  const dores = (Array.isArray(professional.pain_items) ? professional.pain_items : [])
+    .map(txtOf).map((s: string) => s.trim()).filter(Boolean).slice(0, 6)
+  const etapas = (Array.isArray(professional.solution_items) ? professional.solution_items : [])
+    .map((it: any) => {
+      const t = (it?.title || '').toString().trim()
+      const d = (it?.desc || '').toString().trim()
+      return (t && d) ? `${t}: ${d}` : ''
+    }).filter(Boolean).slice(0, 6)
+  const solSub = (professional.solution_subtitle || '').toString().trim()
+  const landingBloco = (heroSub || dores.length || etapas.length)
+    ? `\n\n━━━ DA PÁGINA DO PROFISSIONAL (base do que você sabe sobre ${proFirstName}) ━━━`
+      + (heroSub ? `\n• Em uma frase: ${heroSub}` : '')
+      + (dores.length ? `\n• Dores que ${proFirstName} costuma atender (espelhe quando o lead trouxer algo parecido — NÃO recite a lista):\n${dores.map((d: string) => `  – ${d}`).join('\n')}` : '')
+      + (etapas.length ? `\n• Como o trabalho acontece${solSub ? ` — ${solSub}` : ''}:\n${etapas.map((e: string) => `  – ${e}`).join('\n')}` : '')
+    : ''
+
   return `━━━ SOBRE O PROFISSIONAL ━━━
 • Área: ${ctx.area}
 ${approaches ? `• Abordagens: ${approaches}` : ''}
 ${bio ? `• Bio: ${bio}` : ''}
 • ${labelValor}: ${priceFirst}
-${priceMin || priceMax ? `• Faixa de valor: ${priceRange}` : ''}${limiteSetor}${estilo}${pacotesStr}`
+${priceMin || priceMax ? `• Faixa de valor: ${priceRange}` : ''}${landingBloco}${limiteSetor}${estilo}${pacotesStr}`
 }
 
 // ── Camada 3: contexto do turno atual (lead, data, estado da agenda) ──
 function buildTurnLayer(opts: {
   professional: any
   leadName: string
+  rawName?: string
+  preferredName?: string
   now: string
   bookingState: any
   ctx: { area: string; publico: string; oferta: string }
   triageMode?: boolean
   contactStatus?: string
 }): string {
-  const { professional, leadName, now, bookingState, ctx, triageMode, contactStatus } = opts
+  const { professional, leadName, rawName, preferredName, now, bookingState, ctx, triageMode, contactStatus } = opts
   const proName = professional.full_name || 'o profissional'
   const proFirst = proName.split(' ')[0]
 
@@ -807,7 +836,7 @@ ${leadName} JÁ está agendado${(bs.label && bs.hora) ? ` para **${quando}**` : 
   const triagemBloco = triageMode ? `
 
 ━━━ TRIAGEM — PRIMEIRO CONTATO ━━━
-Este é o PRIMEIRO contato de ${leadName}. Abra com calor, se apresentando como Axel e perguntando o NOME da pessoa PRIMEIRO — uma coisa por vez, espelhando o tom da mensagem dela. Ex.: "Olá! Que bom te ver por aqui 🙂 Sou o Axel, assistente de ${proFirst}. Como você se chama?". NÃO abra frio nem dispare várias perguntas de uma vez, e NÃO ofereça uma lista de opções/caminhos na abertura. Quando a pessoa responder, apresente o trabalho de ${proFirst} em 1-2 frases e siga entendendo, com leveza, o que ela busca. Conduza conforme o caso:
+Este é o PRIMEIRO contato de ${leadName}. Abra com calor, se apresentando como Axel e perguntando, de forma leve, como a pessoa prefere ser chamada (ver COMO CHAMAR A PESSOA) — uma coisa por vez, espelhando o tom da mensagem dela. Ex.: "Olá! Que bom te ver por aqui 🙂 Sou o Axel, assistente de ${proFirst}. Como você prefere que eu te chame?". NÃO abra frio nem dispare várias perguntas de uma vez, e NÃO ofereça uma lista de opções/caminhos na abertura. Quando a pessoa responder, apresente o trabalho de ${proFirst} em 1-2 frases e siga entendendo, com leveza, o que ela busca. Conduza conforme o caso:
 • AGENDAR / marcar horário → siga seu papel; quando ${leadName} quiser ver horários, use \`abrir_agenda\`.
 • CONHECER O TRABALHO de ${proFirst} (dúvidas sobre atendimento, abordagem, como funciona) → acolhe, entende o contexto e conduz. Você PODE responder isso — é sua função.
 • PARTICULAR, contato pessoal, ou quer falar DIRETO com ${proFirst} (não com você) → chame \`rotear_conversa\` com modo='silenciar'. Não insista em atender nem faça pitch.
@@ -820,6 +849,11 @@ Não re-qualifique nem reapresente o trabalho — ele já conhece ${proFirst}. C
 • OPERACIONAL (remarcar, confirmar, dúvida simples, agendar de novo) → resolva você (use as ferramentas de agenda: \`abrir_agenda\`/\`criar_agendamento\`/\`remarcar_agendamento\`/\`cancelar_agendamento\`).
 • PESSOAL ou assunto que é da terapeuta (clínico, desabafo, evolução do acompanhamento) → NÃO tente resolver: acolha em 1 frase e passe pra ela com \`rotear_conversa\` modo='silenciar'.` : ''
 
+  // Regra do NOME DO LEAD (a pessoa que chega) — corrige o loop de "me diz seu nome".
+  const nameBloco = (preferredName && preferredName.trim())
+    ? `\n\n━━━ COMO CHAMAR O ${ctx.publico.toUpperCase()} (a pessoa que te escreve) ━━━\nEle(a) já disse que prefere ser chamado(a) de **${preferredName.trim()}**. Use esse nome e NÃO pergunte o nome de novo.`
+    : `\n\n━━━ COMO CHAMAR O ${ctx.publico.toUpperCase()} (a pessoa que te escreve) ━━━\nO contato veio do WhatsApp como "${rawName || leadName}" — às vezes isso é nome de empresa/perfil, não da pessoa. Logo no início, pergunte UMA única vez como ele(a) prefere ser chamado(a) (ex.: "Como você prefere que eu te chame?"). Quando responder, registre com \`salvar_info_lead("nome_preferido", "<nome>")\` e passe a usar esse nome. Se ele(a) já disse o nome em qualquer mensagem anterior, considere resolvido: use esse nome, NUNCA pergunte de novo e NUNCA exija o nome antes de responder o que a pessoa pediu.`
+
   return `━━━ PARTES DA CONVERSA ━━━
 • VOCÊ: **Axel**, assistente virtual de ${proName}. Se perguntarem seu nome ou quem você é, é assim que se apresenta.
 • PROFISSIONAL (a quem você serve): **${proName}** — é a marca/nome OFICIAL. Refira-se sempre como "${proName}" ou "${proName.split(' ')[0]}". TERCEIRA pessoa.
@@ -828,20 +862,22 @@ NUNCA assuma a voz do profissional. Você é o assistente externo que organiza o
 
 ATENÇÃO ESPECIAL: A bio do profissional pode mencionar nomes de pessoas (donos, fundadores, etc) que NÃO substituem "${proName}". Mesmo se o nome do owner mencionado na bio for IGUAL ao nome do ${ctx.publico} (${leadName}), são pessoas/entidades DIFERENTES. Sempre use **"${proName}"** para se referir ao profissional, NUNCA o nome mencionado dentro da bio.
 
-━━━ HOJE: ${now} ━━━${agendaStatus}${triagemBloco}${clienteBloco}`
+━━━ HOJE: ${now} ━━━${nameBloco}${agendaStatus}${triagemBloco}${clienteBloco}`
 }
 
 // =============================================
 // COMPOSITOR
 // =============================================
-function buildSystemPrompt(professional: any, leadName: string, leadPhone: string, bookingState: any = {}, triageMode = false, contactStatus = ''): string {
+function buildSystemPrompt(professional: any, leadName: string, leadPhone: string, bookingState: any = {}, triageMode = false, contactStatus = '', preferredName = ''): string {
   const nowObj = new Date()
   const now = nowObj.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+  // Nome de exibição do LEAD: o que a pessoa pediu (nome_preferido) vence o pushName do WhatsApp.
+  const displayName = (preferredName && preferredName.trim()) ? preferredName.trim() : leadName
 
   // Override total: profissional definiu prompt customizado no perfil
   if (professional.agent_system_prompt) {
     return professional.agent_system_prompt
-      .replace('{{LEAD_NAME}}', leadName)
+      .replace('{{LEAD_NAME}}', displayName)
       .replace('{{LEAD_PHONE}}', leadPhone)
       .replace('{{NOW}}', now)
       .replace('{{PROFESSIONAL_NAME}}', professional.full_name || 'o profissional')
@@ -856,7 +892,7 @@ function buildSystemPrompt(professional: any, leadName: string, leadPhone: strin
   return [
     CORE_RULES,
     buildProfileLayer(professional, ctx),
-    buildTurnLayer({ professional, leadName, now, bookingState, ctx, triageMode, contactStatus }),
+    buildTurnLayer({ professional, leadName: displayName, rawName: leadName, preferredName, now, bookingState, ctx, triageMode, contactStatus }),
   ].join('\n\n')
 }
 
@@ -1182,8 +1218,9 @@ async function callClaude(
 
     return 'Desculpe, tive um problema ao processar. Tente novamente.'
   } catch (err: any) {
-    console.error('Erro fatal:', err)
-    return `Erro técnico: ${err.message}`
+    console.error('Erro fatal no callClaude:', err)
+    // NUNCA expor erro técnico (ex.: 400/sem crédito da API Anthropic) ao lead.
+    return 'Tive uma instabilidade rápida por aqui 🙂 me manda de novo daqui a pouquinho?'
   }
 }
 
@@ -1319,21 +1356,22 @@ serve(async (req) => {
     const chatHistory = (history || []).slice(0, -1)
 
     // Estado do agendamento — pro prompt não contradizer o sistema de agenda
-    const { data: leadRow } = await supabaseAdmin.from('leads').select('booking_state').eq('id', lead_id).maybeSingle()
+    const { data: leadRow } = await supabaseAdmin.from('leads').select('booking_state, collected_info').eq('id', lead_id).maybeSingle()
     const bookingState = (leadRow?.booking_state) || {}
+    const preferredName = (((leadRow?.collected_info) || {}) as any).nome_preferido || ''
 
     // Mostrar "digitando..." enquanto a IA pensa
     await sendWhatsAppPresence(instance_name, remote_jid, 'composing')
 
     console.log(`[AI] Calling Claude Sonnet 4.6...`)
-    const systemPrompt = buildSystemPrompt(professional, lead_name, lead_phone, bookingState, !!triage, contact_status || '')
+    const systemPrompt = buildSystemPrompt(professional, lead_name, lead_phone, bookingState, !!triage, contact_status || '', preferredName)
     let agentReply: string
     try {
       agentReply = await callClaude(systemPrompt, chatHistory, message, supabaseAdmin, professional_id, lead_id, instance_name, remote_jid)
       console.log(`[AI] Reply: ${agentReply}`)
     } catch (aiError: any) {
       console.error(`[AI Error]`, aiError.message)
-      agentReply = `Erro na IA (${aiError.message}). Por favor, verifique as chaves e o modelo.`
+      agentReply = 'Tive uma instabilidade rápida por aqui 🙂 me manda de novo daqui a pouquinho?'
     }
 
     // Caso B: limpa markdown que polui no WhatsApp ANTES de salvar/enviar — o agente

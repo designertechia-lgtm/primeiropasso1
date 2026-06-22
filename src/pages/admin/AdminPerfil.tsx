@@ -37,26 +37,39 @@ export default function AdminPerfil() {
   const [categoryCustom, setCategoryCustom] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Detecção de alterações não salvas (mesmo padrão da AdminLandingPage).
-  const hasLoaded = useRef(false);
-  const [isDirty, setIsDirty] = useState(false);
+  // Detecção de alterações não salvas POR CONTEÚDO: compara o formulário atual
+  // com um retrato dos dados carregados. Como `isDirty` é derivado (não um estado
+  // setado por efeito), não depende de ordem de efeitos nem dá falso positivo em
+  // refetch do react-query que traga os mesmos dados.
+  const baselineRef = useRef<string | null>(null);
+  const buildSnapshot = (v: {
+    fullName: string; slug: string; crp: string; phone: string; email: string;
+    address: string; photoUrl: string; logoUrl: string; priceMin: string;
+    priceMax: string; priceFirstSession: string;
+    promoPackages: Array<{ descricao: string; link: string }>;
+    category: string; categoryCustom: string;
+  }) =>
+    JSON.stringify([
+      v.fullName, v.slug, v.crp, v.phone, v.email, v.address, v.photoUrl, v.logoUrl,
+      v.priceMin, v.priceMax, v.priceFirstSession,
+      v.promoPackages.map((p) => [p.descricao, p.link]),
+      v.category, v.categoryCustom,
+    ]);
 
   useEffect(() => {
     if (!professional) return;
-    // Desarma a detecção antes de repovoar os campos: um refetch do react-query
-    // (ex.: ao focar a janela) ou o `profile` chegando depois recria os arrays e
-    // dispararia "alterado" falso. O requestAnimationFrame abaixo rearma após a carga.
-    hasLoaded.current = false;
-    setFullName(professional.full_name || profile?.full_name || "");
+    const fullNameV = professional.full_name || profile?.full_name || "";
     // Migra categorias legadas (psicologia/odontologia/nutricao/etc) para "outro"
     // preservando o rótulo original no texto livre.
     const rawCat = (professional as any).category || "psicologo";
     const VALID = ["terapeuta", "psicologo", "psiquiatra", "outro"] as const;
+    let categoryV: string;
+    let categoryCustomV: string;
     if (VALID.includes(rawCat as typeof VALID[number])) {
-      setCategory(rawCat);
-      setCategoryCustom((professional as any).category_custom || "");
+      categoryV = rawCat;
+      categoryCustomV = (professional as any).category_custom || "";
     } else {
-      setCategory("outro");
+      categoryV = "outro";
       const labels: Record<string, string> = {
         psicologia: "Psicologia clínica",
         plataforma_saas: "Plataforma digital / SaaS",
@@ -65,40 +78,56 @@ export default function AdminPerfil() {
         medicina: "Medicina",
         educacao: "Educação / Coaching",
       };
-      setCategoryCustom((professional as any).category_custom || labels[rawCat] || rawCat);
+      categoryCustomV = (professional as any).category_custom || labels[rawCat] || rawCat;
     }
-    setSlug(professional.slug || "");
-    setCrp(professional.crp || "");
-    setPhone(professional.phone || (professional as any).whatsapp || "");
-    setEmail(professional.email || profile?.email || "");
-    setAddress(professional.address || "");
-    setPhotoUrl(professional.photo_url || "");
-    setLogoUrl(professional.logo_url || "");
-    setPriceMin(professional.price_min?.toString() || "");
-    setPriceMax(professional.price_max?.toString() || "");
-    setPriceFirstSession(professional.price_first_session?.toString() || "");
+    const slugV = professional.slug || "";
+    const crpV = professional.crp || "";
+    const phoneV = professional.phone || (professional as any).whatsapp || "";
+    const emailV = professional.email || profile?.email || "";
+    const addressV = professional.address || "";
+    const photoUrlV = professional.photo_url || "";
+    const logoUrlV = professional.logo_url || "";
+    const priceMinV = professional.price_min?.toString() || "";
+    const priceMaxV = professional.price_max?.toString() || "";
+    const priceFirstV = professional.price_first_session?.toString() || "";
     const rawPkgs = (professional as any).promo_packages;
-    if (Array.isArray(rawPkgs)) {
-      setPromoPackages(
-        rawPkgs.map((p: any) => ({
+    const promoV = Array.isArray(rawPkgs)
+      ? rawPkgs.map((p: any) => ({
           id: typeof p?.id === "string" ? p.id : crypto.randomUUID(),
           descricao: typeof p?.descricao === "string" ? p.descricao : "",
           link: typeof p?.link === "string" ? p.link : "",
-        })),
-      );
-    } else {
-      setPromoPackages([]);
-    }
-    setIsDirty(false);
-    requestAnimationFrame(() => { hasLoaded.current = true; });
+        }))
+      : [];
+
+    setFullName(fullNameV);
+    setCategory(categoryV);
+    setCategoryCustom(categoryCustomV);
+    setSlug(slugV);
+    setCrp(crpV);
+    setPhone(phoneV);
+    setEmail(emailV);
+    setAddress(addressV);
+    setPhotoUrl(photoUrlV);
+    setLogoUrl(logoUrlV);
+    setPriceMin(priceMinV);
+    setPriceMax(priceMaxV);
+    setPriceFirstSession(priceFirstV);
+    setPromoPackages(promoV);
+
+    // Retrato dos dados carregados (mesmos valores que acabaram de ir pros campos).
+    baselineRef.current = buildSnapshot({
+      fullName: fullNameV, slug: slugV, crp: crpV, phone: phoneV, email: emailV,
+      address: addressV, photoUrl: photoUrlV, logoUrl: logoUrlV, priceMin: priceMinV,
+      priceMax: priceMaxV, priceFirstSession: priceFirstV, promoPackages: promoV,
+      category: categoryV, categoryCustom: categoryCustomV,
+    });
   }, [professional, profile]);
 
-  // Marca como "alterado" assim que o usuário muda qualquer campo (após a carga inicial).
-  useEffect(() => {
-    if (!hasLoaded.current) return;
-    setIsDirty(true);
-  }, [fullName, slug, crp, phone, email, address, photoUrl, logoUrl,
-      priceMin, priceMax, priceFirstSession, promoPackages, category, categoryCustom]);
+  const snapshot = buildSnapshot({
+    fullName, slug, crp, phone, email, address, photoUrl, logoUrl,
+    priceMin, priceMax, priceFirstSession, promoPackages, category, categoryCustom,
+  });
+  const isDirty = baselineRef.current !== null && snapshot !== baselineRef.current;
 
   const addPromoPackage = () =>
     setPromoPackages((prev) => [...prev, { id: crypto.randomUUID(), descricao: "", link: "" }]);
@@ -140,7 +169,7 @@ export default function AdminPerfil() {
       return false;
     }
     toast.success("Perfil atualizado!");
-    setIsDirty(false);
+    baselineRef.current = snapshot; // o que está na tela agora é o novo "salvo"
     queryClient.invalidateQueries({ queryKey: ["my-professional"] });
     return true;
   };

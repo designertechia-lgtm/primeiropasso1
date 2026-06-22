@@ -355,9 +355,39 @@ export default function AdminLandingPage() {
   }, [searchParams]);
   const [saving, setSaving] = useState(false);
   const [aiLoading, setAiLoading] = useState<string | null>(null);
-  const [isDirty, setIsDirty] = useState(false);
   const [mobileView, setMobileView] = useState<"editor" | "preview">("editor");
-  const hasLoaded = useRef(false);
+
+  // Detecção de alterações não salvas POR CONTEÚDO (ver AdminPerfil): isDirty é
+  // derivado da comparação com um retrato dos dados carregados — sem falso
+  // positivo em refetch nem dependência de ordem de efeitos.
+  const baselineRef = useRef<string | null>(null);
+  const buildSnapshot = (v: {
+    heroTitle: string; heroSubtitle: string; heroImageUrl: string; heroBgUrl: string;
+    heroBgOpacity: number; heroBgOverlay: string; photoUrl: string; photoStyle: string; photoFit: string;
+    aboutTitle: string; bio: string; aboutImageUrl: string; aboutVideoUrl: string; approaches: string[];
+    primaryColor: string; secondaryColor: string; bgColor: string;
+    darkPrimaryColor: string; darkSecondaryColor: string; darkBgColor: string; darkModeEnabled: boolean;
+    painTitle: string; painSubtitle: string; painItems: unknown[];
+    solutionTitle: string; solutionSubtitle: string; solutionItems: unknown[];
+    sectionOrder: string[]; sectionHidden: string[];
+    fontFamily: string; headingFontFamily: string; fontSizeScale: string;
+    contactTitle: string; contactSubtitle: string; contactWhatsapp: string; contactCtaMessage: string;
+    contactPhone: string; contactEmail: string; contactInstagram: string; contactLinkedin: string;
+    contactTiktok: string; contactFacebook: string;
+  }) =>
+    JSON.stringify([
+      v.heroTitle, v.heroSubtitle, v.heroImageUrl, v.heroBgUrl, v.heroBgOpacity, v.heroBgOverlay,
+      v.photoUrl, v.photoStyle, v.photoFit,
+      v.aboutTitle, v.bio, v.aboutImageUrl, v.aboutVideoUrl, v.approaches,
+      v.primaryColor, v.secondaryColor, v.bgColor,
+      v.darkPrimaryColor, v.darkSecondaryColor, v.darkBgColor, v.darkModeEnabled,
+      v.painTitle, v.painSubtitle, v.painItems,
+      v.solutionTitle, v.solutionSubtitle, v.solutionItems,
+      v.sectionOrder, v.sectionHidden,
+      v.fontFamily, v.headingFontFamily, v.fontSizeScale,
+      v.contactTitle, v.contactSubtitle, v.contactWhatsapp, v.contactCtaMessage,
+      v.contactPhone, v.contactEmail, v.contactInstagram, v.contactLinkedin, v.contactTiktok, v.contactFacebook,
+    ]);
 
   const navigate = useNavigate();
 
@@ -428,66 +458,114 @@ export default function AdminLandingPage() {
 
   useEffect(() => {
     if (!professional) return;
-    hasLoaded.current = false;
-    setHeroTitle(professional.hero_title || "");
-    setHeroSubtitle(professional.hero_subtitle || "");
-    setHeroImageUrl((professional as any).hero_image_url || "");
-    setHeroBgUrl((professional as any).hero_bg_url || "");
-    setHeroBgOpacity((professional as any).hero_bg_opacity ?? 70);
-    setHeroBgOverlay((professional as any).hero_bg_overlay || "dark");
-    setPhotoUrl(professional.photo_url || "");
-    setPhotoStyle((professional as any).photo_style || "portrait");
-    setPhotoFit((professional as any).photo_fit || "contain");
-    setAboutTitle((professional as any).about_title || "");
-    setBio(professional.bio || "");
-    setAboutImageUrl((professional as any).about_image_url || "");
-    setAboutVideoUrl((professional as any).about_video_url || "");
-    setApproaches(professional.approaches || []);
+    const p = professional as any;
     const pc = professional.primary_color || "#87A96B";
     const dv = deriveColors(pc);
-    setPrimaryColor(pc);
-    setSecondaryColor((professional as any).secondary_color || dv.secondary);
-    setBgColor((professional as any).background_color || dv.background);
-    setDarkPrimaryColor((professional as any).dark_primary_color || "");
-    setDarkSecondaryColor((professional as any).dark_secondary_color || "");
-    setDarkBgColor((professional as any).dark_background_color || "");
-    setDarkModeEnabled(!!(professional as any).dark_mode);
-    setPainTitle((professional as any).pain_title || "");
-    setPainSubtitle((professional as any).pain_subtitle || "");
-    setPainItems((professional as any).pain_items || []);
-    setSolutionTitle((professional as any).solution_title || "");
-    setSolutionSubtitle((professional as any).solution_subtitle || "");
-    setSolutionItems((professional as any).solution_items || []);
     // Ordem das seções: garante que as 4 chaves estejam presentes (anexa as faltantes na ordem canônica),
     // mesmo que o banco tenha um subconjunto ou null → a aba "Seções" sempre lista as 4.
-    const savedOrder: string[] = Array.isArray((professional as any).section_order) ? (professional as any).section_order : [];
+    const savedOrder: string[] = Array.isArray(p.section_order) ? p.section_order : [];
     const validSaved = savedOrder.filter((k) => (CONTENT_SECTION_KEYS as readonly string[]).includes(k));
-    setSectionOrder([...validSaved, ...CONTENT_SECTION_KEYS.filter((k) => !validSaved.includes(k))]);
-    setSectionHidden(Array.isArray((professional as any).section_hidden) ? (professional as any).section_hidden : []);
-    setFontFamily((professional as any).font_family || "inter");
-    setHeadingFontFamily((professional as any).heading_font_family || "playfair");
-    setFontSizeScale((professional as any).font_size_scale || "md");
-    setContactTitle((professional as any).contact_title || "");
-    setContactSubtitle((professional as any).contact_subtitle || "");
-    setContactWhatsapp((professional as any).whatsapp || "");
-    setContactCtaMessage((professional as any).contact_cta_message || "");
-    setContactPhone((professional as any).phone || "");
-    setContactEmail((professional as any).email || "");
-    setContactInstagram((professional as any).instagram || "");
-    setContactLinkedin((professional as any).linkedin || "");
-    setContactTiktok((professional as any).tiktok || "");
-    setContactFacebook((professional as any).facebook || "");
-    setIsDirty(false);
-    requestAnimationFrame(() => { hasLoaded.current = true; });
+
+    const v = {
+      heroTitle: professional.hero_title || "",
+      heroSubtitle: professional.hero_subtitle || "",
+      heroImageUrl: p.hero_image_url || "",
+      heroBgUrl: p.hero_bg_url || "",
+      heroBgOpacity: (p.hero_bg_opacity ?? 70) as number,
+      heroBgOverlay: p.hero_bg_overlay || "dark",
+      photoUrl: professional.photo_url || "",
+      photoStyle: p.photo_style || "portrait",
+      photoFit: p.photo_fit || "contain",
+      aboutTitle: p.about_title || "",
+      bio: professional.bio || "",
+      aboutImageUrl: p.about_image_url || "",
+      aboutVideoUrl: p.about_video_url || "",
+      approaches: (professional.approaches || []) as string[],
+      primaryColor: pc,
+      secondaryColor: p.secondary_color || dv.secondary,
+      bgColor: p.background_color || dv.background,
+      darkPrimaryColor: p.dark_primary_color || "",
+      darkSecondaryColor: p.dark_secondary_color || "",
+      darkBgColor: p.dark_background_color || "",
+      darkModeEnabled: !!p.dark_mode,
+      painTitle: p.pain_title || "",
+      painSubtitle: p.pain_subtitle || "",
+      painItems: (p.pain_items || []) as unknown[],
+      solutionTitle: p.solution_title || "",
+      solutionSubtitle: p.solution_subtitle || "",
+      solutionItems: (p.solution_items || []) as unknown[],
+      sectionOrder: [...validSaved, ...CONTENT_SECTION_KEYS.filter((k) => !validSaved.includes(k))] as string[],
+      sectionHidden: (Array.isArray(p.section_hidden) ? p.section_hidden : []) as string[],
+      fontFamily: p.font_family || "inter",
+      headingFontFamily: p.heading_font_family || "playfair",
+      fontSizeScale: p.font_size_scale || "md",
+      contactTitle: p.contact_title || "",
+      contactSubtitle: p.contact_subtitle || "",
+      contactWhatsapp: p.whatsapp || "",
+      contactCtaMessage: p.contact_cta_message || "",
+      contactPhone: p.phone || "",
+      contactEmail: p.email || "",
+      contactInstagram: p.instagram || "",
+      contactLinkedin: p.linkedin || "",
+      contactTiktok: p.tiktok || "",
+      contactFacebook: p.facebook || "",
+    };
+
+    setHeroTitle(v.heroTitle);
+    setHeroSubtitle(v.heroSubtitle);
+    setHeroImageUrl(v.heroImageUrl);
+    setHeroBgUrl(v.heroBgUrl);
+    setHeroBgOpacity(v.heroBgOpacity);
+    setHeroBgOverlay(v.heroBgOverlay);
+    setPhotoUrl(v.photoUrl);
+    setPhotoStyle(v.photoStyle);
+    setPhotoFit(v.photoFit);
+    setAboutTitle(v.aboutTitle);
+    setBio(v.bio);
+    setAboutImageUrl(v.aboutImageUrl);
+    setAboutVideoUrl(v.aboutVideoUrl);
+    setApproaches(v.approaches);
+    setPrimaryColor(v.primaryColor);
+    setSecondaryColor(v.secondaryColor);
+    setBgColor(v.bgColor);
+    setDarkPrimaryColor(v.darkPrimaryColor);
+    setDarkSecondaryColor(v.darkSecondaryColor);
+    setDarkBgColor(v.darkBgColor);
+    setDarkModeEnabled(v.darkModeEnabled);
+    setPainTitle(v.painTitle);
+    setPainSubtitle(v.painSubtitle);
+    setPainItems(v.painItems as any);
+    setSolutionTitle(v.solutionTitle);
+    setSolutionSubtitle(v.solutionSubtitle);
+    setSolutionItems(v.solutionItems as any);
+    setSectionOrder(v.sectionOrder);
+    setSectionHidden(v.sectionHidden);
+    setFontFamily(v.fontFamily);
+    setHeadingFontFamily(v.headingFontFamily);
+    setFontSizeScale(v.fontSizeScale);
+    setContactTitle(v.contactTitle);
+    setContactSubtitle(v.contactSubtitle);
+    setContactWhatsapp(v.contactWhatsapp);
+    setContactCtaMessage(v.contactCtaMessage);
+    setContactPhone(v.contactPhone);
+    setContactEmail(v.contactEmail);
+    setContactInstagram(v.contactInstagram);
+    setContactLinkedin(v.contactLinkedin);
+    setContactTiktok(v.contactTiktok);
+    setContactFacebook(v.contactFacebook);
+
+    baselineRef.current = buildSnapshot(v);
   }, [professional]);
 
-  useEffect(() => {
-    if (!hasLoaded.current) return;
-    setIsDirty(true);
-  }, [heroTitle, heroSubtitle, heroImageUrl, heroBgUrl, heroBgOpacity, heroBgOverlay, photoUrl, photoStyle, photoFit,
-      aboutTitle, bio, aboutImageUrl, aboutVideoUrl, approaches, primaryColor, secondaryColor, bgColor, darkPrimaryColor, darkSecondaryColor, darkBgColor, darkModeEnabled,
-      painTitle, painSubtitle, painItems, solutionTitle, solutionSubtitle, solutionItems, sectionOrder, sectionHidden,
-      fontFamily, headingFontFamily, fontSizeScale, contactTitle, contactSubtitle, contactCtaMessage, contactWhatsapp, contactPhone, contactEmail, contactInstagram, contactLinkedin, contactTiktok, contactFacebook]);
+  const snapshot = buildSnapshot({
+    heroTitle, heroSubtitle, heroImageUrl, heroBgUrl, heroBgOpacity, heroBgOverlay, photoUrl, photoStyle, photoFit,
+    aboutTitle, bio, aboutImageUrl, aboutVideoUrl, approaches, primaryColor, secondaryColor, bgColor,
+    darkPrimaryColor, darkSecondaryColor, darkBgColor, darkModeEnabled,
+    painTitle, painSubtitle, painItems, solutionTitle, solutionSubtitle, solutionItems, sectionOrder, sectionHidden,
+    fontFamily, headingFontFamily, fontSizeScale, contactTitle, contactSubtitle, contactWhatsapp, contactCtaMessage,
+    contactPhone, contactEmail, contactInstagram, contactLinkedin, contactTiktok, contactFacebook,
+  });
+  const isDirty = baselineRef.current !== null && snapshot !== baselineRef.current;
 
   // O aviso de fechar/recarregar a aba agora é centralizado no UnsavedChangesProvider
   // (ver useUnsavedChanges abaixo), evitando dois listeners de beforeunload.
@@ -507,7 +585,7 @@ export default function AdminLandingPage() {
     } as any).eq("id", professional.id);
     setSaving(false);
     if (error) toast.error("Erro ao salvar");
-    else { toast.success("Hero salvo!"); setIsDirty(false); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+    else { toast.success("Hero salvo!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
   };
 
   const saveSobre = async () => {
@@ -522,7 +600,7 @@ export default function AdminLandingPage() {
     } as any).eq("id", professional.id);
     setSaving(false);
     if (error) toast.error("Erro ao salvar");
-    else { toast.success("Sobre salvo!"); setIsDirty(false); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+    else { toast.success("Sobre salvo!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
   };
 
   const savePain = async () => {
@@ -535,7 +613,7 @@ export default function AdminLandingPage() {
     } as any).eq("id", professional.id);
     setSaving(false);
     if (error) toast.error("Erro ao salvar");
-    else { toast.success("Seção Dores salva!"); setIsDirty(false); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+    else { toast.success("Seção Dores salva!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
   };
 
   const saveSolution = async () => {
@@ -548,7 +626,7 @@ export default function AdminLandingPage() {
     } as any).eq("id", professional.id);
     setSaving(false);
     if (error) toast.error("Erro ao salvar");
-    else { toast.success("Seção Solução salva!"); setIsDirty(false); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+    else { toast.success("Seção Solução salva!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
   };
 
   const saveCores = async () => {
@@ -568,7 +646,7 @@ export default function AdminLandingPage() {
     } as any).eq("id", professional.id);
     setSaving(false);
     if (error) toast.error("Erro ao salvar");
-    else { toast.success("Cores & tipografia salvas!"); setIsDirty(false); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+    else { toast.success("Cores & tipografia salvas!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
   };
 
   const saveContatos = async () => {
@@ -588,7 +666,7 @@ export default function AdminLandingPage() {
     } as any).eq("id", professional.id);
     setSaving(false);
     if (error) toast.error("Erro ao salvar");
-    else { toast.success("Contatos salvos!"); setIsDirty(false); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+    else { toast.success("Contatos salvos!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
   };
 
   const saveSecoes = async () => {
@@ -600,7 +678,7 @@ export default function AdminLandingPage() {
     } as any).eq("id", professional.id);
     setSaving(false);
     if (error) toast.error("Erro ao salvar");
-    else { toast.success("Seções salvas!"); setIsDirty(false); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+    else { toast.success("Seções salvas!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
   };
 
   // Salva TODAS as seções de uma vez — usado pelo "Salvar e sair" do aviso de alterações não salvas.
@@ -660,7 +738,7 @@ export default function AdminLandingPage() {
     setSaving(false);
     if (error) { toast.error("Erro ao salvar"); return false; }
     toast.success("Tudo salvo!");
-    setIsDirty(false);
+    baselineRef.current = snapshot;
     queryClient.invalidateQueries({ queryKey: ["my-professional"] });
     return true;
   };

@@ -19,9 +19,19 @@ export default function AdminConfiguracoes() {
 
   const [saving, setSaving] = useState(false);
 
-  // Detecção de alterações não salvas (mesmo padrão da AdminLandingPage).
-  const hasLoaded = useRef(false);
-  const [isDirty, setIsDirty] = useState(false);
+  // Detecção de alterações não salvas POR CONTEÚDO (ver AdminPerfil): isDirty é
+  // derivado da comparação com um retrato dos dados carregados, então não dá
+  // falso positivo em refetch do react-query nem depende de ordem de efeitos.
+  const baselineRef = useRef<string | null>(null);
+  const buildSnapshot = (v: {
+    agentEnabled: boolean; agentReminders: boolean; agentSatisfaction: boolean;
+    agentTone: string; agentPhrases: string; agentRoteiro: RoteiroEtapa[];
+  }) =>
+    JSON.stringify([
+      v.agentEnabled, v.agentReminders, v.agentSatisfaction,
+      v.agentTone, v.agentPhrases,
+      v.agentRoteiro.map((e) => [e.titulo, e.conteudo]),
+    ]);
 
   // Preferências do agente (whatsapp-agent) — professionals.agent_preferences (jsonb)
   const TONE_PRESETS = ["Acolhedor", "Direto", "Formal", "Descontraído"];
@@ -34,39 +44,49 @@ export default function AdminConfiguracoes() {
   const [roteiroSugerido, setRoteiroSugerido] = useState(false); // rascunho vindo da landing, ainda não salvo
 
   useEffect(() => {
-    if (professional) {
-      // Desarma a detecção antes de repovoar (refetch do react-query recria o
-      // array do roteiro e marcaria "alterado" falso). O rAF abaixo rearma.
-      hasLoaded.current = false;
-      const ap = ((professional as any).agent_preferences || {}) as Record<string, any>;
-      setAgentEnabled(ap.enabled !== false);            // default ligado
-      setAgentReminders(ap.reminders !== false);        // default ligado
-      setAgentSatisfaction(ap.satisfaction !== false);  // default ligado
-      setAgentTone(ap.tone || "");
-      setAgentPhrases(ap.preferred_phrases || "");
-      const roteiro = Array.isArray(ap.roteiro) ? ap.roteiro : [];
-      const carregado = roteiro
-        .map((e: any) => novaEtapa((e?.titulo || "").toString(), (e?.conteudo || "").toString()))
-        .filter((e: RoteiroEtapa) => e.titulo || e.conteudo);
-      if (carregado.length > 0) {
-        setAgentRoteiro(carregado);
-        setRoteiroSugerido(false);
-      } else {
-        // Roteiro ainda vazio → pré-preenche um rascunho com o que já está na landing.
-        const seed = roteiroFromLanding(professional);
-        setAgentRoteiro(seed);
-        setRoteiroSugerido(seed.length > 0);
-      }
-      setIsDirty(false);
-      requestAnimationFrame(() => { hasLoaded.current = true; });
+    if (!professional) return;
+    const ap = ((professional as any).agent_preferences || {}) as Record<string, any>;
+    const agentEnabledV = ap.enabled !== false;            // default ligado
+    const agentRemindersV = ap.reminders !== false;        // default ligado
+    const agentSatisfactionV = ap.satisfaction !== false;  // default ligado
+    const agentToneV = ap.tone || "";
+    const agentPhrasesV = ap.preferred_phrases || "";
+    const roteiro = Array.isArray(ap.roteiro) ? ap.roteiro : [];
+    const carregado = roteiro
+      .map((e: any) => novaEtapa((e?.titulo || "").toString(), (e?.conteudo || "").toString()))
+      .filter((e: RoteiroEtapa) => e.titulo || e.conteudo);
+    let agentRoteiroV: RoteiroEtapa[];
+    let roteiroSugeridoV: boolean;
+    if (carregado.length > 0) {
+      agentRoteiroV = carregado;
+      roteiroSugeridoV = false;
+    } else {
+      // Roteiro ainda vazio → pré-preenche um rascunho com o que já está na landing.
+      agentRoteiroV = roteiroFromLanding(professional);
+      roteiroSugeridoV = agentRoteiroV.length > 0;
     }
+
+    setAgentEnabled(agentEnabledV);
+    setAgentReminders(agentRemindersV);
+    setAgentSatisfaction(agentSatisfactionV);
+    setAgentTone(agentToneV);
+    setAgentPhrases(agentPhrasesV);
+    setAgentRoteiro(agentRoteiroV);
+    setRoteiroSugerido(roteiroSugeridoV);
+
+    // Retrato dos dados carregados (inclui o rascunho da landing, que por si só
+    // não conta como edição do usuário).
+    baselineRef.current = buildSnapshot({
+      agentEnabled: agentEnabledV, agentReminders: agentRemindersV,
+      agentSatisfaction: agentSatisfactionV, agentTone: agentToneV,
+      agentPhrases: agentPhrasesV, agentRoteiro: agentRoteiroV,
+    });
   }, [professional]);
 
-  // Marca como "alterado" assim que o usuário muda qualquer campo (após a carga inicial).
-  useEffect(() => {
-    if (!hasLoaded.current) return;
-    setIsDirty(true);
-  }, [agentEnabled, agentReminders, agentSatisfaction, agentTone, agentPhrases, agentRoteiro]);
+  const snapshot = buildSnapshot({
+    agentEnabled, agentReminders, agentSatisfaction, agentTone, agentPhrases, agentRoteiro,
+  });
+  const isDirty = baselineRef.current !== null && snapshot !== baselineRef.current;
 
   const handleSave = async (): Promise<boolean> => {
     if (!professional) return false;
@@ -90,7 +110,7 @@ export default function AdminConfiguracoes() {
       return false;
     }
     toast.success("Configurações salvas!");
-    setIsDirty(false);
+    baselineRef.current = snapshot; // o que está na tela agora é o novo "salvo"
     queryClient.invalidateQueries({ queryKey: ["my-professional"] });
     return true;
   };

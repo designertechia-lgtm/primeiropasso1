@@ -536,6 +536,23 @@ export default function AdminAgendaCalendario() {
     onError: () => toast.error("Erro ao atualizar pagamento"),
   });
 
+  // Troca rápida de cor a partir do modal de detalhe (não fecha o modal).
+  const quickColorChange = useMutation({
+    mutationFn: async ({ id, color }: { id: string; color: string | null }) => {
+      const { error } = await supabase
+        .from("appointments")
+        .update({ color } as any)
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
+      queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
+      toast.success("Cor atualizada!");
+    },
+    onError: () => toast.error("Erro ao atualizar cor"),
+  });
+
   // F16 — arrastar (mover dia/hora) e esticar (mudar duração) persistem direto.
   // Mesma função pros dois gestos; reverte no grid se o banco recusar.
   const persistEventTimes = async (
@@ -919,9 +936,32 @@ export default function AdminAgendaCalendario() {
       <Dialog open={detailDialogOpen} onOpenChange={(open) => { setDetailDialogOpen(open); if (!open) setEditMode(false); }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
-              {selectedEvent?.type === "appointment" ? "Consulta" : "Agendamento"}
-            </DialogTitle>
+            <div className="flex items-center justify-between pr-8">
+              <DialogTitle>
+                {selectedEvent?.type === "appointment" ? "Consulta" : "Agendamento"}
+              </DialogTitle>
+              {selectedEvent && !editMode && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8" title="Cor do evento" aria-label="Cor do evento">
+                      <Settings className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-auto">
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground">Cor do evento</p>
+                      <ColorPicker
+                        value={selectedEvent.color ?? null}
+                        onChange={(c) => {
+                          quickColorChange.mutate({ id: selectedEvent.id, color: c });
+                          setSelectedEvent({ ...selectedEvent, color: c });
+                        }}
+                      />
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              )}
+            </div>
           </DialogHeader>
           {selectedEvent && !editMode && (
             <div className="space-y-3">

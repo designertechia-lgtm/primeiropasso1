@@ -1248,6 +1248,13 @@ const LLM_PROVIDER = (Deno.env.get('WHATSAPP_LLM_PROVIDER') || 'anthropic').toLo
 const USE_DEEPSEEK = LLM_PROVIDER === 'deepseek' || LLM_PROVIDER === 'openrouter'
 const DEEPSEEK_MODEL = 'deepseek/deepseek-v4-pro'
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
+// deepseek-v4-pro é modelo de REASONING: por padrão "pensa" antes de responder e esses
+// tokens de raciocínio consomem o orçamento de max_tokens, truncando o texto visível
+// (bug do "...Cenci. Como" cortado no meio). Na recepção do WhatsApp queremos resposta
+// DIRETA, curta e rápida — então desligamos o reasoning e damos margem de tokens. Pra
+// testar o modo "pensante", troque para { effort: 'low' } e suba DEEPSEEK_MAX_TOKENS.
+const DEEPSEEK_MAX_TOKENS = 2048
+const DEEPSEEK_REASONING: any = { enabled: false }
 // As 7 tools no formato OpenAI (function calling). input_schema já é JSON Schema válido.
 const openaiTools = tools.map((t: any) => ({
   type: 'function',
@@ -1462,8 +1469,9 @@ async function callDeepSeek(
     while (maxIterations-- > 0) {
       const payload = {
         model: DEEPSEEK_MODEL,
-        max_tokens: 1024,
+        max_tokens: DEEPSEEK_MAX_TOKENS,
         temperature: 0.7,
+        reasoning: DEEPSEEK_REASONING,
         messages,
         tools: openaiTools,
       }
@@ -1502,7 +1510,7 @@ async function callDeepSeek(
             const forced = await fetch(OPENROUTER_URL, {
               method: 'POST',
               headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ model: DEEPSEEK_MODEL, max_tokens: 1024, temperature: 0.7, messages }),
+              body: JSON.stringify({ model: DEEPSEEK_MODEL, max_tokens: DEEPSEEK_MAX_TOKENS, temperature: 0.7, reasoning: DEEPSEEK_REASONING, messages }),
             })
             if (forced.ok) {
               const fr = await forced.json()
@@ -1694,7 +1702,7 @@ async function simulateDeepSeek(systemPrompt: string, history: any[], userMessag
     const res = await fetch(OPENROUTER_URL, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: DEEPSEEK_MODEL, max_tokens: 700, temperature: 0.7, messages }),
+      body: JSON.stringify({ model: DEEPSEEK_MODEL, max_tokens: DEEPSEEK_MAX_TOKENS, temperature: 0.7, reasoning: DEEPSEEK_REASONING, messages }),
     })
     if (!res.ok) { console.error('[simulate] deepseek', res.status); return '' }
     const data = await res.json()

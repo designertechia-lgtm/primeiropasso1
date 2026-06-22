@@ -327,16 +327,17 @@ async function computeFreeSlots(
   const dias: Array<{ data: string; dia_semana: string; horarios_livres: string[] }> = []
   const start = new Date(dataInicio + 'T00:00:00')
   const end = new Date(dataFim + 'T00:00:00')
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  // C1: "hoje" e "agora" em BRT (UTC-3) — alinha com isSlotFree/createBooking. Antes usava UTC,
+  // o que deslocava o corte do passado em até 3h e podia ofertar slot que o booking depois recusava.
+  const todayIso = isoFromBRT(brtNow())
+  const nowMin = brtNow().getUTCHours() * 60 + brtNow().getUTCMinutes()
 
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    if (d < today) continue
+    const dateStr = d.toISOString().slice(0, 10)
+    if (dateStr < todayIso) continue
 
     const dow = d.getDay()
-    const dateStr = d.toISOString().slice(0, 10)
-    const isToday = d.getTime() === today.getTime()
-    const nowMin = new Date().getHours() * 60 + new Date().getMinutes()
+    const isToday = dateStr === todayIso
     const lunch = lunchForDow(lunchBreaks, dow) // almoço do dia
 
     const windowsForDow = weekly.filter((w: any) => w.day_of_week === dow)
@@ -648,6 +649,31 @@ async function getActiveAppointment(supabaseAdmin: any, professionalId: string, 
   return data || null
 }
 
+// C2: próximo agendamento ATIVO e FUTURO (por data E hora). Diferente de getActiveAppointment
+// (que pega o mais antigo, podendo ser passado/arrastado), este filtra >= hoje no banco e descarta
+// os de hoje cujo horário já passou — mesma régua de minuto de isSlotFree. Usado pelas travas C2.
+async function getUpcomingAppointment(supabaseAdmin: any, professionalId: string, leadId: string): Promise<any | null> {
+  const hoje = isoFromBRT(brtNow())
+  const { data } = await supabaseAdmin
+    .from('appointments')
+    .select('id, appointment_date, start_time')
+    .eq('professional_id', professionalId)
+    .eq('lead_id', leadId)
+    .eq('appointment_type', 'booking')
+    .in('status', ['pending', 'confirmed'])
+    .gte('appointment_date', hoje)
+    .order('appointment_date', { ascending: true })
+    .order('start_time', { ascending: true })
+    .limit(5)
+  if (!data || data.length === 0) return null
+  const nowMin = brtNow().getUTCHours() * 60 + brtNow().getUTCMinutes()
+  for (const a of data) {
+    if (a.appointment_date > hoje) return a
+    if (a.appointment_date === hoje && toMinutes(('' + a.start_time).slice(0, 5)) > nowMin) return a
+  }
+  return null
+}
+
 // =============================================
 // CONTEXTO POR CATEGORIA (vocabulário coerente)
 // =============================================
@@ -710,7 +736,7 @@ Seu objetivo é conduzir a um próximo passo humano (agendar), não bater papo s
 
 ━━━ AGENDAMENTO É SEU — mas SEMPRE pelas FERRAMENTAS (nunca confirme de boca) ━━━
 Você conduz o agendamento, porém SÓ através das ferramentas — nunca invente dias/horários nem diga "agendado" de cabeça:
-• Lead quer ver/marcar ("quero agendar", "tem horário?", "pode ser amanhã?") → \`abrir_agenda\` (sem data = dias; com data = horários daquele dia). A ferramenta envia os botões; você não escreve nada depois.
+• Lead quer ver/marcar ("quero agendar", "tem horário?", "pode ser amanhã?") → \`abrir_agenda\` (sem data = dias; com data = horários daquele dia). Se o lead JÁ disse um dia/data específico — "quinta 25/06", "pode dia 26?", "quero terça", "amanhã de manhã" — chame \`abrir_agenda(data="<esse dia em YYYY-MM-DD>")\` direto, mostrando os horários DAQUELE dia (NÃO abra a lista genérica de dias). Use \`abrir_agenda\` SEM data só quando o lead não indicou um dia. A ferramenta envia os botões; você não escreve nada depois.
 • Lead escolheu dia E horário → \`criar_agendamento(data, hora)\`. Ela valida, marca e JÁ AVISA o lead — você NÃO escreve a confirmação.
 • Mudar um horário já marcado → \`remarcar_agendamento\`. Desmarcar → \`cancelar_agendamento\`.
 • Horário quebrado (ex.: 14:20) é aceito SE estiver livre — quem decide é a ferramenta; você só chama \`criar_agendamento\` com o horário pedido.
@@ -856,7 +882,7 @@ PROIBIDO (isso é o trabalho de ${proFirstName}, não seu):
     .filter((e: any) => e.titulo || e.conteudo)
     .slice(0, 12)
   const roteiroBloco = roteiroEtapas.length
-    ? `\n\n━━━ ROTEIRO DE ATENDIMENTO DE ${proFirstName.toUpperCase()} (referência — adapte, NÃO recite) ━━━
+    ? `\n\n━━━ ROTEIRO DE ATENDIMENTO (referência — adapte, NÃO recite) ━━━
 ${proFirstName} montou a sequência e o conteúdo ideais do atendimento. Use como FONTE DE VERDADE do conteúdo (quem ${proFirstName} é, método, sessões, etc.) e como rota sugerida:
 ${roteiroEtapas.map((e: any, i: number) => `${i + 1}. ${e.titulo}${e.conteudo ? ` — ${e.conteudo}` : ''}`).join('\n')}
 COMO USAR (regras duras — valem ACIMA do roteiro):
@@ -938,15 +964,16 @@ ${leadName} JÁ está agendado${(bs.label && bs.hora) ? ` para **${quando}**` : 
     escolhendoHorario = `
 
 ━━━ ⏳ AGENDAMENTO EM CURSO — ${leadName.toUpperCase()} ESTÁ ESCOLHENDO O HORÁRIO ━━━
-Você acabou de mostrar os horários de **${lbl}** (${bs.pending_date}). O próximo passo é só a HORA.
-• Se a próxima mensagem for um horário (ex.: "14:00", "14h", "às 9", "9h30", "duas da tarde"), chame \`criar_agendamento(data="${bs.pending_date}", hora="HH:MM")\` IMEDIATAMENTE — NÃO reapresente o trabalho, NÃO repita valores e NÃO pergunte o dia de novo (já é ${lbl}).
-• Se pedir OUTRO dia, chame \`abrir_agenda\` com a nova data. Se desistir/mudar de assunto, responda normalmente.`
+Você acabou de mostrar os horários de **${lbl}** (${bs.pending_date}) e espera a HORA desse dia.
+• Se a mensagem for um HORÁRIO, chame \`criar_agendamento(data="${bs.pending_date}", hora="HH:MM")\` IMEDIATAMENTE — NÃO reapresente o trabalho, NÃO repita valores, NÃO pergunte o dia (já é ${lbl}). ATENÇÃO: "às 9", "9h", "9h30", "pode 9h?", "duas da tarde" são HORA, não o "dia 9" — marque normalmente.
+• Só reabra a agenda se o lead nomear EXPLICITAMENTE um dia DIFERENTE de ${lbl} — um dia da semana ("quarta", "sexta"), "amanhã"/"depois de amanhã", ou "dia DD". Se vier junto de uma hora (ex.: "quarta 15h"), chame \`abrir_agenda(data="<o novo dia em YYYY-MM-DD>")\` ANTES de marcar; NUNCA marque em ${bs.pending_date} um horário pedido para OUTRO dia.
+• Se desistir/mudar de assunto, responda normalmente.`
   }
 
   const triagemBloco = triageMode ? `
 
 ━━━ TRIAGEM — PRIMEIRO CONTATO ━━━
-Este é o PRIMEIRO contato de ${leadName}. Abra com calor, se apresentando como Axel e perguntando, de forma leve, como a pessoa prefere ser chamada (ver COMO CHAMAR A PESSOA) — uma coisa por vez, espelhando o tom da mensagem dela. Ex.: "Olá! Que bom te ver por aqui 🙂 Sou o Axel, assistente de ${proFirst}. Como você prefere que eu te chame?". NÃO abra frio nem dispare várias perguntas de uma vez, e NÃO ofereça uma lista de opções/caminhos na abertura. Quando a pessoa responder, apresente o trabalho de ${proFirst} em 1-2 frases e siga entendendo, com leveza, o que ela busca. Conduza conforme o caso:
+Este é o PRIMEIRO contato de ${leadName}. Abra com calor, se apresentando como Axel e perguntando, de forma leve, como a pessoa prefere ser chamada (ver COMO CHAMAR A PESSOA) — uma coisa por vez, espelhando o tom da mensagem dela. Ex.: "Olá! Que bom te ver por aqui 🙂 Sou o Axel, assistente de ${proFirst}. Como você prefere que eu te chame?". NÃO abra frio nem dispare várias perguntas de uma vez, e NÃO ofereça uma lista de opções/caminhos na abertura. Escreva a saudação como UMA frase curta e fluida (sem quebra de linha no meio). Quando a pessoa responder, apresente o trabalho de ${proFirst} em 1-2 frases e siga entendendo, com leveza, o que ela busca. Conduza conforme o caso:
 • AGENDAR / marcar horário → siga seu papel; quando ${leadName} quiser ver horários, use \`abrir_agenda\`.
 • CONHECER O TRABALHO de ${proFirst} (dúvidas sobre atendimento, abordagem, como funciona) → acolhe, entende o contexto e conduz. Você PODE responder isso — é sua função.
 • PARTICULAR, contato pessoal, ou quer falar DIRETO com ${proFirst} (não com você) → chame \`rotear_conversa\` com modo='silenciar'. Não insista em atender nem faça pitch.
@@ -992,6 +1019,17 @@ function sanitizeDisplayName(raw: any): string {
     .slice(0, 40)
 }
 
+// C5: normaliza a CAIXA do nome do PROFISSIONAL (ex.: "DAIANE CENCI" → "Daiane Cenci"). Só
+// re-capitaliza quando vem TODO em maiúsculas ou TODO em minúsculas; respeita nomes já mistos
+// (McX, DiCaprio) e partículas (de, da, dos). Evita o agente ecoar o nome em caixa alta na abertura.
+function normalizeProName(raw: any): string {
+  const s = (raw ?? '').toString().replace(/\s{2,}/g, ' ').trim()
+  if (!s) return ''
+  if (/[a-zà-ÿ]/.test(s) && /[A-ZÀ-Þ]/.test(s)) return s // já tem mistura de caixa → confia no cadastro
+  const minus = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'di', 'del', 'van', 'von'])
+  return s.toLowerCase().split(' ').map((w: string, i: number) => (i > 0 && minus.has(w)) ? w : (w ? w[0].toUpperCase() + w.slice(1) : w)).join(' ')
+}
+
 function buildSystemPrompt(professional: any, leadName: string, leadPhone: string, bookingState: any = {}, triageMode = false, contactStatus = '', preferredName = ''): string {
   const nowObj = new Date()
   const now = nowObj.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
@@ -1003,6 +1041,11 @@ function buildSystemPrompt(professional: any, leadName: string, leadPhone: strin
 
   const ctx = categoryContext(professional.category, professional.category_custom)
 
+  // C5: normaliza a CAIXA do nome do profissional na ORIGEM — perfil, turno e override herdam
+  // o mesmo nome bem formatado (sem "DAIANE CENCI" em caixa alta na abertura).
+  const proNorm = normalizeProName(professional.full_name)
+  const professionalN = proNorm ? { ...professional, full_name: proNorm } : professional
+
   // SEGURANÇA: o CORE_RULES (crise, limite clínico, regra suprema) é IMUTÁVEL e SEMPRE composto por
   // código. O agent_system_prompt (legado, texto livre) NÃO substitui mais o CORE_RULES — entra só como
   // bloco SUBORDINADO, que jamais vence as regras de segurança. Config real do profissional = campos
@@ -1013,7 +1056,7 @@ function buildSystemPrompt(professional: any, leadName: string, leadPhone: strin
         .replace('{{LEAD_NAME}}', displayName)
         .replace('{{LEAD_PHONE}}', leadPhone)
         .replace('{{NOW}}', now)
-        .replace('{{PROFESSIONAL_NAME}}', professional.full_name || 'o profissional')
+        .replace('{{PROFESSIONAL_NAME}}', professionalN.full_name || 'o profissional')
         .replace('{{BIO}}', professional.bio || '')
         .replace('{{PRICE_FIRST}}', professional.price_first_session || 'a combinar')
         .replace('{{PRICE_MIN}}', professional.price_min || 'não informado')
@@ -1023,9 +1066,9 @@ function buildSystemPrompt(professional: any, leadName: string, leadPhone: strin
 
   return [
     CORE_RULES,
-    buildProfileLayer(professional, ctx),
+    buildProfileLayer(professionalN, ctx),
     overrideBloco,
-    buildTurnLayer({ professional, leadName: displayName, rawName: safeLead, preferredName: safePreferred, now, bookingState, ctx, triageMode, contactStatus }),
+    buildTurnLayer({ professional: professionalN, leadName: displayName, rawName: safeLead, preferredName: safePreferred, now, bookingState, ctx, triageMode, contactStatus }),
   ].filter(Boolean).join('\n\n')
 }
 
@@ -1044,6 +1087,14 @@ async function handleToolCall(
   // AGENDAMENTO no AGENTE (LLM-driven). As tools validam, gravam e ENVIAM os botões/
   // confirmação direto via Evolution — o agente nunca escreve "marcado" por conta própria.
   if (toolName === 'abrir_agenda') {
+    // C2: trava determinística — se o lead já tem agendamento ATIVO e FUTURO, NÃO reabrir a agenda
+    // (mata o loop pós-confirmação e o pending_date órfão re-sujando o estado). Mudar = remarcar; desmarcar = cancelar.
+    {
+      const apptAtivo = await getUpcomingAppointment(supabaseAdmin, professionalId, leadId)
+      if (apptAtivo) {
+        return { ok: false, instrucao: `O lead JÁ tem um agendamento ativo (${labelFromIso(apptAtivo.appointment_date)} às ${('' + apptAtivo.start_time).slice(0, 5)}). NÃO abra a agenda. Confirme que está marcado, em 1 frase. Se ele quiser MUDAR o horário, use remarcar_agendamento; se quiser DESMARCAR, use cancelar_agendamento.` }
+      }
+    }
     const services = await getServices(supabaseAdmin, professionalId)
     const svc = services[0] || null
     const dur = svc?.duration_minutes || DEFAULT_DURATION
@@ -1059,7 +1110,8 @@ async function handleToolCall(
         const { data: lr } = await supabaseAdmin.from('leads').select('booking_state').eq('id', leadId).maybeSingle()
         const prevBs = (lr?.booking_state as any) || {}
         await supabaseAdmin.from('leads').update({
-          booking_state: { ...prevBs, pending_date: dataArg, pending_label: labelFromIso(dataArg), stage: 'choosing_time' },
+          // entra em "escolhendo horário" autossuficiente: zera resíduo de booking confirmado/cancelado
+          booking_state: { ...prevBs, appointment_id: null, status: null, pending_date: dataArg, pending_label: labelFromIso(dataArg), stage: 'choosing_time' },
         }).eq('id', leadId)
       }
       return { handoff: true, instrucao: 'Os horários foram enviados em botões ao lead. NÃO escreva mais nada neste turno.' }
@@ -1072,6 +1124,13 @@ async function handleToolCall(
   }
 
   if (toolName === 'criar_agendamento') {
+    // C2: trava — já existe agendamento ATIVO e FUTURO? Não cria um segundo; redireciona pra remarcação.
+    {
+      const apptAtivo = await getUpcomingAppointment(supabaseAdmin, professionalId, leadId)
+      if (apptAtivo) {
+        return { ok: false, instrucao: `O lead JÁ está agendado (${labelFromIso(apptAtivo.appointment_date)} às ${('' + apptAtivo.start_time).slice(0, 5)}). NÃO crie outro agendamento. Se ele quer trocar de horário, use remarcar_agendamento(nova_data, nova_hora). Se só está confirmando, diga que está marcado, em 1 frase.` }
+      }
+    }
     const data = (args.data || '').toString().trim()
     const hora = (args.hora || '').toString().trim().padStart(5, '0')
     if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || !/^\d{1,2}:\d{2}$/.test(hora)) return { ok: false, instrucao: 'Data ou hora em formato inválido — confirme o horário com o lead e tente de novo.' }
@@ -1226,7 +1285,7 @@ async function handleToolCall(
   if (toolName === 'rotear_conversa') {
     await supabaseAdmin.from('leads').update({ agent_enabled: false }).eq('id', leadId)
     const { data: proRow } = await supabaseAdmin.from('professionals').select('full_name').eq('id', professionalId).maybeSingle()
-    const proFirst = ((proRow as any)?.full_name || 'o profissional').split(' ')[0]
+    const proFirst = (normalizeProName((proRow as any)?.full_name) || 'o profissional').split(' ')[0]
     const h = new Date(Date.now() - 3 * 3600 * 1000).getUTCHours() // hora em BRT (UTC-3)
     const saud = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'
     const msg = `${saud}! ${proFirst} está em atendimento agora e te responde pessoalmente assim que possível. 💛`

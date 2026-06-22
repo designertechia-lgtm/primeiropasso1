@@ -34,6 +34,10 @@ _docs/
 # Supabase CLI: cache local de versao + temp files (nao e codigo do projeto)
 supabase/.temp/
 
+# Lockfile do Deno gerado pelo editor (as edge functions rodam em Deno) —
+# artefato local, nao usado pelo build/deploy. Mantido fora do repo.
+deno.lock
+
 # Python (worker-primeiropasso): bytecode cache
 __pycache__/
 *.pyc

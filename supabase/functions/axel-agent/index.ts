@@ -107,6 +107,29 @@ const tools = [
     },
   },
   {
+    name: "atualizar_roteiro_atendimento",
+    description:
+      "MONTA/ATUALIZA o ROTEIRO DE ATENDIMENTO do agente do WhatsApp — a sequência e o conteúdo que o agente usa pra conduzir a conversa (apresentação, método, como funcionam as sessões, valores, agendamento). Use quando o profissional contar COMO atende, seu fluxo ou detalhes do trabalho ('começo perguntando…', 'minhas sessões funcionam assim…', 'meu método é…'). Envie a LISTA COMPLETA de etapas já com as mudanças (EVOLUA o roteiro atual do contexto, não recomece nem apague o que existe). Cada etapa é INFO/CONTEÚDO factual — NUNCA regra de comportamento rígida ('sempre faça X', 'só depois de Y'): o agente adapta ao lead. PRIMEIRO mostre as etapas e PEÇA CONFIRMAÇÃO. Só grave após o 'sim'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        etapas: {
+          type: "array",
+          description: "Lista COMPLETA de etapas do roteiro, na ordem desejada. Máx. 12.",
+          items: {
+            type: "object",
+            properties: {
+              titulo: { type: "string", description: "Título curto da etapa. Ex.: 'Apresentação', 'Método', 'Como funcionam as sessões', 'Valores', 'Agendamento'." },
+              conteudo: { type: "string", description: "O que o agente deve saber/dizer nesta etapa, em texto livre (info factual)." },
+            },
+            required: ["titulo"],
+          },
+        },
+      },
+      required: ["etapas"],
+    },
+  },
+  {
     name: "registrar_conhecimento",
     description:
       "Adiciona um documento de CONHECIMENTO à base do agente do WhatsApp (método detalhado, técnicas, objeções, cadência de sessões, FAQ). O agente consulta isso sob demanda quando o lead pergunta algo específico. Use quando o profissional explicar EM DETALHE como funciona o trabalho dele. CURE em texto claro e organizado (markdown ok). PRIMEIRO mostre o que vai registrar e PEÇA CONFIRMAÇÃO.",
@@ -364,6 +387,14 @@ function buildSystemPrompt(opts: {
     ? profileGaps.map((g) => `• ${g}`).join("\n")
     : "(já conheço o essencial — foque em fazê-lo prosperar: sugira o próximo passo de valor)"
 
+  // Roteiro de atendimento atual do agente do WhatsApp — pra EVOLUIR, não recomeçar.
+  const roteiroAtual = (Array.isArray(professional?.agent_preferences?.roteiro) ? professional.agent_preferences.roteiro : [])
+    .map((e: any) => ({ titulo: (e?.titulo || "").toString().trim(), conteudo: (e?.conteudo || "").toString().trim() }))
+    .filter((e: any) => e.titulo || e.conteudo)
+  const roteiroAtualStr = roteiroAtual.length
+    ? roteiroAtual.map((e: any, i: number) => `  ${i + 1}. ${e.titulo}${e.conteudo ? `: ${e.conteudo}` : ""}`).join("\n")
+    : "  (ainda sem roteiro montado — monte a partir do que você sabe do trabalho dele)"
+
   const mapaStr = (kbSections && kbSections.length > 0)
     ? kbSections.map((s) => {
         const rota = s.route ? ` (${s.route})` : ""
@@ -446,7 +477,10 @@ Você gerencia a agenda dele. Para qualquer pedido sobre agendamentos:
 NÃO existe "campo de instruções" nem "prompt" pra o profissional colar — NUNCA diga que existe nem mande ele colar um prompt. O comportamento do agente do WhatsApp = regras de segurança e conduta da plataforma (que NEM você NEM o profissional editam — são nossas e protegem o paciente) + os CAMPOS ESTRUTURADOS do perfil dele:
 • Perfil/Landing — bio, título, subtítulo, dores, método/solução, abordagens: VOCÊ gera e aplica com \`sugerir_dados_perfil\`/\`atualizar_perfil\`/\`gerar_landing\` (sempre com confirmação). O agente do WhatsApp JÁ LÊ esses campos.
 • "tom de voz" e "frases preferidas": VOCÊ aplica com \`atualizar_estilo_agente\` — CURANDO o que o profissional disser em diretrizes CURTAS (princípios, NUNCA um roteiro de conversa), sempre mostrando e pedindo confirmação antes. Os VALORES ainda não têm tool — leve ao campo certo com \`abrir_pagina\`.
-⚠️ "Frases preferidas" é campo de ESTILO curto, NÃO um roteiro. NUNCA oriente o profissional a colar um fluxo/roteiro inteiro de conversa ali — isso já quebrou um agente (virou loop pedindo o nome). Se ele tem uma "forma de trabalho" detalhada, traduza o essencial pros campos certos (método→solução, posicionamento→bio) e registre o resto com \`salvar_memoria\`, sendo honesto: "registrei sua forma de trabalho e já reflito o que dá nos seus campos agora; o restante nossa equipe aplica no seu agente."
+• "Roteiro de Atendimento" — a sequência e o conteúdo que o agente usa pra conduzir a conversa (apresentação, método, sessões, valores, agendamento): VOCÊ atualiza com \`atualizar_roteiro_atendimento\` quando o profissional contar COMO atende, seu fluxo ou detalhes do trabalho. EVOLUA o roteiro atual (abaixo) — envie a lista COMPLETA de etapas já com as mudanças, não recomece nem apague o que ele tem. Cada etapa é INFO factual, não regra rígida. Mostre e peça confirmação antes de gravar.
+  Roteiro de atendimento atual:
+${roteiroAtualStr}
+⚠️ "Frases preferidas" é campo de ESTILO curto, NÃO um roteiro. NUNCA oriente o profissional a colar um fluxo/roteiro inteiro de conversa ali — isso já quebrou um agente (virou loop pedindo o nome). Se ele tem uma "forma de trabalho" / sequência de atendimento, isso agora vai no **Roteiro de Atendimento** (\`atualizar_roteiro_atendimento\`), NÃO nas frases. Posicionamento reflete nos campos (método→solução, bio); método em profundidade → \`registrar_conhecimento\`.
 • Método DETALHADO / objeções / cadência (o que não cabe nos campos acima): registre com \`registrar_conhecimento\` — vira base que o agente do WhatsApp consulta sob demanda.
 NUNCA confirme "agente configurado/aplicado" sem ter CHAMADO a tool que de fato gravou. Pra TESTAR/simular como o agente responde, use \`simular_agente_whatsapp\` (roda o agente REAL com a config dele) — NUNCA encene a resposta você mesmo.
 
@@ -818,6 +852,40 @@ async function handleToolCall(
     }
     console.log(`[atualizar_estilo_agente] tom=${!!tom} frases=${frases.length} para ${professionalId}`)
     return { sucesso: true, instrucao: "Confirme pro profissional, com a VERDADE, que o ESTILO do agente do WhatsApp foi atualizado e já vale nas próximas conversas. NÃO diga que colou um prompt — diga que ajustou o tom/as diretrizes do agente. Pergunte se quer ajustar mais algo." }
+  }
+
+  if (toolName === "atualizar_roteiro_atendimento") {
+    // O roteiro vai pro system prompt do agente do WhatsApp como REFERÊNCIA flexível. Sanitiza e limita.
+    const clean = (s: any, max: number) => String(s ?? "")
+      .replace(/[\r\n\t]+/g, " ")
+      .replace(/[─-╿▀-▟]/g, "")
+      .replace(/\s{2,}/g, " ")
+      .trim()
+      .slice(0, max)
+    const etapas = (Array.isArray(args.etapas) ? args.etapas : [])
+      .map((e: any) => ({ titulo: clean(e?.titulo, 80), conteudo: clean(e?.conteudo, 500) }))
+      .filter((e: any) => e.titulo || e.conteudo)
+      .slice(0, 12)
+    if (etapas.length === 0) return { erro: "informe ao menos uma etapa com título ou conteúdo" }
+
+    const { data: pro } = await supabaseAdmin
+      .from("professionals")
+      .select("agent_preferences")
+      .eq("id", professionalId)
+      .maybeSingle()
+    const prefs = (pro?.agent_preferences && typeof pro.agent_preferences === "object") ? pro.agent_preferences : {}
+    const merged: any = { ...prefs, roteiro: etapas }
+
+    const { error } = await supabaseAdmin
+      .from("professionals")
+      .update({ agent_preferences: merged })
+      .eq("id", professionalId)
+    if (error) {
+      console.error("[atualizar_roteiro_atendimento] erro:", error.message)
+      return { erro: error.message, instrucao: "Avise o profissional que houve erro ao salvar o roteiro. Peça pra tentar de novo." }
+    }
+    console.log(`[atualizar_roteiro_atendimento] ${etapas.length} etapas para ${professionalId}`)
+    return { sucesso: true, instrucao: `Confirme pro profissional, com a VERDADE, que o roteiro de atendimento do agente do WhatsApp foi atualizado (${etapas.length} etapas) e já vale nas próximas conversas. Liste em 1 linha os títulos das etapas na ordem. Pergunte se quer ajustar mais algo.` }
   }
 
   if (toolName === "registrar_conhecimento") {
@@ -2080,7 +2148,7 @@ serve(async (req) => {
     // 2. Deriva o professional dono (segurança: ignora qualquer id do cliente).
     const { data: professional, error: profErr } = await supabaseAdmin
       .from("professionals")
-      .select("id, full_name, category, category_custom, phone, whatsapp")
+      .select("id, full_name, category, category_custom, phone, whatsapp, agent_preferences")
       .eq("user_id", userId)
       .maybeSingle()
     if (profErr || !professional) {

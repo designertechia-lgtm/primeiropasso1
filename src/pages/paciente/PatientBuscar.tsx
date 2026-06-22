@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { format, addMinutes } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { getFreeSlots } from "@/lib/slots";
 import { User, CalendarX } from "lucide-react";
 
 export default function PatientBuscar() {
@@ -114,46 +115,24 @@ export default function PatientBuscar() {
   const selectedService = services.find((s) => s.id === selectedServiceId);
   const durationMinutes = selectedService?.duration_minutes ?? 50;
 
-  const getTimeSlots = () => {
-    if (!selectedDate) return [];
-    const dayOfWeek = selectedDate.getDay();
-    const dayAvailability = availability.filter((a) => a.day_of_week === dayOfWeek);
-
-    const ranges = dayAvailability.length > 0
-      ? dayAvailability.map((a) => {
-          const [startH, startM] = a.start_time.split(":").map(Number);
-          const [endH, endM] = a.end_time.split(":").map(Number);
-          return { startMinutes: startH * 60 + startM, endMinutes: endH * 60 + endM };
-        })
-      : [{ startMinutes: 7 * 60, endMinutes: 20 * 60 }];
-
-    const slots: string[] = [];
-    for (const { startMinutes, endMinutes } of ranges) {
-      for (let t = startMinutes; t + durationMinutes <= endMinutes; t += 60) {
-        const timeStr = `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
-        const endTimeStr = `${String(Math.floor((t + durationMinutes) / 60)).padStart(2, "0")}:${String((t + durationMinutes) % 60).padStart(2, "0")}`;
-
-        const hasConflict = existingAppointments.some((appt) => {
-          const apptStart = appt.start_time.slice(0, 5);
-          const apptEnd = appt.end_time.slice(0, 5);
-          return timeStr < apptEnd && endTimeStr > apptStart;
-        });
-
-        const hasBlockConflict = scheduleBlocks.some((block) => {
-          const bStart = block.start_time.slice(0, 5);
-          const bEnd = block.end_time.slice(0, 5);
-          return timeStr < bEnd && endTimeStr > bStart;
-        });
-
-        if (!hasConflict && !hasBlockConflict) {
-          slots.push(timeStr);
-        }
-      }
-    }
-    return slots;
-  };
-
-  const timeSlots = getTimeSlots();
+  // Horários livres — helper único (respeita buffer + almoço do profissional).
+  const timeSlots = selectedDate
+    ? getFreeSlots({
+        date: selectedDate,
+        durationMinutes,
+        availability,
+        appointments: existingAppointments,
+        blocks: scheduleBlocks,
+        bufferMinutes: (professional as any)?.slot_buffer_minutes ?? 0,
+        lunch: (professional as any)?.lunch_break_enabled
+          ? {
+              enabled: true,
+              start: (professional as any).lunch_break_start,
+              end: (professional as any).lunch_break_end,
+            }
+          : null,
+      })
+    : [];
 
   const disableDate = (date: Date) => {
     return date < new Date(new Date().setHours(0, 0, 0, 0));

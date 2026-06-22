@@ -39,7 +39,7 @@ import { fetchIcal } from "@/lib/ical";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { generateRecurrenceDates, type RecurrenceType } from "@/lib/recurrence";
-import type { EventInput, EventClickArg, DateSelectArg } from "@fullcalendar/core";
+import type { EventInput, EventClickArg, DateSelectArg, EventApi } from "@fullcalendar/core";
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "Pendente",
@@ -65,19 +65,36 @@ const PAYMENT_LABELS: Record<string, string> = {
   paid: "Pago",
 };
 
-const BLOCK_TYPE_COLORS: Record<string, string> = {
-  personal: "#9b87f5",
-  appointment: "#0EA5E9",
-  vacation: "#F97316",
-  other: "#94A3B8",
-};
+// F19 — paleta de cor por evento (estilo Google Agenda). "Auto" = sem cor → usa a cor do status.
+const EVENT_COLORS = ["#3B82F6", "#22C55E", "#EF4444", "#EAB308", "#A855F7", "#EC4899", "#14B8A6", "#F97316", "#64748B"];
 
-const BLOCK_TYPE_LABELS: Record<string, string> = {
-  personal: "Pessoal",
-  appointment: "Atendimento",
-  vacation: "Férias / Folga",
-  other: "Outro",
-};
+function ColorPicker({ value, onChange }: { value: string | null; onChange: (c: string | null) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2 items-center">
+      <button
+        type="button"
+        onClick={() => onChange(null)}
+        className={cn(
+          "h-7 px-2 rounded-full border-2 text-[10px] font-medium text-muted-foreground",
+          !value ? "border-foreground" : "border-muted",
+        )}
+        title="Automática (usa a cor do status)"
+      >
+        Auto
+      </button>
+      {EVENT_COLORS.map((c) => (
+        <button
+          key={c}
+          type="button"
+          onClick={() => onChange(c)}
+          className={cn("h-7 w-7 rounded-full border-2", value === c ? "border-foreground" : "border-transparent")}
+          style={{ backgroundColor: c }}
+          aria-label={`Cor ${c}`}
+        />
+      ))}
+    </div>
+  );
+}
 
 const DAYS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 
@@ -145,6 +162,7 @@ export default function AdminAgendaCalendario() {
   const [blockStartTime, setBlockStartTime] = useState("09:00");
   const [blockEndTime, setBlockEndTime] = useState("10:00");
   const [blockType, setBlockType] = useState("personal");
+  const [blockColor, setBlockColor] = useState<string | null>(null);
   const [recurrence, setRecurrence] = useState<RecurrenceType>("unico");
   const [recEndDate, setRecEndDate] = useState<Date>(new Date());
   const [selectedDates, setSelectedDates] = useState<Date[]>([]);
@@ -158,7 +176,7 @@ export default function AdminAgendaCalendario() {
   const [editBlockTitle, setEditBlockTitle] = useState("");
   const [editBlockStartTime, setEditBlockStartTime] = useState("");
   const [editBlockEndTime, setEditBlockEndTime] = useState("");
-  const [editBlockType, setEditBlockType] = useState("personal");
+  const [editBlockColor, setEditBlockColor] = useState<string | null>(null);
   const [editBlockDate, setEditBlockDate] = useState<Date>(new Date());
 
   // Edit appointment fields
@@ -168,10 +186,25 @@ export default function AdminAgendaCalendario() {
   const [editApptEndTime, setEditApptEndTime] = useState("");
   const [editApptDate, setEditApptDate] = useState<Date>(new Date());
   const [editApptPaymentStatus, setEditApptPaymentStatus] = useState("pending");
+  const [editApptColor, setEditApptColor] = useState<string | null>(null);
 
   // Availability dialog
   const [availDialogOpen, setAvailDialogOpen] = useState(false);
   const [savingAvail, setSavingAvail] = useState(false);
+
+  // F20 — config de buffer (folga entre atendimentos) + almoço (salvos em professionals)
+  const [bufferMin, setBufferMin] = useState(0);
+  const [lunchEnabled, setLunchEnabled] = useState(false);
+  const [lunchStart, setLunchStart] = useState("12:00");
+  const [lunchEnd, setLunchEnd] = useState("13:00");
+  useEffect(() => {
+    if (!professional) return;
+    const p = professional as any;
+    setBufferMin(Number(p.slot_buffer_minutes) || 0);
+    setLunchEnabled(!!p.lunch_break_enabled);
+    setLunchStart((p.lunch_break_start || "12:00").slice(0, 5));
+    setLunchEnd((p.lunch_break_end || "13:00").slice(0, 5));
+  }, [professional]);
 
   // Status colors dialog (acionado pela engrenagem de ajustes)
   const [colorsDialogOpen, setColorsDialogOpen] = useState(false);
@@ -324,26 +357,26 @@ export default function AdminAgendaCalendario() {
 
       if (dates.length === 0) throw new Error("Nenhuma data");
 
-      // ── VALIDAÇÃO ANTI-DOUBLE-BOOKING (só para consultas) ──────────────
-      // Bloqueios pessoais/férias/outros não competem com agendamentos,
-      // mas consultas (blockType === 'appointment') sim.
-      if (blockType === "appointment") {
-        for (const date of dates) {
-          const { data: conflito } = await supabase
-            .from("appointments")
-            .select("id")
-            .eq("professional_id", professional.id)
-            .eq("appointment_date", date)
-            .eq("start_time", blockStartTime)
-            .in("status", ["pending", "confirmed"])
-            .is("appointment_type", null) // bookings reais, não bloqueios
-            .maybeSingle();
+      // ── VALIDAÇÃO ANTI-DOUBLE-BOOKING ──────────────────────────────────
+      // Todo compromisso criado ocupa o horário: recusa se houver consulta real
+      // (não-bloqueio) se sobrepondo no mesmo dia. Usa overlap de intervalo
+      // (.lt/.gt), não start_time exato. NÃO usa .is('appointment_type', null):
+      // o default da coluna virou 'booking', então bookings reais não são null.
+      for (const date of dates) {
+        const { data: conflitos } = await supabase
+          .from("appointments")
+          .select("id")
+          .eq("professional_id", professional.id)
+          .eq("appointment_date", date)
+          .in("status", ["pending", "confirmed"])
+          .or("appointment_type.eq.booking,appointment_type.is.null")
+          .lt("start_time", blockEndTime)
+          .gt("end_time", blockStartTime);
 
-          if (conflito) {
-            throw new Error(
-              `Conflito de horário: já existe uma consulta agendada para ${date} às ${blockStartTime}. Escolha outro horário.`
-            );
-          }
+        if (conflitos && conflitos.length > 0) {
+          throw new Error(
+            `Conflito de horário: já existe uma consulta em ${date} nesse intervalo. Escolha outro horário.`
+          );
         }
       }
       // ──────────────────────────────────────────────────────────────────
@@ -357,13 +390,14 @@ export default function AdminAgendaCalendario() {
         end_time: blockEndTime,
         notes: blockTitle,
         block_type: blockType,
+        color: blockColor,
         appointment_type: "block" as const,
         status: "confirmed" as const,
         patient_id: null,
         recurrence_group: recurrenceGroup,
       }));
 
-      const { error } = await supabase.from("appointments").insert(records);
+      const { error } = await supabase.from("appointments").insert(records as any);
       if (error) {
         // Constraint do banco captura race conditions
         if ((error as any).code === "23505") {
@@ -425,9 +459,9 @@ export default function AdminAgendaCalendario() {
           notes: editBlockTitle,
           start_time: editBlockStartTime,
           end_time: editBlockEndTime,
-          block_type: editBlockType,
+          color: editBlockColor,
           appointment_date: format(editBlockDate, "yyyy-MM-dd"),
-        })
+        } as any)
         .eq("id", id);
       if (error) throw error;
     },
@@ -452,8 +486,9 @@ export default function AdminAgendaCalendario() {
           notes: editApptNotes || null,
           start_time: editApptStartTime,
           end_time: editApptEndTime,
+          color: editApptColor,
           appointment_date: format(editApptDate, "yyyy-MM-dd"),
-        })
+        } as any)
         .eq("id", id);
       if (error) throw error;
     },
@@ -501,13 +536,58 @@ export default function AdminAgendaCalendario() {
     onError: () => toast.error("Erro ao atualizar pagamento"),
   });
 
+  // F16 — arrastar (mover dia/hora) e esticar (mudar duração) persistem direto.
+  // Mesma função pros dois gestos; reverte no grid se o banco recusar.
+  const persistEventTimes = async (
+    info: { event: EventApi; revert: () => void },
+    isResize: boolean,
+  ) => {
+    const ev = info.event;
+    const props = ev.extendedProps as Record<string, unknown>;
+
+    // Faixas de fundo (disponibilidade) e eventos sem início não movem.
+    if (props.type === "availability" || !ev.start) { info.revert(); return; }
+
+    // Fim exclusivo: se cair em 00:00 cravada, pertence ao dia anterior — recua 1ms só p/ datar.
+    const end = ev.end ?? new Date(ev.start.getTime() + 60 * 60000);
+    const endRef = format(end, "HH:mm:ss") === "00:00:00" ? new Date(end.getTime() - 1) : end;
+
+    const startDate = format(ev.start, "yyyy-MM-dd");
+    const endDate = format(endRef, "yyyy-MM-dd");
+    // Arrastar/esticar entre dias vira barra confusa: recusa (recorrência é no editor).
+    if (startDate !== endDate) {
+      toast.info("Para repetir em vários dias, edite o agendamento e use a recorrência.");
+      info.revert();
+      return;
+    }
+
+    const { error } = await supabase
+      .from("appointments")
+      .update({
+        appointment_date: startDate,
+        start_time: format(ev.start, "HH:mm:ss"),
+        end_time: format(end, "HH:mm:ss"),
+      })
+      .eq("id", props.id as string);
+
+    if (error) {
+      toast.error("Não foi possível salvar. Desfazendo.");
+      info.revert();
+      return;
+    }
+
+    toast.success(isResize ? "Duração atualizada!" : "Agendamento movido!");
+    queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
+    queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
+  };
+
   const enterEditMode = () => {
     if (!selectedEvent) return;
     if (selectedEvent.type === "block") {
       setEditBlockTitle(selectedEvent.notes || "");
       setEditBlockStartTime(selectedEvent.start_time?.slice(0, 5) || "09:00");
       setEditBlockEndTime(selectedEvent.end_time?.slice(0, 5) || "10:00");
-      setEditBlockType(selectedEvent.block_type || "personal");
+      setEditBlockColor(selectedEvent.color ?? null);
       setEditBlockDate(new Date(selectedEvent.appointment_date + "T12:00:00"));
     } else {
       setEditApptStatus(selectedEvent.status || "pending");
@@ -516,6 +596,7 @@ export default function AdminAgendaCalendario() {
       setEditApptEndTime(selectedEvent.end_time?.slice(0, 5) || "10:00");
       setEditApptDate(new Date(selectedEvent.appointment_date + "T12:00:00"));
       setEditApptPaymentStatus(selectedEvent.payment_status || "pending");
+      setEditApptColor(selectedEvent.color ?? null);
     }
     setEditMode(true);
   };
@@ -541,8 +622,24 @@ export default function AdminAgendaCalendario() {
         return;
       }
     }
+    // F20 — salva buffer + almoço no profissional.
+    const { error: cfgError } = await supabase
+      .from("professionals")
+      .update({
+        slot_buffer_minutes: bufferMin,
+        lunch_break_enabled: lunchEnabled,
+        lunch_break_start: lunchStart,
+        lunch_break_end: lunchEnd,
+      } as any)
+      .eq("id", professional.id);
+    if (cfgError) {
+      toast.error("Erro ao salvar intervalo/almoço", { description: cfgError.message });
+      setSavingAvail(false);
+      return;
+    }
     toast.success("Disponibilidade salva!");
     queryClient.invalidateQueries({ queryKey: ["agenda-availability"] });
+    queryClient.invalidateQueries({ queryKey: ["my-professional"] });
     setSavingAvail(false);
     setAvailDialogOpen(false);
   };
@@ -552,6 +649,7 @@ export default function AdminAgendaCalendario() {
     setBlockStartTime("09:00");
     setBlockEndTime("10:00");
     setBlockType("personal");
+    setBlockColor(null);
     setRecurrence("unico");
     setSelectedDates([]);
   };
@@ -570,7 +668,7 @@ export default function AdminAgendaCalendario() {
         title: `${displayName} — ${serviceName}`,
         start: `${appt.appointment_date}T${appt.start_time}`,
         end: `${appt.appointment_date}T${appt.end_time}`,
-        backgroundColor: getStatusColor(appt.status),
+        backgroundColor: appt.color || getStatusColor(appt.status),
         borderColor: getStatusColor(appt.status),
         textColor: "#fff",
         extendedProps: { type: "appointment", ...appt },
@@ -578,22 +676,14 @@ export default function AdminAgendaCalendario() {
     });
 
     blocks.forEach((block: any) => {
-      let blockTitle: string;
-      if (block.block_type === "personal") {
-        blockTitle = "Pessoal";
-      } else if (block.block_type === "appointment") {
-        blockTitle = block.patientName || block.notes || "Atendimento";
-      } else if (block.block_type === "vacation") {
-        blockTitle = block.notes || "Férias / Folga";
-      } else {
-        blockTitle = block.notes || BLOCK_TYPE_LABELS[block.block_type] || "Bloqueado";
-      }
+      // F17 — sem "tipo": o título é o que a pessoa digitou (cor diferencia o evento).
+      const blockTitle = block.notes || "Compromisso";
       events.push({
         id: `block-${block.id}`,
         title: blockTitle,
         start: `${block.appointment_date}T${block.start_time}`,
         end: `${block.appointment_date}T${block.end_time}`,
-        backgroundColor: getStatusColor(block.status || "pending"),
+        backgroundColor: block.color || getStatusColor(block.status || "pending"),
         borderColor: getStatusColor(block.status || "pending"),
         textColor: "#fff",
         extendedProps: { type: "block", ...block },
@@ -695,8 +785,13 @@ export default function AdminAgendaCalendario() {
           nowIndicator={true}
           selectable={true}
           selectMirror={true}
+          editable={true}
+          eventStartEditable={true}
+          eventDurationEditable={true}
           select={handleDateSelect}
           eventClick={handleEventClick}
+          eventDrop={(info) => persistEventTimes(info, false)}
+          eventResize={(info) => persistEventTimes(info, true)}
           events={buildEvents()}
           height="auto"
           expandRows={true}
@@ -728,16 +823,10 @@ export default function AdminAgendaCalendario() {
               </div>
             </div>
             <div>
-              <Label>Tipo</Label>
-              <Select value={blockType} onValueChange={setBlockType}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="personal">Pessoal</SelectItem>
-                  <SelectItem value="appointment">Atendimento</SelectItem>
-                  <SelectItem value="vacation">Férias / Folga</SelectItem>
-                  <SelectItem value="other">Outro</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>Cor</Label>
+              <div className="mt-1.5">
+                <ColorPicker value={blockColor} onChange={setBlockColor} />
+              </div>
             </div>
             <div>
               <Label>Recorrência</Label>
@@ -915,9 +1004,6 @@ export default function AdminAgendaCalendario() {
                     <Badge style={{ backgroundColor: getStatusColor(selectedEvent.status || "pending"), color: "#fff", borderColor: getStatusColor(selectedEvent.status || "pending") }}>
                       {STATUS_LABELS[selectedEvent.status] || selectedEvent.status || "Pendente"}
                     </Badge>
-                    <Badge style={{ backgroundColor: BLOCK_TYPE_COLORS[selectedEvent.block_type] || BLOCK_TYPE_COLORS.other, color: "#fff", borderColor: BLOCK_TYPE_COLORS[selectedEvent.block_type] || BLOCK_TYPE_COLORS.other }}>
-                      {BLOCK_TYPE_LABELS[selectedEvent.block_type] || "Outro"}
-                    </Badge>
                     {selectedEvent.block_type === "atendimento" && (
                       <Badge style={{ backgroundColor: getPaymentColor(selectedEvent.payment_status || "pending"), color: "#fff", borderColor: getPaymentColor(selectedEvent.payment_status || "pending") }}>
                         <DollarSign className="h-3 w-3 mr-1" />
@@ -1037,16 +1123,10 @@ export default function AdminAgendaCalendario() {
                 </div>
               </div>
               <div>
-                <Label>Tipo</Label>
-                <Select value={editBlockType} onValueChange={setEditBlockType}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="personal">Pessoal</SelectItem>
-                    <SelectItem value="appointment">Atendimento</SelectItem>
-                    <SelectItem value="vacation">Férias / Folga</SelectItem>
-                    <SelectItem value="other">Outro</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Cor</Label>
+                <div className="mt-1.5">
+                  <ColorPicker value={editBlockColor} onChange={setEditBlockColor} />
+                </div>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => setEditMode(false)} className="flex-1">Cancelar</Button>
@@ -1109,6 +1189,12 @@ export default function AdminAgendaCalendario() {
                     <SelectItem value="paid">Pago</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div>
+                <Label>Cor</Label>
+                <div className="mt-1.5">
+                  <ColorPicker value={editApptColor} onChange={setEditApptColor} />
+                </div>
               </div>
               <div>
                 <Label>Observações</Label>
@@ -1265,6 +1351,37 @@ export default function AdminAgendaCalendario() {
                 </div>
               );
             })}
+          </div>
+          <div className="border-t pt-4 mt-4 space-y-4">
+            <div>
+              <Label className="text-sm">Intervalo entre atendimentos</Label>
+              <p className="text-xs text-muted-foreground mb-1.5">Folga automática entre um atendimento e o próximo.</p>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  min={0}
+                  step={5}
+                  value={bufferMin}
+                  onChange={(e) => setBufferMin(Math.max(0, Number(e.target.value) || 0))}
+                  className="w-20 h-9"
+                />
+                <span className="text-sm text-muted-foreground">minutos</span>
+              </div>
+            </div>
+            <div>
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">Intervalo de almoço</Label>
+                <Switch checked={lunchEnabled} onCheckedChange={setLunchEnabled} />
+              </div>
+              <p className="text-xs text-muted-foreground mb-1.5">Quando ligado, nenhum horário é oferecido nesse intervalo.</p>
+              {lunchEnabled && (
+                <div className="flex items-center gap-2">
+                  <Input type="time" value={lunchStart} onChange={(e) => setLunchStart(e.target.value)} className="w-28 h-9" />
+                  <span className="text-xs">até</span>
+                  <Input type="time" value={lunchEnd} onChange={(e) => setLunchEnd(e.target.value)} className="w-28 h-9" />
+                </div>
+              )}
+            </div>
           </div>
           <Button onClick={handleSaveAvailability} disabled={savingAvail} className="w-full mt-2">
             {savingAvail ? "Salvando..." : "Salvar Disponibilidade"}

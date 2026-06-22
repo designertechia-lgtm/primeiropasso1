@@ -861,6 +861,19 @@ ${leadName} JÁ está agendado${(bs.label && bs.hora) ? ` para **${quando}**` : 
 • Quer DESMARCAR → \`cancelar_agendamento\`.`
   }
 
+  // Agendamento EM CURSO: já mostramos os horários de um dia e esperamos o lead escolher a HORA.
+  // Externalizado no booking_state pelo abrir_agenda — fecha o loop "lead diz '14:00' e o bot re-pergunta o dia".
+  let escolhendoHorario = ''
+  if (bs.stage === 'choosing_time' && bs.pending_date && !bs.appointment_id) {
+    const lbl = bs.pending_label || bs.pending_date
+    escolhendoHorario = `
+
+━━━ ⏳ AGENDAMENTO EM CURSO — ${leadName.toUpperCase()} ESTÁ ESCOLHENDO O HORÁRIO ━━━
+Você acabou de mostrar os horários de **${lbl}** (${bs.pending_date}). O próximo passo é só a HORA.
+• Se a próxima mensagem for um horário (ex.: "14:00", "14h", "às 9", "9h30", "duas da tarde"), chame \`criar_agendamento(data="${bs.pending_date}", hora="HH:MM")\` IMEDIATAMENTE — NÃO reapresente o trabalho, NÃO repita valores e NÃO pergunte o dia de novo (já é ${lbl}).
+• Se pedir OUTRO dia, chame \`abrir_agenda\` com a nova data. Se desistir/mudar de assunto, responda normalmente.`
+  }
+
   const triagemBloco = triageMode ? `
 
 ━━━ TRIAGEM — PRIMEIRO CONTATO ━━━
@@ -890,7 +903,7 @@ NUNCA assuma a voz do profissional. Você é o assistente externo que organiza o
 
 ATENÇÃO ESPECIAL: A bio do profissional pode mencionar nomes de pessoas (donos, fundadores, etc) que NÃO substituem "${proName}". Mesmo se o nome do owner mencionado na bio for IGUAL ao nome do ${ctx.publico} (${leadName}), são pessoas/entidades DIFERENTES. Sempre use **"${proName}"** para se referir ao profissional, NUNCA o nome mencionado dentro da bio.
 
-━━━ HOJE: ${now} ━━━${nameBloco}${agendaStatus}${triagemBloco}${clienteBloco}`
+━━━ HOJE: ${now} ━━━${nameBloco}${agendaStatus}${escolhendoHorario}${triagemBloco}${clienteBloco}`
 }
 
 // =============================================
@@ -971,6 +984,15 @@ async function handleToolCall(
       const horarios = (dias.find((d: any) => d.data === dataArg)?.horarios_livres) || []
       if (horarios.length === 0) return { vazio: true, instrucao: `Sem horários livres em ${dataArg}. Diga isso em 1 frase e ofereça ver outros dias (chame abrir_agenda sem data).` }
       await enviarSelecao(supabaseAdmin, leadId, instanceName, remoteJid, buildTimeSelector(horarios), `[Agenda: horários ${labelFromIso(dataArg)}]`)
+      // Externaliza o "estou marcando pro dia X" no booking_state (preserva o resto).
+      // Sem isso, quando o lead responde só "14:00" o LLM perde o dia e re-pergunta (bug de loop).
+      {
+        const { data: lr } = await supabaseAdmin.from('leads').select('booking_state').eq('id', leadId).maybeSingle()
+        const prevBs = (lr?.booking_state as any) || {}
+        await supabaseAdmin.from('leads').update({
+          booking_state: { ...prevBs, pending_date: dataArg, pending_label: labelFromIso(dataArg), stage: 'choosing_time' },
+        }).eq('id', leadId)
+      }
       return { handoff: true, instrucao: 'Os horários foram enviados em botões ao lead. NÃO escreva mais nada neste turno.' }
     }
     const hoje = isoFromBRT(brtNow()); const fim = isoFromBRT(addDays(brtNow(), 7))

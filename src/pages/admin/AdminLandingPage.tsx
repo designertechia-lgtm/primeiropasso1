@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfessional } from "@/hooks/useProfessional";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -488,15 +489,8 @@ export default function AdminLandingPage() {
       painTitle, painSubtitle, painItems, solutionTitle, solutionSubtitle, solutionItems, sectionOrder, sectionHidden,
       fontFamily, headingFontFamily, fontSizeScale, contactTitle, contactSubtitle, contactCtaMessage, contactWhatsapp, contactPhone, contactEmail, contactInstagram, contactLinkedin, contactTiktok, contactFacebook]);
 
-  // alerta ao fechar/recarregar a aba
-  useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
-      if (!isDirty) return;
-      e.preventDefault();
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [isDirty]);
+  // O aviso de fechar/recarregar a aba agora é centralizado no UnsavedChangesProvider
+  // (ver useUnsavedChanges abaixo), evitando dois listeners de beforeunload.
 
   const saveHero = async () => {
     if (!professional) return;
@@ -608,6 +602,71 @@ export default function AdminLandingPage() {
     if (error) toast.error("Erro ao salvar");
     else { toast.success("Seções salvas!"); setIsDirty(false); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
   };
+
+  // Salva TODAS as seções de uma vez — usado pelo "Salvar e sair" do aviso de alterações não salvas.
+  const saveAll = async (): Promise<boolean> => {
+    if (!professional) return false;
+    setSaving(true);
+    const { error } = await supabase.from("professionals").update({
+      // Hero
+      hero_title: heroTitle,
+      hero_subtitle: heroSubtitle,
+      hero_image_url: heroImageUrl || null,
+      hero_bg_url: heroBgUrl || null,
+      hero_bg_opacity: heroBgOpacity,
+      hero_bg_overlay: heroBgOverlay,
+      photo_style: photoStyle,
+      photo_fit: photoFit,
+      // Sobre
+      about_title: aboutTitle || null,
+      bio,
+      about_image_url: aboutImageUrl || null,
+      about_video_url: aboutVideoUrl || null,
+      approaches,
+      // Dores
+      pain_title: painTitle || null,
+      pain_subtitle: painSubtitle || null,
+      pain_items: painItems.length > 0 ? painItems : null,
+      // Solução
+      solution_title: solutionTitle || null,
+      solution_subtitle: solutionSubtitle || null,
+      solution_items: solutionItems.length > 0 ? solutionItems : null,
+      // Cores & tipografia
+      primary_color: primaryColor,
+      secondary_color: secondaryColor,
+      background_color: bgColor,
+      dark_primary_color: darkPrimaryColor || null,
+      dark_secondary_color: darkSecondaryColor || null,
+      dark_background_color: darkBgColor || null,
+      dark_mode: darkModeEnabled,
+      font_family: fontFamily,
+      heading_font_family: headingFontFamily,
+      font_size_scale: fontSizeScale,
+      // Contatos
+      contact_title: contactTitle || null,
+      contact_subtitle: contactSubtitle || null,
+      contact_cta_message: contactCtaMessage || null,
+      whatsapp: contactWhatsapp || null,
+      phone: contactPhone || null,
+      email: contactEmail || null,
+      instagram: contactInstagram || null,
+      linkedin: contactLinkedin || null,
+      tiktok: contactTiktok || null,
+      facebook: contactFacebook || null,
+      // Seções
+      section_order: sectionOrder,
+      section_hidden: sectionHidden,
+    } as any).eq("id", professional.id);
+    setSaving(false);
+    if (error) { toast.error("Erro ao salvar"); return false; }
+    toast.success("Tudo salvo!");
+    setIsDirty(false);
+    queryClient.invalidateQueries({ queryKey: ["my-professional"] });
+    return true;
+  };
+
+  // Liga o aviso de "alterações não salvas" ao guarda global de navegação.
+  useUnsavedChanges(isDirty, saveAll);
 
   const moveSection = (key: string, dir: -1 | 1) => {
     setSectionOrder((prev) => {

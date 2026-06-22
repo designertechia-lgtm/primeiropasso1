@@ -20,11 +20,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import StatusColorsDialog from "@/components/admin/StatusColorsDialog";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, X, User, Clock, CalendarIcon, Settings2, Pencil, CheckCircle, DollarSign, XCircle, CalendarDays, HelpCircle, ZoomIn, Settings, Globe, Link2, Copy } from "lucide-react";
+import { Plus, X, User, Clock, CalendarIcon, Settings2, Pencil, CheckCircle, DollarSign, XCircle, CalendarDays, HelpCircle, ZoomIn, Settings, Globe, Link2, Copy, Palette } from "lucide-react";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import { fetchIcal } from "@/lib/ical";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -163,6 +172,9 @@ export default function AdminAgendaCalendario() {
   // Availability dialog
   const [availDialogOpen, setAvailDialogOpen] = useState(false);
   const [savingAvail, setSavingAvail] = useState(false);
+
+  // Status colors dialog (acionado pela engrenagem de ajustes)
+  const [colorsDialogOpen, setColorsDialogOpen] = useState(false);
 
   // Google Calendar import
   const [icalDialogOpen, setIcalDialogOpen] = useState(false);
@@ -638,13 +650,27 @@ export default function AdminAgendaCalendario() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold">Agenda</h1>
-        <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={() => setIcalDialogOpen(true)}>
-            <CalendarDays className="h-4 w-4 mr-1" /> Google Agenda
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setAvailDialogOpen(true)}>
-            <Settings2 className="h-4 w-4 mr-1" /> Horários de Atendimento
-          </Button>
+        <div className="flex gap-2 flex-wrap items-center">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" className="h-9 w-9" title="Ajustes da agenda" aria-label="Ajustes da agenda">
+                <Settings className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>Ajustes da agenda</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setColorsDialogOpen(true)}>
+                <Palette className="h-4 w-4 mr-2" /> Cores dos status
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setIcalDialogOpen(true)}>
+                <CalendarDays className="h-4 w-4 mr-2" /> Google Agenda
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setAvailDialogOpen(true)}>
+                <Settings2 className="h-4 w-4 mr-2" /> Horários de atendimento
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button size="sm" onClick={() => { setBlockDate(new Date()); resetBlockForm(); setBlockDialogOpen(true); }}>
             <Plus className="h-4 w-4 mr-1" /> Novo Agendamento
           </Button>
@@ -1245,6 +1271,9 @@ export default function AdminAgendaCalendario() {
           </Button>
         </DialogContent>
       </Dialog>
+
+      {/* Status colors dialog */}
+      <StatusColorsDialog open={colorsDialogOpen} onOpenChange={setColorsDialogOpen} />
     </div>
   );
 }

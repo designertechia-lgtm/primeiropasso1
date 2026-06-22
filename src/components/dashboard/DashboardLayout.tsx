@@ -10,6 +10,7 @@ import { Link } from "react-router-dom";
 import { useSubscription, useCreditBalance } from "@/hooks/useBilling";
 import { differenceInDays, parseISO } from "date-fns";
 import AdminChatFloat from "@/components/admin/AdminChatFloat";
+import { UnsavedChangesProvider, useUnsavedChangesGuard } from "@/hooks/useUnsavedChanges";
 
 const LOW_CREDIT_THRESHOLD = 10;
 
@@ -83,8 +84,9 @@ interface DashboardLayoutProps {
   children: React.ReactNode;
 }
 
-export default function DashboardLayout({ children }: DashboardLayoutProps) {
+function DashboardShell({ children }: DashboardLayoutProps) {
   const { profile, signOut } = useAuth();
+  const { confirmNavigation } = useUnsavedChangesGuard();
   const { data: professional } = useProfessional();
   const darkModeEnabled = (professional as any)?.dark_mode ?? false;
 
@@ -141,7 +143,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 {profile?.full_name || "Profissional"}
               </span>
               <button
-                onClick={signOut}
+                onClick={() => confirmNavigation(() => signOut())}
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 Sair
@@ -155,5 +157,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         <AdminChatFloat />
       </div>
     </SidebarProvider>
+  );
+}
+
+export default function DashboardLayout(props: DashboardLayoutProps) {
+  return (
+    <UnsavedChangesProvider>
+      <DashboardShell {...props} />
+    </UnsavedChangesProvider>
   );
 }

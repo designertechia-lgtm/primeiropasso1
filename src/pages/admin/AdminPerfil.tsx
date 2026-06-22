@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { useProfessional } from "@/hooks/useProfessional";
 import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
@@ -35,6 +36,10 @@ export default function AdminPerfil() {
   const [category, setCategory]             = useState("psicologo");
   const [categoryCustom, setCategoryCustom] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Detecção de alterações não salvas (mesmo padrão da AdminLandingPage).
+  const hasLoaded = useRef(false);
+  const [isDirty, setIsDirty] = useState(false);
 
   useEffect(() => {
     if (!professional) return;
@@ -80,7 +85,16 @@ export default function AdminPerfil() {
     } else {
       setPromoPackages([]);
     }
+    setIsDirty(false);
+    requestAnimationFrame(() => { hasLoaded.current = true; });
   }, [professional, profile]);
+
+  // Marca como "alterado" assim que o usuário muda qualquer campo (após a carga inicial).
+  useEffect(() => {
+    if (!hasLoaded.current) return;
+    setIsDirty(true);
+  }, [fullName, slug, crp, phone, email, address, photoUrl, logoUrl,
+      priceMin, priceMax, priceFirstSession, promoPackages, category, categoryCustom]);
 
   const addPromoPackage = () =>
     setPromoPackages((prev) => [...prev, { id: crypto.randomUUID(), descricao: "", link: "" }]);
@@ -89,8 +103,8 @@ export default function AdminPerfil() {
   const updatePromoPackage = (id: string, field: "descricao" | "link", value: string) =>
     setPromoPackages((prev) => prev.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
 
-  const handleSave = async () => {
-    if (!professional || !user) return;
+  const handleSave = async (): Promise<boolean> => {
+    if (!professional || !user) return false;
     setSaving(true);
 
     const [profileRes, profRes] = await Promise.all([
@@ -119,11 +133,16 @@ export default function AdminPerfil() {
     setSaving(false);
     if (profileRes.error || profRes.error) {
       toast.error("Erro ao salvar");
-    } else {
-      toast.success("Perfil atualizado!");
-      queryClient.invalidateQueries({ queryKey: ["my-professional"] });
+      return false;
     }
+    toast.success("Perfil atualizado!");
+    setIsDirty(false);
+    queryClient.invalidateQueries({ queryKey: ["my-professional"] });
+    return true;
   };
+
+  // Liga o aviso de "alterações não salvas" ao guarda global de navegação.
+  useUnsavedChanges(isDirty, handleSave);
 
   if (isLoading) return <div className="animate-pulse text-muted-foreground">Carregando...</div>;
 

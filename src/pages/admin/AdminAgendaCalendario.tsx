@@ -33,7 +33,8 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, X, User, Clock, CalendarIcon, Settings2, Pencil, CheckCircle, DollarSign, XCircle, CalendarDays, HelpCircle, ZoomIn, Settings, Globe, Link2, Copy, Palette } from "lucide-react";
+import { Plus, X, User, Clock, CalendarIcon, Settings2, Pencil, CheckCircle, DollarSign, XCircle, CalendarDays, HelpCircle, ZoomIn, Settings, Globe, Link2, Copy, Palette, Check, ChevronsUpDown } from "lucide-react";
+import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import { fetchIcal } from "@/lib/ical";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -96,6 +97,73 @@ function ColorPicker({ value, onChange }: { value: string | null; onChange: (c: 
   );
 }
 
+// Título do agendamento: escolhe um cliente (tabela leads) com busca, ou "Compromisso
+// pessoal", ou qualquer texto livre digitado. Filtragem manual (shouldFilter={false}).
+function TituloCombobox({
+  value,
+  onChange,
+  leads,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  leads: Array<{ id: string; name: string }>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const q = search.trim().toLowerCase();
+  const filtered = q ? leads.filter((l) => l.name.toLowerCase().includes(q)) : leads;
+  const showPessoal = !q || "compromisso pessoal".includes(q);
+  const hasExact =
+    q === "compromisso pessoal" || leads.some((l) => l.name.toLowerCase() === q);
+  const pick = (v: string) => { onChange(v); setOpen(false); setSearch(""); };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between font-normal">
+          <span className="truncate">{value || "Selecione um cliente ou digite…"}</span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        <Command shouldFilter={false}>
+          <CommandInput placeholder="Buscar cliente…" value={search} onValueChange={setSearch} />
+          <CommandList>
+            {showPessoal && (
+              <CommandGroup>
+                <CommandItem value="__pessoal" onSelect={() => pick("Compromisso pessoal")}>
+                  <Check className={cn("mr-2 h-4 w-4", value === "Compromisso pessoal" ? "opacity-100" : "opacity-0")} />
+                  Compromisso pessoal
+                </CommandItem>
+              </CommandGroup>
+            )}
+            {filtered.length > 0 && (
+              <CommandGroup heading="Clientes">
+                {filtered.map((l) => (
+                  <CommandItem key={l.id} value={l.id} onSelect={() => pick(l.name)}>
+                    <Check className={cn("mr-2 h-4 w-4", value === l.name ? "opacity-100" : "opacity-0")} />
+                    {l.name}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+            {search.trim() && !hasExact && (
+              <CommandGroup heading="Outro">
+                <CommandItem value="__livre" onSelect={() => pick(search.trim())}>
+                  <Plus className="mr-2 h-4 w-4" /> Usar “{search.trim()}”
+                </CommandItem>
+              </CommandGroup>
+            )}
+            {!showPessoal && filtered.length === 0 && !search.trim() && (
+              <CommandEmpty>Nenhum cliente.</CommandEmpty>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 const DAYS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 
 const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
@@ -148,6 +216,20 @@ export default function AdminAgendaCalendario() {
         .eq("active", true)
         .order("created_at", { ascending: true });
       return data ?? [];
+    },
+    enabled: !!professional?.id,
+  });
+
+  // Clientes (tabela leads) para o combobox do título do agendamento.
+  const { data: leads = [] } = useQuery({
+    queryKey: ["agenda-leads", professional?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("leads")
+        .select("id, name")
+        .eq("professional_id", professional!.id)
+        .order("name");
+      return (data ?? []).filter((l) => l.name && l.name.trim()) as Array<{ id: string; name: string }>;
     },
     enabled: !!professional?.id,
   });
@@ -827,7 +909,7 @@ export default function AdminAgendaCalendario() {
           <div className="space-y-4">
             <div>
               <Label>Título</Label>
-              <Input value={blockTitle} onChange={(e) => setBlockTitle(e.target.value)} />
+              <TituloCombobox value={blockTitle} onChange={setBlockTitle} leads={leads} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>

@@ -103,18 +103,26 @@ function TituloCombobox({
   value,
   onChange,
   leads,
+  pastTitles = [],
 }: {
   value: string;
   onChange: (v: string, leadId: string | null) => void;
   leads: Array<{ id: string; name: string }>;
+  pastTitles?: string[];
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const q = search.trim().toLowerCase();
   const filtered = q ? leads.filter((l) => l.name.toLowerCase().includes(q)) : leads;
+  const leadNames = new Set(leads.map((l) => l.name.toLowerCase()));
+  const past = (q ? pastTitles.filter((t) => t.toLowerCase().includes(q)) : pastTitles)
+    .filter((t) => !leadNames.has(t.toLowerCase()))
+    .slice(0, 30);
   const showPessoal = !q || "compromisso pessoal".includes(q);
   const hasExact =
-    q === "compromisso pessoal" || leads.some((l) => l.name.toLowerCase() === q);
+    q === "compromisso pessoal"
+    || leads.some((l) => l.name.toLowerCase() === q)
+    || pastTitles.some((t) => t.toLowerCase() === q);
   const pick = (v: string, leadId: string | null) => { onChange(v, leadId); setOpen(false); setSearch(""); };
 
   return (
@@ -147,6 +155,16 @@ function TituloCombobox({
                 ))}
               </CommandGroup>
             )}
+            {past.length > 0 && (
+              <CommandGroup heading="Já usados">
+                {past.map((t) => (
+                  <CommandItem key={`past-${t}`} value={`past-${t}`} onSelect={() => pick(t, null)}>
+                    <Check className={cn("mr-2 h-4 w-4", value === t ? "opacity-100" : "opacity-0")} />
+                    {t}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
             {search.trim() && !hasExact && (
               <CommandGroup heading="Outro">
                 <CommandItem value="__livre" onSelect={() => pick(search.trim(), null)}>
@@ -154,7 +172,7 @@ function TituloCombobox({
                 </CommandItem>
               </CommandGroup>
             )}
-            {!showPessoal && filtered.length === 0 && !search.trim() && (
+            {!showPessoal && filtered.length === 0 && past.length === 0 && !search.trim() && (
               <CommandEmpty>Nenhum cliente.</CommandEmpty>
             )}
           </CommandList>
@@ -230,6 +248,33 @@ export default function AdminAgendaCalendario() {
         .eq("professional_id", professional!.id)
         .order("name");
       return (data ?? []).filter((l) => l.name && l.name.trim()) as Array<{ id: string; name: string }>;
+    },
+    enabled: !!professional?.id,
+  });
+
+  // Títulos já usados em agendamentos anteriores (campo notes) — para reaproveitar
+  // nomes que não estão cadastrados como leads. Dedup, curtos, mais recentes primeiro.
+  const { data: pastTitles = [] } = useQuery({
+    queryKey: ["agenda-past-titles", professional?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("appointments")
+        .select("notes")
+        .eq("professional_id", professional!.id)
+        .not("notes", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(400);
+      const seen = new Set<string>();
+      const out: string[] = [];
+      for (const r of (data ?? []) as Array<{ notes: string | null }>) {
+        const t = (r.notes || "").trim();
+        if (!t || t.length > 40 || t.toLowerCase() === "compromisso pessoal") continue;
+        const key = t.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(t);
+      }
+      return out;
     },
     enabled: !!professional?.id,
   });
@@ -963,6 +1008,7 @@ export default function AdminAgendaCalendario() {
                 value={blockTitle}
                 onChange={(v, leadId) => { setBlockTitle(v); setBlockLeadId(leadId); }}
                 leads={leads}
+                pastTitles={pastTitles}
               />
               {blockLeadId && (
                 <p className="text-xs text-muted-foreground mt-1">
@@ -1277,7 +1323,7 @@ export default function AdminAgendaCalendario() {
             <div className="space-y-4">
               <div>
                 <Label>Título</Label>
-                <TituloCombobox value={editBlockTitle} onChange={(v) => setEditBlockTitle(v)} leads={leads} />
+                <TituloCombobox value={editBlockTitle} onChange={(v) => setEditBlockTitle(v)} leads={leads} pastTitles={pastTitles} />
               </div>
               <div>
                 <Label>Data</Label>

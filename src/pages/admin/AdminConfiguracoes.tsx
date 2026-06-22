@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { FieldHint } from "@/components/ui/FieldHint";
-import { RoteiroAtendimentoEditor, novaEtapa, type RoteiroEtapa } from "@/components/admin/RoteiroAtendimentoEditor";
+import { RoteiroAtendimentoEditor, novaEtapa, roteiroFromLanding, type RoteiroEtapa } from "@/components/admin/RoteiroAtendimentoEditor";
 
 function hexToHsl(hex: string): { h: number; s: number; l: number } {
   const r = parseInt(hex.slice(1, 3), 16) / 255;
@@ -69,6 +69,7 @@ export default function AdminConfiguracoes() {
   const [agentTone, setAgentTone] = useState("");
   const [agentPhrases, setAgentPhrases] = useState("");
   const [agentRoteiro, setAgentRoteiro] = useState<RoteiroEtapa[]>([]);
+  const [roteiroSugerido, setRoteiroSugerido] = useState(false); // rascunho vindo da landing, ainda não salvo
 
   // Status colors
   const [colorStatusPending, setColorStatusPending] = useState("#EAB308");
@@ -94,11 +95,18 @@ export default function AdminConfiguracoes() {
       setAgentTone(ap.tone || "");
       setAgentPhrases(ap.preferred_phrases || "");
       const roteiro = Array.isArray(ap.roteiro) ? ap.roteiro : [];
-      setAgentRoteiro(
-        roteiro
-          .map((e: any) => novaEtapa((e?.titulo || "").toString(), (e?.conteudo || "").toString()))
-          .filter((e: RoteiroEtapa) => e.titulo || e.conteudo),
-      );
+      const carregado = roteiro
+        .map((e: any) => novaEtapa((e?.titulo || "").toString(), (e?.conteudo || "").toString()))
+        .filter((e: RoteiroEtapa) => e.titulo || e.conteudo);
+      if (carregado.length > 0) {
+        setAgentRoteiro(carregado);
+        setRoteiroSugerido(false);
+      } else {
+        // Roteiro ainda vazio → pré-preenche um rascunho com o que já está na landing.
+        const seed = roteiroFromLanding(professional);
+        setAgentRoteiro(seed);
+        setRoteiroSugerido(seed.length > 0);
+      }
     }
   }, [professional]);
 
@@ -131,6 +139,16 @@ export default function AdminConfiguracoes() {
       toast.success("Configurações salvas!");
       queryClient.invalidateQueries({ queryKey: ["my-professional"] });
     }
+  };
+
+  const regenerarRoteiroDaLanding = () => {
+    if (
+      agentRoteiro.length > 0 &&
+      !window.confirm("Isso substitui as etapas atuais por um rascunho gerado da sua landing. Continuar?")
+    )
+      return;
+    setAgentRoteiro(roteiroFromLanding(professional));
+    setRoteiroSugerido(true);
   };
 
   if (isLoading) return <div className="animate-pulse text-muted-foreground">Carregando...</div>;
@@ -287,7 +305,25 @@ export default function AdminConfiguracoes() {
                 Monte as etapas do atendimento na ordem ideal — arraste pela alça para reordenar. O Axel segue como referência, mas se adapta ao que o cliente pedir (nunca recita em bloco nem trava).
               </p>
             </div>
+
+            {roteiroSugerido && (
+              <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-foreground">
+                ✨ Geramos um <strong>rascunho a partir da sua landing</strong>. Revise, ajuste e clique em <strong>Salvar Configurações</strong> para valer.
+              </div>
+            )}
+
             <RoteiroAtendimentoEditor value={agentRoteiro} onChange={setAgentRoteiro} disabled={!agentEnabled} />
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={regenerarRoteiroDaLanding}
+              disabled={!agentEnabled}
+              className="text-xs text-muted-foreground"
+            >
+              Sugerir etapas a partir da minha landing
+            </Button>
           </div>
         </CardContent>
       </Card>

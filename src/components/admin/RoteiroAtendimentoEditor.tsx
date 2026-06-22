@@ -31,6 +31,46 @@ export function novaEtapa(titulo = "", conteudo = ""): RoteiroEtapa {
   return { id: `et-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, titulo, conteudo };
 }
 
+// Monta um roteiro-rascunho a partir do que o profissional já preencheu na landing.
+// É só sugestão inicial (não grava até a pessoa salvar). O Axel pai evolui depois.
+export function roteiroFromLanding(p: any): RoteiroEtapa[] {
+  if (!p) return [];
+  const first = (p.full_name || "o profissional").toString().split(" ")[0];
+  const out: Array<{ titulo: string; conteudo: string }> = [];
+
+  out.push({ titulo: "Saudação", conteudo: `Saudar, apresentar-se como assistente de ${first} e perguntar o nome da pessoa.` });
+
+  const apres = [(p.hero_subtitle || "").toString().trim(), (p.bio || "").toString().trim()].find(Boolean) || "";
+  const cat = (p.category_custom || p.category || "").toString().trim();
+  const apresConteudo = apres || (cat ? `${first} — ${cat}.` : "");
+  if (apresConteudo) out.push({ titulo: "Apresentação", conteudo: apresConteudo });
+
+  const etapasMetodo = (Array.isArray(p.solution_items) ? p.solution_items : [])
+    .map((it: any) => {
+      const t = (it?.title || "").toString().trim();
+      const d = (it?.desc || "").toString().trim();
+      return t && d ? `${t}: ${d}` : "";
+    })
+    .filter(Boolean);
+  if (etapasMetodo.length) {
+    const solTitle = (p.solution_title || "").toString().trim() || "Como funciona o trabalho";
+    out.push({ titulo: solTitle, conteudo: etapasMetodo.join(" | ") });
+  }
+
+  const valores: string[] = [];
+  if (p.price_first_session) valores.push(`primeira sessão R$ ${p.price_first_session}`);
+  if (p.price_max) valores.push(`sessão R$ ${p.price_max}`);
+  const promos = (Array.isArray(p.promo_packages) ? p.promo_packages : [])
+    .map((x: any) => (x?.descricao || "").toString().trim())
+    .filter(Boolean);
+  const valoresConteudo = [valores.join("; "), ...promos].filter(Boolean).join(". ");
+  if (valoresConteudo) out.push({ titulo: "Valores", conteudo: valoresConteudo });
+
+  out.push({ titulo: "Agendamento", conteudo: "Verificar o horário disponível e conduzir a pessoa ao agendamento." });
+
+  return out.map((e) => novaEtapa(e.titulo, e.conteudo));
+}
+
 function SortableEtapa({
   etapa,
   index,

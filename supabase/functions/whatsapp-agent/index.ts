@@ -251,6 +251,32 @@ async function sendList(
   }
 }
 
+// F20 — config de agendamento do profissional (buffer entre atendimentos + almoço).
+async function getSchedulingConfig(
+  supabaseAdmin: any,
+  professionalId: string,
+): Promise<{ buffer: number; lunch: { start: number; end: number } | null }> {
+  const { data } = await supabaseAdmin
+    .from('professionals')
+    .select('slot_buffer_minutes, lunch_break_enabled, lunch_break_start, lunch_break_end')
+    .eq('id', professionalId)
+    .maybeSingle()
+  const buffer = Math.max(0, Number(data?.slot_buffer_minutes) || 0)
+  const lunch = (data?.lunch_break_enabled && data?.lunch_break_start && data?.lunch_break_end)
+    ? { start: toMinutes(String(data.lunch_break_start).slice(0, 5)), end: toMinutes(String(data.lunch_break_end).slice(0, 5)) }
+    : null
+  return { buffer, lunch }
+}
+
+// Remove [cutS,cutE) de [s,e) → 0, 1 ou 2 sub-intervalos (tira o almoço da janela).
+function subtractRange(s: number, e: number, cutS: number, cutE: number): Array<[number, number]> {
+  if (cutE <= s || cutS >= e) return [[s, e]]
+  const out: Array<[number, number]> = []
+  if (cutS > s) out.push([s, cutS])
+  if (cutE < e) out.push([cutE, e])
+  return out.filter(([a, b]) => b - a > 0)
+}
+
 async function computeFreeSlots(
   supabaseAdmin: any,
   professionalId: string,
@@ -258,10 +284,15 @@ async function computeFreeSlots(
   dataFim: string,
   slotMin: number = SLOT_MINUTES,
 ): Promise<Array<{ data: string; dia_semana: string; horarios_livres: string[] }>> {
+  // F20: só janelas ATIVAS (corrige bug — antes lia availability sem filtrar active).
   const { data: availability } = await supabaseAdmin
     .from('availability')
     .select('day_of_week, start_time, end_time')
     .eq('professional_id', professionalId)
+    .eq('active', true)
+
+  const { buffer, lunch } = await getSchedulingConfig(supabaseAdmin, professionalId)
+  const step = slotMin + buffer
 
   const { data: occupied } = await supabaseAdmin
     .from('appointments')
@@ -283,8 +314,9 @@ async function computeFreeSlots(
     if (!occByDate[date]) occByDate[date] = []
     occByDate[date].push([s, e])
   }
+  // Folga (buffer) exigida dos DOIS lados de cada ocupação.
   const overlaps = (m: number, dur: number, intervals: Array<[number, number]>) =>
-    (intervals || []).some(([s, e]) => m < e && (m + dur) > s)
+    (intervals || []).some(([s, e]) => m < e + buffer && (m + dur) > s - buffer)
 
   const dias: Array<{ data: string; dia_semana: string; horarios_livres: string[] }> = []
   const start = new Date(dataInicio + 'T00:00:00')
@@ -307,11 +339,15 @@ async function computeFreeSlots(
     for (const w of windowsForDow) {
       const startMin = toMinutes((w.start_time as string).slice(0, 5))
       const endMin = toMinutes((w.end_time as string).slice(0, 5))
-      // o slot precisa CABER inteiro na janela (m + duração <= fim)
-      for (let m = startMin; m + slotMin <= endMin; m += slotMin) {
-        if (isToday && m <= nowMin) continue
-        if (overlaps(m, slotMin, occByDate[dateStr])) continue
-        slotsLivresDoDia.push(fromMinutes(m))
+      // F20: tira o almoço da janela; passo = duração + buffer (gera horários "quebrados").
+      const subRanges = lunch ? subtractRange(startMin, endMin, lunch.start, lunch.end) : [[startMin, endMin] as [number, number]]
+      for (const [rs, re] of subRanges) {
+        // o slot precisa CABER inteiro no sub-intervalo (m + duração <= fim)
+        for (let m = rs; m + slotMin <= re; m += step) {
+          if (isToday && m <= nowMin) continue
+          if (overlaps(m, slotMin, occByDate[dateStr])) continue
+          slotsLivresDoDia.push(fromMinutes(m))
+        }
       }
     }
 
@@ -339,14 +375,19 @@ async function isSlotFree(
     if (startMin <= nowMin) return false
   }
 
-  // 2) não sobrepõe agendamento NEM bloqueio (booking ou block; cancelados não contam)
+  const { buffer, lunch } = await getSchedulingConfig(supabaseAdmin, professionalId)
+
+  // 2) não cai no intervalo de almoço do profissional
+  if (lunch && startMin < lunch.end && endMin > lunch.start) return false
+
+  // 3) não sobrepõe agendamento NEM bloqueio, respeitando a folga (buffer) dos dois lados
   const { data: conflitos } = await supabaseAdmin
     .from('appointments').select('id')
     .eq('professional_id', professionalId)
     .eq('appointment_date', dateIso)
     .in('status', ['pending', 'confirmed'])
-    .lt('start_time', fromMinutes(endMin))
-    .gt('end_time', time)
+    .lt('start_time', fromMinutes(endMin + buffer))
+    .gt('end_time', fromMinutes(Math.max(0, startMin - buffer)))
   return !(conflitos && conflitos.length > 0)
 }
 
@@ -360,16 +401,25 @@ async function createBooking(
   leadId: string | null = null,
   serviceId: string | null = null,
 ): Promise<{ ok: boolean; appointment_id?: string; erro?: string; mensagem?: string }> {
-  // ── anti-overlap ── não pode colidir com agendamento NEM bloqueio (modelo "aceita
-  // tudo, exceto bloqueado"). Sem janela de expediente fixa.
+  const { buffer, lunch } = await getSchedulingConfig(supabaseAdmin, professionalId)
+  const reqStart = toMinutes(horaInicio)
+  const reqEnd = toMinutes(horaFim)
+
+  // F20 — não pode cair no intervalo de almoço do profissional.
+  if (lunch && reqStart < lunch.end && reqEnd > lunch.start) {
+    return { ok: false, erro: 'horario_almoco', mensagem: 'Esse horário cai no intervalo de almoço do profissional. Escolha outro.' }
+  }
+
+  // ── anti-overlap ── não pode colidir com agendamento NEM bloqueio, respeitando a
+  // folga (buffer) dos dois lados. Modelo "aceita tudo, exceto bloqueado/almoço".
   const { data: conflitos, error: conflictError } = await supabaseAdmin
     .from('appointments')
     .select('id, start_time, end_time, appointment_type')
     .eq('professional_id', professionalId)
     .eq('appointment_date', data)
     .in('status', ['pending', 'confirmed'])
-    .lt('start_time', horaFim)
-    .gt('end_time', horaInicio)
+    .lt('start_time', fromMinutes(reqEnd + buffer))
+    .gt('end_time', fromMinutes(Math.max(0, reqStart - buffer)))
   if (conflictError) console.error('[agent] createBooking conflito:', conflictError.message)
   if (conflitos && conflitos.length > 0) {
     const c = conflitos[0]
@@ -417,6 +467,15 @@ async function rescheduleBooking(
   novaHi: string,
   novaHf: string,
 ): Promise<{ ok: boolean; appointment_id?: string; erro?: string; mensagem?: string }> {
+  const { buffer, lunch } = await getSchedulingConfig(supabaseAdmin, professionalId)
+  const reqStart = toMinutes(novaHi)
+  const reqEnd = toMinutes(novaHf)
+
+  // F20 — remarcação também não pode cair no almoço.
+  if (lunch && reqStart < lunch.end && reqEnd > lunch.start) {
+    return { ok: false, erro: 'horario_almoco', mensagem: 'Esse novo horário cai no intervalo de almoço do profissional. Escolha outro.' }
+  }
+
   const { data: conflitos } = await supabaseAdmin
     .from('appointments')
     .select('id, start_time, end_time')
@@ -424,8 +483,8 @@ async function rescheduleBooking(
     .eq('appointment_date', novaData)
     .in('status', ['pending', 'confirmed'])
     .neq('id', apptId)
-    .lt('start_time', novaHf)
-    .gt('end_time', novaHi)
+    .lt('start_time', fromMinutes(reqEnd + buffer))
+    .gt('end_time', fromMinutes(Math.max(0, reqStart - buffer)))
   if (conflitos && conflitos.length > 0) {
     const c = conflitos[0]
     return {
@@ -1176,6 +1235,25 @@ async function handleToolCall(
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
 const CLAUDE_URL   = 'https://api.anthropic.com/v1/messages'
 
+// =============================================
+// SELEÇÃO DE PROVIDER (teste DeepSeek via OpenRouter)
+// WHATSAPP_LLM_PROVIDER controla quem responde: 'anthropic' (default, Sonnet) ou
+// 'deepseek'/'openrouter' (DeepSeek V4 Pro). Reverter = remover/zerar a secret.
+// O callClaude/simulateClaude ficam INTACTOS como fallback; só o switch nos call
+// sites decide. OpenRouter fala o dialeto OpenAI Chat Completions, então o adaptador
+// callDeepSeek converte tools (input_schema→function/parameters), tool_use→tool_calls
+// e tool_result→role:'tool' — a lógica de agenda (handleToolCall) é reaproveitada 100%.
+// =============================================
+const LLM_PROVIDER = (Deno.env.get('WHATSAPP_LLM_PROVIDER') || 'anthropic').toLowerCase()
+const USE_DEEPSEEK = LLM_PROVIDER === 'deepseek' || LLM_PROVIDER === 'openrouter'
+const DEEPSEEK_MODEL = 'deepseek/deepseek-v4-pro'
+const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
+// As 7 tools no formato OpenAI (function calling). input_schema já é JSON Schema válido.
+const openaiTools = tools.map((t: any) => ({
+  type: 'function',
+  function: { name: t.name, description: t.description, parameters: t.input_schema },
+}))
+
 async function callClaude(
   systemPrompt: string,
   chatHistory: any[],
@@ -1330,6 +1408,150 @@ async function callClaude(
 }
 
 // =============================================
+// callDeepSeek — espelho de callClaude no dialeto OpenAI (OpenRouter / DeepSeek V4 Pro).
+// Mesma assinatura e mesmo comportamento (loop de 5 iterações, retry de resposta vazia,
+// handoff via sentDirect, wrap anti-injection). Só muda o "transporte" do LLM —
+// handleToolCall e toda a lógica de agenda são as mesmas.
+// =============================================
+async function callDeepSeek(
+  systemPrompt: string,
+  chatHistory: any[],
+  userMessage: string,
+  supabaseAdmin: any,
+  professionalId: string,
+  leadId: string,
+  instanceName: string,
+  remoteJid: string,
+): Promise<string> {
+  const apiKey = Deno.env.get('OPEN_ROUTER_API_KEY')
+  if (!apiKey) throw new Error('OPEN_ROUTER_API_KEY not configured')
+
+  // SEGURANÇA: fala do lead é DADO, não comando — envolve em <mensagem_do_contato> e
+  // remove os marcadores que o lead tentar forjar (mesmo padrão do callClaude).
+  const wrapLead = (c: any) =>
+    `<mensagem_do_contato>\n${String(c).replace(/<\/?mensagem_do_contato>/gi, '')}\n</mensagem_do_contato>`
+
+  // No formato OpenAI o system é a 1ª mensagem do array (não um campo separado).
+  const messages: any[] = [{ role: 'system', content: systemPrompt }]
+  let lastRole = ''
+  for (const msg of chatHistory) {
+    if (!msg.content) continue
+    const currentRole = msg.role === 'assistant' ? 'assistant' : 'user'
+    const piece = currentRole === 'user' ? wrapLead(msg.content) : msg.content
+    const last = messages[messages.length - 1]
+    if (currentRole === lastRole && typeof last?.content === 'string') {
+      last.content = `${last.content}\n${piece}`
+    } else {
+      messages.push({ role: currentRole, content: piece })
+      lastRole = currentRole
+    }
+  }
+  if (lastRole === 'user' && typeof messages[messages.length - 1]?.content === 'string') {
+    const last = messages[messages.length - 1]
+    last.content = `${last.content}\n${wrapLead(userMessage || 'Oi')}`
+  } else {
+    messages.push({ role: 'user', content: wrapLead(userMessage || 'Oi') })
+  }
+
+  console.log(`--- Agente WhatsApp (DeepSeek): Interação com Lead ${leadId} ---`)
+
+  try {
+    let maxIterations = 5
+    let emptyRetried = false
+
+    while (maxIterations-- > 0) {
+      const payload = {
+        model: DEEPSEEK_MODEL,
+        max_tokens: 1024,
+        temperature: 0.7,
+        messages,
+        tools: openaiTools,
+      }
+
+      const response = await fetch(OPENROUTER_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://primeiropasso.online',
+          'X-Title': 'Primeiro Passo - Axel WhatsApp',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        const errText = await response.text()
+        console.error(`[DeepSeek Error] Status: ${response.status}`, errText)
+        throw new Error(`OpenRouter API Error: ${response.status} - ${errText}`)
+      }
+
+      const result = await response.json()
+      const choice = result.choices?.[0]
+      const aiMsg = choice?.message || {}
+      const toolCalls = Array.isArray(aiMsg.tool_calls) ? aiMsg.tool_calls : []
+
+      // Sem tool calls → resposta final
+      if (toolCalls.length === 0) {
+        const text = (aiMsg.content || '').toString().trim()
+        if (text) return text
+        // Resposta vazia: re-pede UMA vez só TEXTO (sem tools), igual ao callClaude.
+        if (!emptyRetried) {
+          emptyRetried = true
+          console.warn('[callDeepSeek] resposta vazia — re-pedindo resposta textual sem tools')
+          try {
+            const forced = await fetch(OPENROUTER_URL, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ model: DEEPSEEK_MODEL, max_tokens: 1024, temperature: 0.7, messages }),
+            })
+            if (forced.ok) {
+              const fr = await forced.json()
+              const ft = (fr.choices?.[0]?.message?.content || '').toString().trim()
+              if (ft) return ft
+            } else {
+              console.error('[callDeepSeek] retry texto-only HTTP', forced.status)
+            }
+          } catch (e: any) {
+            console.error('[callDeepSeek] retry texto-only falhou:', e?.message)
+          }
+        }
+        console.error('[callDeepSeek] RESPOSTA SEM TEXTO após retry forçado:', JSON.stringify({ finish: choice?.finish_reason, aiMsg }).slice(0, 800))
+        return 'Desculpa, me perdi aqui 🙂 Pode me dizer de novo como posso te ajudar?'
+      }
+
+      // Tem tool calls → no formato OpenAI o assistant que pediu as tools precisa entrar
+      // no histórico ANTES dos resultados (cada tool result referencia o tool_call_id).
+      messages.push({ role: 'assistant', content: aiMsg.content || null, tool_calls: toolCalls })
+
+      let sentDirect = false  // alguma tool já RESPONDEU o lead direto (handoff de agenda)?
+      for (const tc of toolCalls) {
+        const name = tc.function?.name
+        let input: any = {}
+        try {
+          input = tc.function?.arguments ? JSON.parse(tc.function.arguments) : {}
+        } catch (e) {
+          console.error('[callDeepSeek] args inválidos:', tc.function?.arguments)
+        }
+        const out = await handleToolCall(name, input, supabaseAdmin, professionalId, leadId, instanceName, remoteJid)
+        if ((out as any)?.handoff) sentDirect = true
+        messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(out) })
+      }
+
+      if (sentDirect) {
+        console.log('[callDeepSeek] Mensagem enviada via tool — retornando vazio pra evitar dupla')
+        return ''
+      }
+      // loop continua: próxima iteração reenvia messages já com os tool results
+    }
+
+    return 'Desculpe, tive um problema ao processar. Tente novamente.'
+  } catch (err: any) {
+    console.error('Erro fatal no callDeepSeek:', err)
+    return 'Tive uma instabilidade rápida por aqui 🙂 me manda de novo daqui a pouquinho?'
+  }
+}
+
+// =============================================
 // SEND PRESENCE (DIGITANDO)
 // =============================================
 async function sendWhatsAppPresence(instanceName: string, remoteJid: string, presence: 'composing' | 'recording' | 'paused') {
@@ -1452,6 +1674,34 @@ async function simulateClaude(systemPrompt: string, history: any[], userMessage:
   } catch (e: any) { console.error('[simulate] erro', e?.message); return '' }
 }
 
+// Prévia (modo simulação) via DeepSeek/OpenRouter — sem tools, sem enviar/persistir.
+async function simulateDeepSeek(systemPrompt: string, history: any[], userMessage: string): Promise<string> {
+  const apiKey = Deno.env.get('OPEN_ROUTER_API_KEY')
+  if (!apiKey) return ''
+  const wrap = (c: any) => `<mensagem_do_contato>\n${String(c).replace(/<\/?mensagem_do_contato>/gi, '')}\n</mensagem_do_contato>`
+  const messages: any[] = [{ role: 'system', content: systemPrompt }]
+  let lastRole = ''
+  for (const m of (Array.isArray(history) ? history : [])) {
+    if (!m?.content) continue
+    const role = m.role === 'assistant' ? 'assistant' : 'user'
+    const piece = role === 'user' ? wrap(m.content) : String(m.content)
+    if (role === lastRole) messages[messages.length - 1].content += `\n${piece}`
+    else { messages.push({ role, content: piece }); lastRole = role }
+  }
+  if (lastRole === 'user') messages[messages.length - 1].content += `\n${wrap(userMessage || 'Olá')}`
+  else messages.push({ role: 'user', content: wrap(userMessage || 'Olá') })
+  try {
+    const res = await fetch(OPENROUTER_URL, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: DEEPSEEK_MODEL, max_tokens: 700, temperature: 0.7, messages }),
+    })
+    if (!res.ok) { console.error('[simulate] deepseek', res.status); return '' }
+    const data = await res.json()
+    return (data.choices?.[0]?.message?.content || '').toString().trim()
+  } catch (e: any) { console.error('[simulate] deepseek erro', e?.message); return '' }
+}
+
 serve(async (req) => {
   console.log(`[Agent] Request received: ${req.method}`)
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -1473,7 +1723,7 @@ serve(async (req) => {
       if (!simPro) return new Response(JSON.stringify({ reply: '' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
       const histSim = Array.isArray(body.history) ? body.history : []
       const simSystem = buildSystemPrompt(simPro, 'a pessoa', '', {}, histSim.length === 0, 'novo', '')
-      const simReply = formatarParaWhatsApp(await simulateClaude(simSystem, histSim, (message || 'Olá').toString()))
+      const simReply = formatarParaWhatsApp(await (USE_DEEPSEEK ? simulateDeepSeek : simulateClaude)(simSystem, histSim, (message || 'Olá').toString()))
       return new Response(JSON.stringify({ reply: simReply }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
@@ -1513,11 +1763,13 @@ serve(async (req) => {
     // Mostrar "digitando..." enquanto a IA pensa
     await sendWhatsAppPresence(instance_name, remote_jid, 'composing')
 
-    console.log(`[AI] Calling Claude Sonnet 4.6...`)
+    console.log(`[AI] Calling LLM (${USE_DEEPSEEK ? 'DeepSeek ' + DEEPSEEK_MODEL : 'Claude ' + CLAUDE_MODEL})...`)
     const systemPrompt = buildSystemPrompt(professional, lead_name, lead_phone, bookingState, !!triage, contact_status || '', preferredName)
     let agentReply: string
     try {
-      agentReply = await callClaude(systemPrompt, chatHistory, message, supabaseAdmin, professional_id, lead_id, instance_name, remote_jid)
+      agentReply = USE_DEEPSEEK
+        ? await callDeepSeek(systemPrompt, chatHistory, message, supabaseAdmin, professional_id, lead_id, instance_name, remote_jid)
+        : await callClaude(systemPrompt, chatHistory, message, supabaseAdmin, professional_id, lead_id, instance_name, remote_jid)
       console.log(`[AI] Reply: ${agentReply}`)
     } catch (aiError: any) {
       console.error(`[AI Error]`, aiError.message)

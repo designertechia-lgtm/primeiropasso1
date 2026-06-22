@@ -56,7 +56,7 @@ serve(async (req) => {
     const { data: appt, error: apptErr } = await supabaseAdmin
       .from('appointments')
       .select(`
-        id, appointment_date, start_time, end_time, status, notes,
+        id, appointment_date, start_time, end_time, status, notes, lead_id,
         professionals!inner(id, full_name, evolution_instance_name, slug)
       `)
       .eq('id', appointment_id)
@@ -70,13 +70,27 @@ serve(async (req) => {
     const proName = (pro?.full_name || 'o profissional').split(' ')[0]
     const instanceName = pro?.evolution_instance_name
 
-    // Acha o lead via booking_state.appointment_id
-    const { data: lead } = await supabaseAdmin
-      .from('leads')
-      .select('id, name, whatsapp')
-      .eq('professional_id', pro.id)
-      .eq('booking_state->>appointment_id', appointment_id)
-      .maybeSingle()
+    // Acha o lead: 1) direto por appointments.lead_id (agendamentos do painel E do
+    // whats já gravam lead_id — fonte confiável); 2) fallback pelo booking_state.
+    let lead: { id: string; name: string | null; whatsapp: string | null } | null = null
+    const apptLeadId = (appt as any).lead_id as string | null
+    if (apptLeadId) {
+      const { data } = await supabaseAdmin
+        .from('leads')
+        .select('id, name, whatsapp')
+        .eq('id', apptLeadId)
+        .maybeSingle()
+      lead = data as any
+    }
+    if (!lead) {
+      const { data } = await supabaseAdmin
+        .from('leads')
+        .select('id, name, whatsapp')
+        .eq('professional_id', pro.id)
+        .eq('booking_state->>appointment_id', appointment_id)
+        .maybeSingle()
+      lead = data as any
+    }
 
     if (!lead || !lead.whatsapp) {
       console.warn(`[reminder] Lead não encontrado pra appointment ${appointment_id}`)

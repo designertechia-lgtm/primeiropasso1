@@ -105,7 +105,7 @@ function TituloCombobox({
   leads,
 }: {
   value: string;
-  onChange: (v: string) => void;
+  onChange: (v: string, leadId: string | null) => void;
   leads: Array<{ id: string; name: string }>;
 }) {
   const [open, setOpen] = useState(false);
@@ -115,7 +115,7 @@ function TituloCombobox({
   const showPessoal = !q || "compromisso pessoal".includes(q);
   const hasExact =
     q === "compromisso pessoal" || leads.some((l) => l.name.toLowerCase() === q);
-  const pick = (v: string) => { onChange(v); setOpen(false); setSearch(""); };
+  const pick = (v: string, leadId: string | null) => { onChange(v, leadId); setOpen(false); setSearch(""); };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -131,7 +131,7 @@ function TituloCombobox({
           <CommandList>
             {showPessoal && (
               <CommandGroup>
-                <CommandItem value="__pessoal" onSelect={() => pick("Compromisso pessoal")}>
+                <CommandItem value="__pessoal" onSelect={() => pick("Compromisso pessoal", null)}>
                   <Check className={cn("mr-2 h-4 w-4", value === "Compromisso pessoal" ? "opacity-100" : "opacity-0")} />
                   Compromisso pessoal
                 </CommandItem>
@@ -140,7 +140,7 @@ function TituloCombobox({
             {filtered.length > 0 && (
               <CommandGroup heading="Clientes">
                 {filtered.map((l) => (
-                  <CommandItem key={l.id} value={l.id} onSelect={() => pick(l.name)}>
+                  <CommandItem key={l.id} value={l.id} onSelect={() => pick(l.name, l.id)}>
                     <Check className={cn("mr-2 h-4 w-4", value === l.name ? "opacity-100" : "opacity-0")} />
                     {l.name}
                   </CommandItem>
@@ -149,7 +149,7 @@ function TituloCombobox({
             )}
             {search.trim() && !hasExact && (
               <CommandGroup heading="Outro">
-                <CommandItem value="__livre" onSelect={() => pick(search.trim())}>
+                <CommandItem value="__livre" onSelect={() => pick(search.trim(), null)}>
                   <Plus className="mr-2 h-4 w-4" /> Usar “{search.trim()}”
                 </CommandItem>
               </CommandGroup>
@@ -245,6 +245,7 @@ export default function AdminAgendaCalendario() {
   const [blockEndTime, setBlockEndTime] = useState("10:00");
   const [blockType, setBlockType] = useState("personal");
   const [blockColor, setBlockColor] = useState<string | null>(null);
+  const [blockLeadId, setBlockLeadId] = useState<string | null>(null);
   const [recurrence, setRecurrence] = useState<RecurrenceType>("unico");
   const [recEndDate, setRecEndDate] = useState<Date>(new Date());
   const [selectedDates, setSelectedDates] = useState<Date[]>([]);
@@ -274,19 +275,31 @@ export default function AdminAgendaCalendario() {
   const [availDialogOpen, setAvailDialogOpen] = useState(false);
   const [savingAvail, setSavingAvail] = useState(false);
 
-  // F20 — config de buffer (folga entre atendimentos) + almoço (salvos em professionals)
+  // F20 — buffer (global) + almoço POR DIA da semana (jsonb lunch_breaks).
   const [bufferMin, setBufferMin] = useState(0);
-  const [lunchEnabled, setLunchEnabled] = useState(false);
-  const [lunchStart, setLunchStart] = useState("12:00");
-  const [lunchEnd, setLunchEnd] = useState("13:00");
+  const [lunchByDay, setLunchByDay] = useState<Record<number, { start: string; end: string }>>({});
   useEffect(() => {
     if (!professional) return;
     const p = professional as any;
     setBufferMin(Number(p.slot_buffer_minutes) || 0);
-    setLunchEnabled(!!p.lunch_break_enabled);
-    setLunchStart((p.lunch_break_start || "12:00").slice(0, 5));
-    setLunchEnd((p.lunch_break_end || "13:00").slice(0, 5));
+    const lb = (p.lunch_breaks && typeof p.lunch_breaks === "object") ? p.lunch_breaks : {};
+    const norm: Record<number, { start: string; end: string }> = {};
+    for (let d = 0; d <= 6; d++) {
+      const e = lb[String(d)];
+      if (e && e.start && e.end) norm[d] = { start: String(e.start).slice(0, 5), end: String(e.end).slice(0, 5) };
+    }
+    setLunchByDay(norm);
   }, [professional]);
+
+  const toggleLunch = (day: number, on: boolean) =>
+    setLunchByDay((prev) => {
+      const next = { ...prev };
+      if (on) next[day] = prev[day] || { start: "12:00", end: "13:00" };
+      else delete next[day];
+      return next;
+    });
+  const updateLunch = (day: number, field: "start" | "end", value: string) =>
+    setLunchByDay((prev) => ({ ...prev, [day]: { ...(prev[day] || { start: "12:00", end: "13:00" }), [field]: value } }));
 
   // Status colors dialog (acionado pela engrenagem de ajustes)
   const [colorsDialogOpen, setColorsDialogOpen] = useState(false);
@@ -380,7 +393,7 @@ export default function AdminAgendaCalendario() {
 
       const bookings = data.filter((a) => !a.appointment_type || a.appointment_type === "booking");
       const patientIds = [...new Set(bookings.map((a) => a.patient_id).filter(Boolean))];
-      if (patientIds.length === 0) return bookings.map((a) => ({ ...a, patientName: "Paciente" }));
+      if (patientIds.length === 0) return bookings.map((a) => ({ ...a, patientName: a.notes || "Paciente" }));
 
       const { data: profiles } = await supabase
         .from("profiles")
@@ -390,7 +403,7 @@ export default function AdminAgendaCalendario() {
 
       return bookings.map((a) => ({
         ...a,
-        patientName: profileMap.get(a.patient_id) || "Paciente",
+        patientName: profileMap.get(a.patient_id) || a.notes || "Paciente",
       }));
     },
     enabled: !!professional?.id,
@@ -439,25 +452,31 @@ export default function AdminAgendaCalendario() {
 
       if (dates.length === 0) throw new Error("Nenhuma data");
 
+      // Cliente selecionado (lead) → atendimento real (booking) com lembrete.
+      // "Compromisso pessoal" / texto livre → bloqueio (block).
+      const isBooking = !!blockLeadId;
+
       // ── VALIDAÇÃO ANTI-DOUBLE-BOOKING ──────────────────────────────────
       // Todo compromisso criado ocupa o horário: recusa se houver consulta real
       // (não-bloqueio) se sobrepondo no mesmo dia. Usa overlap de intervalo
       // (.lt/.gt), não start_time exato. NÃO usa .is('appointment_type', null):
       // o default da coluna virou 'booking', então bookings reais não são null.
       for (const date of dates) {
-        const { data: conflitos } = await supabase
+        let q = supabase
           .from("appointments")
           .select("id")
           .eq("professional_id", professional.id)
           .eq("appointment_date", date)
           .in("status", ["pending", "confirmed"])
-          .or("appointment_type.eq.booking,appointment_type.is.null")
           .lt("start_time", blockEndTime)
           .gt("end_time", blockStartTime);
+        // booking de cliente conflita com TUDO ocupado; bloqueio só com consultas reais.
+        if (!isBooking) q = q.or("appointment_type.eq.booking,appointment_type.is.null");
+        const { data: conflitos } = await q;
 
         if (conflitos && conflitos.length > 0) {
           throw new Error(
-            `Conflito de horário: já existe uma consulta em ${date} nesse intervalo. Escolha outro horário.`
+            `Conflito de horário: já existe um agendamento em ${date} nesse intervalo. Escolha outro horário.`
           );
         }
       }
@@ -471,12 +490,12 @@ export default function AdminAgendaCalendario() {
         start_time: blockStartTime,
         end_time: blockEndTime,
         notes: blockTitle,
-        block_type: blockType,
         color: blockColor,
-        appointment_type: "block" as const,
-        status: "confirmed" as const,
         patient_id: null,
         recurrence_group: recurrenceGroup,
+        ...(isBooking
+          ? { appointment_type: "booking", lead_id: blockLeadId, status: "pending", block_type: null }
+          : { appointment_type: "block", lead_id: null, status: "confirmed", block_type: blockType }),
       }));
 
       const { error } = await supabase.from("appointments").insert(records as any);
@@ -492,7 +511,7 @@ export default function AdminAgendaCalendario() {
       queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
       queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
       queryClient.invalidateQueries({ queryKey: ["admin-block-groups"] });
-      toast.success("Bloqueio adicionado!");
+      toast.success("Agendamento adicionado!");
       setBlockDialogOpen(false);
       resetBlockForm();
     },
@@ -660,6 +679,36 @@ export default function AdminAgendaCalendario() {
       return;
     }
 
+    // Item 3 — valida almoço + conflito (com a folga/buffer) antes de gravar o arraste.
+    const hhmmToMin = (t: string) => { const [h, m] = t.slice(0, 5).split(":").map(Number); return h * 60 + m; };
+    const sMin = hhmmToMin(format(ev.start, "HH:mm"));
+    const eMin = hhmmToMin(format(end, "HH:mm"));
+
+    const lunchDrag = lunchByDay[new Date(startDate + "T00:00:00").getDay()];
+    if (lunchDrag) {
+      const ls = hhmmToMin(lunchDrag.start);
+      const le = hhmmToMin(lunchDrag.end);
+      if (sMin < le && eMin > ls) {
+        toast.info(`Esse horário cai no intervalo de almoço (${lunchDrag.start}–${lunchDrag.end}). Desfazendo.`);
+        info.revert();
+        return;
+      }
+    }
+
+    const buffer = bufferMin || 0;
+    const conflita = [...appointments, ...blocks]
+      .filter((x: any) => x.id !== props.id && x.appointment_date === startDate)
+      .some((x: any) => {
+        const os = hhmmToMin(x.start_time);
+        const oe = hhmmToMin(x.end_time);
+        return sMin < oe + buffer && eMin > os - buffer;
+      });
+    if (conflita) {
+      toast.info("Esse horário conflita com outro agendamento (ou a folga entre eles). Desfazendo.");
+      info.revert();
+      return;
+    }
+
     const { error } = await supabase
       .from("appointments")
       .update({
@@ -726,9 +775,7 @@ export default function AdminAgendaCalendario() {
       .from("professionals")
       .update({
         slot_buffer_minutes: bufferMin,
-        lunch_break_enabled: lunchEnabled,
-        lunch_break_start: lunchStart,
-        lunch_break_end: lunchEnd,
+        lunch_breaks: lunchByDay,
       } as any)
       .eq("id", professional.id);
     if (cfgError) {
@@ -749,6 +796,7 @@ export default function AdminAgendaCalendario() {
     setBlockEndTime("10:00");
     setBlockType("personal");
     setBlockColor(null);
+    setBlockLeadId(null);
     setRecurrence("unico");
     setSelectedDates([]);
   };
@@ -770,6 +818,7 @@ export default function AdminAgendaCalendario() {
         backgroundColor: appt.color || getStatusColor(appt.status),
         borderColor: getStatusColor(appt.status),
         textColor: "#fff",
+        classNames: appt.color ? ["fc-event-tinted"] : undefined,
         extendedProps: { type: "appointment", ...appt },
       });
     });
@@ -785,6 +834,7 @@ export default function AdminAgendaCalendario() {
         backgroundColor: block.color || getStatusColor(block.status || "pending"),
         borderColor: getStatusColor(block.status || "pending"),
         textColor: "#fff",
+        classNames: block.color ? ["fc-event-tinted"] : undefined,
         extendedProps: { type: "block", ...block },
       });
     });
@@ -909,7 +959,16 @@ export default function AdminAgendaCalendario() {
           <div className="space-y-4">
             <div>
               <Label>Título</Label>
-              <TituloCombobox value={blockTitle} onChange={setBlockTitle} leads={leads} />
+              <TituloCombobox
+                value={blockTitle}
+                onChange={(v, leadId) => { setBlockTitle(v); setBlockLeadId(leadId); }}
+                leads={leads}
+              />
+              {blockLeadId && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Atendimento vinculado a este cliente — recebe lembrete no WhatsApp.
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -1218,7 +1277,7 @@ export default function AdminAgendaCalendario() {
             <div className="space-y-4">
               <div>
                 <Label>Título</Label>
-                <Input value={editBlockTitle} onChange={(e) => setEditBlockTitle(e.target.value)} />
+                <TituloCombobox value={editBlockTitle} onChange={(v) => setEditBlockTitle(v)} leads={leads} />
               </div>
               <div>
                 <Label>Data</Label>
@@ -1470,40 +1529,36 @@ export default function AdminAgendaCalendario() {
                       </div>
                     ))
                   )}
+                  <div className="flex items-center gap-2 mt-2 flex-wrap text-xs border-t pt-2">
+                    <Switch checked={!!lunchByDay[day]} onCheckedChange={(v) => toggleLunch(day, v)} />
+                    <span className="text-muted-foreground">Almoço</span>
+                    {lunchByDay[day] && (
+                      <>
+                        <Input type="time" value={lunchByDay[day].start} onChange={(e) => updateLunch(day, "start", e.target.value)} className="w-24 h-8 text-xs" />
+                        <span>até</span>
+                        <Input type="time" value={lunchByDay[day].end} onChange={(e) => updateLunch(day, "end", e.target.value)} className="w-24 h-8 text-xs" />
+                      </>
+                    )}
+                  </div>
                 </div>
               );
             })}
           </div>
-          <div className="border-t pt-4 mt-4 space-y-4">
-            <div>
-              <Label className="text-sm">Intervalo entre atendimentos</Label>
-              <p className="text-xs text-muted-foreground mb-1.5">Folga automática entre um atendimento e o próximo.</p>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  min={0}
-                  step={5}
-                  value={bufferMin}
-                  onChange={(e) => setBufferMin(Math.max(0, Number(e.target.value) || 0))}
-                  className="w-20 h-9"
-                />
-                <span className="text-sm text-muted-foreground">minutos</span>
-              </div>
+          <div className="border-t pt-4 mt-4">
+            <Label className="text-sm">Intervalo entre atendimentos</Label>
+            <p className="text-xs text-muted-foreground mb-1.5">Folga automática entre um atendimento e o próximo (vale para todos os dias).</p>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={0}
+                step={5}
+                value={bufferMin}
+                onChange={(e) => setBufferMin(Math.max(0, Number(e.target.value) || 0))}
+                className="w-20 h-9"
+              />
+              <span className="text-sm text-muted-foreground">minutos</span>
             </div>
-            <div>
-              <div className="flex items-center justify-between">
-                <Label className="text-sm">Intervalo de almoço</Label>
-                <Switch checked={lunchEnabled} onCheckedChange={setLunchEnabled} />
-              </div>
-              <p className="text-xs text-muted-foreground mb-1.5">Quando ligado, nenhum horário é oferecido nesse intervalo.</p>
-              {lunchEnabled && (
-                <div className="flex items-center gap-2">
-                  <Input type="time" value={lunchStart} onChange={(e) => setLunchStart(e.target.value)} className="w-28 h-9" />
-                  <span className="text-xs">até</span>
-                  <Input type="time" value={lunchEnd} onChange={(e) => setLunchEnd(e.target.value)} className="w-28 h-9" />
-                </div>
-              )}
-            </div>
+            <p className="text-xs text-muted-foreground mt-3">💡 O intervalo de almoço é configurado por dia, na grade acima.</p>
           </div>
           <Button onClick={handleSaveAvailability} disabled={savingAvail} className="w-full mt-2">
             {savingAvail ? "Salvando..." : "Salvar Disponibilidade"}

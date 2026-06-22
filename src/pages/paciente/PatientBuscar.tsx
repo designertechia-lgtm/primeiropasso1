@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import { format, addMinutes } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
-import { getFreeSlots } from "@/lib/slots";
+import { getFreeSlots, lunchForDow } from "@/lib/slots";
 import { User, CalendarX } from "lucide-react";
 
 export default function PatientBuscar() {
@@ -124,13 +124,7 @@ export default function PatientBuscar() {
         appointments: existingAppointments,
         blocks: scheduleBlocks,
         bufferMinutes: (professional as any)?.slot_buffer_minutes ?? 0,
-        lunch: (professional as any)?.lunch_break_enabled
-          ? {
-              enabled: true,
-              start: (professional as any).lunch_break_start,
-              end: (professional as any).lunch_break_end,
-            }
-          : null,
+        lunch: lunchForDow((professional as any)?.lunch_breaks, selectedDate.getDay()),
       })
     : [];
 

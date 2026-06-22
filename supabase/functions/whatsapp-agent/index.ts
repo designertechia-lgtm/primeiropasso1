@@ -255,17 +255,23 @@ async function sendList(
 async function getSchedulingConfig(
   supabaseAdmin: any,
   professionalId: string,
-): Promise<{ buffer: number; lunch: { start: number; end: number } | null }> {
+): Promise<{ buffer: number; lunchBreaks: Record<string, { start?: string; end?: string }> }> {
   const { data } = await supabaseAdmin
     .from('professionals')
-    .select('slot_buffer_minutes, lunch_break_enabled, lunch_break_start, lunch_break_end')
+    .select('slot_buffer_minutes, lunch_breaks')
     .eq('id', professionalId)
     .maybeSingle()
   const buffer = Math.max(0, Number(data?.slot_buffer_minutes) || 0)
-  const lunch = (data?.lunch_break_enabled && data?.lunch_break_start && data?.lunch_break_end)
-    ? { start: toMinutes(String(data.lunch_break_start).slice(0, 5)), end: toMinutes(String(data.lunch_break_end).slice(0, 5)) }
+  const lunchBreaks = (data?.lunch_breaks && typeof data.lunch_breaks === 'object') ? data.lunch_breaks : {}
+  return { buffer, lunchBreaks }
+}
+
+// Almoço do dia da semana (dow 0=dom … 6=sáb) a partir do jsonb lunch_breaks.
+function lunchForDow(lunchBreaks: any, dow: number): { start: number; end: number } | null {
+  const lb = lunchBreaks?.[String(dow)]
+  return (lb && lb.start && lb.end)
+    ? { start: toMinutes(String(lb.start).slice(0, 5)), end: toMinutes(String(lb.end).slice(0, 5)) }
     : null
-  return { buffer, lunch }
 }
 
 // Remove [cutS,cutE) de [s,e) → 0, 1 ou 2 sub-intervalos (tira o almoço da janela).
@@ -291,7 +297,7 @@ async function computeFreeSlots(
     .eq('professional_id', professionalId)
     .eq('active', true)
 
-  const { buffer, lunch } = await getSchedulingConfig(supabaseAdmin, professionalId)
+  const { buffer, lunchBreaks } = await getSchedulingConfig(supabaseAdmin, professionalId)
   const step = slotMin + buffer
 
   const { data: occupied } = await supabaseAdmin
@@ -331,6 +337,7 @@ async function computeFreeSlots(
     const dateStr = d.toISOString().slice(0, 10)
     const isToday = d.getTime() === today.getTime()
     const nowMin = new Date().getHours() * 60 + new Date().getMinutes()
+    const lunch = lunchForDow(lunchBreaks, dow) // almoço do dia
 
     const windowsForDow = weekly.filter((w: any) => w.day_of_week === dow)
     if (windowsForDow.length === 0) continue
@@ -375,9 +382,10 @@ async function isSlotFree(
     if (startMin <= nowMin) return false
   }
 
-  const { buffer, lunch } = await getSchedulingConfig(supabaseAdmin, professionalId)
+  const { buffer, lunchBreaks } = await getSchedulingConfig(supabaseAdmin, professionalId)
+  const lunch = lunchForDow(lunchBreaks, new Date(dateIso + 'T00:00:00').getDay())
 
-  // 2) não cai no intervalo de almoço do profissional
+  // 2) não cai no intervalo de almoço do profissional (do dia da semana)
   if (lunch && startMin < lunch.end && endMin > lunch.start) return false
 
   // 3) não sobrepõe agendamento NEM bloqueio, respeitando a folga (buffer) dos dois lados
@@ -401,11 +409,12 @@ async function createBooking(
   leadId: string | null = null,
   serviceId: string | null = null,
 ): Promise<{ ok: boolean; appointment_id?: string; erro?: string; mensagem?: string }> {
-  const { buffer, lunch } = await getSchedulingConfig(supabaseAdmin, professionalId)
+  const { buffer, lunchBreaks } = await getSchedulingConfig(supabaseAdmin, professionalId)
+  const lunch = lunchForDow(lunchBreaks, new Date(data + 'T00:00:00').getDay())
   const reqStart = toMinutes(horaInicio)
   const reqEnd = toMinutes(horaFim)
 
-  // F20 — não pode cair no intervalo de almoço do profissional.
+  // F20 — não pode cair no intervalo de almoço do profissional (do dia da semana).
   if (lunch && reqStart < lunch.end && reqEnd > lunch.start) {
     return { ok: false, erro: 'horario_almoco', mensagem: 'Esse horário cai no intervalo de almoço do profissional. Escolha outro.' }
   }
@@ -467,11 +476,12 @@ async function rescheduleBooking(
   novaHi: string,
   novaHf: string,
 ): Promise<{ ok: boolean; appointment_id?: string; erro?: string; mensagem?: string }> {
-  const { buffer, lunch } = await getSchedulingConfig(supabaseAdmin, professionalId)
+  const { buffer, lunchBreaks } = await getSchedulingConfig(supabaseAdmin, professionalId)
+  const lunch = lunchForDow(lunchBreaks, new Date(novaData + 'T00:00:00').getDay())
   const reqStart = toMinutes(novaHi)
   const reqEnd = toMinutes(novaHf)
 
-  // F20 — remarcação também não pode cair no almoço.
+  // F20 — remarcação também não pode cair no almoço (do dia da semana).
   if (lunch && reqStart < lunch.end && reqEnd > lunch.start) {
     return { ok: false, erro: 'horario_almoco', mensagem: 'Esse novo horário cai no intervalo de almoço do profissional. Escolha outro.' }
   }

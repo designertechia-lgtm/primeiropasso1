@@ -178,4 +178,9 @@
 .marquee-row:hover .marquee-rtl, .marquee-row:hover .marquee-ltr { animation-play-state: paused; }
 /* Decisão 13/06: o marquee anima para todos (não respeita "reduzir movimento") — é parte do design da landing.
    A lista estática (.marquee-static) fica como fallback inerte, escondida. */
+
+/* Agenda: evento com cor própria (custom) ganha uma faixa lateral mais grossa na
+   cor do STATUS (Pendente/Confirmado/Concluído/Cancelado), pra não perder o sinal
+   de status quando o fundo é uma cor escolhida pelo profissional. */
+.fc-wrapper .fc-event-tinted { border-left-width: 5px !important; }
 .marquee-static { display: none; }

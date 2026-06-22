@@ -39,6 +39,15 @@ const toMin = (hhmm: string): number => {
 const fromMin = (mins: number): string =>
   `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
 
+/** Almoço do dia da semana (dow 0=dom … 6=sáb) a partir do jsonb `lunch_breaks`. */
+export function lunchForDow(
+  lunchBreaks: Record<string, { start?: string; end?: string }> | null | undefined,
+  dow: number,
+): LunchBreak | null {
+  const lb = lunchBreaks?.[String(dow)];
+  return lb && lb.start && lb.end ? { enabled: true, start: lb.start, end: lb.end } : null;
+}
+
 /** Remove [cutS,cutE) de [s,e), devolvendo 0, 1 ou 2 sub-intervalos. */
 function subtract(s: number, e: number, cutS: number, cutE: number): Array<[number, number]> {
   if (cutE <= s || cutS >= e) return [[s, e]]; // sem interseção

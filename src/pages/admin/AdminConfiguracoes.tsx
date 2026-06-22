@@ -35,6 +35,9 @@ export default function AdminConfiguracoes() {
 
   useEffect(() => {
     if (professional) {
+      // Desarma a detecção antes de repovoar (refetch do react-query recria o
+      // array do roteiro e marcaria "alterado" falso). O rAF abaixo rearma.
+      hasLoaded.current = false;
       const ap = ((professional as any).agent_preferences || {}) as Record<string, any>;
       setAgentEnabled(ap.enabled !== false);            // default ligado
       setAgentReminders(ap.reminders !== false);        // default ligado

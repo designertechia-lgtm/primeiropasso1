@@ -43,6 +43,10 @@ export default function AdminPerfil() {
 
   useEffect(() => {
     if (!professional) return;
+    // Desarma a detecção antes de repovoar os campos: um refetch do react-query
+    // (ex.: ao focar a janela) ou o `profile` chegando depois recria os arrays e
+    // dispararia "alterado" falso. O requestAnimationFrame abaixo rearma após a carga.
+    hasLoaded.current = false;
     setFullName(professional.full_name || profile?.full_name || "");
     // Migra categorias legadas (psicologia/odontologia/nutricao/etc) para "outro"
     // preservando o rótulo original no texto livre.

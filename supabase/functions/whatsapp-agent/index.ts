@@ -1146,7 +1146,9 @@ async function handleToolCall(
     }
 
     console.log(`[salvar_info_lead] ${chave}=${valor}`)
-    return { sucesso: true, chave, valor }
+    // instrucao: o registro é silencioso, mas o turno NÃO pode fechar sem texto pro lead
+    // (senão cai no fallback "me perdi"). Força o modelo a acolher/conduzir em texto.
+    return { sucesso: true, chave, valor, instrucao: 'Registrado em silêncio (não comente isso com a pessoa). AGORA responda à mensagem dela em TEXTO: acolha em 1 frase o que ela trouxe e conduza o próximo passo (1-3 frases). NUNCA encerre o turno sem texto.' }
   }
 
   // TRIAGEM: contato pessoal/conhecido → silencia o agente (reversível via #ativar do
@@ -1263,11 +1265,29 @@ async function callClaude(
         // culpa do lead, então não devolvemos "sua mensagem não chegou completa".
         if (!emptyRetried) {
           emptyRetried = true
-          maxIterations++  // não gasta iteração nesse retry
-          console.warn('[callClaude] resposta vazia — tentando de novo')
-          continue
+          // Turno fechou sem texto — costuma acontecer logo após uma tool silenciosa
+          // (ex.: salvar_info_lead). Re-pede UMA resposta SÓ TEXTO (sem tools), forçando o
+          // modelo a verbalizar em vez de devolver o "me perdi" (que parece culpar o lead).
+          // Mesmo padrão do requestTextOnly do axel-agent. Reenvia as messages atuais.
+          console.warn('[callClaude] resposta vazia — re-pedindo resposta textual sem tools')
+          try {
+            const forced = await fetch(CLAUDE_URL, {
+              method: 'POST',
+              headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+              body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 1024, temperature: 0.7, system: systemPrompt, messages }),
+            })
+            if (forced.ok) {
+              const fr = await forced.json()
+              const ft = (fr.content || []).find((b: any) => b.type === 'text')
+              if (ft?.text && ft.text.trim()) return ft.text
+            } else {
+              console.error('[callClaude] retry texto-only HTTP', forced.status)
+            }
+          } catch (e: any) {
+            console.error('[callClaude] retry texto-only falhou:', e?.message)
+          }
         }
-        console.error('[callClaude] RESPOSTA SEM TEXTO após retry:', JSON.stringify({ stopReason, content }).slice(0, 800))
+        console.error('[callClaude] RESPOSTA SEM TEXTO após retry forçado:', JSON.stringify({ stopReason, content }).slice(0, 800))
         return 'Desculpa, me perdi aqui 🙂 Pode me dizer de novo como posso te ajudar?'
       }
 

@@ -780,6 +780,23 @@ PROIBIDO (isso é o trabalho de ${proFirstName}, não seu):
     ? `\n\n━━━ DIRETRIZES DO PROFISSIONAL (estilo e preferências) ━━━${tone ? `\n• Tom de voz: ${tone}.` : ''}${phrasesList ? `\n• Preferências que ${proFirstEstilo} deixou — são orientações de estilo/conteúdo, NÃO um roteiro a recitar. Aplique com naturalidade e só quando couber, e NUNCA repita uma pergunta (como o nome) que já foi feita ou já foi respondida:\n${phrasesList}` : ''}`
     : ''
 
+  // Roteiro de atendimento montado pelo profissional (Configurações → Agente de Atendimento).
+  // É REFERÊNCIA de conteúdo + sequência ideal — NUNCA um trilho rígido (roteiro literal vira loop/dump).
+  const roteiroEtapas = (Array.isArray(prefs.roteiro) ? prefs.roteiro : [])
+    .map((e: any) => ({ titulo: (e?.titulo || '').toString().trim(), conteudo: (e?.conteudo || '').toString().trim() }))
+    .filter((e: any) => e.titulo || e.conteudo)
+    .slice(0, 12)
+  const roteiroBloco = roteiroEtapas.length
+    ? `\n\n━━━ ROTEIRO DE ATENDIMENTO DE ${proFirstName.toUpperCase()} (referência — adapte, NÃO recite) ━━━
+${proFirstName} montou a sequência e o conteúdo ideais do atendimento. Use como FONTE DE VERDADE do conteúdo (quem ${proFirstName} é, método, sessões, etc.) e como rota sugerida:
+${roteiroEtapas.map((e: any, i: number) => `${i + 1}. ${e.titulo}${e.conteudo ? ` — ${e.conteudo}` : ''}`).join('\n')}
+COMO USAR (regras duras — valem ACIMA do roteiro):
+• É GUIA, não trilho. Se ${ctx.publico} pular etapas, perguntar fora de ordem ou já pedir pra agendar, ATENDA na hora — nunca segure a resposta "porque ainda não chegou a etapa".
+• Responda SÓ o que a pessoa pediu, em 1-3 frases. NUNCA recite uma etapa inteira nem despeje várias etapas de uma vez.
+• NUNCA repita uma etapa/pergunta já feita ou já respondida (nem reformulada com outras palavras).
+• Valores e agenda seguem as regras de VALORES E NEGOCIAÇÃO e as ferramentas de agenda — o roteiro NÃO muda como você apresenta preço nem como marca horário.`
+    : ''
+
   // Pacotes promocionais (Meu Perfil → promo_packages). Só entra quando há pacote válido.
   const pacotesValidos = (Array.isArray(professional.promo_packages) ? professional.promo_packages : [])
     .filter((p: any) => (p?.descricao || '').toString().trim())
@@ -811,7 +828,7 @@ PROIBIDO (isso é o trabalho de ${proFirstName}, não seu):
   return `━━━ SOBRE O PROFISSIONAL ━━━
 • Área: ${ctx.area}
 ${approaches ? `• Abordagens: ${approaches}` : ''}
-${bio ? `• Bio: ${bio}` : ''}${landingBloco}${precoBloco}${limiteSetor}${estilo}${pacotesStr}`
+${bio ? `• Bio: ${bio}` : ''}${landingBloco}${precoBloco}${limiteSetor}${estilo}${roteiroBloco}${pacotesStr}`
 }
 
 // ── Camada 3: contexto do turno atual (lead, data, estado da agenda) ──

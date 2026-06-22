@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { FieldHint } from "@/components/ui/FieldHint";
+import { RoteiroAtendimentoEditor, novaEtapa, type RoteiroEtapa } from "@/components/admin/RoteiroAtendimentoEditor";
 
 function hexToHsl(hex: string): { h: number; s: number; l: number } {
   const r = parseInt(hex.slice(1, 3), 16) / 255;
@@ -67,6 +68,7 @@ export default function AdminConfiguracoes() {
   const [agentSatisfaction, setAgentSatisfaction] = useState(true);
   const [agentTone, setAgentTone] = useState("");
   const [agentPhrases, setAgentPhrases] = useState("");
+  const [agentRoteiro, setAgentRoteiro] = useState<RoteiroEtapa[]>([]);
 
   // Status colors
   const [colorStatusPending, setColorStatusPending] = useState("#EAB308");
@@ -91,6 +93,12 @@ export default function AdminConfiguracoes() {
       setAgentSatisfaction(ap.satisfaction !== false);  // default ligado
       setAgentTone(ap.tone || "");
       setAgentPhrases(ap.preferred_phrases || "");
+      const roteiro = Array.isArray(ap.roteiro) ? ap.roteiro : [];
+      setAgentRoteiro(
+        roteiro
+          .map((e: any) => novaEtapa((e?.titulo || "").toString(), (e?.conteudo || "").toString()))
+          .filter((e: RoteiroEtapa) => e.titulo || e.conteudo),
+      );
     }
   }, [professional]);
 
@@ -110,6 +118,9 @@ export default function AdminConfiguracoes() {
         satisfaction: agentSatisfaction,
         tone: agentTone.trim(),
         preferred_phrases: agentPhrases.trim(),
+        roteiro: agentRoteiro
+          .map((e) => ({ titulo: e.titulo.trim(), conteudo: e.conteudo.trim() }))
+          .filter((e) => e.titulo || e.conteudo),
       },
     } as any).eq("id", professional.id);
 
@@ -249,7 +260,10 @@ export default function AdminConfiguracoes() {
 
           {/* Frases preferidas */}
           <div className={`space-y-2 ${agentEnabled ? "" : "opacity-50 pointer-events-none"}`}>
-            <Label className="text-sm">Frases que você gosta</Label>
+            <Label className="text-sm">
+              Frases que você gosta
+              <FieldHint text="Só expressões e jeitos de falar que combinam com você — não é um passo a passo. Para definir a sequência e o conteúdo do atendimento, use o Roteiro de Atendimento abaixo." />
+            </Label>
             <Textarea
               value={agentPhrases}
               onChange={(e) => setAgentPhrases(e.target.value)}
@@ -257,7 +271,23 @@ export default function AdminConfiguracoes() {
               disabled={!agentEnabled}
               className="min-h-[80px] text-sm"
             />
-            <p className="text-[11px] text-muted-foreground">O agente usa essas frases com naturalidade, sem forçar.</p>
+            <p className="text-[11px] text-muted-foreground">
+              Só expressões soltas (estilo). <strong>Não escreva um passo a passo aqui</strong> — a sequência do atendimento fica no Roteiro abaixo.
+            </p>
+          </div>
+
+          {/* Roteiro de Atendimento (referência do Axel) */}
+          <div className={`space-y-3 border-t pt-4 ${agentEnabled ? "" : "opacity-50 pointer-events-none"}`}>
+            <div>
+              <Label className="text-sm">
+                Roteiro de Atendimento (referência)
+                <FieldHint text="A sequência e o conteúdo que o Axel usa pra te conhecer e conduzir a conversa: quem você é, seu método, como funcionam as sessões, valores. O Axel usa como guia e se adapta ao cliente — nunca despeja tudo de uma vez." />
+              </Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Monte as etapas do atendimento na ordem ideal — arraste pela alça para reordenar. O Axel segue como referência, mas se adapta ao que o cliente pedir (nunca recita em bloco nem trava).
+              </p>
+            </div>
+            <RoteiroAtendimentoEditor value={agentRoteiro} onChange={setAgentRoteiro} disabled={!agentEnabled} />
           </div>
         </CardContent>
       </Card>

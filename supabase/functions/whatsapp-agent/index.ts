@@ -127,6 +127,29 @@ const durationFromBs = (bs: any): number => {
   return Number.isFinite(d) && d > 0 ? d : DEFAULT_DURATION
 }
 
+// ─── REDE DE SEGURANÇA DE CRISE (determinística) ─────────────────────────────
+// Detecta sinal de RISCO DE VIDA na fala do lead. Quando dispara, o fluxo GARANTE acolhimento + CVV em
+// texto e NÃO silencia o agente — sem depender do LLM (que às vezes chamava rotear_conversa, que emudece
+// e manda handoff sem CVV, abandonando o lead em crise). Falso-negativo cai no comportamento do LLM (que
+// também acolhe/dá CVV na maioria). Conservador o suficiente p/ poucos falsos positivos. Ver E2E _e2e_crise_real.
+function detectCrisisSignal(text: string): boolean {
+  const t = (text || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+  if (!t) return false
+  const padroes = [
+    /\bme\s+matar\b/, /\btirar\s+(a\s+)?(minha\s+)?vida\b/, /suicid/,
+    /\bacabar\s+com\s+(tudo|a\s+minha\s+vida|minha\s+vida)\b/,
+    /\bme\s+(machucar|cortar|ferir|mutilar)\b/,
+    /\bnao\s+(quero|aguento|consigo)\s+mais\s+viver\b/, /\bcansei\s+de\s+viver\b/, /\bnao\s+quero\s+mais\s+(viver|existir)\b/,
+    /\b(queria|quero|vou|preferia)\s+morrer\b(?!\s+de\s+(rir|rindo|fome|sono|calor|frio|vergonha|tedio|saudade|amor|raiva|nojo|inveja|vontade))/, /\bmelhor\s+(eu\s+)?morrer\b/, /\bseria\s+melhor\s+(morrer|nao\s+existir)\b/,
+    /\bsumir\s+(de\s+vez|do\s+mapa|pra\s+sempre|para\s+sempre)\b/, /\bdesaparecer\s+(de\s+vez|pra\s+sempre|para\s+sempre)\b/,
+    /\bnao\s+(vejo|faz|tem)\s+(mais\s+)?sentido\s+(em\s+)?(nada|viver|continuar|seguir|na\s+vida|nessa\s+vida)\b/,
+    /\bnao\s+vejo\s+saida\b/,
+    /\bninguem\s+(ia|iria|vai|sentiria|sentira)\s+(sentir\s+)?(a\s+)?(minha\s+)?falta\b/,
+    /\bpensei\s+em\s+(me\s+)?(matar|sumir|machucar|dar\s+um\s+fim)/,
+  ]
+  return padroes.some((re) => re.test(t))
+}
+
 // ─── Helpers de data/hora ────────────────────────────────────────────────────
 const pad2 = (n: number) => String(n).padStart(2, '0')
 const brtNow = (): Date => new Date(Date.now() - 3 * 3600 * 1000)            // "agora" em BRT (UTC-3)
@@ -709,7 +732,7 @@ const CORE_RULES = `Seu nome é **Axel** — você é o ASSISTENTE VIRTUAL de at
 Se ser persuasivo custar confiança, escolha a confiança. Sempre.
 
 ━━━ SEGURANÇA EM PRIMEIRO LUGAR (vale acima de tudo) ━━━
-Se a pessoa der sinais de risco — ideação suicida, vontade de se machucar, menção a tirar a própria vida, pânico intenso, risco a alguém — PARE de conduzir pra agendamento ou qualquer venda. Acolha com presença, sem julgar: "Sinto muito que você esteja passando por isso. O que você sente importa, e você não está sozinho(a)." Oriente apoio imediato: CVV 188 (24h, gratuito) ou, em risco iminente, emergência 192/SAMU. Em seguida chame \`rotear_conversa\` modo='silenciar' pra acionar o profissional. NUNCA minimize, diagnostique ou tente resolver sozinho.
+Se a pessoa der sinais de risco — ideação suicida, vontade de se machucar, menção a tirar a própria vida ("sumir de vez", "não vejo sentido em nada", "não aguento mais", "ninguém sentiria minha falta"), pânico intenso, risco a alguém — PARE de conduzir pra agendamento ou qualquer venda. Já no PRIMEIRO sinal e no MESMO TURNO, sua primeira ação é RESPONDER COM TEXTO: acolha com presença, sem julgar ("Sinto muito que você esteja passando por isso. O que você sente importa, e você não está sozinho(a)."), oriente apoio imediato — CVV 188 (24h, gratuito) ou, em risco iminente, emergência 192/SAMU — e avise que vai acionar o profissional. SÓ DEPOIS chame \`rotear_conversa\` modo='silenciar'. NUNCA reaja a um sinal de risco APENAS com \`salvar_info_lead\` nem fique sem texto: registro silencioso deixa a pessoa sem resposta num momento crítico, e marcar urgência NÃO substitui acolher e dar o CVV. Não espere a pessoa reforçar pra agir. NUNCA minimize, diagnostique ou tente resolver sozinho.
 
 ━━━ REGRA SUPREMA — FOCO NA SUA FUNÇÃO ━━━
 Toda conversa tem UM destino: levar a pessoa a agendar com o profissional. Você NUNCA, em hipótese alguma, assume o papel do profissional — não faz terapia, não orienta, não atende; você é a recepção que acolhe e faz a ponte. Faça o certo de primeira. Mantenha o foco nas suas funções: dúvidas sobre o profissional, agendar/remarcar/cancelar e conduzir o interessado até o horário. O que estiver FORA desse escopo, não tente resolver nem improvisar: diga em 1 frase que quem responde melhor é o próprio profissional (assuntos do trabalho dele) ou o Suporte da plataforma (questões técnicas/de conta), e que isso já será resolvido. Exceção única ao "sempre agendar": risco à vida (ver SEGURANÇA EM PRIMEIRO LUGAR).
@@ -765,7 +788,7 @@ Você pode chamar várias vezes na mesma resposta. Crie novas chaves quando o co
 • TOM FIRME: NUNCA use "Hmm, parece que...", "Olhando aqui...", "Acho que...". Você consulta o sistema, não chuta. Fale direto: "O horário das 14h está livre" / "Esse horário não está disponível".
 • NÃO INVENTE: datas/horários só do calendário e da tool. Valores só os listados na seção SOBRE O PROFISSIONAL.
 • NÃO DECIDA PELO PROFISSIONAL: você não é ele. Não dê parecer técnico nem se comprometa por ele em questões que dependem da avaliação dele — encaminhe. NÃO tente RESOLVER o problema/dúvida que É o trabalho dele: seu papel é mostrar que ELE resolve e fazer a ponte pro atendimento, nunca substituí-lo. (Regras específicas do setor, quando houver, vêm na seção SOBRE O PROFISSIONAL.)
-• PREÇO POR ÚLTIMO: foque no benefício antes de falar valor. Só cite valor se o lead perguntar OU no momento de fechar. Ao citar, siga a seção VALORES E NEGOCIAÇÃO: um número só (o cheio), nunca um intervalo nem o piso.
+• PREÇO POR ÚLTIMO: foque no benefício antes de falar valor. Só cite valor se o lead perguntar OU no momento de fechar. Ao citar, siga a seção VALORES: um número só (o configurado), nunca um intervalo. Você NÃO negocia nem dá desconto — quem decide valor é o profissional; você informa o que está configurado e, se pedirem condição, diz que ele(a) pode conversar sobre isso.
 • NÃO ASSUMA: se o motivo não está claro, pergunte. Não invente dor que o lead não disse.
 
 ━━━ CONSULTAR DOCUMENTOS DO PROFISSIONAL (tool consultar_documentos) ━━━
@@ -806,13 +829,13 @@ NUNCA prefixe sua resposta com fórmulas que sinalizam dúvida quando você TEM 
 ❌ "Os documentos não especificam, mas..."
 Se você está prestes a dar a resposta, DÊ A RESPOSTA. Direto. Sem desculpa nem ressalva preventiva.
 
-✅ Pergunta: "Quanto custa?" → reancore no valor e diga UM número só (o valor cheio da seção VALORES E NEGOCIAÇÃO), NUNCA um intervalo. Ex.: "A sessão é [valor cheio]. Antes do número, o que costuma fazer diferença é ver se faz sentido pra você — quer que eu te explique como funciona?"
+✅ Pergunta: "Quanto custa?" → reancore no valor e diga UM número só (o da seção VALORES), NUNCA um intervalo. Ex.: "A sessão é [valor]. Antes do número, o que costuma fazer diferença é ver se faz sentido pra você — quer que eu te explique como funciona?"
 ✅ Pergunta: "Funciona online?" → (use bio/approaches) "Sim, atende online via vídeo." (sem hedge)
 
 Use o fallback "vou confirmar com o profissional" SOMENTE quando a info GENUINAMENTE não está aqui nem nos documentos. Não como prefixo defensivo antes de dar uma resposta que você JÁ tem.
 
 ━━━ TRATAMENTO DE OBJEÇÕES (princípio antes do script — adapte às palavras da pessoa) ━━━
-• PREÇO ("quanto custa?"): antes do número, reancore no que importa — ver se faz sentido pra ela. Nunca defenda preço; reposicione pro valor do próximo passo. Se a primeira consulta tem valor promocional, lembre disso com leveza. Apresente sempre o valor cheio; NUNCA revele um intervalo nem o piso. Se o preço for mesmo o obstáculo, ceda um passo de cada vez em direção ao piso (uso interno), sem alarde — nunca abra com desconto. Ex.: "Entendo total. Antes do valor: o que costuma fazer diferença é ver se faz sentido pra você — por isso a primeira consulta é mais acessível. Quer que eu te explique como funciona?"
+• PREÇO ("quanto custa?"): antes do número, reancore no que importa — ver se faz sentido pra ela. Nunca defenda preço; reposicione pro valor do próximo passo. Se a primeira consulta tem valor promocional, lembre disso com leveza. Apresente o valor configurado (um número só); NUNCA um intervalo. Você NÃO dá desconto nem baixa o valor: se o preço for o obstáculo, diga que o profissional pode conversar sobre valores e condições diretamente — sem você decidir nem citar um valor menor. Ex.: "Entendo total. Antes do valor: o que costuma fazer diferença é ver se faz sentido pra você — por isso a primeira consulta é mais acessível. Quer que eu te explique como funciona?"
 • TEMPO ("tô sem tempo"): valide, mostre que o passo é curto e leve, ofereça flexibilidade de horário.
 Depois de rebater UMA objeção, NÃO emende um CTA na mesma mensagem — dê espaço pra pessoa responder.
 
@@ -825,8 +848,9 @@ function buildProfileLayer(professional: any, ctx: { area: string; publico: stri
   const priceFirstStr = professional.price_first_session ? `R$ ${professional.price_first_session}` : null
   const priceMinStr   = professional.price_min ? `R$ ${professional.price_min}` : null
   const priceMaxStr   = professional.price_max ? `R$ ${professional.price_max}` : null
-  const precoAncora   = priceMaxStr || priceMinStr             // valor "cheio" que se apresenta primeiro
-  const precoPiso     = (priceMinStr && priceMaxStr) ? priceMinStr : null  // piso (USO INTERNO, nunca revelar)
+  const precoAncora   = priceMaxStr || priceMinStr             // valor da sessão que o agente informa
+  // price_min NÃO é mais "piso secreto de negociação": o agente não baixa preço nem cede a um piso.
+  // Desconto/condição é decisão do PROFISSIONAL — o agente só afirma que ele(a) pode negociar.
   const approaches = Array.isArray(professional.approaches) && professional.approaches.length > 0
     ? professional.approaches.join(', ')
     : null
@@ -839,13 +863,14 @@ function buildProfileLayer(professional: any, ctx: { area: string; publico: stri
   const labelValor = isSaude
     ? `Valor da primeira ${ctx.oferta === 'psicoterapia' ? 'sessão' : 'consulta'}`
     : 'Valor inicial'
-  // Preço como MARGEM DE NEGOCIAÇÃO: apresenta o valor cheio, cede em direção ao piso só se preciso,
-  // NUNCA revela os dois números nem um intervalo "de X a Y".
+  // Preço: o agente INFORMA os valores configurados pelo profissional e NÃO negocia. Desconto/condição
+  // especial é decisão do PROFISSIONAL — o agente só afirma que ele(a) pode conversar sobre isso.
   const precoBloco = (priceFirstStr || precoAncora)
-    ? `\n\n━━━ VALORES E NEGOCIAÇÃO (regra de venda — siga à risca) ━━━`
-      + (priceFirstStr ? `\n• ${labelValor}: ${priceFirstStr} — é o primeiro passo, mais acessível.${precoAncora ? ` As sessões seguintes ficam em ${precoAncora}` : ''}, e o formato pode ser combinado com ${proFirstName} na própria conversa.` : '')
-      + (precoAncora ? `\n• Ao falar do valor das sessões, apresente SEMPRE ${precoAncora} (valor cheio) — um número só. NUNCA anuncie um intervalo "de X a Y".` : '')
-      + (precoPiso ? `\n• MARGEM (USO INTERNO — NUNCA revele este piso nem os dois números): se o lead hesitar SÓ pelo preço, você pode ceder em direção a ${precoPiso}, um passo de cada vez e sem alarde. Nunca comece pelo piso nem ofereça desconto antes de o preço aparecer como o real obstáculo.` : '')
+    ? `\n\n━━━ VALORES (informe os valores configurados — você NÃO negocia) ━━━`
+      + (priceFirstStr ? `\n• ${labelValor}: ${priceFirstStr} — é o primeiro passo, mais acessível.${precoAncora ? ` As sessões seguintes ficam em ${precoAncora}.` : ''}` : '')
+      + (precoAncora && !priceFirstStr ? `\n• Valor da sessão: ${precoAncora}.` : '')
+      + `\n• Informe APENAS esses valores configurados, um número só — NUNCA um intervalo "de X a Y", e NUNCA invente desconto, pacote, plano ou valor diferente do que está aqui.`
+      + `\n• Você NÃO dá desconto nem fecha valor menor por conta própria. Se ${ctx.publico} achar caro ou pedir desconto/condição/plano: não reduza o preço nem cite outro número — diga com naturalidade que ${proFirstName} pode conversar sobre valores e condições diretamente, e siga conduzindo ao agendamento. Quem decide preço é ${proFirstName}, não você.`
     : `\n\n━━━ VALORES ━━━\nValores não preenchidos — se perguntarem, diga que ${proFirstName} combina o valor diretamente, e siga conduzindo ao agendamento.`
   const limiteSetor = isSaude
     ? `\n\n━━━ LIMITE CLÍNICO — VOCÊ NÃO FAZ TERAPIA (regra dura) ━━━
@@ -991,6 +1016,19 @@ Não re-qualifique nem reapresente o trabalho — ele já conhece ${proFirst}. C
     ? `\n\n━━━ COMO CHAMAR O ${ctx.publico.toUpperCase()} (a pessoa que te escreve) ━━━\nEle(a) já disse que prefere ser chamado(a) de **${preferredName.trim()}**. Use esse nome e NÃO pergunte o nome de novo.`
     : `\n\n━━━ COMO CHAMAR O ${ctx.publico.toUpperCase()} (a pessoa que te escreve) ━━━\nO contato veio do WhatsApp como "${rawName || leadName}" — às vezes isso é nome de empresa/perfil, não da pessoa. Logo no início, pergunte UMA única vez como ele(a) prefere ser chamado(a) (ex.: "Como você prefere que eu te chame?"). Quando responder, registre com \`salvar_info_lead("nome_preferido", "<nome>")\` e passe a usar esse nome. Se ele(a) já disse o nome em qualquer mensagem anterior, considere resolvido: use esse nome, NUNCA pergunte de novo e NUNCA exija o nome antes de responder o que a pessoa pediu.`
 
+  // VOZ/TOM — bloco POSITIVO e saliente no FIM do prompt (onde o modelo mais pesa). Combate a apatia do
+  // V3.2 (validado em A/B 23/06: espelho emocional + responde o que foi perguntado, sem despejar jargão).
+  // Acolhedor vem ANTES de direto; reforça "VENDA A CONVERSA" e "DIRETRIZES DO PROFISSIONAL" do CORE.
+  const tomBloco = `\n\n━━━ SEU JEITO DE FALAR (define se a conversa soa viva ou robótica) ━━━
+Tem uma pessoa de verdade do outro lado — muitas vezes insegura, cansada ou sofrendo. Você é caloroso, presente e genuinamente interessado nela, não um atendente que despacha informação.
+• ESPELHE a emoção antes de informar: se está animada, vibre junto; se está pra baixo, desacelere e acolha primeiro ("imagino como deve estar sendo", "que bom que você se permitiu procurar").
+• Mostre que ESCUTOU: referencie as palavras dela, não responda no automático nem em tom de FAQ/catálogo.
+• Fale como gente: frases curtas e vivas, calor real, um emoji quando combinar. Conduza com leveza e vontade de ajudar — nunca seco, burocrático ou apático.
+• Não prove competência com jargão: nada de nomes de método, credenciais ou termos clínicos sem a pessoa pedir — fale do que ela SENTE (alívio, clareza, menos peso), não do COMO técnico.
+• Se a pessoa chega em sofrimento ("tô muito mal"), acolha o que ela sente PRIMEIRO; o nome pode esperar — nunca abra exigindo o nome de quem está sofrendo.
+• RISCO DE VIDA (não ver sentido, "sumir", se machucar, "ninguém sentiria minha falta") vence o tom: no MESMO turno, acolha e passe CVV 188 e 192/SAMU EM TEXTO, antes de qualquer ferramenta — inegociável (ver SEGURANÇA).
+Acolhedor e humano vem ANTES de direto. E você nunca demonstra confusão ou despreparo.`
+
   return `━━━ PARTES DA CONVERSA ━━━
 • VOCÊ: **Axel**, assistente virtual de ${proName}. Se perguntarem seu nome ou quem você é, é assim que se apresenta.
 • PROFISSIONAL (a quem você serve): **${proName}** — é a marca/nome OFICIAL. Refira-se sempre como "${proName}" ou "${proName.split(' ')[0]}". TERCEIRA pessoa.
@@ -999,7 +1037,7 @@ NUNCA assuma a voz do profissional. Você é o assistente externo que organiza o
 
 ATENÇÃO ESPECIAL: A bio do profissional pode mencionar nomes de pessoas (donos, fundadores, etc) que NÃO substituem "${proName}". Mesmo se o nome do owner mencionado na bio for IGUAL ao nome do ${ctx.publico} (${leadName}), são pessoas/entidades DIFERENTES. Sempre use **"${proName}"** para se referir ao profissional, NUNCA o nome mencionado dentro da bio.
 
-━━━ HOJE: ${now} ━━━${nameBloco}${agendaStatus}${escolhendoHorario}${triagemBloco}${clienteBloco}`
+━━━ HOJE: ${now} ━━━${nameBloco}${agendaStatus}${escolhendoHorario}${triagemBloco}${clienteBloco}${tomBloco}`
 }
 
 // =============================================
@@ -1326,15 +1364,17 @@ const CLAUDE_URL   = 'https://api.anthropic.com/v1/messages'
 // =============================================
 const LLM_PROVIDER = (Deno.env.get('WHATSAPP_LLM_PROVIDER') || 'anthropic').toLowerCase()
 const USE_DEEPSEEK = LLM_PROVIDER === 'deepseek' || LLM_PROVIDER === 'openrouter'
-const DEEPSEEK_MODEL = 'deepseek/deepseek-v4-pro'
+// Modelo DeepSeek configurável por secret (WHATSAPP_DEEPSEEK_MODEL) — default v3.2 (melhor
+// custo-benefício validado: ~$0,23/$0,34 por 1M). Trocar/reverter sem deploy via secret.
+const DEEPSEEK_MODEL = Deno.env.get('WHATSAPP_DEEPSEEK_MODEL') || 'deepseek/deepseek-v3.2'
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
-// deepseek-v4-pro é modelo de REASONING: por padrão "pensa" antes de responder e esses
-// tokens de raciocínio consomem o orçamento de max_tokens, truncando o texto visível
-// (bug do "...Cenci. Como" cortado no meio). Na recepção do WhatsApp queremos resposta
-// DIRETA, curta e rápida — então desligamos o reasoning e damos margem de tokens. Pra
-// testar o modo "pensante", troque para { effort: 'low' } e suba DEEPSEEK_MAX_TOKENS.
+// reasoning só existe em modelos REASONER (v4-pro, r1). Enviá-lo a um não-reasoner (v3.2/chat)
+// pode dar 400 no OpenRouter — então só incluímos o campo quando o modelo for reasoner. Para
+// reasoners desligamos o "pensar" (resposta DIRETA/curta/rápida na recepção do WhatsApp).
+const DEEPSEEK_IS_REASONER = /r1|pro|reason/i.test(DEEPSEEK_MODEL)
 const DEEPSEEK_MAX_TOKENS = 2048
 const DEEPSEEK_REASONING: any = { enabled: false }
+const DEEPSEEK_REASONING_FIELD = DEEPSEEK_IS_REASONER ? { reasoning: DEEPSEEK_REASONING } : {}
 // As 7 tools no formato OpenAI (function calling). input_schema já é JSON Schema válido.
 const openaiTools = tools.map((t: any) => ({
   type: 'function',
@@ -1453,7 +1493,7 @@ async function callClaude(
           }
         }
         console.error('[callClaude] RESPOSTA SEM TEXTO após retry forçado:', JSON.stringify({ stopReason, content }).slice(0, 800))
-        return 'Desculpa, me perdi aqui 🙂 Pode me dizer de novo como posso te ajudar?'
+        return 'Pode me contar de novo, por favor? Quero te ajudar do melhor jeito 🙂'
       }
 
       // Tem tool_use → executa ferramentas e devolve resultados
@@ -1551,7 +1591,7 @@ async function callDeepSeek(
         model: DEEPSEEK_MODEL,
         max_tokens: DEEPSEEK_MAX_TOKENS,
         temperature: 0.7,
-        reasoning: DEEPSEEK_REASONING,
+        ...DEEPSEEK_REASONING_FIELD,
         messages,
         tools: openaiTools,
       }
@@ -1574,6 +1614,8 @@ async function callDeepSeek(
       }
 
       const result = await response.json()
+      const u = result.usage || {}
+      console.log(`[DeepSeek usage] in=${u.prompt_tokens} out=${u.completion_tokens} cached=${(u.prompt_tokens_details || {}).cached_tokens ?? 0}`)
       const choice = result.choices?.[0]
       const aiMsg = choice?.message || {}
       const toolCalls = Array.isArray(aiMsg.tool_calls) ? aiMsg.tool_calls : []
@@ -1590,7 +1632,7 @@ async function callDeepSeek(
             const forced = await fetch(OPENROUTER_URL, {
               method: 'POST',
               headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ model: DEEPSEEK_MODEL, max_tokens: DEEPSEEK_MAX_TOKENS, temperature: 0.7, reasoning: DEEPSEEK_REASONING, messages }),
+              body: JSON.stringify({ model: DEEPSEEK_MODEL, max_tokens: DEEPSEEK_MAX_TOKENS, temperature: 0.7, ...DEEPSEEK_REASONING_FIELD, messages }),
             })
             if (forced.ok) {
               const fr = await forced.json()
@@ -1604,7 +1646,7 @@ async function callDeepSeek(
           }
         }
         console.error('[callDeepSeek] RESPOSTA SEM TEXTO após retry forçado:', JSON.stringify({ finish: choice?.finish_reason, aiMsg }).slice(0, 800))
-        return 'Desculpa, me perdi aqui 🙂 Pode me dizer de novo como posso te ajudar?'
+        return 'Pode me contar de novo, por favor? Quero te ajudar do melhor jeito 🙂'
       }
 
       // Tem tool calls → no formato OpenAI o assistant que pediu as tools precisa entrar
@@ -1732,11 +1774,18 @@ async function sendWhatsAppMessage(instanceName: string, remoteJid: string, text
 // =============================================
 // MAIN HANDLER
 // =============================================
-// PRÉVIA REAL (modo simulação): roda o MESMO system prompt do agente, SEM tools, SEM enviar/persistir.
-// Usado pelo Axel pai (painel) pra o profissional ver como o agente responde de verdade.
-async function simulateClaude(systemPrompt: string, history: any[], userMessage: string): Promise<string> {
+// PRÉVIA REAL (modo simulação): roda o MESMO system prompt do agente.
+// Override de modelo (body.model/provider) + captura de tool-calling (body.with_tools) para
+// COMPARAR modelos (Haiku x DeepSeek). Com with_tools, expõe as tools e RETORNA o que o modelo
+// CHAMARIA, sem executar/gravar/enviar (handleToolCall NÃO roda). Sem with_tools, só conversa.
+type SimOut = { reply: string; toolCalls: Array<{ name: string; input: any }>; usage?: any }
+const safeJson = (s: any) => { try { return JSON.parse(String(s ?? '{}')) } catch { return {} } }
+// tools Anthropic → formato OpenAI (OpenRouter/DeepSeek)
+const toolsToOpenAI = (ts: any[]) => ts.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } }))
+
+async function simulateClaude(systemPrompt: string, history: any[], userMessage: string, opts: { model?: string; withTools?: boolean } = {}): Promise<SimOut> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
-  if (!apiKey) return ''
+  if (!apiKey) return { reply: '', toolCalls: [] }
   const wrap = (c: any) => `<mensagem_do_contato>\n${String(c).replace(/<\/?mensagem_do_contato>/gi, '')}\n</mensagem_do_contato>`
   const messages: any[] = []
   let lastRole = ''
@@ -1750,22 +1799,26 @@ async function simulateClaude(systemPrompt: string, history: any[], userMessage:
   if (lastRole === 'user') messages[messages.length - 1].content += `\n${wrap(userMessage || 'Olá')}`
   else messages.push({ role: 'user', content: wrap(userMessage || 'Olá') })
   try {
+    const reqBody: any = { model: opts.model || CLAUDE_MODEL, max_tokens: 700, temperature: 0.7, system: systemPrompt, messages }
+    if (opts.withTools) reqBody.tools = tools
     const res = await fetch(CLAUDE_URL, {
       method: 'POST',
       headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 700, temperature: 0.7, system: systemPrompt, messages }),
+      body: JSON.stringify(reqBody),
     })
-    if (!res.ok) { console.error('[simulate] claude', res.status); return '' }
+    if (!res.ok) { console.error('[simulate] claude', res.status, (await res.text()).slice(0, 200)); return { reply: '', toolCalls: [] } }
     const data = await res.json()
-    const tb = (data.content || []).find((b: any) => b.type === 'text')
-    return (tb?.text || '').trim()
-  } catch (e: any) { console.error('[simulate] erro', e?.message); return '' }
+    const reply = (data.content || []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n').trim()
+    const toolCalls = (data.content || []).filter((b: any) => b.type === 'tool_use').map((b: any) => ({ name: b.name, input: b.input }))
+    return { reply, toolCalls, usage: data.usage }
+  } catch (e: any) { console.error('[simulate] erro', e?.message); return { reply: '', toolCalls: [] } }
 }
 
-// Prévia (modo simulação) via DeepSeek/OpenRouter — sem tools, sem enviar/persistir.
-async function simulateDeepSeek(systemPrompt: string, history: any[], userMessage: string): Promise<string> {
+// Prévia (modo simulação) via DeepSeek/OpenRouter. Override de modelo + tool-calling (igual ao simulateClaude).
+async function simulateDeepSeek(systemPrompt: string, history: any[], userMessage: string, opts: { model?: string; withTools?: boolean } = {}): Promise<SimOut> {
   const apiKey = Deno.env.get('OPEN_ROUTER_API_KEY')
-  if (!apiKey) return ''
+  if (!apiKey) return { reply: '', toolCalls: [] }
+  const model = opts.model || DEEPSEEK_MODEL
   const wrap = (c: any) => `<mensagem_do_contato>\n${String(c).replace(/<\/?mensagem_do_contato>/gi, '')}\n</mensagem_do_contato>`
   const messages: any[] = [{ role: 'system', content: systemPrompt }]
   let lastRole = ''
@@ -1779,15 +1832,22 @@ async function simulateDeepSeek(systemPrompt: string, history: any[], userMessag
   if (lastRole === 'user') messages[messages.length - 1].content += `\n${wrap(userMessage || 'Olá')}`
   else messages.push({ role: 'user', content: wrap(userMessage || 'Olá') })
   try {
+    const reqBody: any = { model, max_tokens: DEEPSEEK_MAX_TOKENS, temperature: 0.7, messages }
+    // reasoning:{enabled:false} só faz sentido em modelos reasoner (v4-pro, r1) — desliga o "pensar".
+    if (/r1|pro/i.test(model)) reqBody.reasoning = DEEPSEEK_REASONING
+    if (opts.withTools) reqBody.tools = toolsToOpenAI(tools)
     const res = await fetch(OPENROUTER_URL, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: DEEPSEEK_MODEL, max_tokens: DEEPSEEK_MAX_TOKENS, temperature: 0.7, reasoning: DEEPSEEK_REASONING, messages }),
+      body: JSON.stringify(reqBody),
     })
-    if (!res.ok) { console.error('[simulate] deepseek', res.status); return '' }
+    if (!res.ok) { console.error('[simulate] deepseek', res.status, (await res.text()).slice(0, 200)); return { reply: '', toolCalls: [] } }
     const data = await res.json()
-    return (data.choices?.[0]?.message?.content || '').toString().trim()
-  } catch (e: any) { console.error('[simulate] deepseek erro', e?.message); return '' }
+    const msg = data.choices?.[0]?.message || {}
+    const reply = (msg.content || '').toString().trim()
+    const toolCalls = (msg.tool_calls || []).map((tc: any) => ({ name: tc.function?.name, input: safeJson(tc.function?.arguments) }))
+    return { reply, toolCalls, usage: data.usage }
+  } catch (e: any) { console.error('[simulate] deepseek erro', e?.message); return { reply: '', toolCalls: [] } }
 }
 
 serve(async (req) => {
@@ -1800,7 +1860,8 @@ serve(async (req) => {
     console.log(`[Request] Incoming from ${lead_name} (${lead_phone}). Message: ${message}`)
     console.log(`[Data] lead_id: ${lead_id}, prof_id: ${professional_id}, instance: ${instance_name}`)
 
-    // ── MODO SIMULAÇÃO (Axel pai testando o agente real) — NÃO envia, NÃO persiste, SEM tools ──
+    // ── MODO SIMULAÇÃO — NÃO envia, NÃO persiste. Compara modelos via body.model/provider e,
+    //    com body.with_tools, captura o tool-calling SEM executar (handleToolCall NÃO roda). ──
     if (body.simulate === true) {
       const sUrl = Deno.env.get('SUPABASE_URL'); const sKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
       if (!professional_id || !sUrl || !sKey) {
@@ -1810,9 +1871,31 @@ serve(async (req) => {
       const { data: simPro } = await sim.from('professionals').select('*').eq('id', professional_id).single()
       if (!simPro) return new Response(JSON.stringify({ reply: '' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
       const histSim = Array.isArray(body.history) ? body.history : []
-      const simSystem = buildSystemPrompt(simPro, 'a pessoa', '', {}, histSim.length === 0, 'novo', '')
-      const simReply = formatarParaWhatsApp(await (USE_DEEPSEEK ? simulateDeepSeek : simulateClaude)(simSystem, histSim, (message || 'Olá').toString()))
-      return new Response(JSON.stringify({ reply: simReply }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      // system_override: injeta um prompt arbitrário SÓ no simulate (iteração A/B de prompt sem deploy a
+      // cada tentativa). NÃO afeta o fluxo real — o webhook monta o prompt por código (buildSystemPrompt).
+      // return_system: devolve o prompt que a edge geraria pra este profissional — captura o baseline pra
+      // editar localmente e medir via system_override. Ambos são ferramentas de teste, não de produção.
+      const simSystem = (typeof body.system_override === 'string' && body.system_override.trim())
+        ? body.system_override.toString()
+        : buildSystemPrompt(simPro, 'a pessoa', '', {}, histSim.length === 0, 'novo', '')
+      if (body.return_system === true) {
+        return new Response(JSON.stringify({ system: simSystem, length: simSystem.length }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      }
+      const reqModel = (body.model || '').toString().trim()
+      // provider explícito (body.provider) ou inferido do id do modelo; fallback = flag global atual.
+      const provider = (body.provider || (reqModel.startsWith('deepseek/') ? 'openrouter' : (reqModel.startsWith('claude') ? 'anthropic' : (USE_DEEPSEEK ? 'openrouter' : 'anthropic')))).toString().toLowerCase()
+      const simOpts = { model: reqModel || undefined, withTools: body.with_tools === true }
+      const useDS = provider === 'openrouter' || provider === 'deepseek'
+      const out = useDS
+        ? await simulateDeepSeek(simSystem, histSim, (message || 'Olá').toString(), simOpts)
+        : await simulateClaude(simSystem, histSim, (message || 'Olá').toString(), simOpts)
+      return new Response(JSON.stringify({
+        reply: formatarParaWhatsApp(out.reply),
+        tool_calls: out.toolCalls,
+        usage: out.usage,
+        model: reqModel || (useDS ? DEEPSEEK_MODEL : CLAUDE_MODEL),
+        provider,
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
     if (!professional_id || !lead_id) {
@@ -1851,6 +1934,23 @@ serve(async (req) => {
     const { data: leadRow } = await supabaseAdmin.from('leads').select('booking_state, collected_info').eq('id', lead_id).maybeSingle()
     const bookingState = (leadRow?.booking_state) || {}
     const preferredName = (((leadRow?.collected_info) || {}) as any).nome_preferido || ''
+
+    // ── REDE DE SEGURANÇA DE CRISE — antes de qualquer LLM/tool ──────────────────
+    // Sinal de risco de vida GARANTE acolhimento + CVV em texto e NÃO silencia o agente. O LLM às vezes
+    // chamava rotear_conversa (emudece + handoff sem CVV) e abandonava o lead em crise. Determinístico:
+    // não depende do modelo. Falso-negativo do regex cai no fluxo normal do LLM. Ver detectCrisisSignal.
+    if (detectCrisisSignal(message)) {
+      const proFirst = (professional.full_name || 'o profissional').split(' ')[0]
+      const crisisMsg = `Sinto muito que você esteja passando por isso. O que você está sentindo importa, e você não está sozinho(a). 💛\n\nSe a dor estiver muito forte agora, por favor busque apoio imediato:\n• *CVV – Centro de Valorização da Vida:* 188 (ligação 24h, gratuita e sigilosa)\n• Emergência ou risco imediato: *SAMU 192*\n\nVou sinalizar ${proFirst} com prioridade pra te dar atenção o quanto antes.`
+      try { await sendWhatsAppMessage(instance_name, remote_jid, crisisMsg) } catch (_e) {}
+      await supabaseAdmin.from('chat_messages').insert({ lead_id, role: 'assistant', content: crisisMsg, processed: true })
+      const ciCrise = (((leadRow?.collected_info) || {}) as any)
+      ciCrise.risco = 'critico'; ciCrise.risco_em = new Date().toISOString()
+      // NÃO silencia — lead em crise não pode ser emudecido; mantém o agente ativo e marca prioridade.
+      await supabaseAdmin.from('leads').update({ collected_info: ciCrise, agent_enabled: true }).eq('id', lead_id)
+      console.log(`[CRISE] risco de vida detectado no lead ${lead_id} — CVV determinístico enviado, agente mantido ativo`)
+      return new Response(JSON.stringify({ ok: true, crisis: true }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
 
     // Mostrar "digitando..." enquanto a IA pensa
     await sendWhatsAppPresence(instance_name, remote_jid, 'composing')

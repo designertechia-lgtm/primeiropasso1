@@ -100,7 +100,7 @@ const tools = [
 ]
 
 // ============================================================================
-// AGENDA — logica movida do whatsapp-scheduler (removido). Funcoes puras +
+// AGENDA — funcoes puras +
 // seletores + senders Evolution. As tools (abrir_agenda/criar/remarcar/cancelar)
 // usam isto e enviam os botoes/confirmacao direto.
 // ============================================================================
@@ -1284,13 +1284,24 @@ async function handleToolCall(
   // no CÓDIGO (determinística por hora), não pelo LLM.
   if (toolName === 'rotear_conversa') {
     await supabaseAdmin.from('leads').update({ agent_enabled: false }).eq('id', leadId)
-    const { data: proRow } = await supabaseAdmin.from('professionals').select('full_name').eq('id', professionalId).maybeSingle()
+    const { data: proRow } = await supabaseAdmin.from('professionals').select('full_name, agent_preferences').eq('id', professionalId).maybeSingle()
     const proFirst = (normalizeProName((proRow as any)?.full_name) || 'o profissional').split(' ')[0]
     const h = new Date(Date.now() - 3 * 3600 * 1000).getUTCHours() // hora em BRT (UTC-3)
     const saud = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'
     const msg = `${saud}! ${proFirst} está em atendimento agora e te responde pessoalmente assim que possível. 💛`
     await sendWhatsAppMessage(instanceName, remoteJid, msg)
     await supabaseAdmin.from('chat_messages').insert({ lead_id: leadId, role: 'assistant', content: msg, processed: true })
+    // avisa o profissional que assumiu esse contato (silenciado pelo bot)
+    {
+      const ownerNumR = (((proRow as any)?.agent_preferences || {}).owner_whatsapp || '').replace(/\D/g, '')
+      if (ownerNumR) {
+        const { data: leadR } = await supabaseAdmin.from('leads').select('name, whatsapp').eq('id', leadId).maybeSingle()
+        const nomeR = (leadR as any)?.name || 'um contato'
+        const numR = (leadR as any)?.whatsapp || ''
+        const motivoR = (args.motivo || '').toString().trim()
+        await sendWhatsAppMessage(instanceName, ownerNumR, `Oi ${proFirst}, aqui é o Axel 👋 Passei ${nomeR}${numR ? ` (${numR})` : ''} pra você — parece um contato pessoal/particular${motivoR ? ` (${motivoR})` : ''}. Saí da conversa pra não atrapalhar.`)
+      }
+    }
     console.log(`[rotear_conversa] silenciado lead ${leadId} (motivo: ${args.motivo || '-'})`)
     return { handoff: true, instrucao: 'Já avisei o contato e silenciei o agente. NÃO escreva mais nada neste turno.' }
   }

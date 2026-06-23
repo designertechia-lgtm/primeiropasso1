@@ -12,6 +12,44 @@ const SITE_GREETING = "Olá! Gostaria de agendar um horário."
 // (parseUserIntent + tipo ParsedIntent removidos em 17/06 — eram usados só pelo
 //  roteamento determinístico, descontinuado. Agendamento agora é todo no agente.)
 
+// === Guardrail de crise + alerta ao profissional (22/06) ===
+// Detecta sinais de risco (ideação suicida / autolesão / desejo de morte). PRÓ-RECALL: o custo
+// de um falso-positivo é leve (acolhimento + alerta, revisado pela humana); o de um falso-negativo
+// é vida. NÃO usa kill-switch global de figurado (suprimia ideação explícita na mesma msg) — as
+// exclusões de idioma ("me matar de rir", "morrer de rir") vão por negative-lookahead em cada âncora.
+function detectCrisisSignal(raw: string): boolean {
+  const t = (raw || '').toLowerCase()
+  return /suic[íi]d|me suicidar|(quero|queria|vou|penso em|pensei em|j[áa] pensei em|pensand[oa] em|tive vontade de|com vontade de|planejand[oa]) me (suicidar|matar(?! de (rir|trabalh|estud|tanto|fome|sono)))|(quero|queria|com vontade de|tive vontade de|penso em|pensei em) morrer(?! de (rir|amor|fome|sono|saudade|vergonha|t[ée]dio))|tirar (a |minha |a propria |a própria |minha própria )*vida|me (cort|mutil)\w*|me fer(ir|i|indo)|me machuc(ar|ando|o)|me machuqu\w*|acabar com (a )?minha vida|acabar comigo|dar (um )?fim (em mim|na minha vida|à minha vida)|n[ãa]o (quero|aguento|consigo) mais viver|cansei de viver|n[ãa]o (quero|vou) mais acordar|dormir e (nunca mais |n[ãa]o )acordar|n[ãa]o vejo (mais )?(sentido|motivo|sa[íi]da) (na vida|em viver|pra (viver|continuar|seguir))|queria (sumir (pra sempre|de vez|do mundo|dessa vida)|desaparecer|n[ãa]o existir|estar mort)|melhor (eu )?(morrer|n[ãa]o (estivesse|tivesse|tinha) (aqui|nascido))|n[ãa]o (vou|quero) mais incomodar|n[ãa]o quero mais (estar aqui|viver)|(estariam|ficariam|seria|estaria) melhor sem mim/.test(t)
+}
+
+// Avisa o profissional no número AUTORIZADO (agent_preferences.owner_whatsapp) via a instância do
+// lead. Evolution NÃO entrega pro próprio número da instância — por design o owner é OUTRO número.
+// Retorna TRUE só se a Evolution aceitou (response.ok) — self-send / número inválido / instância
+// off devolvem erro e viram FALSE (caller registra "não avisado" no painel). Timeout best-effort.
+async function alertarProfissional(instanceName: string, ownerWhatsapp: string, texto: string): Promise<boolean> {
+  const num = (ownerWhatsapp || '').replace(/\D/g, '')
+  if (!num) { console.log('[alertarProfissional] sem owner_whatsapp — alerta NÃO enviado'); return false }
+  const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
+  const evoKey = Deno.env.get('EVOLUTION_API_KEY')
+  if (!evoUrl || !evoKey || !instanceName) return false
+  const ctrl = new AbortController(); const to = setTimeout(() => ctrl.abort(), 8000)
+  try {
+    const r = await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
+      method: 'POST',
+      headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number: num, text: texto }),
+      signal: ctrl.signal,
+    })
+    if (!r.ok) { console.error(`[alertarProfissional] Evolution ${r.status} (poss. self-send / nº inválido / instância off)`); return false }
+    return true
+  } catch (e) {
+    console.error('[alertarProfissional] falha:', (e as any)?.message)
+    return false
+  } finally {
+    clearTimeout(to)
+  }
+}
+
 /**
  * Formata número de telefone do WhatsApp:
  * - Remove @s.whatsapp.net e :XX (session id)
@@ -302,7 +340,7 @@ serve(async (req) => {
     }
 
     // click_id estruturado (id do botão / rowId da lista) — usado pelo roteamento
-    // determinístico de agendamento. Tem prioridade sobre o texto no parseChoice do scheduler.
+    // determinístico de agendamento. Tem prioridade sobre o texto livre do lead.
     const clickId =
       message?.buttonsResponseMessage?.selectedButtonId ||
       message?.templateButtonReplyMessage?.selectedId ||
@@ -354,7 +392,7 @@ serve(async (req) => {
     console.log(`[DEBUG] ✅ Profissional encontrado: ${professional.id}`)
 
     // 1.5. Master switch do agente (Configurações → Agente de Atendimento).
-    //      Off = o agente não responde (nem scheduler nem LLM). Lembrete e pós-atendimento
+    //      Off = o agente não responde. Lembrete e pós-atendimento
     //      já são desligados nos crons pela mesma preferência (agent_preferences.enabled).
     if ((professional as any).agent_preferences?.enabled === false) {
       console.log('[WEBHOOK] Agente desligado (master) para este profissional — ignorando mensagem.')
@@ -510,10 +548,50 @@ serve(async (req) => {
       }
     }
 
+    // 3.15. GUARDRAIL DE CRISE (determinístico, ANTES de qualquer roteamento p/ o LLM).
+    //        Sinais de risco → acolhe + CVV/SAMU (texto FIXO), silencia o bot, registra e
+    //        AVISA o profissional no número autorizado. Vida não depende do LLM "lembrar".
+    if (detectCrisisSignal(messageText)) {
+      console.log(`[CRISE] sinal de risco detectado — lead ${leadId}`)
+      const proFirstC = ((professional as any).full_name || 'a profissional').split(' ')[0]
+      const acolhimento = `Sinto muito que você esteja passando por isso. O que você sente importa, e você não está sozinho(a). 💛\n\nQuero te passar um apoio que pode te acolher agora mesmo:\n• CVV – Centro de Valorização da Vida: ligue 188 (24h, gratuito e sigiloso) ou converse em cvv.org.br\n• Se o risco for iminente, ligue 192 (SAMU) ou procure o pronto-socorro mais próximo.\n\nJá estou avisando ${proFirstC} pra te dar atenção pessoal. Você não precisa passar por isso sozinho(a).`
+      // 1. acolhe o lead (texto fixo, não passa pelo LLM) — best-effort com timeout
+      const evoUrlC = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
+      const evoKeyC = Deno.env.get('EVOLUTION_API_KEY')
+      if (evoUrlC && evoKeyC) {
+        const ctrlA = new AbortController(); const toA = setTimeout(() => ctrlA.abort(), 8000)
+        await fetch(`${evoUrlC}/message/sendText/${instanceName}`, {
+          method: 'POST', headers: { 'apikey': evoKeyC, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ number: remoteJid, text: acolhimento }), signal: ctrlA.signal,
+        }).catch(() => {}).finally(() => clearTimeout(toA))
+      }
+      // 2. ALERTA o profissional no número autorizado (sabe se ENTREGOU)
+      const ownerWaC = ((professional as any).agent_preferences || {}).owner_whatsapp || ''
+      const alertaOk = await alertarProfissional(instanceName, ownerWaC, `Oi ${proFirstC}, aqui é o Axel 👋 Pausei o atendimento de ${pushName} (${formattedNumber}): a mensagem teve *sinais de risco/crise*. Já enviei os canais de apoio (CVV 188 / SAMU 192) e pausei o automático. Recomendo falar com a pessoa pessoalmente.\n\nMensagem do contato: "${messageText.slice(0, 200)}"`)
+      // 3. silencia o bot + registra a crise (merge seguro; guarda se o alerta entregou)
+      const { data: lcCur } = await supabaseAdmin.from('leads').select('collected_info').eq('id', leadId).maybeSingle()
+      await supabaseAdmin.from('leads').update({
+        agent_enabled: false,
+        collected_info: { ...(((lcCur as any)?.collected_info) || {}), crise: { at: new Date().toISOString(), trecho: messageText.slice(0, 200), alerta_entregue: alertaOk } },
+      }).eq('id', leadId)
+      // 4. histórico: acolhimento + nota visível no painel (avisa se o alerta NÃO chegou); zera pendentes
+      const notaCrise = alertaOk
+        ? '⚠️ Crise detectada — atendimento automático pausado e profissional avisado no WhatsApp.'
+        : '⚠️ Crise detectada — atendimento pausado. NÃO consegui avisar o profissional no WhatsApp (confira o "número autorizado" em Configurações).'
+      await supabaseAdmin.from('chat_messages').insert([
+        { lead_id: leadId, role: 'assistant', content: acolhimento, processed: true },
+        { lead_id: leadId, role: 'assistant', content: notaCrise, processed: true },
+      ])
+      await supabaseAdmin.from('chat_messages').update({ processed: true }).eq('lead_id', leadId).eq('processed', false)
+      return new Response(JSON.stringify({ success: true, action: 'crisis_guardrail' }), {
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     // 3.2. TRIAGEM (Fase 1) — lead novo SEM origem de campanha: em vez do recado fixo,
     //       o AGENTE assume e TRIA (lead real x contato pessoal). Se for contato pessoal,
     //       o agente chama rotear_conversa('silenciar') e avisa que o profissional retorna.
-    //       Vai DIRETO pro agente (sem debounce/menu/scheduler) por ser o 1º contato.
+    //       Vai DIRETO pro agente (sem debounce/menu) por ser o 1º contato.
     //       Rede de segurança: se o agente falhar, cai no recado de relacionamento (determinístico).
     if (!existingLead && !isFromCampaign) {
       console.log('[FLUXO] Lead novo orgânico → TRIAGEM pelo agente (Fase 1).')
@@ -682,10 +760,6 @@ serve(async (req) => {
       }
     }
 
-    // 3.4. (REMOVIDO) A detecção manual de cliques que escrevia booking_state foi
-    //      movida pro whatsapp-scheduler, que passou a ser a fonte de verdade do
-    //      agendamento (máquina de estados determinística). Ver bloco 3.65 abaixo.
-
     // 3.5. ORQUESTRAÇÃO DE ESTADO — agente Sonnet só é chamado quando o fluxo
     //      decide que é hora. Webhook gerencia bloqueios, buffer e expiração.
     const proName = professional.full_name || ''
@@ -733,6 +807,12 @@ serve(async (req) => {
         if (matchedOption === conversarLabel) {
           console.log(`[FLUXO] Lead pediu para falar com humano. Desabilitando agente.`)
           await supabaseAdmin.from('leads').update({ agent_enabled: false }).eq('id', leadId)
+          // avisa o profissional que o lead pediu pra falar com uma pessoa
+          {
+            const proFirstH = ((professional as any).full_name || 'a profissional').split(' ')[0]
+            const ownerWaH = ((professional as any).agent_preferences || {}).owner_whatsapp || ''
+            await alertarProfissional(instanceName, ownerWaH, `Oi ${proFirstH}, aqui é o Axel 👋 ${pushName} (${formattedNumber}) pediu pra falar com uma pessoa. Pausei o atendimento — é com você agora 🙂`)
+          }
           await sendPresence(instanceName, remoteJid)
           const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
           const evoKey = Deno.env.get('EVOLUTION_API_KEY')
@@ -814,7 +894,7 @@ serve(async (req) => {
 
     // 3.64. RESPOSTA À PESQUISA DE SATISFAÇÃO (pós-atendimento, caso H)
     //        Clique sat:<nota>:<appointment_id>. Registra a nota, marca o lead ativo
-    //        e oferece reagendar. Não cai no scheduler/agent.
+    //        e oferece reagendar. Não chama o agente.
     if (clickId && clickId.startsWith('sat:')) {
       const [, nota, apptId] = clickId.split(':')
       console.log(`[FLUXO] satisfação nota=${nota} appt=${apptId || '-'}`)
@@ -875,8 +955,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ success: true, action: 'satisfaction', nota }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    // 3.65. (REMOVIDO 17/06) O agendamento determinístico (whatsapp-scheduler) foi
-    //        descontinuado. Agora o AGENTE (LLM) conduz agendar/remarcar/cancelar pelas
+    // 3.65. O AGENTE (LLM) conduz agendar/remarcar/cancelar pelas
     //        tools abrir_agenda/criar_agendamento/remarcar_agendamento/cancelar_agendamento.
     //        Toda mensagem (inclusive cliques de botão, lidos pelo displayText) segue
     //        pro fluxo do agent abaixo (debounce + whatsapp-agent).
@@ -1028,7 +1107,7 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Webhook error:', error)
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: (error as any)?.message }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })

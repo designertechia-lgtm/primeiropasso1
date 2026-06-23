@@ -1827,10 +1827,14 @@ serve(async (req) => {
     }
 
     console.log(`[DB] Fetching history for lead ${lead_id}`)
-    const { data: history, error: histError } = await supabaseAdmin.from('chat_messages').select('role, content').eq('lead_id', lead_id).order('created_at', { ascending: true }).limit(20)
+    // CONTEXTO: as N mensagens MAIS RECENTES, em ordem cronológica. NUNCA usar ascending:true+limit
+    // aqui — isso pega as mais ANTIGAS e CONGELA a janela após N msgs (o LLM fica preso na 1ª pergunta
+    // sem resposta e repete o tema pra sempre). Mesmo bug do useAxelMemory. Ver [[feedback_ler_mecanismo_nao_culpado]].
+    const { data: history, error: histError } = await supabaseAdmin.from('chat_messages').select('role, content').eq('lead_id', lead_id).order('created_at', { ascending: false }).limit(30)
     if (histError) console.error("[Error] History fetch error:", histError)
 
-    const chatHistory = (history || []).slice(0, -1)
+    // de volta à ordem cronológica; .slice(0,-1) tira a mensagem ATUAL do lead (o webhook já a inseriu).
+    const chatHistory = (history || []).slice().reverse().slice(0, -1)
 
     // Estado do agendamento — pro prompt não contradizer o sistema de agenda
     const { data: leadRow } = await supabaseAdmin.from('leads').select('booking_state, collected_info').eq('id', lead_id).maybeSingle()

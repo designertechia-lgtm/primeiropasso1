@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { FieldHint } from "@/components/ui/FieldHint";
+import { toWhatsAppNumber } from "@/lib/utils";
 import { RoteiroAtendimentoEditor, novaEtapa, roteiroFromLanding, type RoteiroEtapa } from "@/components/admin/RoteiroAtendimentoEditor";
 
 export default function AdminConfiguracoes() {
@@ -26,11 +27,13 @@ export default function AdminConfiguracoes() {
   const buildSnapshot = (v: {
     agentEnabled: boolean; agentReminders: boolean; agentSatisfaction: boolean;
     agentTone: string; agentPhrases: string; agentRoteiro: RoteiroEtapa[];
+    ownerWhatsapp: string;
   }) =>
     JSON.stringify([
       v.agentEnabled, v.agentReminders, v.agentSatisfaction,
       v.agentTone, v.agentPhrases,
       v.agentRoteiro.map((e) => [e.titulo, e.conteudo]),
+      v.ownerWhatsapp,
     ]);
 
   // Preferências do agente (whatsapp-agent) — professionals.agent_preferences (jsonb)
@@ -40,6 +43,7 @@ export default function AdminConfiguracoes() {
   const [agentSatisfaction, setAgentSatisfaction] = useState(true);
   const [agentTone, setAgentTone] = useState("");
   const [agentPhrases, setAgentPhrases] = useState("");
+  const [ownerWhatsapp, setOwnerWhatsapp] = useState(""); // número do dono: canal Axel Web + alertas
   const [agentRoteiro, setAgentRoteiro] = useState<RoteiroEtapa[]>([]);
   const [roteiroSugerido, setRoteiroSugerido] = useState(false); // rascunho vindo da landing, ainda não salvo
 
@@ -51,6 +55,7 @@ export default function AdminConfiguracoes() {
     const agentSatisfactionV = ap.satisfaction !== false;  // default ligado
     const agentToneV = ap.tone || "";
     const agentPhrasesV = ap.preferred_phrases || "";
+    const ownerWhatsappV = ap.owner_whatsapp || "";
     const roteiro = Array.isArray(ap.roteiro) ? ap.roteiro : [];
     const carregado = roteiro
       .map((e: any) => novaEtapa((e?.titulo || "").toString(), (e?.conteudo || "").toString()))
@@ -71,6 +76,7 @@ export default function AdminConfiguracoes() {
     setAgentSatisfaction(agentSatisfactionV);
     setAgentTone(agentToneV);
     setAgentPhrases(agentPhrasesV);
+    setOwnerWhatsapp(ownerWhatsappV);
     setAgentRoteiro(agentRoteiroV);
     setRoteiroSugerido(roteiroSugeridoV);
 
@@ -80,11 +86,12 @@ export default function AdminConfiguracoes() {
       agentEnabled: agentEnabledV, agentReminders: agentRemindersV,
       agentSatisfaction: agentSatisfactionV, agentTone: agentToneV,
       agentPhrases: agentPhrasesV, agentRoteiro: agentRoteiroV,
+      ownerWhatsapp: ownerWhatsappV,
     });
   }, [professional]);
 
   const snapshot = buildSnapshot({
-    agentEnabled, agentReminders, agentSatisfaction, agentTone, agentPhrases, agentRoteiro,
+    agentEnabled, agentReminders, agentSatisfaction, agentTone, agentPhrases, agentRoteiro, ownerWhatsapp,
   });
   const isDirty = baselineRef.current !== null && snapshot !== baselineRef.current;
 
@@ -98,6 +105,7 @@ export default function AdminConfiguracoes() {
         satisfaction: agentSatisfaction,
         tone: agentTone.trim(),
         preferred_phrases: agentPhrases.trim(),
+        owner_whatsapp: toWhatsAppNumber(ownerWhatsapp),
         roteiro: agentRoteiro
           .map((e) => ({ titulo: e.titulo.trim(), conteudo: e.conteudo.trim() }))
           .filter((e) => e.titulo || e.conteudo),
@@ -165,6 +173,21 @@ export default function AdminConfiguracoes() {
               </div>
               <Switch checked={agentSatisfaction} onCheckedChange={setAgentSatisfaction} disabled={!agentEnabled} />
             </div>
+          </div>
+
+          {/* Número autorizado do dono: canal Axel Web (Pai) + alertas */}
+          <div className="space-y-2 p-3 rounded-lg border">
+            <Label className="text-sm font-medium">Seu número de WhatsApp (autorizado)</Label>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              É o <strong>único</strong> número que conversa com o Axel Web da sua conta e que recebe os alertas (lead em risco/crise, contato pessoal, ou pedido de falar com você). Use seu WhatsApp pessoal — diferente do número que atende seus clientes.
+            </p>
+            <Input
+              value={ownerWhatsapp}
+              onChange={(e) => setOwnerWhatsapp(e.target.value)}
+              placeholder="Ex.: (49) 99999-9999"
+              inputMode="tel"
+              className="text-sm"
+            />
           </div>
 
           {/* Tom de voz: presets + livre */}

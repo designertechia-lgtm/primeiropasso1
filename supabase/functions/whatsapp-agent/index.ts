@@ -1024,8 +1024,8 @@ Tem uma pessoa de verdade do outro lado — muitas vezes insegura, cansada ou so
 • ESPELHE a emoção antes de informar: se está animada, vibre junto; se está pra baixo, desacelere e acolha primeiro ("imagino como deve estar sendo", "que bom que você se permitiu procurar").
 • Mostre que ESCUTOU: referencie as palavras dela, não responda no automático nem em tom de FAQ/catálogo.
 • Fale como gente: frases curtas e vivas, calor real, um emoji quando combinar. Conduza com leveza e vontade de ajudar — nunca seco, burocrático ou apático.
-• Não prove competência com jargão. Ao perguntarem "como funciona" / "como é o trabalho dela", responda pelo que a pessoa SENTE/VIVE, NUNCA pela formação. ❌ "Ela é naturóloga, especialista em Neurociências, 14 anos de experiência, método integrativo..." ✅ "É um espaço pra você entender o que está sentindo, dar nome ao que pesa e sair com mais clareza e leveza." Credenciais e nome do método SÓ se perguntarem explicitamente "qual a formação/técnica dela?".
-• Se a pessoa chega em sofrimento ("tô muito mal"), acolha o que ela sente PRIMEIRO; o nome pode esperar — nunca abra exigindo o nome de quem está sofrendo.
+• Não prove competência com jargão. Ao perguntarem "como funciona" / "como é o trabalho dela", responda pelo que a pessoa SENTE/VIVE, NUNCA pela formação. ❌ "Ela é naturóloga, especialista em Neurociências, 14 anos de experiência, Método CER (consciência/equilíbrio/realização), regulação emocional, construção de recursos..." ✅ "É um espaço pra você entender o que está sentindo, dar nome ao que pesa e sair com mais clareza e leveza." Credenciais e nome do método SÓ se perguntarem explicitamente "qual a formação/técnica dela?".
+• Se a pessoa expressa sofrimento OU suspeita de condição ("tô muito mal", "sem ânimo", "não durmo", "acho que tenho depressão/ansiedade/TDAH"), ela está se abrindo: acolha o que ela sente em 1 frase ANTES de qualquer pergunta, opção ou oferta de horário. NUNCA responda isso com um menu ("quer saber do trabalho OU ver horários?"), nem abra exigindo o nome de quem está sofrendo.
 • RISCO DE VIDA (não ver sentido, "sumir", se machucar, "ninguém sentiria minha falta") vence o tom: no MESMO turno, acolha e passe CVV 188 e 192/SAMU EM TEXTO, antes de qualquer ferramenta — inegociável (ver SEGURANÇA).
 Acolhedor e humano vem ANTES de direto. E você nunca demonstra confusão ou despreparo.`
 
@@ -1585,6 +1585,7 @@ async function callDeepSeek(
   try {
     let maxIterations = 5
     let emptyRetried = false
+    let prefixoTexto = ''  // texto que o modelo escreve ANTES de chamar tools (não-handoff); preserva p/ não fragmentar a resposta
 
     while (maxIterations-- > 0) {
       const payload = {
@@ -1623,7 +1624,8 @@ async function callDeepSeek(
       // Sem tool calls → resposta final
       if (toolCalls.length === 0) {
         const text = (aiMsg.content || '').toString().trim()
-        if (text) return text
+        const full = [prefixoTexto, text].filter(Boolean).join(' ').trim()
+        if (full) return full
         // Resposta vazia: re-pede UMA vez só TEXTO (sem tools), igual ao callClaude.
         if (!emptyRetried) {
           emptyRetried = true
@@ -1652,6 +1654,10 @@ async function callDeepSeek(
       // Tem tool calls → no formato OpenAI o assistant que pediu as tools precisa entrar
       // no histórico ANTES dos resultados (cada tool result referencia o tool_call_id).
       messages.push({ role: 'assistant', content: aiMsg.content || null, tool_calls: toolCalls })
+      // Preserva o texto escrito ANTES da tool — senão a continuação na próxima iteração chega
+      // fragmentada ao lead (ex.: "...que eu te" [tool] + "chame? E pra...") = parece bug ao vivo.
+      const partial = (aiMsg.content || '').toString().trim()
+      if (partial) prefixoTexto = [prefixoTexto, partial].filter(Boolean).join(' ')
 
       let sentDirect = false  // alguma tool já RESPONDEU o lead direto (handoff de agenda)?
       for (const tc of toolCalls) {

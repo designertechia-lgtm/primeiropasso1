@@ -846,11 +846,13 @@ Comece reconhecendo o que o lead trouxe, com naturalidade humana.`
 // ── Camada 2: quem é o profissional (estável dentro da conversa) ──
 function buildProfileLayer(professional: any, ctx: { area: string; publico: string; oferta: string }): string {
   const priceFirstStr = professional.price_first_session ? `R$ ${professional.price_first_session}` : null
-  const priceMinStr   = professional.price_min ? `R$ ${professional.price_min}` : null
-  const priceMaxStr   = professional.price_max ? `R$ ${professional.price_max}` : null
-  const precoAncora   = priceMaxStr || priceMinStr             // valor da sessão que o agente informa
-  // price_min NÃO é mais "piso secreto de negociação": o agente não baixa preço nem cede a um piso.
-  // Desconto/condição é decisão do PROFISSIONAL — o agente só afirma que ele(a) pode negociar.
+  const pMin = professional.price_min ? Number(professional.price_min) : null
+  const pMax = professional.price_max ? Number(professional.price_max) : null
+  // Estrutura de até 3 valores: 1ª sessão (price_first = Descoberta) / SESSÃO AVULSA = o MAIOR de min/max
+  // (sessão única) / ACOMPANHAMENTO = o MENOR (quando segue o processo contínuo). Convenção: pacote < avulsa.
+  // price_min NÃO é piso de negociação — o agente não baixa preço; desconto é decisão do PROFISSIONAL.
+  const avulsaVal = (pMin && pMax) ? Math.max(pMin, pMax) : (pMax || pMin)
+  const acompVal  = (pMin && pMax && pMin !== pMax) ? Math.min(pMin, pMax) : null
   const approaches = Array.isArray(professional.approaches) && professional.approaches.length > 0
     ? professional.approaches.join(', ')
     : null
@@ -860,16 +862,14 @@ function buildProfileLayer(professional: any, ctx: { area: string; publico: stri
   // Para "outro"/serviços, fica neutro — o campo do perfil é a fonte de verdade.
   const isSaude = ctx.publico === 'paciente'
   const proFirstName = (professional.full_name || 'o profissional').split(' ')[0]
-  const labelValor = isSaude
-    ? `Valor da primeira ${ctx.oferta === 'psicoterapia' ? 'sessão' : 'consulta'}`
-    : 'Valor inicial'
   // Preço: o agente INFORMA os valores configurados pelo profissional e NÃO negocia. Desconto/condição
   // especial é decisão do PROFISSIONAL — o agente só afirma que ele(a) pode conversar sobre isso.
-  const precoBloco = (priceFirstStr || precoAncora)
-    ? `\n\n━━━ VALORES (informe os valores configurados — você NÃO negocia) ━━━`
-      + (priceFirstStr ? `\n• ${labelValor}: ${priceFirstStr} — é o primeiro passo, mais acessível.${precoAncora ? ` As sessões seguintes ficam em ${precoAncora}.` : ''}` : '')
-      + (precoAncora && !priceFirstStr ? `\n• Valor da sessão: ${precoAncora}.` : '')
-      + `\n• Informe APENAS esses valores configurados, um número só — NUNCA um intervalo "de X a Y", e NUNCA invente desconto, pacote, plano ou valor diferente do que está aqui.`
+  const precoBloco = (priceFirstStr || avulsaVal)
+    ? `\n\n━━━ VALORES (informe o valor da situação certa — você NÃO negocia) ━━━`
+      + (priceFirstStr ? `\n• 1ª sessão (Sessão Descoberta): ${priceFirstStr} — o primeiro passo, mais acessível, pra conhecer o trabalho de ${proFirstName}.` : '')
+      + (avulsaVal ? `\n• Sessão avulsa (única, sem pacote): R$ ${avulsaVal}.` : '')
+      + (acompVal ? `\n• No acompanhamento contínuo (quando ${ctx.publico} segue o processo): R$ ${acompVal} por sessão.` : '')
+      + `\n• Use o número da situação certa (1ª / avulsa / acompanhamento) — NUNCA um intervalo "de X a Y" pra a mesma situação, e NUNCA invente desconto, pacote ou valor fora destes. Se ${ctx.publico} não disse se quer sessão única ou acompanhamento, pode apresentar as duas opções com naturalidade.`
       + `\n• Você NÃO dá desconto nem fecha valor menor por conta própria. Se ${ctx.publico} achar caro ou pedir desconto/condição/plano: não reduza o preço nem cite outro número — diga com naturalidade que ${proFirstName} pode conversar sobre valores e condições diretamente, e siga conduzindo ao agendamento. Quem decide preço é ${proFirstName}, não você.`
     : `\n\n━━━ VALORES ━━━\nValores não preenchidos — se perguntarem, diga que ${proFirstName} combina o valor diretamente, e siga conduzindo ao agendamento.`
   const limiteSetor = isSaude

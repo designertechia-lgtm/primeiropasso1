@@ -253,17 +253,17 @@ export default function AdminPerfil() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="priceMin">Valor mínimo (R$) <FieldHint text="Menor valor cobrado por consulta." /></Label>
-              <Input id="priceMin" type="number" min="0" step="0.01" placeholder="Ex: 150" value={priceMin} onChange={(e) => setPriceMin(e.target.value)} />
+              <Label htmlFor="priceMin">Sessão no acompanhamento / pacote (R$) <FieldHint text="Valor por sessão para quem segue o processo contínuo (normalmente menor que a avulsa). Deixe em branco se você não oferece esse formato." /></Label>
+              <Input id="priceMin" type="number" min="0" step="0.01" placeholder="Ex: 250" value={priceMin} onChange={(e) => setPriceMin(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="priceMax">Valor máximo (R$)</Label>
+              <Label htmlFor="priceMax">Sessão avulsa (R$) <FieldHint text="Valor de uma sessão única, sem pacote." /></Label>
               <Input id="priceMax" type="number" min="0" step="0.01" placeholder="Ex: 300" value={priceMax} onChange={(e) => setPriceMax(e.target.value)} />
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="priceFirstSession">Primeira consulta — Promocional (R$) <FieldHint text="Valor especial para a primeira consulta." /></Label>
-            <Input id="priceFirstSession" type="number" min="0" step="0.01" placeholder="Ex: 100" value={priceFirstSession} onChange={(e) => setPriceFirstSession(e.target.value)} />
+            <Label htmlFor="priceFirstSession">1ª sessão — Descoberta (R$) <FieldHint text="Valor especial/promocional da primeira sessão, pra a pessoa conhecer o trabalho antes de decidir." /></Label>
+            <Input id="priceFirstSession" type="number" min="0" step="0.01" placeholder="Ex: 150" value={priceFirstSession} onChange={(e) => setPriceFirstSession(e.target.value)} />
           </div>
 
           <div className="space-y-3 pt-2 border-t border-border">

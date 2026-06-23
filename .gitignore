@@ -28,7 +28,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-.claude/
+# settings locais do Claude ficam de fora, MAS as skills do projeto são versionadas
+# (pra viajar pro claude.ai/code em auditorias remotas)
+.claude/*
+!.claude/skills/
 _docs/
 
 # Supabase CLI: cache local de versao + temp files (nao e codigo do projeto)

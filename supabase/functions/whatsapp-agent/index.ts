@@ -760,7 +760,8 @@ Seu objetivo é conduzir a um próximo passo humano (agendar), não bater papo s
 
 ━━━ AGENDAMENTO É SEU — mas SEMPRE pelas FERRAMENTAS (nunca confirme de boca) ━━━
 Você conduz o agendamento, porém SÓ através das ferramentas — nunca invente dias/horários nem diga "agendado" de cabeça:
-• Lead quer ver/marcar ("quero agendar", "tem horário?", "pode ser amanhã?") → \`abrir_agenda\` (sem data = dias; com data = horários daquele dia). Se o lead JÁ disse um dia/data específico — "quinta 25/06", "pode dia 26?", "quero terça", "amanhã de manhã" — chame \`abrir_agenda(data="<esse dia em YYYY-MM-DD>")\` direto, mostrando os horários DAQUELE dia (NÃO abra a lista genérica de dias). Use \`abrir_agenda\` SEM data só quando o lead não indicou um dia. A ferramenta envia os botões; você não escreve nada depois.
+• Lead quer VER opções ou marcar SEM dizer a hora ("quero agendar", "tem horário?", "pode amanhã?") → \`abrir_agenda\` (SEM data = dias; COM data = horários daquele dia). Se indicou só o dia ("quinta 25/06", "quero terça") → \`abrir_agenda(data="<YYYY-MM-DD>")\`. A ferramenta te DEVOLVE a lista de dias/horários livres REAIS — você os APRESENTA em TEXTO bonito (siga a formatação que vem na resposta da ferramenta; não há mais botão).
+• Lead JÁ disse DIA + HORA ("hoje 15:50", "quinta às 14h", "amanhã 9h") → NÃO abra a agenda: chame \`criar_agendamento(data, hora)\` DIRETO com o horário que ele PEDIU. A ferramenta aceita horário quebrado (ex.: 15:50) se estiver livre e marca na hora — não empurre o lead pra grade por uma diferença de minutos. Só ofereça alternativa se a ferramenta recusar (aí ela te devolve os horários livres do dia).
 • Você PODE apresentar horários em TEXTO — mas SOMENTE os que a ferramenta \`abrir_agenda\` retornou (ela calcula os livres REAIS do dia). NUNCA invente nem liste horários de cabeça: horário inventado pode estar OCUPADO, e aí você oferece e depois nega na hora de marcar (péssimo, já aconteceu). Se ainda não tem a lista da ferramenta para o dia pedido, chame \`abrir_agenda(data="<dia>")\` ANTES de falar qualquer horário. Quando o lead escolher um da lista, chame \`criar_agendamento\`.
 • Lead escolheu dia E horário → \`criar_agendamento(data, hora)\`. Ela valida, marca e JÁ AVISA o lead — você NÃO escreve a confirmação.
 • Mudar um horário já marcado → \`remarcar_agendamento\`. Desmarcar → \`cancelar_agendamento\`.
@@ -1183,7 +1184,7 @@ async function handleToolCall(
       return {
         dia: labelFromIso(dataArg),
         horarios_livres: horarios,
-        instrucao: `Horários livres REAIS de ${labelFromIso(dataArg)}: ${horarios.join(', ')}. Apresente ao lead em TEXTO, natural e caloroso (ex.: "Para ${labelFromIso(dataArg)} tenho às ${horarios.slice(0, 3).join(', ')}… algum desses serve?"). Use SOMENTE estes horários — NUNCA invente outro. Quando o lead escolher, chame criar_agendamento(data="${dataArg}", hora="HH:MM").`,
+        instrucao: `Horários livres REAIS de ${labelFromIso(dataArg)}: ${horarios.join(', ')}. Apresente em TEXTO BONITO e organizado — um cabeçalho "📅 *${labelFromIso(dataArg)}*" e CADA horário numa linha própria, em *negrito* com 🕐 (um por linha, NÃO tudo na mesma frase). Feche perguntando qual prefere. Use SOMENTE estes horários — NUNCA invente outro. Quando o lead escolher, chame criar_agendamento(data="${dataArg}", hora="HH:MM").`,
       }
     }
     const hoje = isoFromBRT(brtNow()); const fim = isoFromBRT(addDays(brtNow(), 7))
@@ -1191,10 +1192,10 @@ async function handleToolCall(
     if (dias.length === 0) return { vazio: true, instrucao: 'Sem horários livres nos próximos dias. Avise o lead com gentileza que o profissional retorna com novas datas.' }
     // Devolve os dias livres REAIS pro LLM apresentar em TEXTO (botão via Evolution não chega
     // selecionável). O LLM usa SOMENTE estes; nunca inventa dia.
-    const diasInfo = dias.slice(0, 6).map((d: any) => `${d.dia_semana} ${d.data}`)
+    const diasInfo = dias.slice(0, 6).map((d: any) => `${d.dia_semana} ${labelFromIso(d.data)} [${d.data}]`)
     return {
       dias_livres: diasInfo,
-      instrucao: `Dias com horário livre (use SOMENTE estes — NUNCA invente outro dia): ${diasInfo.join('; ')}. Apresente ao lead em TEXTO, natural e amigável (ex.: "Essa semana tenho quarta e quinta… qual fica melhor pra você?"). Quando o lead escolher um dia, chame abrir_agenda(data="YYYY-MM-DD") com a data correspondente pra ver os horários daquele dia.`,
+      instrucao: `Dias com horário livre (use SOMENTE estes — NUNCA invente; o [YYYY-MM-DD] é só pra você, NÃO mostre ao lead): ${diasInfo.join(' · ')}. Apresente em TEXTO BONITO — CADA dia numa linha, em *negrito* com 📅 e no formato amigável (ex.: "📅 *Quarta (hoje)*", "📅 *Sexta, 26/06*"). Feche perguntando qual prefere. Quando o lead escolher, chame abrir_agenda(data="<o YYYY-MM-DD daquele dia>") pra ver os horários.`,
     }
   }
 
@@ -1213,7 +1214,11 @@ async function handleToolCall(
     const svc = services[0] || null
     const dur = svc?.duration_minutes || DEFAULT_DURATION
     const free = await isSlotFree(supabaseAdmin, professionalId, data, hora, dur)
-    if (!free) return { ok: false, instrucao: `O horário ${hora} não está livre nesse dia (já ocupado ou bloqueado pelo profissional). EXPLIQUE isso ao lead em 1 frase, em TEXTO, e pergunte se ele quer ver os horários livres — só chame abrir_agenda se ele disser que sim. NÃO re-envie a lista de botões por conta própria.` }
+    if (!free) {
+      const diasR = await computeFreeSlots(supabaseAdmin, professionalId, data, data, dur)
+      const livresR = (diasR.find((d: any) => d.data === data)?.horarios_livres) || []
+      return { ok: false, horarios_livres: livresR, instrucao: `O horário ${hora} não está livre em ${labelFromIso(data)} (ocupado/bloqueado). Em 1 frase, diga isso e já ofereça o horário livre MAIS PRÓXIMO desta lista REAL (use SÓ estes, NUNCA invente): ${livresR.join(', ') || '(nenhum nesse dia)'}. Diferença de minutos (ex.: pediu ${hora}, livre logo ao lado) — ofereça o vizinho com naturalidade, sem rodeio nem listar outros dias. Se a lista estiver vazia, aí sim ofereça ver outro dia.` }
+    }
     const horaFim = fromMinutes(toMinutes(hora) + dur)
     const r = await createBooking(supabaseAdmin, professionalId, data, hora, horaFim, '', leadId, svc?.id || null)
     if (!r.ok) return { ok: false, instrucao: r.mensagem || 'Não consegui agendar agora; peça desculpa e ofereça outro horário.' }

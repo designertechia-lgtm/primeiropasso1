@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
 import { formatPhone, toWhatsAppNumber } from "@/lib/utils";
+import ApproachesEditor from "@/components/admin/ApproachesEditor";
 
 export default function AdminPerfil() {
   const { user, profile } = useAuth();
@@ -36,6 +37,7 @@ export default function AdminPerfil() {
   const [promoPackages, setPromoPackages] = useState<Array<{ id: string; descricao: string; link: string }>>([]);
   const [category, setCategory]             = useState("psicologo");
   const [categoryCustom, setCategoryCustom] = useState("");
+  const [approaches, setApproaches]         = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   // Detecção de alterações não salvas POR CONTEÚDO: compara o formulário atual
@@ -48,13 +50,13 @@ export default function AdminPerfil() {
     address: string; attendanceMode: string; photoUrl: string; logoUrl: string; priceMin: string;
     priceMax: string; priceFirstSession: string;
     promoPackages: Array<{ descricao: string; link: string }>;
-    category: string; categoryCustom: string;
+    category: string; categoryCustom: string; approaches: string[];
   }) =>
     JSON.stringify([
       v.fullName, v.slug, v.crp, v.phone, v.email, v.address, v.attendanceMode, v.photoUrl, v.logoUrl,
       v.priceMin, v.priceMax, v.priceFirstSession,
       v.promoPackages.map((p) => [p.descricao, p.link]),
-      v.category, v.categoryCustom,
+      v.category, v.categoryCustom, v.approaches,
     ]);
 
   useEffect(() => {
@@ -100,6 +102,7 @@ export default function AdminPerfil() {
           link: typeof p?.link === "string" ? p.link : "",
         }))
       : [];
+    const approachesV = ((professional as any).approaches || []) as string[];
 
     setFullName(fullNameV);
     setCategory(categoryV);
@@ -116,19 +119,20 @@ export default function AdminPerfil() {
     setPriceMax(priceMaxV);
     setPriceFirstSession(priceFirstV);
     setPromoPackages(promoV);
+    setApproaches(approachesV);
 
     // Retrato dos dados carregados (mesmos valores que acabaram de ir pros campos).
     baselineRef.current = buildSnapshot({
       fullName: fullNameV, slug: slugV, crp: crpV, phone: phoneV, email: emailV,
       address: addressV, attendanceMode: attendanceModeV, photoUrl: photoUrlV, logoUrl: logoUrlV, priceMin: priceMinV,
       priceMax: priceMaxV, priceFirstSession: priceFirstV, promoPackages: promoV,
-      category: categoryV, categoryCustom: categoryCustomV,
+      category: categoryV, categoryCustom: categoryCustomV, approaches: approachesV,
     });
   }, [professional, profile]);
 
   const snapshot = buildSnapshot({
     fullName, slug, crp, phone, email, address, attendanceMode, photoUrl, logoUrl,
-    priceMin, priceMax, priceFirstSession, promoPackages, category, categoryCustom,
+    priceMin, priceMax, priceFirstSession, promoPackages, category, categoryCustom, approaches,
   });
   const isDirty = baselineRef.current !== null && snapshot !== baselineRef.current;
 
@@ -164,6 +168,7 @@ export default function AdminPerfil() {
           .filter((p) => p.descricao.length > 0),
         category,
         category_custom: category === "outro" ? (categoryCustom.trim() || null) : null,
+        approaches,
       } as any).eq("id", professional.id),
     ]);
 
@@ -370,6 +375,11 @@ export default function AdminPerfil() {
               />
             </div>
           )}
+
+          <div className="space-y-2 pt-2 border-t border-border">
+            <Label>Abordagens profissionais <FieldHint text="Suas linhas de trabalho, técnicas ou especialidades (ex: TCC, Psicanálise). Ficam disponíveis na sua página pública e a IA as usa para gerar textos e artigos personalizados. O que você cadastrar aqui aparece também no editor da Landing (aba Sobre) — e vice-versa." /></Label>
+            <ApproachesEditor value={approaches} onChange={setApproaches} />
+          </div>
         </CardContent>
       </Card>
 

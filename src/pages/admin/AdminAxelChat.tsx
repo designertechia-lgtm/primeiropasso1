@@ -329,7 +329,7 @@ function LeadChat({ leadId, onDeleted }: { leadId: string; onDeleted?: () => voi
       if (lead?.whatsapp && !evoStatusError && evoStatus?.status === "open") {
         try { await sendWhatsApp.mutateAsync({ to: lead.whatsapp, message: sentContent }); }
         catch (waError) { console.error("[WhatsApp send]", waError); const msg = waError instanceof Error ? waError.message : "Erro desconhecido"; toast.error(`Mensagem salva, mas WhatsApp falhou: ${msg}`); }
-      } else if (lead?.whatsapp && !evoStatusError) { toast.error("WhatsApp não conectado. Conecte em CRM Leads → WhatsApp"); }
+      } else if (lead?.whatsapp && !evoStatusError) { toast.error("WhatsApp não conectado. Conecte em Clientes → WhatsApp"); }
       await supabase.from("leads").update({ agent_enabled: false }).eq("id", leadId);
     } catch (error) { console.error(error); toast.error("Erro ao enviar mensagem"); }
     finally { setSending(false); }

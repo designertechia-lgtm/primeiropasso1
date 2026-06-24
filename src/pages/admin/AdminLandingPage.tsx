@@ -28,6 +28,7 @@ import Section from "@/components/landing/Section";
 import { CONTENT_SECTION_KEYS, zebraTone } from "@/lib/landing/sections";
 import { buildLandingVars, getFontScale, FONTS, FONT_SIZES, GOOGLE_FONTS_URL } from "@/lib/landing/buildLandingVars";
 import GenerateAboutVideoDialog from "@/components/admin/landing/GenerateAboutVideoDialog";
+import ApproachesEditor from "@/components/admin/ApproachesEditor";
 import ProductsEditorTab from "@/components/admin/landing/ProductsEditorTab";
 
 // ── Vídeo: detecção de arquivo direto vs embed (YouTube/Vimeo) ────────────
@@ -289,7 +290,6 @@ export default function AdminLandingPage() {
   const [aboutImageUrl, setAboutImageUrl] = useState("");
   const [aboutVideoUrl, setAboutVideoUrl] = useState("");
   const [approaches, setApproaches] = useState<string[]>([]);
-  const [newApproach, setNewApproach] = useState("");
 
   // dores
   const [painTitle, setPainTitle] = useState("");
@@ -429,7 +429,7 @@ export default function AdminLandingPage() {
     }
     // validação: abordagens obrigatórias
     if (!approaches || approaches.length === 0) {
-      toast.error("Abordagens terapêuticas não cadastradas", {
+      toast.error("Abordagens profissionais não cadastradas", {
         description: "Adicione pelo menos uma abordagem para a IA gerar textos personalizados.",
         action: { label: "Ir para Sobre", onClick: () => setActiveSection("sobre") },
         duration: 6000,
@@ -761,26 +761,6 @@ export default function AdminLandingPage() {
     setSectionHidden((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
   };
 
-  const addApproach = () => {
-    const parts = newApproach.split(",").map((s) => s.trim()).filter(Boolean);
-    if (parts.length === 0) return;
-    const toAdd = parts.filter((p) => !approaches.includes(p));
-    if (toAdd.length > 0) setApproaches([...approaches, ...toAdd]);
-    setNewApproach("");
-  };
-
-  const handleApproachChange = (val: string) => {
-    // se termina com vírgula, confirma automaticamente
-    if (val.endsWith(",")) {
-      const parts = val.split(",").map((s) => s.trim()).filter(Boolean);
-      const toAdd = parts.filter((p) => !approaches.includes(p));
-      if (toAdd.length > 0) setApproaches([...approaches, ...toAdd]);
-      setNewApproach("");
-    } else {
-      setNewApproach(val);
-    }
-  };
-
   const PHOTO_STYLES = [
 
     { value: "portrait",   label: "Retrato",    desc: "Flexível",   shape: "rounded-[2rem]", aspect: "aspect-auto",   previewAspect: "aspect-[3/4]" },
@@ -970,7 +950,7 @@ export default function AdminLandingPage() {
             <div className="space-y-1">
               <p className="text-sm font-semibold text-amber-800">Melhore os textos gerados com IA</p>
               <p className="text-xs text-amber-700 leading-relaxed">
-                Para gerar textos personalizados, preencha suas <strong>abordagens terapêuticas</strong> na aba <strong>Sobre</strong>. Quanto mais detalhado, melhor o resultado.
+                Para gerar textos personalizados, preencha suas <strong>abordagens profissionais</strong> (na aba <strong>Sobre</strong> ou no seu <strong>Perfil</strong>). Quanto mais detalhado, melhor o resultado.
               </p>
               <button
                 type="button"
@@ -1463,38 +1443,8 @@ export default function AdminLandingPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>Abordagens terapêuticas</Label>
-                <div className="flex flex-wrap gap-2 min-h-[2.5rem]">
-                  {approaches.map((a, i) => (
-                    <span
-                      key={a}
-                      style={{ animationDelay: `${i * 40}ms` }}
-                      className="animate-in fade-in zoom-in-75 duration-200 inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-gradient-to-r from-primary/15 to-primary/5 px-3 py-1 text-xs font-medium text-primary shadow-sm hover:shadow-md hover:border-primary/50 transition-all"
-                    >
-                      <span className="h-1.5 w-1.5 rounded-full bg-primary/60" />
-                      {a}
-                      <button
-                        type="button"
-                        onClick={() => setApproaches(approaches.filter((x) => x !== a))}
-                        className="ml-0.5 rounded-full p-0.5 hover:bg-destructive/20 hover:text-destructive transition-colors"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Ex: TCC, Psicanálise..."
-                    value={newApproach}
-                    onChange={(e) => handleApproachChange(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addApproach())}
-                  />
-                  <Button type="button" variant="outline" onClick={addApproach}>Adicionar</Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Digite uma abordagem e pressione <kbd className="rounded border px-1 py-0.5 text-[10px] font-mono bg-muted">Enter</kbd> ou use <kbd className="rounded border px-1 py-0.5 text-[10px] font-mono bg-muted">,</kbd> para separar várias de uma vez.
-                </p>
+                <Label>Abordagens profissionais</Label>
+                <ApproachesEditor value={approaches} onChange={setApproaches} />
               </div>
 
               <Button onClick={saveSobre} disabled={saving} className="w-full">

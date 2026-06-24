@@ -1960,7 +1960,7 @@ async function requestTextOnly(messages: any[], systemPrompt: string, apiKey: st
     const resp = await fetch(CLAUDE_URL, {
       method: "POST",
       headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 1024, temperature: 0.7, system: systemPrompt, messages }),
+      body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 2048, temperature: 0.7, system: systemPrompt, messages }),
       signal: ctrl.signal,
     }).finally(() => clearTimeout(timer))
     if (!resp.ok) return ""
@@ -2028,7 +2028,10 @@ async function callClaude(opts: {
 
     const payload = {
       model: CLAUDE_MODEL,
-      max_tokens: 1024,
+      // 4096 (era 1024): tool_use de roteiro/conteúdo grande estourava 1024 → stop_reason=max_tokens
+      // → caía no ramo de texto e NÃO gravava (a tool nem executava). Causou a falha de gravar o
+      // roteiro da Daiane (24/06). Ver auditoria axel_conversations.
+      max_tokens: 4096,
       temperature: 0.7,
       system: systemPrompt,
       messages,

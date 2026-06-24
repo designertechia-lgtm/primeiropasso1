@@ -27,6 +27,7 @@ export default function AdminPerfil() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
+  const [attendanceMode, setAttendanceMode] = useState("online");
   const [photoUrl, setPhotoUrl] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [priceMin, setPriceMin] = useState("");
@@ -44,13 +45,13 @@ export default function AdminPerfil() {
   const baselineRef = useRef<string | null>(null);
   const buildSnapshot = (v: {
     fullName: string; slug: string; crp: string; phone: string; email: string;
-    address: string; photoUrl: string; logoUrl: string; priceMin: string;
+    address: string; attendanceMode: string; photoUrl: string; logoUrl: string; priceMin: string;
     priceMax: string; priceFirstSession: string;
     promoPackages: Array<{ descricao: string; link: string }>;
     category: string; categoryCustom: string;
   }) =>
     JSON.stringify([
-      v.fullName, v.slug, v.crp, v.phone, v.email, v.address, v.photoUrl, v.logoUrl,
+      v.fullName, v.slug, v.crp, v.phone, v.email, v.address, v.attendanceMode, v.photoUrl, v.logoUrl,
       v.priceMin, v.priceMax, v.priceFirstSession,
       v.promoPackages.map((p) => [p.descricao, p.link]),
       v.category, v.categoryCustom,
@@ -85,6 +86,7 @@ export default function AdminPerfil() {
     const phoneV = professional.phone || (professional as any).whatsapp || "";
     const emailV = professional.email || profile?.email || "";
     const addressV = professional.address || "";
+    const attendanceModeV = (professional as any).attendance_mode || "online";
     const photoUrlV = professional.photo_url || "";
     const logoUrlV = professional.logo_url || "";
     const priceMinV = professional.price_min?.toString() || "";
@@ -107,6 +109,7 @@ export default function AdminPerfil() {
     setPhone(phoneV);
     setEmail(emailV);
     setAddress(addressV);
+    setAttendanceMode(attendanceModeV);
     setPhotoUrl(photoUrlV);
     setLogoUrl(logoUrlV);
     setPriceMin(priceMinV);
@@ -117,14 +120,14 @@ export default function AdminPerfil() {
     // Retrato dos dados carregados (mesmos valores que acabaram de ir pros campos).
     baselineRef.current = buildSnapshot({
       fullName: fullNameV, slug: slugV, crp: crpV, phone: phoneV, email: emailV,
-      address: addressV, photoUrl: photoUrlV, logoUrl: logoUrlV, priceMin: priceMinV,
+      address: addressV, attendanceMode: attendanceModeV, photoUrl: photoUrlV, logoUrl: logoUrlV, priceMin: priceMinV,
       priceMax: priceMaxV, priceFirstSession: priceFirstV, promoPackages: promoV,
       category: categoryV, categoryCustom: categoryCustomV,
     });
   }, [professional, profile]);
 
   const snapshot = buildSnapshot({
-    fullName, slug, crp, phone, email, address, photoUrl, logoUrl,
+    fullName, slug, crp, phone, email, address, attendanceMode, photoUrl, logoUrl,
     priceMin, priceMax, priceFirstSession, promoPackages, category, categoryCustom,
   });
   const isDirty = baselineRef.current !== null && snapshot !== baselineRef.current;
@@ -150,6 +153,7 @@ export default function AdminPerfil() {
         whatsapp: phone ? toWhatsAppNumber(phone) : null,
         email: email || null,
         address: address || null,
+        attendance_mode: attendanceMode || "online",
         photo_url: photoUrl || null,
         logo_url: logoUrl || null,
         price_min: priceMin ? parseFloat(priceMin) : null,
@@ -242,9 +246,25 @@ export default function AdminPerfil() {
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="address">Endereço do consultório</Label>
-            <Input id="address" placeholder="Ex: Rua das Flores, 123 — São Paulo, SP" value={address} onChange={(e) => setAddress(e.target.value)} />
+            <Label htmlFor="attendanceMode">Modalidade de atendimento <FieldHint text="Define o que o Axel oferece ao agendar. Em 'Online' ele nunca oferece presencial nem pede endereço; em 'Presencial' ou 'Ambos' ele informa o endereço cadastrado." /></Label>
+            <Select value={attendanceMode} onValueChange={setAttendanceMode}>
+              <SelectTrigger id="attendanceMode">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="online">Online (por vídeo)</SelectItem>
+                <SelectItem value="presencial">Presencial</SelectItem>
+                <SelectItem value="ambos">Online e presencial</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
+          {attendanceMode !== "online" && (
+            <div className="space-y-2">
+              <Label htmlFor="address">Endereço do consultório <span className="font-normal text-muted-foreground">(opcional)</span></Label>
+              <Input id="address" placeholder="Ex: Rua das Flores, 123 — São Paulo, SP" value={address} onChange={(e) => setAddress(e.target.value)} />
+              <p className="text-xs text-muted-foreground">Usado pelo Axel quando o atendimento é presencial. Se ficar vazio, ele confirma o local com você antes de marcar.</p>
+            </div>
+          )}
         </CardContent>
       </Card>
 

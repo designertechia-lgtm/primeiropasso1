@@ -478,6 +478,7 @@ export type Database = {
         Row: {
           about_image_url: string | null
           address: string | null
+          attendance_mode: string | null
           approaches: string[] | null
           background_color: string | null
           bio: string | null
@@ -535,6 +536,7 @@ export type Database = {
         Insert: {
           about_image_url?: string | null
           address?: string | null
+          attendance_mode?: string | null
           approaches?: string[] | null
           background_color?: string | null
           bio?: string | null
@@ -592,6 +594,7 @@ export type Database = {
         Update: {
           about_image_url?: string | null
           address?: string | null
+          attendance_mode?: string | null
           approaches?: string[] | null
           background_color?: string | null
           bio?: string | null

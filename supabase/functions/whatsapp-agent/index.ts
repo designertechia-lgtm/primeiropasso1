@@ -830,7 +830,7 @@ NUNCA prefixe sua resposta com fórmulas que sinalizam dúvida quando você TEM 
 Se você está prestes a dar a resposta, DÊ A RESPOSTA. Direto. Sem desculpa nem ressalva preventiva.
 
 ✅ Pergunta: "Quanto custa?" → reancore no valor e diga UM número só (o da seção VALORES), NUNCA um intervalo. Ex.: "A sessão é [valor]. Antes do número, o que costuma fazer diferença é ver se faz sentido pra você — quer que eu te explique como funciona?"
-✅ Pergunta: "Funciona online?" → (use bio/approaches) "Sim, atende online via vídeo." (sem hedge)
+✅ Pergunta sobre modalidade/local ("funciona online?", "é presencial?", "qual o endereço?") → responda conforme a seção MODALIDADE DE ATENDIMENTO (é a fonte de verdade), direto e sem hedge. NUNCA ofereça uma modalidade que não está nessa seção, nem invente endereço.
 
 Use o fallback "vou confirmar com o profissional" SOMENTE quando a info GENUINAMENTE não está aqui nem nos documentos. Não como prefixo defensivo antes de dar uma resposta que você JÁ tem.
 
@@ -857,6 +857,30 @@ function buildProfileLayer(professional: any, ctx: { area: string; publico: stri
     ? professional.approaches.join(', ')
     : null
   const bio        = professional.bio ? professional.bio.slice(0, 400) : null
+
+  // Modalidade de atendimento — FATO DURO (online | presencial | ambos). Default 'online'
+  // quando o campo ainda não existe/estiver nulo, pra não quebrar antes/depois da migração.
+  // Resolve a alucinação "online ou presencial?" e o "não encontrei endereço" quando o endereço
+  // ESTÁ cadastrado. O endereço vem de professionals.address (já existente).
+  const proFirstMod = (professional.full_name || 'o profissional').split(' ')[0]
+  const attendanceMode = (professional.attendance_mode || 'online').toString().trim().toLowerCase()
+  const endereco = (professional.address || '').toString().trim()
+  const enderecoLinha = endereco
+    ? `Endereço do atendimento presencial: ${endereco}.`
+    : `O endereço presencial ainda não está cadastrado — se perguntarem o local exato, diga que vai confirmar com ${proFirstMod} e segue com o agendamento. NUNCA invente um endereço.`
+  const modalidadeBloco =
+    attendanceMode === 'presencial'
+      ? `\n\n━━━ MODALIDADE DE ATENDIMENTO (regra dura — fonte de verdade) ━━━
+• ${proFirstMod} atende SOMENTE de forma PRESENCIAL. NUNCA ofereça nem confirme atendimento online/por vídeo.
+• ${enderecoLinha}`
+      : attendanceMode === 'ambos'
+      ? `\n\n━━━ MODALIDADE DE ATENDIMENTO (regra dura — fonte de verdade) ━━━
+• ${proFirstMod} atende tanto ONLINE (sessão por vídeo) quanto PRESENCIAL.
+• Se o lead não disse a preferência, pergunte qual ele prefere (online ou presencial) ANTES de marcar.
+• ${enderecoLinha}`
+      : `\n\n━━━ MODALIDADE DE ATENDIMENTO (regra dura — fonte de verdade) ━━━
+• ${proFirstMod} atende SOMENTE de forma ONLINE (sessão por vídeo). NUNCA ofereça nem confirme atendimento presencial.
+• Se o lead perguntar endereço, local ou "onde fica", responda com naturalidade que o atendimento é 100% online por vídeo — NUNCA diga "não encontrei endereço" nem invente um local.`
 
   // Diretriz de setor: regra clínica só faz sentido pra saúde (publico = paciente).
   // Para "outro"/serviços, fica neutro — o campo do perfil é a fonte de verdade.
@@ -948,7 +972,7 @@ COMO USAR (regras duras — valem ACIMA do roteiro):
   return `━━━ SOBRE O PROFISSIONAL ━━━
 • Área: ${ctx.area}
 ${approaches ? `• Abordagens: ${approaches}` : ''}
-${bio ? `• Bio: ${bio}` : ''}${landingBloco}${precoBloco}${limiteSetor}${estilo}${roteiroBloco}${pacotesStr}`
+${bio ? `• Bio: ${bio}` : ''}${modalidadeBloco}${landingBloco}${precoBloco}${limiteSetor}${estilo}${roteiroBloco}${pacotesStr}`
 }
 
 // ── Camada 3: contexto do turno atual (lead, data, estado da agenda) ──

@@ -45,7 +45,7 @@ export default function PlatformHero() {
             você atende.
           </h1>
           <p className="mt-6 max-w-[540px] text-[clamp(17px,1.5vw,20px)] leading-[1.6] text-pp-bg/75">
-            Primeiro Passo dá ao seu consultório uma landing personalizada, um
+            Axel dá ao seu consultório uma landing personalizada, um
             agente de WhatsApp que marca consultas sozinho e uma central de
             conteúdo que mantém você presente nas redes — tudo em conformidade
             com o CFP.

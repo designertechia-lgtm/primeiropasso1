@@ -1,6 +1,14 @@
 import { Sparkles, Wand2, Send } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
-const STEPS = [
+type Step = {
+  n: string;
+  icon: LucideIcon;
+  title: string;
+  body: string;
+};
+
+const STEPS: Step[] = [
   {
     n: "01",
     icon: Sparkles,
@@ -17,43 +25,43 @@ const STEPS = [
     n: "03",
     icon: Send,
     title: "Você aprova no WhatsApp",
-    body: "Recebe um preview. Aprova → publica em YouTube/TikTok/Instagram. Reprova → ajusta. Você no controle.",
+    body: "Recebe um preview. Aprova → publica em YouTube, TikTok e Instagram. Reprova → ajusta. Você no controle.",
   },
 ];
 
 export default function PlatformHowItWorks() {
   return (
-    <section id="como-funciona" className="py-20 md:py-28 bg-background">
-      <div className="container mx-auto max-w-6xl px-4">
-        <div className="max-w-2xl mx-auto text-center mb-14 md:mb-16">
-          <p className="text-sm uppercase tracking-[0.18em] text-accent font-semibold mb-3">
+    <section id="como-funciona" className="bg-pp-surface py-24 px-7">
+      <div className="mx-auto max-w-[1100px]">
+        <div className="mx-auto mb-[60px] max-w-[680px] text-center">
+          <p className="mb-[14px] text-[13px] font-semibold uppercase tracking-[0.18em] text-pp-accent">
             Como funciona
           </p>
-          <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl font-semibold text-foreground leading-tight tracking-tight">
+          <h2 className="font-display text-[clamp(30px,4vw,48px)] font-bold leading-[1.08] tracking-[-0.01em] text-pp-ink">
             Três passos.{" "}
-            <span className="text-primary">Do tema ao Reels publicado.</span>
+            <span className="text-pp-accent">Do tema ao Reels publicado.</span>
           </h2>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-6 md:gap-8 relative">
-          <div
-            className="hidden md:block absolute top-12 left-[16%] right-[16%] h-px bg-gradient-to-r from-transparent via-border to-transparent"
-            aria-hidden
-          />
+        <div className="relative grid gap-[34px] [grid-template-columns:repeat(auto-fit,minmax(260px,1fr))]">
           {STEPS.map(({ n, icon: Icon, title, body }) => (
-            <div key={n} className="relative flex flex-col items-center text-center">
-              <div className="relative mb-6">
-                <div className="w-24 h-24 rounded-2xl bg-primary text-primary-foreground flex items-center justify-center shadow-lg">
-                  <Icon className="h-10 w-10" aria-hidden />
+            <div key={n} className="text-center">
+              <div className="relative mx-auto mb-6 h-[100px] w-[100px]">
+                <div className="flex h-[100px] w-[100px] items-center justify-center rounded-[24px] bg-pp-sage shadow-[0_14px_30px_-8px_rgba(135,169,107,.5)]">
+                  <Icon
+                    className="h-[42px] w-[42px] text-pp-forest"
+                    strokeWidth={1.8}
+                    aria-hidden
+                  />
                 </div>
-                <span className="absolute -top-2 -right-2 w-9 h-9 rounded-full bg-accent text-accent-foreground font-heading font-bold text-sm flex items-center justify-center shadow">
+                <span className="absolute -right-[10px] -top-[10px] flex h-[38px] w-[38px] items-center justify-center rounded-full bg-pp-accent font-display text-[15px] font-bold text-white shadow-[0_4px_10px_rgba(0,0,0,.2)]">
                   {n}
                 </span>
               </div>
-              <h3 className="font-heading text-xl md:text-2xl font-semibold text-foreground mb-3">
+              <h3 className="mb-3 font-display text-[22px] font-semibold text-pp-ink">
                 {title}
               </h3>
-              <p className="text-base text-foreground/75 leading-relaxed max-w-xs">
+              <p className="mx-auto max-w-[300px] text-[15px] leading-[1.6] text-pp-muted">
                 {body}
               </p>
             </div>

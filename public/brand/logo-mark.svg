@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none" role="img" aria-label="Primeiro Passo">
+  <rect x="0" y="0" width="64" height="64" rx="20" fill="url(#pp_gm)"></rect>
+  <path d="M20 50 C20 36 28 28 44 25" stroke="#F5F0EB" stroke-width="3.4" stroke-linecap="round"></path>
+  <path d="M44 25 C44 15 36 11 26 12 C25 22 31 28 41 27 C41 27 43 26 44 25 Z" fill="#A8C98A"></path>
+  <path d="M30 24 C34 21 39 19 43 25" stroke="#587E45" stroke-width="1.6" stroke-linecap="round" fill="none"></path>
+  <circle cx="20" cy="50" r="4.4" fill="#C4A882"></circle>
+  <defs>
+    <linearGradient id="pp_gm" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#87A96B"></stop>
+      <stop offset="1" stop-color="#587E45"></stop>
+    </linearGradient>
+  </defs>
+</svg>

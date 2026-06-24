@@ -1,52 +1,65 @@
-import { Clock, FileQuestion, TrendingDown, AlertTriangle } from "lucide-react";
+import { Clock, HelpCircle, TrendingDown, AlertTriangle } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
-const PAINS = [
+interface PainCard {
+  icon: LucideIcon;
+  title: string;
+  text: string;
+}
+
+const cards: PainCard[] = [
   {
     icon: Clock,
     title: "Falta tempo",
-    body: "Entre atendimentos, supervisão e estudo, não sobra hora pra gravar, editar e legendar vídeo.",
+    text: "Entre atendimentos, supervisão e estudo, não sobra hora pra gravar, editar e legendar vídeo.",
   },
   {
-    icon: FileQuestion,
+    icon: HelpCircle,
     title: "Não sabe roteirizar",
-    body: "Transformar uma sessão de TCC em 60 segundos virais sem perder o rigor técnico é um ofício à parte.",
+    text: "Transformar uma sessão de TCC em 60 segundos virais sem perder o rigor técnico é um ofício à parte.",
   },
   {
     icon: TrendingDown,
     title: "Algoritmo punitivo",
-    body: "Postou três vezes e parou? O alcance despenca. Consistência semanal vira o gargalo.",
+    text: "Postou três vezes e parou? O alcance despenca. Consistência semanal vira o gargalo.",
   },
   {
     icon: AlertTriangle,
     title: "Risco ético",
-    body: "Um vídeo mal redigido pode quebrar resoluções do CFP — e nenhum editor entende disso.",
+    text: "Um vídeo mal redigido pode quebrar resoluções do CFP — e nenhum editor entende disso.",
   },
 ];
 
 export default function PlatformPain() {
   return (
-    <section className="py-20 md:py-28 bg-background">
-      <div className="container mx-auto max-w-6xl px-4">
-        <div className="max-w-2xl mx-auto text-center mb-14 md:mb-16">
-          <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl font-semibold text-foreground leading-tight tracking-tight">
+    <section className="bg-pp-bg px-7 py-24">
+      <div className="mx-auto max-w-[1200px]">
+        <div className="mx-auto mb-14 max-w-[640px] text-center">
+          <h2 className="m-0 font-display text-[clamp(30px,4vw,48px)] font-bold leading-[1.08] tracking-[-0.01em] text-pp-ink">
             Você sabe que precisa estar online.{" "}
-            <span className="text-foreground/60">Mas...</span>
+            <span className="italic text-[#a09384]">Mas…</span>
           </h2>
         </div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5 md:gap-6">
-          {PAINS.map(({ icon: Icon, title, body }) => (
+        <div className="grid gap-[22px] [grid-template-columns:repeat(auto-fit,minmax(230px,1fr))]">
+          {cards.map(({ icon: Icon, title, text }) => (
             <div
               key={title}
-              className="bg-card border border-border rounded-2xl p-6 hover:shadow-md transition-shadow"
+              className="rounded-[18px] border border-pp-border bg-pp-card p-7"
             >
-              <div className="w-11 h-11 rounded-xl bg-destructive/10 flex items-center justify-center mb-4">
-                <Icon className="h-5 w-5 text-destructive" aria-hidden />
+              <div className="mb-[18px] flex h-[46px] w-[46px] items-center justify-center rounded-[13px] bg-pp-danger/[0.09]">
+                <Icon
+                  className="h-[22px] w-[22px] text-pp-danger"
+                  strokeWidth={2}
+                  aria-hidden="true"
+                />
               </div>
-              <h3 className="font-heading text-lg font-semibold text-foreground mb-2">
+              <h3 className="m-0 mb-2 font-display text-[19px] font-semibold text-pp-ink">
                 {title}
               </h3>
-              <p className="text-sm text-foreground/70 leading-relaxed">{body}</p>
+              <p className="m-0 text-[14.5px] leading-[1.55] text-pp-muted">
+                {text}
+              </p>
             </div>
           ))}
         </div>

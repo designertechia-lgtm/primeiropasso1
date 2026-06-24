@@ -8,7 +8,6 @@ import {
   Banknote,
   MessageSquare,
   ShieldCheck,
-  Globe,
   KeyRound,
   BookOpen,
   LayoutGrid,
@@ -21,7 +20,6 @@ import EngajamentoTab from "@/components/admin-gerente/EngajamentoTab";
 import OverviewTab from "@/components/admin-gerente/OverviewTab";
 import FeedbackTab from "@/components/admin-gerente/FeedbackTab";
 import AcessoTab from "@/components/admin-gerente/AcessoTab";
-import LandingOficialTab from "@/components/admin-gerente/LandingOficialTab";
 import AssinaturasTab from "@/components/admin-gerente/AssinaturasTab";
 import ConhecimentoTab from "@/components/admin-gerente/ConhecimentoTab";
 import WorkspacesTab from "@/components/admin-gerente/WorkspacesTab";
@@ -35,7 +33,6 @@ const VALID_TABS = [
   "feedback",
   "acesso",
   "assinaturas",
-  "landing-oficial",
   "conhecimento",
   "workspaces",
 ] as const;
@@ -106,10 +103,6 @@ export default function AdminGerente() {
             <KeyRound className="h-4 w-4" />
             <span className="hidden sm:inline">Assinaturas</span>
           </TabsTrigger>
-          <TabsTrigger value="landing-oficial" className="gap-2">
-            <Globe className="h-4 w-4" />
-            <span className="hidden sm:inline">Landing</span>
-          </TabsTrigger>
           <TabsTrigger value="conhecimento" className="gap-2">
             <BookOpen className="h-4 w-4" />
             <span className="hidden sm:inline">Conhecimento</span>
@@ -152,10 +145,6 @@ export default function AdminGerente() {
 
         <TabsContent value="assinaturas" className="mt-6">
           <AssinaturasTab />
-        </TabsContent>
-
-        <TabsContent value="landing-oficial" className="mt-6">
-          <LandingOficialTab />
         </TabsContent>
 
         <TabsContent value="conhecimento" className="mt-6">

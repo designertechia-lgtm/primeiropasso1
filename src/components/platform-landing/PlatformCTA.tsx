@@ -1,53 +1,40 @@
 import { Link } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 import { ArrowRight, ShieldCheck } from "lucide-react";
 
 export default function PlatformCTA() {
   return (
-    <section className="py-20 md:py-28 bg-background">
-      <div className="container mx-auto max-w-4xl px-4">
-        <div className="relative rounded-3xl bg-gradient-to-br from-primary via-primary to-accent p-10 md:p-14 lg:p-16 overflow-hidden text-center">
+    <section id="cta" className="bg-pp-bg pt-10 pb-[100px] px-7">
+      <div className="max-w-[980px] mx-auto">
+        <div className="relative rounded-[30px] bg-gradient-to-br from-pp-sage to-pp-accent p-[clamp(48px,7vw,80px)_36px] text-center overflow-hidden">
           <div
-            className="absolute inset-0 opacity-30 mix-blend-overlay"
-            style={{
-              backgroundImage:
-                "radial-gradient(circle at 30% 20%, rgba(255,255,255,0.4), transparent 50%), radial-gradient(circle at 80% 70%, rgba(255,255,255,0.25), transparent 45%)",
-            }}
             aria-hidden
+            className="absolute inset-0 opacity-30 mix-blend-overlay pointer-events-none bg-[radial-gradient(circle_at_28%_22%,rgba(255,255,255,.5),transparent_50%),radial-gradient(circle_at_80%_75%,rgba(255,255,255,.3),transparent_45%)]"
           />
-
-          <div className="relative flex flex-col items-center gap-6">
-            <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl font-semibold text-primary-foreground leading-tight tracking-tight max-w-2xl">
+          <div className="relative">
+            <h2 className="font-display font-bold text-[clamp(28px,4vw,46px)] leading-[1.12] tracking-[-0.01em] text-pp-cream mx-auto max-w-[640px]">
               Pronto para postar consistente, sem queimar suas tardes editando?
             </h2>
-            <p className="text-base md:text-lg text-primary-foreground/85 max-w-xl leading-relaxed">
+            <p className="text-[17px] leading-[1.6] text-pp-cream/90 max-w-[520px] mx-auto mt-[18px]">
               Cadastro em menos de 2 minutos. Sem cartão. Primeiro vídeo grátis.
             </p>
-
-            <div className="flex flex-col sm:flex-row gap-3 pt-2">
-              <Link to="/cadastro">
-                <Button
-                  size="lg"
-                  className="bg-background text-primary hover:bg-background/90 gap-2 font-semibold shadow-lg"
-                >
-                  Criar conta gratuita
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
+            <div className="flex flex-wrap gap-[14px] justify-center mt-8">
+              <Link
+                to="/cadastro"
+                className="inline-flex items-center gap-[9px] h-[54px] px-[30px] rounded-[13px] bg-pp-cream text-pp-accent font-semibold text-[16.5px] no-underline shadow-[0_12px_30px_rgba(0,0,0,.18)]"
+              >
+                Criar conta gratuita
+                <ArrowRight className="w-[18px] h-[18px]" strokeWidth={2.2} aria-hidden />
               </Link>
-              <Link to="/login">
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="border-primary-foreground/40 text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground"
-                >
-                  Já tenho conta
-                </Button>
+              <Link
+                to="/login"
+                className="inline-flex items-center h-[54px] px-[26px] rounded-[13px] bg-transparent border border-white/50 text-pp-cream font-medium text-[16.5px] no-underline"
+              >
+                Já tenho conta
               </Link>
             </div>
-
-            <div className="flex items-center gap-2 text-sm text-primary-foreground/80 pt-3">
-              <ShieldCheck className="h-4 w-4" aria-hidden />
-              <span>Em conformidade com CFP nº 011/2018 e LGPD</span>
+            <div className="inline-flex items-center gap-2 mt-[26px] text-[13.5px] text-pp-cream/85">
+              <ShieldCheck className="w-4 h-4" strokeWidth={2} aria-hidden />
+              Em conformidade com o CFP nº 011/2018 e a LGPD
             </div>
           </div>
         </div>

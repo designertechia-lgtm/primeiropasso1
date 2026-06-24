@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ElementType, ReactNode } from "react";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
 import { cn } from "@/lib/utils";
 
@@ -16,7 +16,9 @@ interface RevealProps {
  */
 export default function Reveal({ children, delay = 0, className, as = "div" }: RevealProps) {
   const { ref, visible } = useScrollReveal<HTMLElement>();
-  const Tag = as as keyof JSX.IntrinsicElements;
+  // ElementType evita o TS2590 (uniao gigante de props de todos os elementos)
+  // que `keyof JSX.IntrinsicElements` produzia; `as` ja restringe a div/section/li.
+  const Tag = as as ElementType;
 
   return (
     <Tag

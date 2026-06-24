@@ -1,112 +1,118 @@
 import { Link } from "react-router-dom";
-import { ShieldCheck, Lock } from "lucide-react";
-
-const YEAR = new Date().getFullYear();
+import { ShieldCheck, Lock, Heart } from "lucide-react";
 
 export default function PlatformFooter() {
   return (
-    <footer className="bg-muted/40 border-t border-border">
-      <div className="container mx-auto max-w-6xl px-4 py-12 md:py-16">
-        <div className="grid md:grid-cols-4 gap-10 md:gap-8">
-          <div className="md:col-span-2 max-w-sm">
-            <span className="font-heading text-xl font-semibold text-foreground">
-              Primeiro Passo
+    <footer className="bg-pp-forest-deep px-7 pb-8 pt-16 text-pp-bg">
+      <div className="mx-auto grid max-w-[1200px] gap-10 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+        {/* Coluna marca */}
+        <div className="col-span-1 sm:col-span-2 min-w-[240px] max-w-[380px]">
+          <a
+            href="#hero"
+            className="flex items-center gap-[10px] font-display text-[21px] font-semibold text-pp-bg no-underline"
+          >
+            <img
+              src="/brand/logo-mark.svg"
+              alt="Primeiro Passo"
+              width={36}
+              height={36}
+              className="block rounded-[11px]"
+            />
+            Primeiro Passo
+          </a>
+          <p className="mb-[18px] mt-4 text-[14px] leading-[1.6] text-pp-bg/60">
+            Landing, agente de WhatsApp e central de conteúdo para terapeutas que
+            valorizam tempo e conformidade clínica.
+          </p>
+          <div className="flex flex-wrap gap-[10px]">
+            <span className="inline-flex items-center gap-[7px] rounded-full border border-pp-bg/[.12] bg-pp-bg/[.07] px-3 py-[6px] text-[12px] text-pp-bg/75">
+              <ShieldCheck
+                className="h-[14px] w-[14px] text-pp-sage"
+                aria-hidden="true"
+              />
+              CFP 011/2018
             </span>
-            <p className="text-sm text-foreground/70 leading-relaxed mt-3">
-              Pipeline de vídeos curtos de TCC com avatar real, voz clonada e
-              publicação automática para terapeutas que valorizam tempo e
-              conformidade.
-            </p>
-            <div className="flex flex-wrap gap-3 mt-5">
-              <span className="inline-flex items-center gap-1.5 text-xs text-foreground/70 px-2.5 py-1 rounded-full bg-card border border-border">
-                <ShieldCheck className="h-3.5 w-3.5 text-primary" aria-hidden />
-                CFP 011/2018
-              </span>
-              <span className="inline-flex items-center gap-1.5 text-xs text-foreground/70 px-2.5 py-1 rounded-full bg-card border border-border">
-                <Lock className="h-3.5 w-3.5 text-primary" aria-hidden />
-                LGPD
-              </span>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="font-heading text-sm font-semibold text-foreground mb-4 uppercase tracking-wider">
-              Plataforma
-            </h3>
-            <ul className="flex flex-col gap-2.5">
-              <li>
-                <a
-                  href="#como-funciona"
-                  className="text-sm text-foreground/70 hover:text-foreground transition-colors"
-                >
-                  Como funciona
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#precos"
-                  className="text-sm text-foreground/70 hover:text-foreground transition-colors"
-                >
-                  Preços
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#faq"
-                  className="text-sm text-foreground/70 hover:text-foreground transition-colors"
-                >
-                  FAQ
-                </a>
-              </li>
-              <li>
-                <Link
-                  to="/cadastro"
-                  className="text-sm text-foreground/70 hover:text-foreground transition-colors"
-                >
-                  Cadastrar
-                </Link>
-              </li>
-              <li>
-                <Link
-                  to="/login"
-                  className="text-sm text-foreground/70 hover:text-foreground transition-colors"
-                >
-                  Entrar
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          <div>
-            <h3 className="font-heading text-sm font-semibold text-foreground mb-4 uppercase tracking-wider">
-              Legal
-            </h3>
-            <ul className="flex flex-col gap-2.5">
-              <li>
-                <span className="text-sm text-foreground/70">Termos de uso</span>
-              </li>
-              <li>
-                <span className="text-sm text-foreground/70">
-                  Política de privacidade
-                </span>
-              </li>
-              <li>
-                <span className="text-sm text-foreground/70">
-                  Contato
-                </span>
-              </li>
-            </ul>
+            <span className="inline-flex items-center gap-[7px] rounded-full border border-pp-bg/[.12] bg-pp-bg/[.07] px-3 py-[6px] text-[12px] text-pp-bg/75">
+              <Lock
+                className="h-[14px] w-[14px] text-pp-sage"
+                aria-hidden="true"
+              />
+              LGPD
+            </span>
           </div>
         </div>
 
-        <div className="mt-12 pt-6 border-t border-border flex flex-col md:flex-row items-center justify-between gap-3">
-          <p className="text-xs text-foreground/60">
-            © {YEAR} Primeiro Passo · Todos os direitos reservados
-          </p>
-          <p className="text-xs text-foreground/60">
-            Feito para terapeutas que valorizam tempo e ética clínica
-          </p>
+        {/* Plataforma */}
+        <div>
+          <h3 className="mb-4 font-inter text-[12px] font-semibold uppercase tracking-[0.12em] text-pp-bg">
+            Plataforma
+          </h3>
+          <div className="flex flex-col gap-[11px]">
+            <a
+              href="#como-funciona"
+              className="text-[14px] text-pp-bg/[.62] no-underline"
+            >
+              Como funciona
+            </a>
+            <a href="#conteudo" className="text-[14px] text-pp-bg/[.62] no-underline">
+              Conteúdo
+            </a>
+            <a href="#precos" className="text-[14px] text-pp-bg/[.62] no-underline">
+              Preços
+            </a>
+            <a href="#faq" className="text-[14px] text-pp-bg/[.62] no-underline">
+              FAQ
+            </a>
+          </div>
         </div>
+
+        {/* Conta */}
+        <div>
+          <h3 className="mb-4 font-inter text-[12px] font-semibold uppercase tracking-[0.12em] text-pp-bg">
+            Conta
+          </h3>
+          <div className="flex flex-col gap-[11px]">
+            <Link to="/login" className="text-[14px] text-pp-bg/[.62] no-underline">
+              Entrar
+            </Link>
+            <Link to="/cadastro" className="text-[14px] text-pp-bg/[.62] no-underline">
+              Cadastrar
+            </Link>
+          </div>
+        </div>
+
+        {/* Legal */}
+        <div>
+          <h3 className="mb-4 font-inter text-[12px] font-semibold uppercase tracking-[0.12em] text-pp-bg">
+            Legal
+          </h3>
+          <div className="flex flex-col gap-[11px]">
+            <a href="#" className="text-[14px] text-pp-bg/[.62] no-underline">
+              Termos de uso
+            </a>
+            <a href="#" className="text-[14px] text-pp-bg/[.62] no-underline">
+              Privacidade
+            </a>
+            <a href="#" className="text-[14px] text-pp-bg/[.62] no-underline">
+              Contato
+            </a>
+          </div>
+        </div>
+      </div>
+
+      {/* Barra inferior */}
+      <div className="mx-auto mt-12 flex max-w-[1200px] flex-wrap items-center justify-between gap-3 border-t border-pp-bg/10 pt-6">
+        <span className="text-[12.5px] text-pp-bg/50">
+          © 2026 Primeiro Passo · Todos os direitos reservados
+        </span>
+        <span className="inline-flex items-center gap-[6px] text-[12.5px] text-pp-bg/50">
+          Feito com{" "}
+          <Heart
+            className="h-[13px] w-[13px] fill-pp-danger text-pp-danger"
+            aria-hidden="true"
+          />{" "}
+          por DesignerTech.io
+        </span>
       </div>
     </footer>
   );

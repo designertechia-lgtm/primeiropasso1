@@ -11,6 +11,9 @@ export default {
       // Títulos da landing: respeitam a escolha do profissional (--font-heading, via buildLandingVars).
       // Fora da landing, --font-heading cai no padrão da plataforma (Plus Jakarta Sans, ver index.css).
       heading: ['var(--font-heading)', 'Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+      // Landing institucional (redesign 2026): Playfair Display nos títulos, Inter no corpo.
+      display: ['Playfair Display', 'Lora', 'Georgia', 'serif'],
+      inter: ['Inter', 'Plus Jakarta Sans', 'system-ui', 'sans-serif'],
     },
     container: {
       center: true,
@@ -19,6 +22,30 @@ export default {
     },
       extend: {
         colors: {
+          // Paleta da landing institucional (redesign 2026) — terrosa/sálvia.
+          // Aditiva e ISOLADA: não altera os tokens semânticos (teal) do resto do app.
+          pp: {
+            bg: "#F5F0EB",
+            card: "#F8F4EF",
+            surface: "#EFE8DE",
+            surface2: "#EDE6DC",
+            ink: "#352617",
+            "ink-soft": "#403528",
+            muted: "#6e6155",
+            muted2: "#857369",
+            sage: "#87A96B",
+            "sage-light": "#a8c98a",
+            accent: "#587E45",
+            sand: "#C4A882",
+            border: "#DDD1C2",
+            forest: "#1c2a1e",
+            "forest-deep": "#16211a",
+            danger: "#DC2A2A",
+            cream: "#FBF8F4",
+            "wa-header": "#1f8a5b",
+            "wa-bubble": "#D7EED9",
+            "wa-bg": "#ECE5DB",
+          },
           border: "hsl(var(--border))",
           input: "hsl(var(--input))",
           ring: "hsl(var(--ring))",

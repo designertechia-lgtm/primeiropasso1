@@ -1,118 +1,188 @@
 import { Link } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { ArrowRight, PlayCircle, ShieldCheck, Sparkles } from "lucide-react";
-import { usePlatformHeroContent, HERO_DEFAULTS } from "@/hooks/usePlatformLanding";
+import {
+  Leaf,
+  ArrowRight,
+  CirclePlay,
+  Check,
+  Calendar,
+  CheckCircle2,
+} from "lucide-react";
 
 export default function PlatformHero() {
-  const { data: hero = HERO_DEFAULTS } = usePlatformHeroContent();
-
   return (
     <section
       id="hero"
-      className="relative pt-32 pb-20 md:pt-40 md:pb-28 overflow-hidden"
+      className="relative overflow-hidden bg-pp-forest text-pp-bg pt-[150px] pb-24 px-7"
     >
+      {/* Overlay gradiente escuro p/ legibilidade */}
       <div
-        className="absolute inset-0 -z-10 bg-gradient-to-br from-background via-muted/40 to-secondary/20"
         aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[linear-gradient(100deg,rgba(18,28,20,.94)_0%,rgba(18,28,20,.82)_50%,rgba(18,28,20,.62)_100%)]"
       />
+      {/* Glow radial topo-direita (sage) */}
       <div
-        className="absolute -top-24 -right-24 w-[28rem] h-[28rem] rounded-full bg-primary/10 blur-3xl -z-10"
         aria-hidden
+        className="pointer-events-none absolute -top-[180px] -right-[120px] h-[560px] w-[560px] rounded-full bg-[radial-gradient(circle,rgba(135,169,107,.35),transparent_65%)] pp-anim-glow"
       />
+      {/* Glow radial baixo-esquerda (sand) */}
       <div
-        className="absolute -bottom-32 -left-24 w-[24rem] h-[24rem] rounded-full bg-accent/10 blur-3xl -z-10"
         aria-hidden
+        className="pointer-events-none absolute -bottom-[220px] -left-[160px] h-[520px] w-[520px] rounded-full bg-[radial-gradient(circle,rgba(196,168,130,.20),transparent_65%)]"
+      />
+      {/* Folha decorativa flutuante */}
+      <Leaf
+        aria-hidden
+        strokeWidth={1}
+        className="pointer-events-none absolute top-[60px] left-[40px] h-[120px] w-[120px] text-pp-bg opacity-[.07] pp-anim-drift"
       />
 
-      <div className="container mx-auto max-w-6xl px-4">
-        <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-          <div className="flex flex-col gap-6 max-w-xl">
-            <div className="inline-flex items-center gap-2 self-start px-3 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-medium tracking-wide">
-              <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
-              {hero.badge_text}
-            </div>
+      <div className="relative mx-auto grid max-w-[1200px] items-center gap-14 [grid-template-columns:repeat(auto-fit,minmax(min(330px,100%),1fr))]">
+        {/* ESQUERDA */}
+        <div>
+          <h1 className="font-display font-bold text-[clamp(30px,3.8vw,48px)] leading-[1.08] tracking-[-0.02em]">
+            A IA que conversa, qualifica e{" "}
+            <span className="italic text-pp-sage-light">agenda</span> — enquanto
+            você atende.
+          </h1>
+          <p className="mt-6 max-w-[540px] text-[clamp(17px,1.5vw,20px)] leading-[1.6] text-pp-bg/75">
+            Primeiro Passo dá ao seu consultório uma landing personalizada, um
+            agente de WhatsApp que marca consultas sozinho e uma central de
+            conteúdo que mantém você presente nas redes — tudo em conformidade
+            com o CFP.
+          </p>
 
-            <h1 className="font-heading text-4xl md:text-5xl lg:text-6xl font-semibold text-foreground leading-[1.1] tracking-tight">
-              {hero.headline_before}{" "}
-              <span className="text-primary">{hero.headline_highlight}</span>
-              {" "}{hero.headline_after}
-            </h1>
-
-            <p className="text-lg md:text-xl text-foreground/75 leading-relaxed">
-              {hero.subheadline}
-            </p>
-
-            <div className="flex flex-col sm:flex-row gap-3 pt-2">
-              <Link to={hero.cta_primary_href}>
-                <Button
-                  size="lg"
-                  className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground gap-2 shadow-md hover:shadow-lg transition-shadow"
-                >
-                  {hero.cta_primary_label}
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-              <a href={hero.cta_secondary_anchor}>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="w-full sm:w-auto gap-2"
-                >
-                  <PlayCircle className="h-4 w-4" />
-                  {hero.cta_secondary_label}
-                </Button>
-              </a>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-4 pt-1 text-sm text-foreground/60">
-              <span className="flex items-center gap-1.5">
-                <Sparkles className="h-3.5 w-3.5 text-accent" aria-hidden />
-                {hero.trust_badge_1}
-              </span>
-              <span className="h-3 w-px bg-border" aria-hidden />
-              <span>{hero.trust_badge_2}</span>
-            </div>
+          <div className="mt-[34px] flex flex-wrap gap-[14px]">
+            <Link
+              to="/cadastro"
+              className="inline-flex h-[54px] items-center gap-[9px] rounded-[13px] bg-pp-sage px-[30px] text-[16.5px] font-semibold text-pp-forest shadow-[0_10px_30px_rgba(135,169,107,.4)]"
+            >
+              Criar conta gratuita
+              <ArrowRight aria-hidden strokeWidth={2.2} className="h-[18px] w-[18px]" />
+            </Link>
+            <a
+              href="#como-funciona"
+              className="inline-flex h-[54px] items-center gap-[9px] rounded-[13px] border border-pp-bg/30 bg-transparent px-[26px] text-[16.5px] font-medium text-pp-bg"
+            >
+              <CirclePlay aria-hidden strokeWidth={2} className="h-5 w-5" />
+              Ver como funciona
+            </a>
           </div>
 
-          <div className="relative">
-            <div className="relative aspect-[4/5] max-w-md mx-auto">
+          <div className="mt-[26px] flex flex-wrap items-center gap-4 text-[13.5px] text-pp-bg/60">
+            <span className="inline-flex items-center gap-[7px]">
+              <Check aria-hidden strokeWidth={2.4} className="h-[15px] w-[15px] text-pp-sage-light" />
+              Primeiro vídeo grátis
+            </span>
+            <span aria-hidden className="h-1 w-1 rounded-full bg-pp-bg/30" />
+            <span className="inline-flex items-center gap-[7px]">
+              <Check aria-hidden strokeWidth={2.4} className="h-[15px] w-[15px] text-pp-sage-light" />
+              Sem cartão
+            </span>
+            <span aria-hidden className="h-1 w-1 rounded-full bg-pp-bg/30" />
+            <span className="inline-flex items-center gap-[7px]">
+              <Check aria-hidden strokeWidth={2.4} className="h-[15px] w-[15px] text-pp-sage-light" />
+              Cancele quando quiser
+            </span>
+          </div>
+        </div>
+
+        {/* DIREITA — Mock WhatsApp */}
+        <div className="relative justify-self-center">
+          {/* Halo radial atrás do card */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -inset-[26px] rounded-[38px] bg-[radial-gradient(circle_at_60%_30%,rgba(135,169,107,.35),transparent_70%)] blur-[14px]"
+          />
+
+          <div className="relative w-full max-w-[330px] overflow-hidden rounded-[30px] bg-pp-card shadow-[0_40px_80px_-20px_rgba(0,0,0,.55)] pp-anim-float">
+            {/* Topbar */}
+            <div className="flex items-center gap-[11px] bg-pp-wa-header px-[18px] py-4 text-white">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20">
+                <Leaf aria-hidden strokeWidth={2} className="h-[22px] w-[22px] text-white" />
+              </div>
+              <div className="leading-[1.3]">
+                <div className="truncate text-[15px] font-semibold">
+                  Axel Seu Assistente Virtual
+                </div>
+                <div className="flex items-center gap-[5px] text-[11.5px] opacity-85">
+                  <span aria-hidden className="h-[6px] w-[6px] rounded-full bg-[#bff2cf]" />
+                  online agora
+                </div>
+              </div>
+            </div>
+
+            {/* Corpo do chat */}
+            <div className="flex min-h-[300px] flex-col gap-2.5 bg-pp-wa-bg px-4 py-5">
               <div
-                className="absolute inset-0 rounded-[2rem] bg-gradient-to-br from-primary/20 via-secondary/15 to-accent/20 blur-2xl"
-                aria-hidden
-              />
-              <div className="relative h-full rounded-[2rem] bg-card border border-border shadow-2xl overflow-hidden">
-                <div
-                  className="absolute top-4 left-1/2 -translate-x-1/2 w-32 h-6 bg-foreground/10 rounded-full"
-                  aria-hidden
-                />
-                <div className="h-full w-full bg-gradient-to-b from-primary/5 via-background to-accent/5 flex flex-col items-center justify-center p-8 gap-4">
-                  <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center">
-                    <PlayCircle className="h-10 w-10 text-primary" aria-hidden />
+                className="max-w-[78%] self-start rounded-[4px_14px_14px_14px] bg-white px-[13px] py-[10px] text-[13.5px] leading-[1.45] text-pp-ink shadow-[0_1px_1px_rgba(0,0,0,.06)]"
+                style={{ animation: "pp-pop .5s ease both .3s" }}
+              >
+                Oi! Tenho me sentido muito ansiosa ultimamente e queria marcar uma consulta 🙏
+              </div>
+              <div
+                className="max-w-[80%] self-end rounded-[14px_4px_14px_14px] bg-pp-wa-bubble px-[13px] py-[10px] text-[13.5px] leading-[1.45] text-pp-ink shadow-[0_1px_1px_rgba(0,0,0,.06)]"
+                style={{ animation: "pp-pop .5s ease both 1s" }}
+              >
+                Que bom que você deu esse primeiro passo. A Marina atende online, 50 min. Tenho terça 18h ou quinta 9h. Qual fica melhor?
+              </div>
+              <div
+                className="max-w-[60%] self-start rounded-[4px_14px_14px_14px] bg-white px-[13px] py-[10px] text-[13.5px] leading-[1.45] text-pp-ink shadow-[0_1px_1px_rgba(0,0,0,.06)]"
+                style={{ animation: "pp-pop .5s ease both 1.7s" }}
+              >
+                Quinta 9h 😊
+              </div>
+              <div
+                className="max-w-[82%] self-end rounded-[14px_4px_14px_14px] bg-pp-wa-bubble px-[13px] py-[11px] text-[13.5px] leading-[1.45] text-pp-ink shadow-[0_1px_1px_rgba(0,0,0,.06)]"
+                style={{ animation: "pp-pop .5s ease both 2.4s" }}
+              >
+                Confirmado! ✅ Quinta, 9h. Vou te enviar o link da sala.
+                <div className="mt-2 flex items-center gap-[9px] rounded-[10px] bg-white px-[11px] py-[9px]">
+                  <div className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] bg-pp-sage">
+                    <Calendar aria-hidden strokeWidth={2} className="h-[18px] w-[18px] text-white" />
                   </div>
-                  <p className="font-heading text-xl text-center text-foreground/80">
-                    "{hero.preview_quote}"
-                  </p>
-                  <div className="flex items-center gap-2 text-xs text-foreground/60">
-                    {hero.preview_tags.map((tag) => (
-                      <span key={tag} className="px-2 py-1 rounded-full bg-muted">{tag}</span>
-                    ))}
-                  </div>
-                  <div className="mt-2 pt-3 border-t border-border w-full flex flex-col gap-1.5">
-                    <div className="flex items-center gap-2 text-xs text-foreground/60">
-                      <span className="w-2 h-2 rounded-full bg-accent" aria-hidden />
-                      Carrossel · LinkedIn
+                  <div>
+                    <div className="text-[12.5px] font-semibold text-pp-ink">
+                      Consulta agendada
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-foreground/60">
-                      <span className="w-2 h-2 rounded-full bg-accent" aria-hidden />
-                      Artigo · Blog
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-foreground/60">
-                      <span className="w-2 h-2 rounded-full bg-primary" aria-hidden />
-                      Mesma ideia · 4 formatos
+                    <div className="text-[11px] text-pp-muted2">
+                      Adicionada à sua agenda
                     </div>
                   </div>
                 </div>
               </div>
+
+              {/* Indicador de digitando */}
+              <div
+                aria-hidden
+                className="flex items-center gap-1 self-end rounded-[12px] bg-pp-wa-bubble px-[10px] py-[6px]"
+                style={{ animation: "pp-pop .4s ease both 3s" }}
+              >
+                <span
+                  className="h-[6px] w-[6px] rounded-full bg-[#5a7a5e]"
+                  style={{ animation: "pp-type 1.2s infinite 0s" }}
+                />
+                <span
+                  className="h-[6px] w-[6px] rounded-full bg-[#5a7a5e]"
+                  style={{ animation: "pp-type 1.2s infinite .2s" }}
+                />
+                <span
+                  className="h-[6px] w-[6px] rounded-full bg-[#5a7a5e]"
+                  style={{ animation: "pp-type 1.2s infinite .4s" }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Cartão flutuante */}
+          <div className="absolute -bottom-3 left-2 flex items-center gap-[10px] rounded-[14px] border border-pp-border bg-pp-card px-[15px] py-3 shadow-[0_18px_40px_-12px_rgba(0,0,0,.4)] pp-anim-float2 sm:-bottom-[22px] sm:-left-[34px]">
+            <div className="flex h-[38px] w-[38px] items-center justify-center rounded-[10px] bg-pp-sage/15">
+              <CheckCircle2 aria-hidden strokeWidth={2} className="h-5 w-5 text-pp-accent" />
+            </div>
+            <div>
+              <div className="text-[13px] font-semibold text-pp-ink">
+                Lead já marcado
+              </div>
+              <div className="text-[11px] text-pp-muted2">sem você intervir</div>
             </div>
           </div>
         </div>

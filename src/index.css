@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -184,3 +184,25 @@
    de status quando o fundo é uma cor escolhida pelo profissional. */
 .fc-wrapper .fc-event-tinted { border-left-width: 5px !important; }
 .marquee-static { display: none; }
+
+/* ============================================================
+   Landing institucional (redesign 2026) — animações próprias.
+   Keyframes globais (pop/type usados com delays inline nos componentes).
+   Respeitam prefers-reduced-motion: animações de loop param.
+   ============================================================ */
+@keyframes pp-float  { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-14px) } }
+@keyframes pp-float2 { 0%,100% { transform: translateY(0) } 50% { transform: translateY(10px) } }
+@keyframes pp-pop    { 0% { opacity: 0; transform: translateY(10px) scale(.96) } 100% { opacity: 1; transform: translateY(0) scale(1) } }
+@keyframes pp-glow   { 0%,100% { opacity: .45 } 50% { opacity: .8 } }
+@keyframes pp-type   { 0%,60%,100% { transform: translateY(0); opacity: .4 } 30% { transform: translateY(-4px); opacity: 1 } }
+@keyframes pp-drift  { 0% { transform: rotate(0deg) } 100% { transform: rotate(360deg) } }
+.pp-anim-float  { animation: pp-float 6s ease-in-out infinite }
+.pp-anim-float2 { animation: pp-float2 5s ease-in-out infinite }
+.pp-anim-glow   { animation: pp-glow 7s ease-in-out infinite }
+.pp-anim-drift  { animation: pp-drift 60s linear infinite }
+@media (prefers-reduced-motion: reduce) {
+  .pp-anim-float, .pp-anim-float2, .pp-anim-glow, .pp-anim-drift { animation: none }
+  /* Zera tambem as animacoes inline (pp-pop dos baloes, pp-type dos pontinhos)
+     dentro da landing institucional, que nao sao alcancadas pelas classes acima. */
+  .pp-landing [style*="animation"] { animation: none !important; }
+}

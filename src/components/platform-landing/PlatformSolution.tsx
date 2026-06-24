@@ -1,57 +1,65 @@
-import { MessageSquareHeart, Layers, Palette, Sparkles } from "lucide-react";
+import { MessageCircle, Layers, Network, Sparkles, type LucideIcon } from "lucide-react";
 
-const FEATURES = [
+interface Pillar {
+  icon: LucideIcon;
+  title: string;
+  text: string;
+}
+
+const PILLARS: Pillar[] = [
   {
-    icon: MessageSquareHeart,
+    icon: MessageCircle,
     title: "Agente WhatsApp que agenda sozinho",
-    body: "Conversa por texto, áudio ou imagem. Negocia preço dentro da sua faixa, busca horários reais na sua agenda e cria agendamentos sem você intervir. Você só recebe o lead já marcado.",
+    text: "Conversa por texto, áudio ou imagem. Negocia preço dentro da sua faixa, busca horários reais na sua agenda e cria agendamentos sem você intervir. Você só recebe o lead já marcado.",
   },
   {
     icon: Layers,
     title: "Uma ideia, cinco formatos",
-    body: "Mesmo tema vira vídeo curto, carrossel Instagram, post estático, artigo de blog e e-book lead-magnet. Calendário editorial distribui pela semana com horários otimizados.",
+    text: "Mesmo tema vira vídeo curto, carrossel, post estático, artigo de blog e e-book lead-magnet. O calendário editorial distribui pela semana com horários otimizados.",
   },
   {
-    icon: Palette,
+    icon: Network,
     title: "Pronto para sua especialidade",
-    body: "Kit completo de marca por especialidade — TCC, ansiedade infantil, casais, lutos, autoestima. Cores, fontes, música e biblioteca curada de ideias virais validadas semanalmente.",
+    text: "Kit completo de marca por especialidade — TCC, ansiedade infantil, casais, lutos, autoestima. Cores, fontes, música e biblioteca curada de ideias virais validadas semanalmente.",
   },
   {
     icon: Sparkles,
     title: "Multi-IA, paga só o que usa",
-    body: "Avatar fotorrealista, cenas cinematográficas, qualidade institucional e B-roll dinâmico — escolhe o motor ideal pra cada vídeo. Sistema de créditos flexível via Pix.",
+    text: "Avatar fotorrealista, cenas cinematográficas, qualidade institucional e B-roll dinâmico — escolhe o motor ideal pra cada vídeo. Sistema de créditos flexível via Pix.",
   },
 ];
 
 export default function PlatformSolution() {
   return (
-    <section className="py-20 md:py-28 bg-gradient-to-b from-background to-muted/40">
-      <div className="container mx-auto max-w-6xl px-4">
-        <div className="max-w-2xl mx-auto text-center mb-14 md:mb-16">
-          <p className="text-sm uppercase tracking-[0.18em] text-accent font-semibold mb-3">
+    <section className="bg-pp-surface py-24 px-7">
+      <div className="mx-auto max-w-[1200px]">
+        <div className="mx-auto mb-14 max-w-[680px] text-center">
+          <p className="mb-[14px] text-[13px] font-semibold uppercase tracking-[0.18em] text-pp-accent">
             A solução
           </p>
-          <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl font-semibold text-foreground leading-tight tracking-tight">
+          <h2 className="font-display text-[clamp(30px,4vw,48px)] font-bold leading-[1.08] tracking-[-0.01em] text-pp-ink">
             Quatro pilares.{" "}
-            <span className="text-primary">Um consultório que cresce sozinho.</span>
+            <span className="text-pp-accent">Um consultório que cresce sozinho.</span>
           </h2>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-5 md:gap-6">
-          {FEATURES.map(({ icon: Icon, title, body }) => (
+        <div className="grid gap-[22px] [grid-template-columns:repeat(auto-fit,minmax(300px,1fr))]">
+          {PILLARS.map(({ icon: Icon, title, text }) => (
             <div
               key={title}
-              className="bg-card border border-border rounded-2xl p-7 md:p-8 hover:border-primary/40 hover:shadow-md transition-all"
+              className="rounded-[20px] border border-pp-border bg-pp-card p-[34px]"
             >
-              <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-5">
-                <Icon className="h-6 w-6 text-primary" aria-hidden />
+              <div className="mb-5 flex h-[52px] w-[52px] items-center justify-center rounded-[14px] bg-pp-sage/15">
+                <Icon
+                  className="h-[26px] w-[26px] text-pp-accent"
+                  strokeWidth={2}
+                  aria-hidden="true"
+                />
               </div>
-              <h3 className="font-heading text-xl md:text-2xl font-semibold text-foreground mb-3">
+              <h3 className="mb-3 font-display text-[23px] font-semibold text-pp-ink">
                 {title}
               </h3>
-              <p className="text-base text-foreground/75 leading-relaxed">
-                {body}
-              </p>
+              <p className="text-[15.5px] leading-[1.6] text-pp-muted">{text}</p>
             </div>
           ))}
         </div>

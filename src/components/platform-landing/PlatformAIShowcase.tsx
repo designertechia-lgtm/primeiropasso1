@@ -54,10 +54,9 @@ export default function PlatformAIShowcase() {
   }, []);
 
   useEffect(() => {
-    const reduced =
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduced || !isDesktop) return;
+    // Decisão de produto: a landing anima SEMPRE (auto-rotate ativo mesmo com
+    // "reduzir movimento" no sistema). O accordion horizontal só existe em md+.
+    if (!isDesktop) return;
 
     const timer = window.setInterval(() => {
       if (!pausedRef.current) {

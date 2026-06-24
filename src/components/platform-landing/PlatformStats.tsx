@@ -23,15 +23,8 @@ export default function PlatformStats() {
     const node = sectionRef.current;
     if (!node) return;
 
-    const prefersReduced = window.matchMedia(
-      '(prefers-reduced-motion: reduce)',
-    ).matches;
-
-    if (prefersReduced) {
-      setValues(STATS.map((s) => s.target));
-      return;
-    }
-
+    // Decisão de produto: a landing anima SEMPRE (count-up roda mesmo com
+    // "reduzir movimento" ligado no sistema).
     let rafId = 0;
     let started = false;
 

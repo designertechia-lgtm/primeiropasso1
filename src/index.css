@@ -200,9 +200,7 @@
 .pp-anim-float2 { animation: pp-float2 5s ease-in-out infinite }
 .pp-anim-glow   { animation: pp-glow 7s ease-in-out infinite }
 .pp-anim-drift  { animation: pp-drift 60s linear infinite }
-@media (prefers-reduced-motion: reduce) {
-  .pp-anim-float, .pp-anim-float2, .pp-anim-glow, .pp-anim-drift { animation: none }
-  /* Zera tambem as animacoes inline (pp-pop dos baloes, pp-type dos pontinhos)
-     dentro da landing institucional, que nao sao alcancadas pelas classes acima. */
-  .pp-landing [style*="animation"] { animation: none !important; }
-}
+/* Decisao de produto (24/06): a landing de marketing mantem as animacoes
+   decorativas SEMPRE (folha, glows, flutuacao, baloes, "digitando"), mesmo com
+   "reduzir movimento" ligado no sistema — sao sutis e fazem parte da identidade
+   visual. Por isso NAO ha @media (prefers-reduced-motion) desligando-as aqui. */

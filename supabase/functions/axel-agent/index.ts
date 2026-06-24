@@ -204,12 +204,12 @@ const tools = [
   {
     name: "salvar_dado_cadastro",
     description:
-      "GRAVA no perfil um dado factual que o profissional informou: o NOME dele ou a ATIVIDADE/profissão/área de atuação. CHAME SEMPRE que ele disser ou corrigir o nome ('na verdade meu nome é Carlos', 'está errado, é X') OU disser o que faz ('sou desenvolvedor React', 'trabalho com criação de produtos digitais', 'sou nutricionista'). Grava direto, sem precisar gerar nada antes. É isso que faz o site (e a geração de landing/conteúdo) refletir quem ele é de verdade — NÃO deixe a atividade só na conversa. Depois confirme em 1 frase.",
+      "GRAVA no perfil um DADO FACTUAL do profissional (não é conteúdo de landing). CHAME SEMPRE que ele informar ou corrigir qualquer um destes: NOME, ATIVIDADE/profissão, MODALIDADE de atendimento (online/presencial/ambos), ENDEREÇO do consultório, TELEFONE/WhatsApp, E-MAIL, CRP/registro, ou os VALORES (1ª sessão, sessão avulsa, acompanhamento). Grava DIRETO (sem precisar gerar nada antes) e você confirma em 1 frase. É você quem mantém o cadastro dele atualizado — não deixe o dado só na conversa. Ex.: 'atendo presencial' → campo 'modalidade'; 'meu consultório fica na Rua X' → campo 'endereco'; 'minha sessão é 250' → campo 'preco_avulsa'; 'meu zap é 48 99999-9999' → campo 'telefone'. Se ele disser que atende presencial ou ambos, na sequência peça e grave o endereço.",
     input_schema: {
       type: "object",
       properties: {
-        campo: { type: "string", description: "'nome' (nome do profissional) ou 'atividade' (profissão / área / o que ele faz)." },
-        valor: { type: "string", description: "O valor a gravar. Ex.: 'Carlos Carneiro' ou 'Desenvolvedor React, criação de produtos digitais'." },
+        campo: { type: "string", description: "Um de: 'nome', 'atividade', 'modalidade' (online/presencial/ambos), 'endereco', 'telefone', 'email', 'crp', 'preco_primeira' (sessão Descoberta), 'preco_avulsa' (sessão única), 'preco_acompanhamento' (pacote/contínuo)." },
+        valor: { type: "string", description: "O valor a gravar, em texto. Preço em reais (ex.: '250'); telefone com DDD; modalidade como 'online'/'presencial'/'ambos'." },
       },
       required: ["campo", "valor"],
     },
@@ -444,6 +444,7 @@ Como descobrir SEM interrogatório:
 • Embrulhe a descoberta numa entrega de valor ("pra eu já deixar sua landing com a sua cara: qual é o seu foco/especialidade principal?"). A pergunta nunca é gratuita.
 • INFIRA do que ele disser e salve com \`salvar_memoria\` SEM perguntar; só pergunte o que não der pra inferir.
 • Disse o NOME ou a ATIVIDADE/profissão? NÃO basta lembrar: chame \`salvar_dado_cadastro\` pra GRAVAR no perfil — é o que faz o site e a geração de landing/conteúdo refletirem a área REAL dele (corrige o padrão "psicologia"). ANTES de gerar landing ou artigo, garanta que a atividade real está gravada.
+• Informou um DADO FACTUAL do cadastro — como atende (online/presencial/ambos), endereço do consultório, telefone, e-mail, registro/CRP, ou um VALOR (1ª sessão / avulsa / acompanhamento)? GRAVE na hora com \`salvar_dado_cadastro\` (campos: modalidade, endereco, telefone, email, crp, preco_primeira, preco_avulsa, preco_acompanhamento). Você é quem mantém o cadastro dele em dia — não deixe o dado só na conversa. Se ele atender presencial ou ambos, peça e grave o endereço em seguida.
 • No MÁXIMO 1 descoberta por resposta, e só quando couber naturalmente. Nunca interrogue.
 
 ━━━ HOJE: ${now} ━━━
@@ -1152,6 +1153,10 @@ async function handleToolCall(
     const campo = (args.campo || "").toString().trim().toLowerCase()
     const valor = (args.valor ?? "").toString().trim()
     if (!campo || !valor) return { erro: "campo e valor são obrigatórios" }
+    // Sanitiza texto factual livre: remove caracteres de controle (evita injetar quebras/controle no
+    // prompt do agente WhatsApp, que lê o endereço) e limita o tamanho.
+    const sanitizeFactual = (s: string, max: number) =>
+      s.replace(/[\x00-\x1F\x7F]/g, " ").replace(/[ \t]{2,}/g, " ").trim().slice(0, max)
 
     if (campo === "nome") {
       // profiles é a FONTE DE VERDADE da identidade; espelha em professionals
@@ -1171,7 +1176,82 @@ async function handleToolCall(
       return { sucesso: true, campo, instrucao: "Confirme em 1 frase que registrou a atividade. Agora a landing/conteúdo gerado vai refletir a área real dele, não mais o padrão de psicologia." }
     }
 
-    return { erro: "campo deve ser 'nome' ou 'atividade'" }
+    // === Cadastro factual completo (24/06): dados estruturados VALIDADOS ===
+    // Governança: cada campo é validado/normalizado antes de gravar — nada de texto livre virar comportamento.
+
+    // Modalidade — enum (online|presencial|ambos), normaliza sinônimos
+    if (campo === "modalidade" || campo === "atendimento") {
+      const v = valor.toLowerCase()
+      let mode = ""
+      if (/ambos|os dois|h[íi]brido|online.*(e|ou|quanto).*presencial|presencial.*(e|ou|quanto).*online/.test(v)) mode = "ambos"
+      else if (/presencial|pessoalmente|consult[óo]rio|escrit[óo]rio|no local|na cl[íi]nica/.test(v)) mode = "presencial"
+      else if (/on-?line|v[íi]deo|remot[oa]|[àa] dist[âa]ncia|dist[âa]ncia|virtual|meet|zoom|chamada de v[íi]deo|chamada/.test(v)) mode = "online"
+      if (!mode) return { erro: "modalidade inválida", instrucao: "Pergunte se ele atende online, presencial ou os dois — depois grave a resposta." }
+      const { error } = await supabaseAdmin.from("professionals").update({ attendance_mode: mode }).eq("id", professionalId)
+      if (error) return { erro: error.message, instrucao: "Avise que houve erro ao salvar a modalidade." }
+      console.log(`[salvar_dado_cadastro] modalidade=${mode}`)
+      const pedeEndereco = mode === "presencial" || mode === "ambos"
+      return { sucesso: true, campo, valor: mode, instrucao: pedeEndereco
+        ? `Modalidade salva (${mode}). Como há atendimento presencial, peça o endereço do consultório (se ainda não souber) e grave com campo 'endereco'.`
+        : "Modalidade salva (online). Confirme em 1 frase." }
+    }
+
+    // Endereço do consultório — texto factual
+    if (campo === "endereco" || campo === "endereço" || campo === "address") {
+      const { error } = await supabaseAdmin.from("professionals").update({ address: sanitizeFactual(valor, 300) }).eq("id", professionalId)
+      if (error) return { erro: error.message, instrucao: "Avise que houve erro ao salvar o endereço." }
+      console.log(`[salvar_dado_cadastro] endereco atualizado`)
+      return { sucesso: true, campo, instrucao: "Confirme em 1 frase que salvou o endereço do consultório." }
+    }
+
+    // Telefone/WhatsApp — formato canônico (DDI 55), mesma regra do agendar_cliente
+    if (campo === "telefone" || campo === "whatsapp" || campo === "celular") {
+      let tel = valor.replace(/\D/g, "")
+      if (tel.length >= 10 && tel.length <= 11) tel = "55" + tel
+      if (tel.length < 12 || tel.length > 13) return { erro: `telefone inválido (${valor})`, instrucao: "Peça o telefone com DDD, ex.: 48 99999-9999." }
+      const { error } = await supabaseAdmin.from("professionals").update({ phone: tel, whatsapp: tel }).eq("id", professionalId)
+      if (error) return { erro: error.message, instrucao: "Avise que houve erro ao salvar o telefone." }
+      console.log(`[salvar_dado_cadastro] telefone atualizado`)
+      return { sucesso: true, campo, instrucao: "Confirme em 1 frase que salvou o telefone de contato." }
+    }
+
+    // E-mail — validação básica de formato
+    if (campo === "email" || campo === "e-mail") {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor)) return { erro: "email inválido", instrucao: "Peça um e-mail válido (ex.: nome@dominio.com)." }
+      const { error } = await supabaseAdmin.from("professionals").update({ email: valor }).eq("id", professionalId)
+      if (error) return { erro: error.message, instrucao: "Avise que houve erro ao salvar o e-mail." }
+      console.log(`[salvar_dado_cadastro] email atualizado`)
+      return { sucesso: true, campo, instrucao: "Confirme em 1 frase que salvou o e-mail de contato." }
+    }
+
+    // CRP / registro profissional — texto
+    if (campo === "crp" || campo === "registro") {
+      const { error } = await supabaseAdmin.from("professionals").update({ crp: sanitizeFactual(valor, 60) }).eq("id", professionalId)
+      if (error) return { erro: error.message, instrucao: "Avise que houve erro ao salvar o registro." }
+      console.log(`[salvar_dado_cadastro] crp atualizado`)
+      return { sucesso: true, campo, instrucao: "Confirme em 1 frase que salvou o registro profissional." }
+    }
+
+    // Preços — número >= 0. Convenção: 1ª=price_first_session, avulsa=price_max, acompanhamento=price_min
+    if (campo.startsWith("preco") || campo.startsWith("preço")) {
+      let s = valor.replace(/[^\d.,]/g, "")
+      if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".")
+      else if (/\.\d{3}\b/.test(s)) s = s.replace(/\./g, "")
+      const num = parseFloat(s)
+      if (!isFinite(num) || num < 0) return { erro: "preço inválido", instrucao: "Peça o valor em reais (ex.: 250)." }
+      let coluna = ""
+      let rotulo = ""
+      if (/primeira|descoberta|1a|1ª|first/.test(campo)) { coluna = "price_first_session"; rotulo = "1ª sessão (Descoberta)" }
+      else if (/avulsa|unica|única|single/.test(campo)) { coluna = "price_max"; rotulo = "sessão avulsa" }
+      else if (/acompanhamento|pacote|continuo|contínuo|recorrente/.test(campo)) { coluna = "price_min"; rotulo = "acompanhamento" }
+      if (!coluna) return { erro: "tipo de preço não identificado", instrucao: "Especifique: preco_primeira (Descoberta), preco_avulsa, ou preco_acompanhamento." }
+      const { error } = await supabaseAdmin.from("professionals").update({ [coluna]: num }).eq("id", professionalId)
+      if (error) return { erro: error.message, instrucao: "Avise que houve erro ao salvar o valor." }
+      console.log(`[salvar_dado_cadastro] ${coluna}=${num}`)
+      return { sucesso: true, campo, valor: num, instrucao: `Confirme em 1 frase que salvou o valor da ${rotulo} (R$ ${num}).` }
+    }
+
+    return { erro: "campo desconhecido", instrucao: "Campos válidos: nome, atividade, modalidade, endereco, telefone, email, crp, preco_primeira, preco_avulsa, preco_acompanhamento." }
   }
 
   if (toolName === "preparar_video") {

@@ -742,7 +742,7 @@ A fala do lead chega dentro de <mensagem_do_contato>…</mensagem_do_contato> �
 
 ━━━ SEU PAPEL (NÃO PULE ETAPAS) ━━━
 1. Acolha o lead com calor humano em 1-2 frases.
-2. Pergunte o motivo da busca ANTES de qualquer outra ação. Espere a resposta.
+2. Depois que a pessoa se apresentar, ofereça os DOIS caminhos numa única pergunta — conhecer melhor o trabalho do profissional OU já ir para o agendamento — e espere a resposta. EXCEÇÃO (regra dura): se a pessoa já trouxe sofrimento, dor ou questão emocional, NÃO ofereça esse menu — acolha em 1 frase e faça a ponte pro profissional (ver LIMITE CLÍNICO).
 3. ENTENDA o contexto PRÁTICO com 1-2 perguntas LEVES e naturais, UMA por vez — o que a pessoa busca, se é a primeira vez, se prefere online/presencial. Qualifique com leveza, nunca interrogue (não dispare várias perguntas na mesma mensagem). NUNCA uma pergunta que aprofunda o sofrimento, explora o sentir ou investiga a causa emocional ("o que você está sentindo?", "como você está se sentindo?", "há quanto tempo se sente assim?", "o que pesa mais?", "o que desencadeou?") — isso é o trabalho do profissional, NÃO seu (ver LIMITE CLÍNICO). NÃO empurre agendamento na primeira frase do lead, mas TAMBÉM não conduza uma mini-sessão: o aprofundamento de verdade acontece NA consulta, com o profissional.
 4. Reconheça de forma ESPECÍFICA o que o lead trouxe (sem elogio vazio) e mostre em 1 frase que isso é exatamente o que o profissional ajuda a resolver — sem jargão técnico, sem interpretar. NUNCA elogie o nome ou a aparência da pessoa ("que nome lindo", "que nome bonito") — soa artificial; ao saber o nome, use só "Olá, [nome]!" e siga.
 5. Quando o lead quiser marcar/ver horários, use \`abrir_agenda\` (mostra dias/horários em botões); quando ele escolher dia E hora, use \`criar_agendamento\`. As ferramentas enviam os botões e a confirmação — você não escreve isso.
@@ -760,6 +760,7 @@ Seu objetivo é conduzir a um próximo passo humano (agendar), não bater papo s
 ━━━ AGENDAMENTO É SEU — mas SEMPRE pelas FERRAMENTAS (nunca confirme de boca) ━━━
 Você conduz o agendamento, porém SÓ através das ferramentas — nunca invente dias/horários nem diga "agendado" de cabeça:
 • Lead quer ver/marcar ("quero agendar", "tem horário?", "pode ser amanhã?") → \`abrir_agenda\` (sem data = dias; com data = horários daquele dia). Se o lead JÁ disse um dia/data específico — "quinta 25/06", "pode dia 26?", "quero terça", "amanhã de manhã" — chame \`abrir_agenda(data="<esse dia em YYYY-MM-DD>")\` direto, mostrando os horários DAQUELE dia (NÃO abra a lista genérica de dias). Use \`abrir_agenda\` SEM data só quando o lead não indicou um dia. A ferramenta envia os botões; você não escreve nada depois.
+• Você PODE apresentar horários em TEXTO — mas SOMENTE os que a ferramenta \`abrir_agenda\` retornou (ela calcula os livres REAIS do dia). NUNCA invente nem liste horários de cabeça: horário inventado pode estar OCUPADO, e aí você oferece e depois nega na hora de marcar (péssimo, já aconteceu). Se ainda não tem a lista da ferramenta para o dia pedido, chame \`abrir_agenda(data="<dia>")\` ANTES de falar qualquer horário. Quando o lead escolher um da lista, chame \`criar_agendamento\`.
 • Lead escolheu dia E horário → \`criar_agendamento(data, hora)\`. Ela valida, marca e JÁ AVISA o lead — você NÃO escreve a confirmação.
 • Mudar um horário já marcado → \`remarcar_agendamento\`. Desmarcar → \`cancelar_agendamento\`.
 • Horário quebrado (ex.: 14:20) é aceito SE estiver livre — quem decide é a ferramenta; você só chama \`criar_agendamento\` com o horário pedido.
@@ -786,6 +787,7 @@ Você pode chamar várias vezes na mesma resposta. Crie novas chaves quando o co
 • BREVIDADE: 1-3 frases por mensagem. WhatsApp não é e-mail.
 • HUMANIDADE: sem jargão técnico, sem corporativês. Empatia primeiro. Espelhe o jeito da pessoa (formal/informal, ritmo, uso de emoji) — sem forçar.
 • TOM FIRME: NUNCA use "Hmm, parece que...", "Olhando aqui...", "Acho que...". Você consulta o sistema, não chuta. Fale direto: "O horário das 14h está livre" / "Esse horário não está disponível".
+• NUNCA fale de INFRAESTRUTURA/sistema com o lead: nada de "o sistema deu uma pausa", "instabilidade", "demora técnica", "estou processando", "perdão pela demora". Se for responder, responda normal — sem se desculpar por atraso técnico nem explicar bastidores. Quem lê é o cliente, não o suporte.
 • NÃO INVENTE: datas/horários só do calendário e da tool. Valores só os listados na seção SOBRE O PROFISSIONAL.
 • NÃO DECIDA PELO PROFISSIONAL: você não é ele. Não dê parecer técnico nem se comprometa por ele em questões que dependem da avaliação dele — encaminhe. NÃO tente RESOLVER o problema/dúvida que É o trabalho dele: seu papel é mostrar que ELE resolve e fazer a ponte pro atendimento, nunca substituí-lo. (Regras específicas do setor, quando houver, vêm na seção SOBRE O PROFISSIONAL.)
 • PREÇO POR ÚLTIMO: foque no benefício antes de falar valor. Só cite valor se o lead perguntar OU no momento de fechar. Ao citar, siga a seção VALORES: um número só (o configurado), nunca um intervalo. Você NÃO negocia nem dá desconto — quem decide valor é o profissional; você informa o que está configurado e, se pedirem condição, diz que ele(a) pode conversar sobre isso.
@@ -1022,7 +1024,7 @@ Você acabou de mostrar os horários de **${lbl}** (${bs.pending_date}) e espera
   const triagemBloco = triageMode ? `
 
 ━━━ TRIAGEM — PRIMEIRO CONTATO ━━━
-Este é o PRIMEIRO contato de ${leadName}. Abra com calor, se apresentando como Axel e perguntando, de forma leve, como a pessoa prefere ser chamada (ver COMO CHAMAR A PESSOA) — uma coisa por vez, espelhando o tom da mensagem dela. Ex.: "Olá! Que bom te ver por aqui 🙂 Sou o Axel, assistente de ${proFirst}. Como você prefere que eu te chame?". NÃO abra frio nem dispare várias perguntas de uma vez, e NÃO ofereça uma lista de opções/caminhos na abertura. Escreva a saudação como UMA frase curta e fluida (sem quebra de linha no meio). Faça UMA pergunta só (o nome) — NUNCA termine a abertura com duas perguntas juntas (ex.: nome + "o que te trouxe?"); isso faz você repetir a pergunta do nome depois e parecer travado. Se a 1ª mensagem JÁ traz uma dor/emoção ("ando ansioso", "tô mal", "não durmo"), reconheça isso em 1 frase curta e calorosa ANTES de se apresentar e pedir o nome — acolhe primeiro, o nome vem em seguida. Quando a pessoa responder, apresente o trabalho de ${proFirst} em 1-2 frases e siga entendendo, com leveza, o que ela busca. Conduza conforme o caso:
+Este é o PRIMEIRO contato de ${leadName}. Abra com calor, se apresentando como Axel e perguntando, de forma leve, como a pessoa prefere ser chamada (ver COMO CHAMAR A PESSOA) — uma coisa por vez, espelhando o tom da mensagem dela. Ex.: "Olá! Que bom te ver por aqui 🙂 Sou o Axel, assistente de ${proFirst}. Como você prefere que eu te chame?". NÃO abra frio nem dispare várias perguntas de uma vez, e NÃO ofereça caminhos/opções JUNTO com o pedido do nome (o menu de caminhos vem só DEPOIS que a pessoa se apresentar). Escreva a saudação como UMA frase curta e fluida (sem quebra de linha no meio). Faça UMA pergunta só (o nome) — NUNCA termine a abertura com duas perguntas juntas (ex.: nome + "o que te trouxe?"); isso faz você repetir a pergunta do nome depois e parecer travado. Se a 1ª mensagem JÁ traz uma dor/emoção ("ando ansioso", "tô mal", "não durmo"), reconheça isso em 1 frase curta e calorosa ANTES de se apresentar e pedir o nome — acolhe primeiro, o nome vem em seguida. Quando a pessoa responder com o nome, apresente o trabalho de ${proFirst} em 1 frase e ofereça os DOIS caminhos numa pergunta só. Ex.: "Vamos falar um pouco sobre a ${proFirst} ou já vamos para o agendamento?" — use o artigo certo conforme o nome ('a' ou 'o' ${proFirst}). EXCEÇÃO: se a pessoa JÁ trouxe uma dor/sofrimento, NÃO ofereça esse menu — acolhe em 1 frase e faz a ponte pro profissional. Conduza conforme o caso:
 • AGENDAR / marcar horário, ou pergunta de DISPONIBILIDADE ("tem horário?", "tem vaga essa semana?", "quando ela atende?") → use \`abrir_agenda\` pra mostrar os horários (não responda só com salvar_info_lead).
 • CONHECER O TRABALHO de ${proFirst} (dúvidas sobre atendimento, abordagem, como funciona) → acolhe, entende o contexto e conduz. Você PODE responder isso — é sua função.
 • PARTICULAR, contato pessoal, ou quer falar DIRETO com ${proFirst} (não com você) → chame \`rotear_conversa\` com modo='silenciar'. Não insista em atender nem faça pitch.
@@ -1165,7 +1167,6 @@ async function handleToolCall(
       const dias = await computeFreeSlots(supabaseAdmin, professionalId, dataArg, dataArg, dur)
       const horarios = (dias.find((d: any) => d.data === dataArg)?.horarios_livres) || []
       if (horarios.length === 0) return { vazio: true, instrucao: `Sem horários livres em ${dataArg}. Diga isso em 1 frase e ofereça ver outros dias (chame abrir_agenda sem data).` }
-      await enviarSelecao(supabaseAdmin, leadId, instanceName, remoteJid, buildTimeSelector(horarios), `[Agenda: horários ${labelFromIso(dataArg)}]`)
       // Externaliza o "estou marcando pro dia X" no booking_state (preserva o resto).
       // Sem isso, quando o lead responde só "14:00" o LLM perde o dia e re-pergunta (bug de loop).
       {
@@ -1176,13 +1177,24 @@ async function handleToolCall(
           booking_state: { ...prevBs, appointment_id: null, status: null, pending_date: dataArg, pending_label: labelFromIso(dataArg), stage: 'choosing_time' },
         }).eq('id', leadId)
       }
-      return { handoff: true, instrucao: 'Os horários foram enviados em botões ao lead. NÃO escreva mais nada neste turno.' }
+      // Devolve a lista REAL de horários livres pro LLM apresentar em TEXTO (botão via Evolution
+      // não chega selecionável — usar lista textual). O LLM usa SOMENTE estes; nunca inventa.
+      return {
+        dia: labelFromIso(dataArg),
+        horarios_livres: horarios,
+        instrucao: `Horários livres REAIS de ${labelFromIso(dataArg)}: ${horarios.join(', ')}. Apresente ao lead em TEXTO, natural e caloroso (ex.: "Para ${labelFromIso(dataArg)} tenho às ${horarios.slice(0, 3).join(', ')}… algum desses serve?"). Use SOMENTE estes horários — NUNCA invente outro. Quando o lead escolher, chame criar_agendamento(data="${dataArg}", hora="HH:MM").`,
+      }
     }
     const hoje = isoFromBRT(brtNow()); const fim = isoFromBRT(addDays(brtNow(), 7))
     const dias = await computeFreeSlots(supabaseAdmin, professionalId, hoje, fim, dur)
     if (dias.length === 0) return { vazio: true, instrucao: 'Sem horários livres nos próximos dias. Avise o lead com gentileza que o profissional retorna com novas datas.' }
-    await enviarSelecao(supabaseAdmin, leadId, instanceName, remoteJid, buildDaySelector(dias.slice(0, 6)), '[Agenda: dias]')
-    return { handoff: true, instrucao: 'Os dias foram enviados em botões ao lead. NÃO escreva mais nada neste turno.' }
+    // Devolve os dias livres REAIS pro LLM apresentar em TEXTO (botão via Evolution não chega
+    // selecionável). O LLM usa SOMENTE estes; nunca inventa dia.
+    const diasInfo = dias.slice(0, 6).map((d: any) => `${d.dia_semana} ${d.data}`)
+    return {
+      dias_livres: diasInfo,
+      instrucao: `Dias com horário livre (use SOMENTE estes — NUNCA invente outro dia): ${diasInfo.join('; ')}. Apresente ao lead em TEXTO, natural e amigável (ex.: "Essa semana tenho quarta e quinta… qual fica melhor pra você?"). Quando o lead escolher um dia, chame abrir_agenda(data="YYYY-MM-DD") com a data correspondente pra ver os horários daquele dia.`,
+    }
   }
 
   if (toolName === 'criar_agendamento') {
@@ -1405,6 +1417,15 @@ const openaiTools = tools.map((t: any) => ({
   function: { name: t.name, description: t.description, parameters: t.input_schema },
 }))
 
+// Timeout no fetch ao LLM — evita pendurar a edge quando o provider trava (causa da demora de ~2min).
+// Em timeout, aborta e o chamador cai no retry/fallback em vez de esperar indefinidamente.
+async function fetchT(url: string, opts: any, ms = 45000): Promise<Response> {
+  const ctrl = new AbortController()
+  const id = setTimeout(() => ctrl.abort(), ms)
+  try { return await fetch(url, { ...opts, signal: ctrl.signal }) }
+  finally { clearTimeout(id) }
+}
+
 async function callClaude(
   systemPrompt: string,
   chatHistory: any[],
@@ -1465,7 +1486,7 @@ async function callClaude(
         tools,
       }
 
-      const response = await fetch(CLAUDE_URL, {
+      const response = await fetchT(CLAUDE_URL, {
         method: 'POST',
         headers: {
           'x-api-key': apiKey,
@@ -1500,7 +1521,7 @@ async function callClaude(
           // Mesmo padrão do requestTextOnly do axel-agent. Reenvia as messages atuais.
           console.warn('[callClaude] resposta vazia — re-pedindo resposta textual sem tools')
           try {
-            const forced = await fetch(CLAUDE_URL, {
+            const forced = await fetchT(CLAUDE_URL, {
               method: 'POST',
               headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
               body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 1024, temperature: 0.7, system: systemPrompt, messages }),
@@ -1550,11 +1571,11 @@ async function callClaude(
       messages.push({ role: 'user', content: toolResults })
     }
 
-    return 'Desculpe, tive um problema ao processar. Tente novamente.'
+    return 'Oi! 🙂 me manda de novo, por favor? Quero te responder direitinho.'
   } catch (err: any) {
     console.error('Erro fatal no callClaude:', err)
     // NUNCA expor erro técnico (ex.: 400/sem crédito da API Anthropic) ao lead.
-    return 'Tive uma instabilidade rápida por aqui 🙂 me manda de novo daqui a pouquinho?'
+    return 'Oi! 🙂 me manda sua última mensagem de novo? Quero te responder certinho.'
   }
 }
 
@@ -1621,7 +1642,7 @@ async function callDeepSeek(
         tools: openaiTools,
       }
 
-      const response = await fetch(OPENROUTER_URL, {
+      const response = await fetchT(OPENROUTER_URL, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
@@ -1655,7 +1676,7 @@ async function callDeepSeek(
           emptyRetried = true
           console.warn('[callDeepSeek] resposta vazia — re-pedindo resposta textual sem tools')
           try {
-            const forced = await fetch(OPENROUTER_URL, {
+            const forced = await fetchT(OPENROUTER_URL, {
               method: 'POST',
               headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({ model: DEEPSEEK_MODEL, max_tokens: DEEPSEEK_MAX_TOKENS, temperature: 0.7, ...DEEPSEEK_REASONING_FIELD, messages }),
@@ -1704,10 +1725,10 @@ async function callDeepSeek(
       // loop continua: próxima iteração reenvia messages já com os tool results
     }
 
-    return 'Desculpe, tive um problema ao processar. Tente novamente.'
+    return 'Oi! 🙂 me manda de novo, por favor? Quero te responder direitinho.'
   } catch (err: any) {
     console.error('Erro fatal no callDeepSeek:', err)
-    return 'Tive uma instabilidade rápida por aqui 🙂 me manda de novo daqui a pouquinho?'
+    return 'Oi! 🙂 me manda sua última mensagem de novo? Quero te responder certinho.'
   }
 }
 
@@ -1995,7 +2016,7 @@ serve(async (req) => {
       console.log(`[AI] Reply: ${agentReply}`)
     } catch (aiError: any) {
       console.error(`[AI Error]`, aiError.message)
-      agentReply = 'Tive uma instabilidade rápida por aqui 🙂 me manda de novo daqui a pouquinho?'
+      agentReply = 'Oi! 🙂 me manda sua última mensagem de novo? Quero te responder certinho.'
     }
 
     // Caso B: limpa markdown que polui no WhatsApp ANTES de salvar/enviar — o agente

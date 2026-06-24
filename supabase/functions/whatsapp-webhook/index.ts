@@ -999,108 +999,130 @@ serve(async (req) => {
       })
     }
 
-    // Marca atomicamente todas as mensagens não-processadas como processed=true
-    // ANTES de chamar o agente. Se uma 2ª task chegar aqui em paralelo, vai
-    // pegar zero linhas e desistir naturalmente.
-    const { data: pendingMessages } = await supabaseAdmin
-      .from('chat_messages')
-      .update({ processed: true })
-      .eq('lead_id', leadId)
-      .eq('processed', false)
-      .select('id, content, created_at')
-      .order('created_at', { ascending: true })
-
-    if (!pendingMessages || pendingMessages.length === 0) {
-      console.log(`[DEBOUNCE] Nenhuma mensagem pendente — outra task já processou`)
-      return new Response(JSON.stringify({ debounced: true, reason: 'already_processed' }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    // Junta o conteúdo de todas as mensagens pendentes. Quando o lead manda
-    // 3 mensagens em rajada, o agente vê tudo de uma vez como um único turno.
-    const mergedText = pendingMessages.map((m: any) => m.content).join('\n')
-    console.log(`[DEBOUNCE] Processando ${pendingMessages.length} mensagem(ns) merged`)
-
-    // 5. Chamar o agente IA para gerar resposta.
-    //    ROBUSTEZ (fix 18/06): as mensagens JÁ foram marcadas processed=true logo acima.
-    //    Se a chamada do agente falhar (Anthropic sobrecarregada/timeout/cold start), NÃO
-    //    podemos deixar o lead no silêncio — era essa a causa do "Axel não responde"
-    //    intermitente: a mensagem sumia sem resposta e sem rastro. Então: tenta 2x e, se
-    //    ainda assim nada for entregue, manda um fallback gentil + grava no histórico.
+    // LOCK por lead — impede tasks concorrentes de processar o MESMO lead em paralelo
+    // (causa do loop de respostas repetidas quando o agente demora). Fica DENTRO do try
+    // pra o finally garantir a liberação; só libera se ESTA task adquiriu (hasLock).
+    const LOCK_MS = 180000
+    const FREE_LOCK = '1970-01-01T00:00:00Z'
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEYS') || ''
     const agentUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/whatsapp-agent`
-    const agentPayload = {
-      lead_id: leadId,
-      lead_name: pushName,
-      lead_phone: formattedNumber,
-      message: mergedText,
-      remote_jid: remoteJid,
-      professional_id: professional.id,
-      instance_name: instanceName,
-      contact_status: (existingLead?.pipeline_stage === 'agendado' || existingLead?.pipeline_stage === 'cliente_ativo') ? 'cliente' : 'em_conversa',
-    }
+    let lastOutcome: any = { debounced: true, reason: 'nothing_pending' }
+    let hasLock = false
 
-    // Marco do início do turno — pra saber se o agente chegou a GRAVAR uma resposta
-    // (evita resposta dupla no retry e fallback indevido se só a resposta HTTP caiu).
-    const turnStartIso = new Date().toISOString()
-    const assistantRepliedSince = async (): Promise<boolean> => {
-      const { data } = await supabaseAdmin
-        .from('chat_messages')
+    try {
+      // UPDATE condicional atômico: só adquire se livre (processing_until no passado). Expira em 180s.
+      const lockUntilIso = new Date(Date.now() + LOCK_MS).toISOString()
+      const nowIsoLock = new Date().toISOString()
+      const { data: lockRow } = await supabaseAdmin
+        .from('leads')
+        .update({ processing_until: lockUntilIso })
+        .eq('id', leadId)
+        .lt('processing_until', nowIsoLock)
         .select('id')
-        .eq('lead_id', leadId)
-        .eq('role', 'assistant')
-        .gt('created_at', turnStartIso)
-        .limit(1)
-      return !!(data && data.length > 0)
-    }
-    const callAgent = async (): Promise<{ ok: boolean; status: number; result: any }> => {
-      try {
-        const res = await fetch(agentUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
-          body: JSON.stringify(agentPayload),
+        .maybeSingle()
+      if (!lockRow) {
+        console.log(`[LOCK] lead ${leadId} já está sendo processado por outra task — abandonando (ela drena)`)
+        return new Response(JSON.stringify({ debounced: true, reason: 'locked_by_other' }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
-        const result = await res.json().catch(() => ({}))
-        // Sucesso real = HTTP ok + o agente reportou success (ele devolve {error} no catch dele).
-        return { ok: res.ok && result?.success === true && !result?.error, status: res.status, result }
-      } catch (e: any) {
-        return { ok: false, status: 0, result: { error: e?.message || String(e) } }
+      }
+      hasLock = true
+      // DRAIN: processa o que está pendente; se chegarem novas mensagens enquanto o agente
+      // respondia, processa de novo (até esvaziar). Garante UMA resposta por turno, sem órfãs.
+      let drainGuard = 0
+      while (drainGuard++ < 4) {
+        // Marca atomicamente as não-processadas como processed=true e as recolhe.
+        const { data: pendingMessages } = await supabaseAdmin
+          .from('chat_messages')
+          .update({ processed: true })
+          .eq('lead_id', leadId)
+          .eq('processed', false)
+          .select('id, content, created_at')
+          .order('created_at', { ascending: true })
+
+        if (!pendingMessages || pendingMessages.length === 0) break
+
+        // Junta as mensagens pendentes — rajada vira um único turno pro agente.
+        const mergedText = pendingMessages.map((m: any) => m.content).join('\n')
+        console.log(`[DRAIN ${drainGuard}] Processando ${pendingMessages.length} mensagem(ns) merged`)
+
+        const agentPayload = {
+          lead_id: leadId,
+          lead_name: pushName,
+          lead_phone: formattedNumber,
+          message: mergedText,
+          remote_jid: remoteJid,
+          professional_id: professional.id,
+          instance_name: instanceName,
+          contact_status: (existingLead?.pipeline_stage === 'agendado' || existingLead?.pipeline_stage === 'cliente_ativo') ? 'cliente' : 'em_conversa',
+        }
+
+        // Marco do turno — pra saber se o agente chegou a GRAVAR resposta (evita dupla no retry).
+        const turnStartIso = new Date().toISOString()
+        const assistantRepliedSince = async (): Promise<boolean> => {
+          const { data } = await supabaseAdmin
+            .from('chat_messages')
+            .select('id')
+            .eq('lead_id', leadId)
+            .eq('role', 'assistant')
+            .gt('created_at', turnStartIso)
+            .limit(1)
+          return !!(data && data.length > 0)
+        }
+        const callAgent = async (): Promise<{ ok: boolean; status: number; result: any }> => {
+          try {
+            const res = await fetch(agentUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
+              body: JSON.stringify(agentPayload),
+            })
+            const result = await res.json().catch(() => ({}))
+            return { ok: res.ok && result?.success === true && !result?.error, status: res.status, result }
+          } catch (e: any) {
+            return { ok: false, status: 0, result: { error: e?.message || String(e) } }
+          }
+        }
+
+        console.log(`[DEBUG] Invocando whatsapp-agent (drain ${drainGuard})...`)
+        let attempt = await callAgent()
+        if (!attempt.ok && !(await assistantRepliedSince())) {
+          console.warn(`[WEBHOOK] agente falhou (status=${attempt.status}, err=${attempt.result?.error}) — retry`)
+          attempt = await callAgent()
+        }
+
+        if (attempt.ok || await assistantRepliedSince()) {
+          console.log(`[WEBHOOK] ✅ agente respondeu (drain ${drainGuard})`)
+          lastOutcome = { success: true, agent: attempt.result, merged: pendingMessages.length }
+          continue // pode ter chegado mensagem nova durante o processamento → drena
+        }
+
+        // Falhou 2x E nada gravado → nunca deixar o lead no vácuo. Não insiste (sai do drain).
+        const proFirst = (professional.full_name || 'o profissional').split(' ')[0]
+        const recado = `Oi! 💛 Sua mensagem chegou. Já já retomo por aqui — ${proFirst} também acompanha. 🙂`
+        const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
+        const evoKey = Deno.env.get('EVOLUTION_API_KEY')
+        if (evoUrl && evoKey && instanceName) {
+          await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
+            method: 'POST',
+            headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ number: remoteJid, text: recado }),
+          }).catch(() => {})
+        }
+        await supabaseAdmin.from('chat_messages').insert({ lead_id: leadId, role: 'assistant', content: recado, processed: true })
+        console.warn(`[WEBHOOK] ⚠️ agente falhou 2x — fallback gentil enviado (lead ${leadId})`)
+        lastOutcome = { success: false, fallback: true }
+        break
+      }
+    } finally {
+      // Libera o lock SÓ se esta task o adquiriu — mesmo que algo lance no meio do drain.
+      // (Se não adquiriu, o lock é de outra task; não pode liberar.)
+      if (hasLock) {
+        try { await supabaseAdmin.from('leads').update({ processing_until: FREE_LOCK }).eq('id', leadId) } catch (_e) { /* lock expira sozinho */ }
       }
     }
 
-    console.log(`[DEBUG] Invocando whatsapp-agent (tentativa 1)...`)
-    let attempt = await callAgent()
-    if (!attempt.ok && !(await assistantRepliedSince())) {
-      console.warn(`[WEBHOOK] agente falhou (status=${attempt.status}, err=${attempt.result?.error}) — retry`)
-      attempt = await callAgent()
-    }
-
-    if (attempt.ok || await assistantRepliedSince()) {
-      console.log(`[WEBHOOK] ✅ SUCESSO: agente respondeu`)
-      return new Response(JSON.stringify({ success: true, agent: attempt.result, merged: pendingMessages.length }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    // Falhou nas 2 tentativas E nada foi gravado → nunca deixar o lead no vácuo.
-    const proFirst = (professional.full_name || 'o profissional').split(' ')[0]
-    const recado = `Oi! 💛 Sua mensagem chegou. Estou com uma instabilidade pra responder agora, mas já já retomo — ${proFirst} também acompanha por aqui.`
-    const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
-    const evoKey = Deno.env.get('EVOLUTION_API_KEY')
-    if (evoUrl && evoKey && instanceName) {
-      await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
-        method: 'POST',
-        headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ number: remoteJid, text: recado }),
-      }).catch(() => {})
-    }
-    await supabaseAdmin.from('chat_messages').insert({ lead_id: leadId, role: 'assistant', content: recado, processed: true })
-    console.warn(`[WEBHOOK] ⚠️ agente falhou 2x — fallback gentil enviado ao lead (lead ${leadId})`)
-
-    return new Response(JSON.stringify({ success: false, fallback: true, merged: pendingMessages.length }), {
+    return new Response(JSON.stringify(lastOutcome), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })

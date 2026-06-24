@@ -1479,7 +1479,9 @@ async function callClaude(
     while (maxIterations-- > 0) {
       const payload = {
         model: CLAUDE_MODEL,
-        max_tokens: 1024,
+        // 2048 (era 1024): 1024 truncava tool_use+texto -> stop_reason=max_tokens -> fallback genérico
+        // (mesma classe do bug do roteiro no axel-agent). Fallback Claude; o ativo é DeepSeek (2048).
+        max_tokens: 2048,
         temperature: 0.7,
         system: systemPrompt,
         messages,
@@ -1524,7 +1526,7 @@ async function callClaude(
             const forced = await fetchT(CLAUDE_URL, {
               method: 'POST',
               headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-              body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 1024, temperature: 0.7, system: systemPrompt, messages }),
+              body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 2048, temperature: 0.7, system: systemPrompt, messages }),
             })
             if (forced.ok) {
               const fr = await forced.json()

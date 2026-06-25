@@ -25,7 +25,7 @@ export default {
           // Paleta da landing institucional (redesign 2026) — terrosa/sálvia.
           // Aditiva e ISOLADA: não altera os tokens semânticos (teal) do resto do app.
           pp: {
-            bg: "#F5F0EB",
+            bg: "#F2F2F2",
             card: "#F8F4EF",
             surface: "#EFE8DE",
             surface2: "#EDE6DC",

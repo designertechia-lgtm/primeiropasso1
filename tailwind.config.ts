@@ -27,8 +27,10 @@ export default {
           pp: {
             bg: "#F2F2F2",
             card: "#F8F4EF",
-            surface: "#EFE8DE",
-            surface2: "#EDE6DC",
+            // Seções intercaladas: cinzas neutros que acompanham o bg novo (#F2F2F2),
+            // mantendo ritmo entre seções. Cards seguem no creme (card/cream) por opção.
+            surface: "#EAEAEA",
+            surface2: "#E5E5E5",
             ink: "#352617",
             "ink-soft": "#403528",
             muted: "#6e6155",

@@ -57,9 +57,10 @@ export default function PlatformFooter() {
             <a href="#conteudo" className="text-[14px] text-pp-bg/[.62] no-underline">
               Conteúdo
             </a>
+            {/* Preços oculto temporariamente (pedido Carlos):
             <a href="#precos" className="text-[14px] text-pp-bg/[.62] no-underline">
               Preços
-            </a>
+            </a> */}
             <a href="#faq" className="text-[14px] text-pp-bg/[.62] no-underline">
               FAQ
             </a>

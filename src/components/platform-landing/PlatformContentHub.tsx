@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { ArrowRight, Play, Image as ImageIcon } from "lucide-react";
 
 export default function PlatformContentHub() {
@@ -15,13 +16,13 @@ export default function PlatformContentHub() {
               <span className="text-pp-accent">publicados por você sem você.</span>
             </h2>
           </div>
-          <a
-            href="#precos"
+          <Link
+            to="/cadastro"
             className="inline-flex items-center gap-2 text-[15px] font-semibold text-pp-accent no-underline"
           >
             Ver tudo
             <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          </a>
+          </Link>
         </div>
 
         {/* Cards grid */}

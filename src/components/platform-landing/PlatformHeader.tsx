@@ -5,7 +5,7 @@ import { Menu, X } from "lucide-react";
 const NAV_LINKS = [
   { label: "Como funciona", href: "#como-funciona" },
   { label: "Conteúdo", href: "#conteudo" },
-  { label: "Preços", href: "#precos" },
+  // { label: "Preços", href: "#precos" }, // oculto temporariamente (pedido Carlos)
   { label: "FAQ", href: "#faq" },
 ];
 

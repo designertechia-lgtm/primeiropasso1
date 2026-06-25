@@ -46,7 +46,7 @@ const sections = [
     items: [
       { title: "Agenda", url: "/admin/agenda", icon: CalendarDays },
       { title: "Clientes", url: "/admin/clientes", icon: LayoutList },
-      { title: "Chat Axel", url: "/admin/chat", icon: Sparkles },
+      { title: "Axel Web", url: "/admin/chat", icon: Sparkles },
     ]
   },
   {

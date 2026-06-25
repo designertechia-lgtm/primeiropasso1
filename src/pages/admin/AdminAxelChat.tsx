@@ -75,9 +75,8 @@ import AxelChat from "@/components/admin/AxelChat";
 type TabType = "axel" | "leads" | "feedback";
 
 const TABS: { id: TabType; label: string; icon: React.ElementType; gradient: string; glow: string }[] = [
-  { id: "axel", label: "Axel IA", icon: Sparkles, gradient: "from-violet-500 via-purple-500 to-indigo-500", glow: "shadow-purple-500/25" },
-  { id: "leads", label: "Conversas", icon: MessageSquare, gradient: "from-emerald-400 via-green-500 to-teal-500", glow: "shadow-emerald-500/25" },
-  { id: "feedback", label: "Feedback", icon: Star, gradient: "from-amber-400 via-orange-500 to-rose-500", glow: "shadow-orange-500/25" },
+  { id: "axel", label: "Axel Web", icon: Sparkles, gradient: "from-violet-500 via-purple-500 to-indigo-500", glow: "shadow-purple-500/25" },
+  { id: "leads", label: "Axel Whats", icon: MessageSquare, gradient: "from-emerald-400 via-green-500 to-teal-500", glow: "shadow-emerald-500/25" },
 ];
 
 // ==================== MAIN PAGE ====================
@@ -102,7 +101,7 @@ export default function AdminAxelChat() {
             }`}
           >
             <tab.icon className="h-3 w-3 sm:h-4 sm:w-4" />
-            <span className="hidden xs:inline">{tab.label}</span>
+            <span>{tab.label}</span>
           </button>
         ))}
       </div>

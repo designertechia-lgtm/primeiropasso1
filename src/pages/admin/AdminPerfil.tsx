@@ -209,7 +209,7 @@ export default function AdminPerfil() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Dados Pessoais</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Dados Profissionais</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="fullName">Nome completo</Label>

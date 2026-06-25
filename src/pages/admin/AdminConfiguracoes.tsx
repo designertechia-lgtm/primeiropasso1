@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
+import { MessageSquareText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { useProfessional } from "@/hooks/useProfessional";
@@ -271,6 +273,21 @@ export default function AdminConfiguracoes() {
       <Button onClick={handleSave} disabled={saving} size="lg">
         {saving ? "Salvando..." : "Salvar Configurações"}
       </Button>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Feedback</CardTitle>
+          <p className="text-sm text-muted-foreground">Sugestões, dúvidas ou problemas? Envie pra equipe e acompanhe as respostas por aqui.</p>
+        </CardHeader>
+        <CardContent>
+          <Button asChild variant="outline" className="gap-2">
+            <Link to="/admin/chat?tab=feedback">
+              <MessageSquareText className="h-4 w-4" />
+              Abrir Feedback
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 }

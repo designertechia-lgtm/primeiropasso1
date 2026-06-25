@@ -24,7 +24,7 @@ export default function PlatformHeader() {
     <header
       className={`fixed top-0 inset-x-0 z-50 transition-[background-color,color,box-shadow,border-color] [transition-duration:350ms] ease-out ${
         scrolled
-          ? "bg-[rgba(245,240,235,.92)] backdrop-blur-[10px] text-pp-ink border-b border-pp-border shadow-[0_1px_3px_rgba(0,0,0,.06)]"
+          ? "bg-[rgba(242,242,242,.92)] backdrop-blur-[10px] text-pp-ink border-b border-pp-border shadow-[0_1px_3px_rgba(0,0,0,.06)]"
           : "bg-transparent text-pp-bg border-b border-transparent"
       }`}
     >
@@ -89,7 +89,7 @@ export default function PlatformHeader() {
       </div>
 
       {mobileOpen && (
-        <div className="md:hidden border-t border-pp-border bg-[rgba(245,240,235,.96)] backdrop-blur-[10px] text-pp-ink">
+        <div className="md:hidden border-t border-pp-border bg-[rgba(242,242,242,.96)] backdrop-blur-[10px] text-pp-ink">
           <div className="mx-auto max-w-[1200px] px-7 py-4 flex flex-col gap-3">
             {NAV_LINKS.map((l) => (
               <a

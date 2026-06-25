@@ -41,7 +41,7 @@ export default function PlatformHero() {
         <div>
           <h1 className="font-display font-bold text-[clamp(30px,3.8vw,48px)] leading-[1.08] tracking-[-0.02em]">
             A IA que conversa, qualifica e{" "}
-            <span className="italic text-pp-sage-light">agenda</span> — enquanto
+            <span className="italic text-pp-sage-light">agenda</span> enquanto
             você atende.
           </h1>
           <p className="mt-6 max-w-[540px] text-[clamp(17px,1.5vw,20px)] leading-[1.6] text-pp-bg/75">

@@ -337,6 +337,20 @@ const tools = [
       required: ["campaign_id"],
     },
   },
+  {
+    name: "registrar_feedback",
+    description:
+      "Registra um feedback do PROFISSIONAL sobre a plataforma Primeiro Passo (sugestão de melhoria, bug/erro do sistema, dúvida sobre o produto, elogio ou outro) para a equipe de desenvolvimento. Use quando ele relatar que algo do sistema não funciona, pedir um recurso, elogiar ou ter uma dúvida SOBRE O PRODUTO. É SÓ sobre a plataforma — NÃO use para assuntos clínicos ou dos clientes/pacientes dele. PRIMEIRO mostre um resumo do que vai registrar e PEÇA CONFIRMAÇÃO; só então chame a tool. Reproduza o relato dele de forma fiel e com contexto suficiente pra equipe entender.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tipo:     { type: "string", enum: ["sugestao", "bug", "duvida", "elogio", "outro"], description: "Categoria: 'sugestao' (ideia/melhoria), 'bug' (algo quebrado/erro), 'duvida' (pergunta sobre o produto), 'elogio', 'outro'." },
+        mensagem: { type: "string", description: "O feedback em si, fiel ao que o profissional disse, com o contexto necessário (o que aconteceu, em qual tela, o que ele esperava)." },
+        nota:     { type: "number", description: "Opcional (0 a 10). Só preencha se ele espontaneamente disser o quanto recomendaria a plataforma; senão omita." },
+      },
+      required: ["tipo", "mensagem"],
+    },
+  },
 ]
 
 // =============================================
@@ -459,6 +473,7 @@ ${mapaStr}
 3. EDITAR/IR A UMA ÁREA = LEVE DIRETO: se ele pede pra editar/ver/configurar/mexer numa área (landing, agenda, perfil, WhatsApp, conteúdo) ou quer IR até lá, chame \`abrir_pagina\` IMEDIATAMENTE (rota do MAPA) e diga em 1 frase o que fazer lá. NÃO pergunte "aqui ou na página?" nesses casos. Só ofereça resolver no PRÓPRIO chat quando for gerar TEXTO (bio, artigo, ou textos da landing via \`gerar_landing\`/\`sugerir_dados_perfil\`/\`criar_artigo\`) e ele NÃO tiver pedido pra ir à tela.
 4. PRÓXIMO PASSO (sempre): termine cada resposta com UM passo concreto rumo ao objetivo dele. Use \`ler_estado_perfil\` pra saber o que falta e priorize pelo objetivo declarado.
 5. Se nenhuma seção do MAPA cobrir, seja honesto ("vou confirmar pra não te passar errado") — NÃO invente.
+6. FEEDBACK DA PLATAFORMA: se ele relatar um erro/problema do sistema, pedir uma melhoria, elogiar ou tirar dúvida SOBRE O PRODUTO, ofereça encaminhar pra equipe. Mostre um resumo do que vai enviar, confirme e chame \`registrar_feedback\`. É só sobre a plataforma — nunca sobre os clientes/casos dele.
 
 ━━━ AGENDA ━━━
 Você gerencia a agenda dele. Para qualquer pedido sobre agendamentos:
@@ -1944,6 +1959,36 @@ REGRAS:
       creditos_debitados: CUSTO,
       instrucao: `Campanha "${raw.campaign_name}" criada com sucesso (${adGroups.length} grupo(s) de anúncios, ${dailyBudget} R$/dia). Chame abrir_pagina('/admin/trafego-pago') para que o profissional revise e aprove. Diga que ele pode aprovar lá ou pedir ajustes por aqui.`,
     }
+  }
+
+  if (toolName === "registrar_feedback") {
+    const tiposValidos = ["sugestao", "bug", "duvida", "elogio", "outro"]
+    const tipoBruto = (args.tipo || "").toString().trim().toLowerCase()
+    const type = tiposValidos.includes(tipoBruto) ? tipoBruto : "outro"
+    const mensagem = (args.mensagem ?? "").toString().trim().slice(0, 4000) // cap defensivo: feedback é texto livre do LLM
+    if (!mensagem) return { erro: "mensagem é obrigatória" }
+    // nota é opcional; só vira nps_score se for inteiro entre 0 e 10 (CHECK do banco)
+    let nps_score: number | null = null
+    if (args.nota !== undefined && args.nota !== null && args.nota !== "") {
+      const n = Math.round(Number(args.nota))
+      if (Number.isFinite(n) && n >= 0 && n <= 10) nps_score = n
+    }
+    const { error } = await supabaseAdmin
+      .from("feedbacks")
+      .insert({
+        author_id: professionalId, // do JWT — nunca dos args do LLM
+        type,
+        message: mensagem,
+        nps_score,
+        status: "novo",
+        severity: "baixa",
+      })
+    if (error) {
+      console.error("[registrar_feedback] erro:", error.message)
+      return { erro: error.message }
+    }
+    console.log(`[registrar_feedback] tipo=${type} nps=${nps_score ?? "-"} prof=${professionalId}`)
+    return { sucesso: true, instrucao: "Confirme em 1-2 frases acolhedoras que o feedback foi enviado para a equipe e agradeça. Se for um bug, diga que a equipe vai analisar." }
   }
 
   return { erro: "Ferramenta desconhecida" }

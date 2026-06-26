@@ -10,12 +10,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun, ListOrdered, ArrowUp, ArrowDown, Eye, EyeOff, Newspaper, PlayCircle, ShoppingBag } from "lucide-react";
+import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun, ListOrdered, ArrowUp, ArrowDown, Eye, EyeOff, Newspaper, PlayCircle, ShoppingBag, HelpCircle } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
 import { TikTokIcon } from "@/components/icons/TikTokIcon";
 import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import HeroSection from "@/components/landing/HeroSection";
 import AboutSection from "@/components/landing/AboutSection";
 import SolutionSection from "@/components/landing/SolutionSection";
@@ -1141,8 +1142,56 @@ export default function AdminLandingPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>Fundo do Hero <FieldHint text="Aparece atrás do conteúdo. Use fotos de ambiente ou micro-vídeos (loops)." /></Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label>Fundo do Hero <FieldHint text="Aparece atrás do conteúdo. Use fotos de ambiente ou micro-vídeos (loops)." /></Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-primary hover:underline"
+                      >
+                        <HelpCircle className="h-3.5 w-3.5" />
+                        Como adicionar?
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-80">
+                      <p className="mb-2 text-sm font-semibold">Como colocar uma imagem ou vídeo de fundo</p>
+                      <ol className="list-decimal space-y-1.5 pl-4 text-xs text-muted-foreground">
+                        <li>Clique em <strong className="text-foreground">"Enviar arquivo"</strong> abaixo e escolha uma foto ou vídeo do seu computador.</li>
+                        <li>Não tem um arquivo? Baixe gratuitamente nas galerias <strong className="text-foreground">Pexels</strong> ou <strong className="text-foreground">Pixabay</strong> (botões abaixo).</li>
+                        <li>Tamanho máximo: <strong className="text-foreground">5 MB</strong> para imagem e <strong className="text-foreground">20 MB</strong> para vídeo.</li>
+                        <li>Quando o upload terminar, a prévia aparece. Ajuste a <strong className="text-foreground">Cor do overlay</strong> para o texto ficar legível.</li>
+                        <li>Clique em <strong className="text-foreground">"Salvar Hero"</strong> no fim da seção para publicar.</li>
+                      </ol>
+                    </PopoverContent>
+                  </Popover>
+                </div>
                 <ImageUpload currentUrl={heroBgUrl || null} onUploaded={setHeroBgUrl} folder="hero-bg" variant="logo" accept="image/*,video/*" />
+                <div className="rounded-xl border border-dashed border-border bg-muted/30 p-3 space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Sem imagem ou vídeo? Baixe gratuitamente nestas galerias e depois faça o upload acima.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <a
+                      href="https://www.pexels.com/pt-br/videos/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Galeria Pexels
+                    </a>
+                    <a
+                      href="https://pixabay.com/pt/videos/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Galeria Pixabay
+                    </a>
+                  </div>
+                </div>
                 {heroBgUrl && (
                   <button
                     type="button"

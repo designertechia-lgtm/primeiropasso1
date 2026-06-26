@@ -111,6 +111,22 @@ Responda APENAS com JSON válido no formato:
 {"title":"...","content":"...","cover_image_suggestion":"...","carousel_items":[{"image_suggestion":"...","caption":"..."}]}
 Sem comentários, sem markdown, apenas o JSON.`;
   },
+
+  // Roteiro de narração para vídeo curto viral (aba "Conteúdo Viral").
+  // Texto corrido pronto para ser narrado / colado no gerador de vídeo.
+  viral_video_script: (ctx) =>
+    `Você é um roteirista especialista em vídeos curtos virais (Reels, TikTok, YouTube Shorts) para profissionais de saúde mental.
+Profissional: ${ctx.name}${ctx.specialty ? `, especialista em ${ctx.specialty}` : ""}.
+Tema/briefing do vídeo: "${ctx.topic || ctx.title || ""}".
+Escreva o ROTEIRO DE NARRAÇÃO de um vídeo curto vertical (9:16), em português do Brasil.
+Regras:
+- Comece com um GANCHO forte nos 3 primeiros segundos.
+- Linguagem falada, acolhedora e direta; frases curtas.
+- Entre 70 e 110 palavras (cerca de 30 a 45 segundos de narração).
+- Entregue UMA ideia central com valor prático para quem assiste.
+- Termine com uma chamada para ação suave (ex.: convidar a cuidar da saúde mental ou buscar apoio).
+- NÃO use emojis, hashtags, marcações de cena, nome de locutor nem títulos.
+Responda APENAS com o texto corrido do roteiro que será narrado, sem aspas e sem explicações.`,
 };
 
 // Geração de texto via Anthropic (Claude) — mesmo padrão das demais edge functions do projeto.

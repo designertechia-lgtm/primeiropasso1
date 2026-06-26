@@ -1,6 +1,7 @@
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Link2, Video, Clapperboard, Drama, Database, FileImage, Flame } from "lucide-react";
+import { FileText, Link2, Video, Clapperboard, Drama, Database, FileImage, Flame, Sparkles } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 import { ConnectedAccounts } from "@/components/dashboard/ConnectedAccounts";
 import AdminArtigos from "./AdminArtigos";
 import AdminEstudioViral from "./AdminEstudioViral";
@@ -9,16 +10,20 @@ import AdminCriarVideo from "./AdminCriarVideo";
 import AdminAvatares from "./AdminAvatares";
 import AdminDocumentos from "./AdminDocumentos";
 import PostsTab from "@/components/admin/redes-sociais/PostsTab";
+import ConteudoViralTab from "@/components/admin/redes-sociais/ConteudoViralTab";
 
-const VALID_TABS = ["posts", "artigos", "videos", "criar-video", "personagens", "contas", "rag"] as const;
+const VALID_TABS = ["posts", "artigos", "videos", "criar-video", "personagens", "contas", "rag", "conteudo-viral"] as const;
 type TabValue = (typeof VALID_TABS)[number];
 
 export default function AdminRedesSociais() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { isDeveloper } = useAuth();
   const tabParam = searchParams.get("tab");
-  const activeTab: TabValue = (VALID_TABS as readonly string[]).includes(tabParam ?? "")
-    ? (tabParam as TabValue)
-    : "posts";
+  // a aba "conteudo-viral" e um harness de TESTE exclusivo da conta de desenvolvedor
+  const isValidTab =
+    (VALID_TABS as readonly string[]).includes(tabParam ?? "") &&
+    !(tabParam === "conteudo-viral" && !isDeveloper);
+  const activeTab: TabValue = isValidTab ? (tabParam as TabValue) : "posts";
 
   const handleTabChange = (value: string) => {
     if (value === "posts") {
@@ -61,6 +66,12 @@ export default function AdminRedesSociais() {
             <Database className="h-4 w-4" />
             <span className="hidden sm:inline">RAG conteúdo criação</span>
           </TabsTrigger>
+          {isDeveloper && (
+            <TabsTrigger value="conteudo-viral" className="gap-2">
+              <Sparkles className="h-4 w-4 text-orange-500" />
+              <span className="hidden sm:inline">Conteúdo Viral</span>
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="posts" className="mt-4">
@@ -100,6 +111,11 @@ export default function AdminRedesSociais() {
         <TabsContent value="rag" className="mt-4">
           <AdminDocumentos />
         </TabsContent>
+        {isDeveloper && (
+          <TabsContent value="conteudo-viral" className="mt-4">
+            <ConteudoViralTab />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

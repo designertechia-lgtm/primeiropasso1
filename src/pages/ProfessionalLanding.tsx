@@ -113,6 +113,11 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     enabled: !!professional?.id,
   });
 
+  // Dark mode da landing pública: DESATIVADO. O estado/toggle abaixo e o helper de cores
+  // escuras ficam preservados; enquanto esta flag for false a landing renderiza SEMPRE em
+  // modo Claro e o botão de tema não aparece no header. Para reativar, basta voltar a true.
+  const DARK_MODE_ENABLED = false;
+
   const darkKey = `dark_${slug}`;
   const [dark, setDark] = useState(() => localStorage.getItem(`dark_${slug}`) === "1");
   const toggleDark = useCallback(() => {
@@ -132,10 +137,13 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     }
   }
 
+  // Tema efetivo da landing pública: enquanto o dark mode está desativado, fica sempre claro.
+  const effectiveDark = DARK_MODE_ENABLED && dark;
+
   const customStyles = useMemo(() => {
     if (!professional) return undefined;
-    return buildLandingVars(professional as any, dark ? "dark" : "light");
-  }, [professional, dark]);
+    return buildLandingVars(professional as any, effectiveDark ? "dark" : "light");
+  }, [professional, effectiveDark]);
 
   // "Tamanho do texto": escala o root font-size enquanto a landing está montada. É o único ponto que
   // afeta os utilitários text-* (rem) do Tailwind. Usa % para respeitar a preferência do navegador.
@@ -269,7 +277,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
   );
 
   return (
-    <div className={`min-h-screen bg-background ${dark ? 'dark' : ''}`} style={customStyles as React.CSSProperties}>
+    <div className={`min-h-screen bg-background ${effectiveDark ? 'dark' : ''}`} style={customStyles as React.CSSProperties}>
       {/* Carrega as fontes que não vêm no index.html (mesmo set do preview do editor) */}
       <link rel="stylesheet" href={GOOGLE_FONTS_URL} />
       <LandingHeader
@@ -280,8 +288,8 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         onWhatsAppClick={handleCtaClick}
         logoUrl={professional.logo_url ?? undefined}
         slug={professional.slug}
-        dark={dark}
-        onToggleDark={toggleDark}
+        dark={effectiveDark}
+        onToggleDark={DARK_MODE_ENABLED ? toggleDark : undefined}
       />
       <HeroSection
         title={professional.hero_title ?? undefined}

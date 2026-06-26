@@ -8,6 +8,7 @@ import PlatformContentEngine from "@/components/platform-landing/PlatformContent
 import PlatformAIShowcase from "@/components/platform-landing/PlatformAIShowcase";
 import PlatformHowItWorks from "@/components/platform-landing/PlatformHowItWorks";
 import PlatformContentHub from "@/components/platform-landing/PlatformContentHub";
+import PlatformTrafego from "@/components/platform-landing/PlatformTrafego";
 // import PlatformPricing from "@/components/platform-landing/PlatformPricing"; // Preços oculto temporariamente (pedido Carlos)
 import PlatformFAQ from "@/components/platform-landing/PlatformFAQ";
 import PlatformCTA from "@/components/platform-landing/PlatformCTA";
@@ -37,6 +38,7 @@ export default function Index() {
         <Reveal as="div"><PlatformAIShowcase /></Reveal>
         <Reveal as="div"><PlatformHowItWorks /></Reveal>
         <Reveal as="div"><PlatformContentHub /></Reveal>
+        <PlatformTrafego />
         {/* Preços oculto temporariamente (pedido Carlos) — reativar: descomentar a linha abaixo e o import no topo */}
         {/* <Reveal as="div"><PlatformPricing /></Reveal> */}
         <Reveal as="div"><PlatformFAQ /></Reveal>

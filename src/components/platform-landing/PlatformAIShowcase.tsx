@@ -12,25 +12,25 @@ const AI_PANELS: AIPanel[] = [
   {
     icon: BrainCircuit,
     title: "Roteirista com TCC",
-    sub: "Gemini 2.0 Flash",
+    sub: "Roteiros no formato viral",
     body: "Roteiros validados pelas Resoluções do CFP. Hook, insight e CTA já no formato viral. Você edita antes de produzir.",
   },
   {
     icon: Mic,
     title: "Voz clonada do terapeuta",
-    sub: "ElevenLabs Multilingual",
+    sub: "Sua voz, com naturalidade",
     body: "Calibração com 30s de áudio. Sua voz com nuances emocionais — não locutor genérico. Paciente reconhece você.",
   },
   {
     icon: Video,
     title: "Vídeo com seu rosto",
-    sub: "Motores premium · Multi-IA",
+    sub: "Avatar realista + cenas cinematográficas",
     body: "Escolha o motor por contexto: avatar realista para conexão, cinematográfico para mensagens, B-roll para variações.",
   },
   {
     icon: MessageCircle,
     title: "Agente conversacional",
-    sub: "GPT-4o + RAG personalizado",
+    sub: "Responde no seu estilo, com seus PDFs",
     body: "Lê os PDFs que você sobe e responde no seu estilo. Negocia, agenda, encaminha quando o caso é sensível.",
   },
 ];

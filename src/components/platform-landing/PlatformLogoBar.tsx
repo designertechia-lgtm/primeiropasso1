@@ -23,7 +23,7 @@ export default function PlatformLogoBar() {
           <span className="w-px h-[22px] bg-pp-border" aria-hidden />
           <span className="inline-flex items-center gap-2 text-[14px] font-medium text-pp-muted2">
             <Youtube className="w-[17px] h-[17px] stroke-pp-sand" aria-hidden />
-            YouTube · TikTok · Instagram · LinkedIn
+            Instagram · Facebook · TikTok · YouTube · Threads
           </span>
         </div>
       </div>

@@ -20,7 +20,7 @@ const PILLARS: Pillar[] = [
   {
     icon: Network,
     title: "Pronto para sua especialidade",
-    text: "Kit completo de marca por especialidade — TCC, ansiedade infantil, casais, lutos, autoestima. Cores, fontes, música e biblioteca curada de ideias virais validadas semanalmente.",
+    text: "Conteúdo e agente adaptados à sua abordagem — TCC, ansiedade infantil, casais, lutos, autoestima. A IA usa a sua especialidade e os seus próprios materiais (PDFs) pra falar no seu tom.",
   },
   {
     icon: Sparkles,

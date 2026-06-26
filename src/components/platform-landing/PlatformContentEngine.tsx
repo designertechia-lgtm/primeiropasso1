@@ -10,7 +10,7 @@ const THEMES: Theme[] = [
     idea: "“3 sinais de que sua ansiedade está falando por você”",
     formats: [
       { f: "Vídeo curto", d: "Reels de 45s com seu avatar", tag: "Instagram" },
-      { f: "Carrossel", d: "7 slides ilustrados", tag: "LinkedIn" },
+      { f: "Carrossel", d: "7 slides ilustrados", tag: "Facebook" },
       { f: "Artigo", d: "Blog SEO · 800 palavras", tag: "Site" },
       { f: "Post estático", d: "Citação visual", tag: "Feed" },
       { f: "E-book", d: "Lead-magnet em PDF", tag: "WhatsApp" },
@@ -32,7 +32,7 @@ const THEMES: Theme[] = [
     idea: "“O ciclo invisível que sabota suas relações”",
     formats: [
       { f: "Reels", d: "Storytelling de 50s", tag: "Instagram" },
-      { f: "Carrossel", d: "8 slides com diagrama", tag: "LinkedIn" },
+      { f: "Carrossel", d: "8 slides com diagrama", tag: "Facebook" },
       { f: "Post estático", d: "Antes / depois visual", tag: "Feed" },
       { f: "Artigo", d: "Blog SEO · 900 palavras", tag: "Site" },
       { f: "E-book", d: "Guia em PDF", tag: "WhatsApp" },

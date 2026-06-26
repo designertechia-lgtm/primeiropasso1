@@ -10,7 +10,7 @@ const STATS: StatItem[] = [
   { target: 5, display: (v) => v.toString(), label: 'formatos por ideia' },
   { target: 4, display: (v) => v.toString(), label: 'IAs especializadas' },
   { target: 12, display: (v) => `${v} min`, label: 'do tema ao vídeo' },
-  { target: 100, display: (v) => v.toString(), label: '% conforme o CFP' },
+  { target: 24, display: (v) => `${v}/7`, label: 'agente no WhatsApp' },
 ];
 
 const DURATION = 1100;

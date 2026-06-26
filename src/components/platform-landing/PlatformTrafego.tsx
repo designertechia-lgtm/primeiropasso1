@@ -54,8 +54,8 @@ export default function PlatformTrafego() {
             Tráfego pago + presença digital
           </p>
           <h2 className="font-display text-[clamp(30px,4vw,48px)] font-bold leading-[1.08] tracking-[-0.01em]">
-            Apareça, atraia e veja cada real{" "}
-            <span className="italic text-pp-sage-light">virar paciente.</span>
+            Apareça nos lugares certos e{" "}
+            <span className="italic text-pp-sage-light">encha sua agenda.</span>
           </h2>
           <p className="mt-[18px] text-[17px] leading-[1.6] text-pp-bg/75">
             A plataforma cria o seu conteúdo, monta os seus anúncios e mostra o

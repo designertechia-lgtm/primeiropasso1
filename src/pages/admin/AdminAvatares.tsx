@@ -97,6 +97,7 @@ export default function AdminAvatares() {
   const [generating, setGenerating]         = useState(false);
   const [styleGenAvatar, setStyleGenAvatar] = useState<Avatar | null>(null);
   const [styleGenStyle, setStyleGenStyle]   = useState<StyleId>("profissional");
+  const [styleGenInstruction, setStyleGenInstruction] = useState("");
   const [styleGenerating, setStyleGenerating] = useState(false);
   const [retryAttempt, setRetryAttempt]     = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -170,6 +171,9 @@ export default function AdminAvatares() {
     setSelectedFile(file);
     setPreviewUrl(URL.createObjectURL(file));
     setPhotoMode(fileModeIntentRef.current);
+    // O campo `generation_prompt` é compartilhado entre "gerar do zero" e "transformar":
+    // ao entrar no transformar, começa vazio pra não herdar texto do outro modo.
+    if (fileModeIntentRef.current === "transform") setForm(f => ({ ...f, generation_prompt: "" }));
     e.target.value = "";
   };
 
@@ -268,6 +272,7 @@ export default function AdminAvatares() {
       const fd = new FormData();
       fd.append("professional_slug", slug);
       fd.append("style", styleGenStyle);
+      fd.append("instruction", styleGenInstruction.trim());
       lastRes = await fetchWithRetry(
         `${API}/gerar-estilo-avatar/${styleGenAvatar.id}`,
         { method: "POST", body: fd },
@@ -278,8 +283,13 @@ export default function AdminAvatares() {
       );
       const data = await lastRes.json();
       if (!lastRes.ok) throw new Error(data.detail ?? `HTTP ${lastRes.status}`);
-      toast.success(`Variação "${STYLES.find(s => s.id === styleGenStyle)?.label}" criada!`);
+      toast.success(
+        styleGenInstruction.trim()
+          ? `Edição "${styleGenInstruction.trim()}" aplicada!`
+          : `Variação "${STYLES.find(s => s.id === styleGenStyle)?.label}" criada!`
+      );
       setStyleGenAvatar(null);
+      setStyleGenInstruction("");
       setEnlargedAvatar(null);
       await refetch();
     } catch (e: unknown) {
@@ -303,6 +313,7 @@ export default function AdminAvatares() {
       fd.append("personality", form.personality);
       fd.append("backstory", form.backstory);
       fd.append("style", form.style);
+      fd.append("instruction", form.generation_prompt.trim());
       if (form.age) fd.append("age", form.age);
       fd.append("file", selectedFile);
       lastRes = await fetchWithRetry(
@@ -389,7 +400,7 @@ export default function AdminAvatares() {
             {/* Opção 2: Gerar com IA por descrição */}
             <button
               type="button"
-              onClick={() => setPhotoMode(photoMode === "generate" ? null : "generate")}
+              onClick={() => { setForm(f => ({ ...f, generation_prompt: "" })); setPhotoMode(photoMode === "generate" ? null : "generate"); }}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs border transition-colors text-left ${
                 photoMode === "generate"
                   ? "bg-primary text-primary-foreground border-primary"
@@ -458,8 +469,21 @@ export default function AdminAvatares() {
               Remover
             </button>
           </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">
+              O que você quer mudar? <span className="text-muted-foreground">(opcional)</span>
+            </Label>
+            <Textarea
+              rows={2}
+              placeholder="Ex: lã preta, adicionar óculos, fundo de consultório — deixe vazio para só aplicar o estilo"
+              value={form.generation_prompt}
+              onChange={(e) => setForm(f => ({ ...f, generation_prompt: e.target.value }))}
+            />
+          </div>
           <p className="text-xs text-primary bg-primary/5 rounded-lg px-2.5 py-1.5">
-            ✨ A IA vai aplicar o estilo <strong>{STYLES.find(s => s.id === form.style)?.label}</strong> à sua foto mantendo a aparência (~30s)
+            {form.generation_prompt.trim()
+              ? <>✨ A IA vai aplicar <strong>"{form.generation_prompt.trim()}"</strong> à sua foto mantendo o personagem (~30s)</>
+              : <>✨ A IA vai aplicar o estilo <strong>{STYLES.find(s => s.id === form.style)?.label}</strong> à sua foto mantendo a aparência (~30s)</>}
           </p>
         </div>
       )}
@@ -652,13 +676,13 @@ export default function AdminAvatares() {
         </div>
       )}
 
-      {/* Modal de geração de estilo */}
-      <Dialog open={!!styleGenAvatar} onOpenChange={o => !o && setStyleGenAvatar(null)}>
+      {/* Modal de edição / geração de estilo */}
+      <Dialog open={!!styleGenAvatar} onOpenChange={o => { if (!o) { setStyleGenAvatar(null); setStyleGenInstruction(""); } }}>
         <DialogContent className="max-w-sm" onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-primary" />
-              Gerar Variação — {styleGenAvatar?.name}
+              Editar com IA — {styleGenAvatar?.name}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pb-2">
@@ -666,12 +690,24 @@ export default function AdminAvatares() {
               <div className="flex items-center gap-3">
                 <img src={styleGenAvatar.photo_url} alt="" className="w-14 h-14 rounded-full object-cover border" />
                 <p className="text-sm text-muted-foreground">
-                  A IA vai gerar uma nova versão estética mantendo a aparência original.
+                  Descreva a mudança que quer no personagem — a IA aplica mantendo a identidade.
                 </p>
               </div>
             )}
+            <div className="space-y-1">
+              <Label className="text-sm font-medium">O que você quer mudar?</Label>
+              <Textarea
+                rows={2}
+                placeholder="Ex: lã preta, adicionar óculos, fundo de consultório, sorrindo..."
+                value={styleGenInstruction}
+                onChange={(e) => setStyleGenInstruction(e.target.value)}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Deixe vazio para só trocar o estilo artístico abaixo.
+              </p>
+            </div>
             <div className="space-y-1.5">
-              <Label className="text-sm font-medium">Escolha o estilo</Label>
+              <Label className="text-sm font-medium">Estilo artístico</Label>
               <div className="flex flex-wrap gap-1.5">
                 {STYLES.map(s => (
                   <button key={s.id} type="button"
@@ -692,7 +728,7 @@ export default function AdminAvatares() {
             <Button onClick={handleStyleGen} disabled={styleGenerating} className="w-full">
               {styleGenerating
                 ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{retryAttempt > 0 ? `Servidor ocupado, tentativa ${retryAttempt + 1}/3...` : "Gerando com IA (~30s)..."}</>
-                : <><RefreshCw className="h-4 w-4 mr-2" />Gerar variação {STYLES.find(s => s.id === styleGenStyle)?.label}</>}
+                : <><RefreshCw className="h-4 w-4 mr-2" />{styleGenInstruction.trim() ? "Aplicar mudança" : `Gerar variação ${STYLES.find(s => s.id === styleGenStyle)?.label}`}</>}
             </Button>
           </div>
         </DialogContent>

@@ -3,7 +3,6 @@ import {
   Leaf,
   ArrowRight,
   CirclePlay,
-  Check,
   Calendar,
   CheckCircle2,
 } from "lucide-react";
@@ -14,6 +13,19 @@ export default function PlatformHero() {
       id="hero"
       className="relative overflow-hidden bg-pp-forest text-pp-bg pt-[150px] pb-24 px-7"
     >
+      {/* Vídeo de fundo */}
+      <video
+        aria-hidden
+        autoPlay
+        loop
+        muted
+        playsInline
+        preload="auto"
+        poster="/hero-platform-bg-poster.jpg"
+        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+      >
+        <source src="/hero-platform-bg.mp4" type="video/mp4" />
+      </video>
       {/* Overlay gradiente escuro p/ legibilidade */}
       <div
         aria-hidden
@@ -33,7 +45,7 @@ export default function PlatformHero() {
       <Leaf
         aria-hidden
         strokeWidth={1}
-        className="pointer-events-none absolute top-[60px] left-[40px] h-[120px] w-[120px] text-pp-bg opacity-[.07] pp-anim-drift"
+        className="pointer-events-none absolute top-[60px] left-[200px] h-20 w-20 sm:h-[120px] sm:w-[120px] text-pp-bg opacity-[.07] pp-anim-leaf-sway"
       />
 
       <div className="relative mx-auto grid max-w-[1200px] items-center gap-14 [grid-template-columns:repeat(auto-fit,minmax(min(330px,100%),1fr))]">
@@ -66,23 +78,6 @@ export default function PlatformHero() {
               <CirclePlay aria-hidden strokeWidth={2} className="h-5 w-5" />
               Ver como funciona
             </a>
-          </div>
-
-          <div className="mt-[26px] flex flex-wrap items-center gap-4 text-[13.5px] text-pp-bg/60">
-            <span className="inline-flex items-center gap-[7px]">
-              <Check aria-hidden strokeWidth={2.4} className="h-[15px] w-[15px] text-pp-sage-light" />
-              Primeiro vídeo grátis
-            </span>
-            <span aria-hidden className="h-1 w-1 rounded-full bg-pp-bg/30" />
-            <span className="inline-flex items-center gap-[7px]">
-              <Check aria-hidden strokeWidth={2.4} className="h-[15px] w-[15px] text-pp-sage-light" />
-              Sem cartão
-            </span>
-            <span aria-hidden className="h-1 w-1 rounded-full bg-pp-bg/30" />
-            <span className="inline-flex items-center gap-[7px]">
-              <Check aria-hidden strokeWidth={2.4} className="h-[15px] w-[15px] text-pp-sage-light" />
-              Cancele quando quiser
-            </span>
           </div>
         </div>
 

@@ -196,10 +196,28 @@
 @keyframes pp-glow   { 0%,100% { opacity: .45 } 50% { opacity: .8 } }
 @keyframes pp-type   { 0%,60%,100% { transform: translateY(0); opacity: .4 } 30% { transform: translateY(-4px); opacity: 1 } }
 @keyframes pp-drift  { 0% { transform: rotate(0deg) } 100% { transform: rotate(360deg) } }
+/* Vai-e-volta horizontal (left 200px -> 300px). Anima 'left' em vez de
+   'transform' de proposito: assim coexiste com pp-drift (rotacao) no mesmo
+   elemento sem que um transform sobrescreva o outro. */
+@keyframes pp-leaf-sway { 0%,100% { left: var(--leaf-x1) } 50% { left: var(--leaf-x2) } }
+@keyframes pp-leaf-bob  { 0%,100% { top: var(--leaf-y1) } 50% { top: var(--leaf-y2) } }
 .pp-anim-float  { animation: pp-float 6s ease-in-out infinite }
 .pp-anim-float2 { animation: pp-float2 5s ease-in-out infinite }
 .pp-anim-glow   { animation: pp-glow 7s ease-in-out infinite }
 .pp-anim-drift  { animation: pp-drift 60s linear infinite }
+/* Folha decorativa: rotacao + vai-e-volta horizontal + sobe-e-desce vertical.
+   Amplitudes via custom properties para adaptar por breakpoint (responsividade). */
+.pp-anim-leaf-sway {
+  --leaf-x1: 200px; --leaf-x2: 600px; /* horizontal desktop */
+  --leaf-y1: 60px;  --leaf-y2: 110px; /* vertical desktop */
+  animation: pp-drift 60s linear infinite,
+             pp-leaf-sway 24s ease-in-out infinite,
+             pp-leaf-bob 15s ease-in-out infinite;
+}
+@media (max-width: 639px) {
+  /* Mobile: amplitude curta p/ a folha nao sair da tela nem cobrir o texto */
+  .pp-anim-leaf-sway { --leaf-x1: 24px; --leaf-x2: 150px; --leaf-y1: 40px; --leaf-y2: 80px; }
+}
 /* Decisao de produto (24/06): a landing de marketing mantem as animacoes
    decorativas SEMPRE (folha, glows, flutuacao, baloes, "digitando"), mesmo com
    "reduzir movimento" ligado no sistema — sao sutis e fazem parte da identidade

@@ -931,9 +931,14 @@ PROIBIDO (isso é o trabalho de ${proFirstName}, não seu):
   // Roteiro de atendimento montado pelo profissional (Configurações → Agente de Atendimento).
   // É REFERÊNCIA de conteúdo + sequência ideal — NUNCA um trilho rígido (roteiro literal vira loop/dump).
   const roteiroEtapas = (Array.isArray(prefs.roteiro) ? prefs.roteiro : [])
-    .map((e: any) => ({ titulo: (e?.titulo || '').toString().trim(), conteudo: (e?.conteudo || '').toString().trim() }))
+    .map((e: any) => ({ titulo: (e?.titulo || '').toString().trim(), conteudo: (e?.conteudo || '').toString().trim(), audio: !!e?.audio }))
     .filter((e: any) => e.titulo || e.conteudo)
     .slice(0, 12)
+  // Etapas que o profissional marcou para sair em ÁUDIO (voz clonada). Só vale se houver
+  // voz clonada salva — sem ela, o sentinel seria emitido à toa (o envio cairia em texto).
+  const etapasAudio = professional.elevenlabs_voice_id
+    ? roteiroEtapas.filter((e: any) => e.audio && e.titulo).map((e: any) => e.titulo)
+    : []
   const roteiroBloco = roteiroEtapas.length
     ? `\n\n━━━ ROTEIRO DE ATENDIMENTO (a sequência e o conteúdo que VOCÊ conduz — adapte, NÃO recite) ━━━
 ${proFirstName} montou a SEQUÊNCIA e o CONTEÚDO ideais do atendimento. Esta é a sua FONTE DE VERDADE de o QUE apresentar, em que ORDEM e COMO falar (quem ${proFirstName} é, método, sessões, valores) — conduza por aqui, na ordem definida (as regras universais cuidam de segurança, tom e ferramentas; o conteúdo/sequência é deste roteiro):
@@ -942,7 +947,13 @@ COMO USAR (regras duras — valem ACIMA do roteiro):
 • É GUIA, não trilho. Se ${ctx.publico} pular etapas, perguntar fora de ordem ou já pedir pra agendar, ATENDA na hora — nunca segure a resposta "porque ainda não chegou a etapa".
 • Responda SÓ o que a pessoa pediu, em 1-3 frases. NUNCA recite uma etapa inteira nem despeje várias etapas de uma vez.
 • NUNCA repita uma etapa/pergunta já feita ou já respondida (nem reformulada com outras palavras).
-• Valores e agenda seguem as regras de VALORES E NEGOCIAÇÃO e as ferramentas de agenda — o roteiro NÃO muda como você apresenta preço nem como marca horário.`
+• Valores e agenda seguem as regras de VALORES E NEGOCIAÇÃO e as ferramentas de agenda — o roteiro NÃO muda como você apresenta preço nem como marca horário.${etapasAudio.length ? `
+
+━━━ RESPOSTA EM ÁUDIO (estas etapas o profissional pediu na voz dele) ━━━
+Saem como MENSAGEM DE VOZ, não texto: ${etapasAudio.join(', ')}.
+Quando — e SÓ quando — sua resposta for sobre uma dessas etapas, escreva o texto normalmente (1-3 frases, naturais pra serem OUVIDAS) e comece a mensagem EXATAMENTE com [[audio]] na primeira linha. O sistema converte esse texto na voz do profissional.
+Exemplo: [[audio]] Oi! Sobre o Método CER, ele acontece em três fases que a gente percorre junto...
+Qualquer outra etapa ou assunto: responda em texto normal, SEM [[audio]].` : ''}`
     : ''
 
   // Pacotes promocionais (Meu Perfil → promo_packages). Só entra quando há pacote válido.
@@ -1831,6 +1842,70 @@ async function sendWhatsAppMessage(instanceName: string, remoteJid: string, text
 }
 
 // =============================================
+// ÁUDIO (voz clonada) — gera TTS via elevenlabs-proxy e envia como mensagem de voz (PTT).
+// Billing: por ora NÃO debita (cortesia). Para ligar a cobrança depois, ver [BILLING-TODO]
+// no serve(). Formato: o proxy devolve MP3 e a Evolution normalmente converte pra OGG/Opus
+// (PTT) sozinha; se o teste real mostrar que não, plugar conversão (ffmpeg via video-api) aqui.
+// =============================================
+
+// Bytes -> base64 em blocos (evita estouro de pilha do btoa em áudios maiores).
+function bytesToBase64(bytes: Uint8Array): string {
+  let bin = ''
+  const CHUNK = 0x8000
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
+  }
+  return btoa(bin)
+}
+
+// Gera o MP3 da resposta na voz clonada do profissional. Retorna null em qualquer falha
+// (o chamador cai pra texto — o lead nunca fica sem resposta).
+async function generateClonedAudio(text: string, voiceId: string): Promise<Uint8Array | null> {
+  const sUrl = Deno.env.get('SUPABASE_URL')?.replace(/\/$/, '')
+  const sKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!sUrl || !sKey || !voiceId || !text.trim()) return null
+  try {
+    // Service role: o proxy NÃO debita créditos nesse caminho (cobrança fica a cargo deste fluxo).
+    const res = await fetchT(`${sUrl}/functions/v1/elevenlabs-proxy?action=generate`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${sKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, voice_id: voiceId }),
+    }, 30000)
+    if (!res.ok) {
+      console.error('[Audio] proxy generate falhou', res.status, (await res.text()).slice(0, 300))
+      return null
+    }
+    return new Uint8Array(await res.arrayBuffer())
+  } catch (e: any) {
+    console.error('[Audio] erro ao gerar TTS:', e?.message)
+    return null
+  }
+}
+
+// Envia o áudio como mensagem de voz (PTT) pela Evolution. Retorna true se entregou.
+async function sendWhatsAppAudio(instanceName: string, remoteJid: string, audio: Uint8Array): Promise<boolean> {
+  const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
+  const evoKey = Deno.env.get('EVOLUTION_API_KEY')
+  if (!evoUrl || !evoKey || !instanceName) {
+    console.error('[Audio] Missing Evo config or instance name')
+    return false
+  }
+  try {
+    const res = await fetchT(`${evoUrl}/message/sendWhatsAppAudio/${instanceName}`, {
+      method: 'POST',
+      headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number: remoteJid, audio: bytesToBase64(audio), delay: 1200 }),
+    }, 30000)
+    const resText = await res.text()
+    console.log(`[Audio] sendWhatsAppAudio status ${res.status} ${resText.slice(0, 300)}`)
+    return res.ok
+  } catch (e: any) {
+    console.error('[Audio] erro ao enviar PTT:', e?.message)
+    return false
+  }
+}
+
+// =============================================
 // MAIN HANDLER
 // =============================================
 // PRÉVIA REAL (modo simulação): roda o MESMO system prompt do agente.
@@ -2027,6 +2102,15 @@ serve(async (req) => {
       agentReply = 'Oi! 🙂 me manda sua última mensagem de novo? Quero te responder certinho.'
     }
 
+    // Sentinel de áudio: o agente prefixa [[audio]] quando a etapa é de voz clonada
+    // (regra injetada no roteiroBloco). Detecta e remove ANTES de formatar/salvar/enviar.
+    let wantsAudio = false
+    const AUDIO_TAG = /^\s*\[\[\s*audio\s*\]\]\s*/i
+    if (AUDIO_TAG.test(agentReply)) {
+      wantsAudio = true
+      agentReply = agentReply.replace(AUDIO_TAG, '')
+    }
+
     // Caso B: limpa markdown que polui no WhatsApp ANTES de salvar/enviar — o agente
     // não se preocupa com formatação (system prompt não pede markdown).
     agentReply = formatarParaWhatsApp(agentReply)
@@ -2039,8 +2123,24 @@ serve(async (req) => {
       await supabaseAdmin.from('chat_messages').insert({ lead_id, role: 'assistant', content: agentReply })
       await supabaseAdmin.from('leads').update({ last_message_at: new Date().toISOString() }).eq('id', lead_id)
 
-      console.log(`[WhatsApp] Sending message via Evolution...`)
-      await sendWhatsAppMessage(instance_name, remote_jid, agentReply)
+      // Áudio (voz clonada) quando o agente marcou [[audio]] E há voz clonada salva.
+      // Qualquer falha (sem voz, TTS, formato) cai pra texto — o lead nunca fica sem resposta.
+      const voiceId = (professional as any).elevenlabs_voice_id
+      let sentAsAudio = false
+      if (wantsAudio && voiceId) {
+        console.log(`[Audio] Resposta marcada como áudio — gerando voz clonada (${voiceId})...`)
+        await sendWhatsAppPresence(instance_name, remote_jid, 'recording')
+        const audio = await generateClonedAudio(agentReply, voiceId)
+        if (audio) sentAsAudio = await sendWhatsAppAudio(instance_name, remote_jid, audio)
+        if (!sentAsAudio) console.warn('[Audio] geração/envio falhou — caindo para texto')
+        // [BILLING-TODO] cobrança desligada por ora. Para ligar: se sentAsAudio, debitar aqui
+        // consume_credits(professional_id, 'elevenlabs_tts', agentReply.length).
+      }
+
+      if (!sentAsAudio) {
+        console.log(`[WhatsApp] Sending message via Evolution...`)
+        await sendWhatsAppMessage(instance_name, remote_jid, agentReply)
+      }
     } else {
       console.log(`[AI] Resposta vazia (tool já enviou). Atualizando só last_message_at.`)
       await supabaseAdmin.from('leads').update({ last_message_at: new Date().toISOString() }).eq('id', lead_id)

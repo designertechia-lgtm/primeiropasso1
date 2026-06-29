@@ -16,7 +16,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { CSSProperties } from "react";
-import { GripVertical, Plus, Trash2 } from "lucide-react";
+import { GripVertical, Mic, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,10 +25,12 @@ export interface RoteiroEtapa {
   id: string;
   titulo: string;
   conteudo: string;
+  /** Quando true, o Axel responde esta etapa em áudio (voz clonada) em vez de texto. */
+  audio?: boolean;
 }
 
-export function novaEtapa(titulo = "", conteudo = ""): RoteiroEtapa {
-  return { id: `et-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, titulo, conteudo };
+export function novaEtapa(titulo = "", conteudo = "", audio = false): RoteiroEtapa {
+  return { id: `et-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, titulo, conteudo, audio };
 }
 
 // Monta um roteiro-rascunho a partir do que o profissional já preencheu na landing.
@@ -131,6 +133,21 @@ function SortableEtapa({
           disabled={disabled}
           className="min-h-[60px] text-sm"
         />
+        <button
+          type="button"
+          onClick={() => onChange({ audio: !etapa.audio })}
+          disabled={disabled}
+          aria-pressed={!!etapa.audio}
+          title="Quando ligado, o Axel responde esta etapa em áudio, na sua voz clonada (em vez de texto)."
+          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+            etapa.audio
+              ? "border-primary bg-primary/10 text-primary"
+              : "border-input text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Mic className="h-3.5 w-3.5" />
+          {etapa.audio ? "Responde em áudio" : "Responde em texto"}
+        </button>
       </div>
 
       <Button

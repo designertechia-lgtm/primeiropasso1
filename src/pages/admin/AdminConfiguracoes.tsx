@@ -34,7 +34,7 @@ export default function AdminConfiguracoes() {
     JSON.stringify([
       v.agentEnabled, v.agentReminders, v.agentSatisfaction,
       v.agentTone, v.agentPhrases,
-      v.agentRoteiro.map((e) => [e.titulo, e.conteudo]),
+      v.agentRoteiro.map((e) => [e.titulo, e.conteudo, !!e.audio]),
       v.ownerWhatsapp,
     ]);
 
@@ -60,7 +60,7 @@ export default function AdminConfiguracoes() {
     const ownerWhatsappV = ap.owner_whatsapp || "";
     const roteiro = Array.isArray(ap.roteiro) ? ap.roteiro : [];
     const carregado = roteiro
-      .map((e: any) => novaEtapa((e?.titulo || "").toString(), (e?.conteudo || "").toString()))
+      .map((e: any) => novaEtapa((e?.titulo || "").toString(), (e?.conteudo || "").toString(), !!e?.audio))
       .filter((e: RoteiroEtapa) => e.titulo || e.conteudo);
     let agentRoteiroV: RoteiroEtapa[];
     let roteiroSugeridoV: boolean;
@@ -109,7 +109,7 @@ export default function AdminConfiguracoes() {
         preferred_phrases: agentPhrases.trim(),
         owner_whatsapp: toWhatsAppNumber(ownerWhatsapp),
         roteiro: agentRoteiro
-          .map((e) => ({ titulo: e.titulo.trim(), conteudo: e.conteudo.trim() }))
+          .map((e) => ({ titulo: e.titulo.trim(), conteudo: e.conteudo.trim(), audio: !!e.audio }))
           .filter((e) => e.titulo || e.conteudo),
       },
     } as any).eq("id", professional.id);

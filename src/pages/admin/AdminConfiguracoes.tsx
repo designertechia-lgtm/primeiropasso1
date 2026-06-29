@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { FieldHint } from "@/components/ui/FieldHint";
 import { toWhatsAppNumber } from "@/lib/utils";
 import { RoteiroAtendimentoEditor, novaEtapa, roteiroFromLanding, type RoteiroEtapa } from "@/components/admin/RoteiroAtendimentoEditor";
+import { VoiceCloneCard } from "@/components/admin/VoiceCloneCard";
 
 export default function AdminConfiguracoes() {
   const { data: professional, isLoading } = useProfessional();
@@ -266,6 +267,16 @@ export default function AdminConfiguracoes() {
             >
               Sugerir etapas a partir da minha landing
             </Button>
+          </div>
+
+          {/* Voz para os áudios — clonagem (habilita as etapas marcadas como áudio) */}
+          <div className={`border-t pt-4 ${agentEnabled ? "" : "opacity-50 pointer-events-none"}`}>
+            <VoiceCloneCard
+              professionalId={professional?.id}
+              professionalName={(professional as any)?.full_name}
+              currentVoiceId={(professional as any)?.elevenlabs_voice_id}
+              disabled={!agentEnabled}
+            />
           </div>
         </CardContent>
       </Card>

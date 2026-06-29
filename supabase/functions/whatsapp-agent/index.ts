@@ -1797,6 +1797,25 @@ function formatarParaWhatsApp(texto: string): string {
     .trim()
 }
 
+// Prepara o texto para LOCUÇÃO (TTS) — diferente do formato de leitura do WhatsApp.
+// O sintetizador "lê" marcações (asteriscos, listas, emojis) e isso quebra a entonação/pontuação.
+// Aqui: tira markdown/WhatsApp, emojis e links, e transforma quebras de linha em pausas naturais.
+function limparParaLocucao(texto: string): string {
+  if (!texto) return texto
+  const linhas = texto
+    .replace(/[*_~`]+/g, '')                                 // negrito/itálico/mono (markdown + WhatsApp)
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')                        // títulos markdown
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')                   // [texto](url) -> texto
+    .replace(/https?:\/\/\S+/g, '')                            // urls cruas (TTS soletra)
+    .replace(/^\s*(?:[-*•]|\d+[.)\-])\s+/gm, '')               // marcadores de lista (mantém o conteúdo)
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FE0F}\u{200D}]/gu, '') // emojis
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')                    // invisíveis
+    .split(/\n+/).map((s) => s.trim()).filter(Boolean)
+  // cada linha vira uma frase (pausa natural na fala); junta com espaço
+  const txt = linhas.map((s) => (/[.!?…:,;]$/.test(s) ? s : s + '.')).join(' ')
+  return txt.replace(/\s{2,}/g, ' ').replace(/\s+([,.!?;:])/g, '$1').replace(/([.!?]){2,}/g, '$1').trim()
+}
+
 async function sendWhatsAppMessage(instanceName: string, remoteJid: string, text: string) {
   const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
   const evoKey = Deno.env.get('EVOLUTION_API_KEY')
@@ -2110,6 +2129,7 @@ serve(async (req) => {
       wantsAudio = true
       agentReply = agentReply.replace(AUDIO_TAG, '')
     }
+    const textoCru = agentReply // antes de formatar p/ WhatsApp — base para a locução (TTS)
 
     // Caso B: limpa markdown que polui no WhatsApp ANTES de salvar/enviar — o agente
     // não se preocupa com formatação (system prompt não pede markdown).
@@ -2130,7 +2150,7 @@ serve(async (req) => {
       if (wantsAudio && voiceId) {
         console.log(`[Audio] Resposta marcada como áudio — gerando voz clonada (${voiceId})...`)
         await sendWhatsAppPresence(instance_name, remote_jid, 'recording')
-        const audio = await generateClonedAudio(agentReply, voiceId)
+        const audio = await generateClonedAudio(limparParaLocucao(textoCru), voiceId)
         if (audio) sentAsAudio = await sendWhatsAppAudio(instance_name, remote_jid, audio)
         if (!sentAsAudio) console.warn('[Audio] geração/envio falhou — caindo para texto')
         // [BILLING-TODO] cobrança desligada por ora. Para ligar: se sentAsAudio, debitar aqui

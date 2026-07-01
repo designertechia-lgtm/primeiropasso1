@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun, ListOrdered, ArrowUp, ArrowDown, Eye, EyeOff, Newspaper, PlayCircle, ShoppingBag, HelpCircle, Quote, Users, Target, Gift, BarChart3, Dna } from "lucide-react";
+import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun, ListOrdered, ArrowUp, ArrowDown, Eye, EyeOff, Newspaper, PlayCircle, ShoppingBag, HelpCircle, Quote, Users, Target, Gift, BarChart3, Dna, Maximize2, Minimize2 } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
 import { TikTokIcon } from "@/components/icons/TikTokIcon";
@@ -397,6 +397,8 @@ export default function AdminLandingPage() {
   const [saving, setSaving] = useState(false);
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<"editor" | "preview">("editor");
+  // Expande o painel do editor para a tela toda (desktop), escondendo o preview.
+  const [editorExpanded, setEditorExpanded] = useState(false);
 
   // Detecção de alterações não salvas POR CONTEÚDO (ver AdminPerfil): isDirty é
   // derivado da comparação com um retrato dos dados carregados — sem falso
@@ -1000,6 +1002,16 @@ export default function AdminLandingPage() {
   return (
     <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)] overflow-hidden">
 
+      {/* ── Expandir / recolher o editor (desktop) ── */}
+      <button
+        type="button"
+        onClick={() => setEditorExpanded((v) => !v)}
+        className="hidden lg:flex fixed top-[72px] right-3 z-40 items-center gap-1.5 rounded-full border bg-background/90 backdrop-blur px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-md hover:text-primary transition-colors"
+        title={editorExpanded ? "Voltar ao modo dividido (com preview)" : "Expandir o editor para a tela toda"}
+      >
+        {editorExpanded ? <><Minimize2 className="h-3.5 w-3.5" /> Recolher</> : <><Maximize2 className="h-3.5 w-3.5" /> Expandir</>}
+      </button>
+
       {/* ── alternador mobile (Editar / Visualizar) ── */}
       <div className="lg:hidden flex shrink-0 border-b bg-background">
         <button
@@ -1023,7 +1035,7 @@ export default function AdminLandingPage() {
       </div>
 
       {/* ── Preview ───────────────────────────────────────── */}
-      <div className={`${mobileView === "preview" ? "flex" : "hidden"} lg:flex flex-col w-full lg:w-[58%] flex-1 lg:flex-none min-h-0 overflow-y-auto border-r`}>
+      <div className={`${mobileView === "preview" ? "flex" : "hidden"} ${editorExpanded ? "lg:hidden" : "lg:flex"} flex-col w-full lg:w-[58%] flex-1 lg:flex-none min-h-0 overflow-y-auto border-r`}>
 
         <div className="flex items-center justify-between px-3 py-2 bg-muted/30 border-b">
           <span className="text-xs text-muted-foreground">Clique em uma seção para editar</span>
@@ -1107,7 +1119,7 @@ export default function AdminLandingPage() {
       </div>
 
       {/* ── Editor panel ──────────────────────────────────── */}
-      <div className={`${mobileView === "editor" ? "block" : "hidden"} lg:block w-full lg:w-[42%] flex-1 lg:flex-none min-h-0 overflow-y-auto`}>
+      <div className={`${mobileView === "editor" ? "block" : "hidden"} lg:block w-full ${editorExpanded ? "lg:w-full" : "lg:w-[42%]"} flex-1 lg:flex-none min-h-0 overflow-y-auto`}>
 
 
         {/* ── banner alterações não salvas ── */}
@@ -1187,7 +1199,7 @@ export default function AdminLandingPage() {
         <div className="p-5 space-y-5">
 
           {/* ── DNA DA MARCA (fonte única; gera a landing) ── */}
-          {activeSection === "dna" && <BrandDnaEditorTab />}
+          {activeSection === "dna" && <BrandDnaEditorTab expanded={editorExpanded} />}
 
           {/* ── PRODUTOS E SERVIÇOS (CRUD; reflete na seção do preview) ── */}
           {activeSection === "produtos" && <ProductsEditorTab />}

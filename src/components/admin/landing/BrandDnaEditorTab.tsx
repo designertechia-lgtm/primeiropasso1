@@ -102,7 +102,7 @@ async function invokeFn(fn: string, body: any) {
   return data.result;
 }
 
-export default function BrandDnaEditorTab() {
+export default function BrandDnaEditorTab({ expanded = false }: { expanded?: boolean }) {
   const { data: professional } = useProfessional();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -244,7 +244,7 @@ export default function BrandDnaEditorTab() {
           : <><Sparkles className="h-4 w-4" /> {hasContent ? "Gerar novo rascunho com IA" : "Gerar meu DNA com IA"}</>}
       </Button>
 
-      <div className="space-y-4">
+      <div className={expanded ? "grid md:grid-cols-2 gap-4" : "space-y-4"}>
         {DNA_SECTIONS.map((s) => (
           <div key={s.key} className="space-y-1.5">
             <label className="text-sm font-semibold text-foreground">{s.label}</label>

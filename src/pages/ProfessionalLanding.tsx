@@ -9,6 +9,11 @@ import SolutionSection from "@/components/landing/SolutionSection";
 import AboutSection from "@/components/landing/AboutSection";
 import ContentSection from "@/components/landing/ContentSection";
 import ProductsSection from "@/components/landing/ProductsSection";
+import VillainSection from "@/components/landing/VillainSection";
+import OfferSection from "@/components/landing/OfferSection";
+import TestimonialsSection from "@/components/landing/TestimonialsSection";
+import AudienceSection from "@/components/landing/AudienceSection";
+import FaqSection from "@/components/landing/FaqSection";
 import ContactSection from "@/components/landing/ContactSection";
 import LandingFooter from "@/components/landing/LandingFooter";
 import { buildLandingVars, getFontScale, GOOGLE_FONTS_URL } from "@/lib/landing/buildLandingVars";
@@ -113,6 +118,22 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     enabled: !!professional?.id,
   });
 
+  // Depoimentos APROVADOS para a seção de prova social (tabela testimonials, ainda não no types.ts → cast).
+  const { data: testimonials = [] } = useQuery({
+    queryKey: ["testimonials", professional?.id],
+    queryFn: async () => {
+      const { data } = await (supabase as any)
+        .from("testimonials")
+        .select("id, author_name, author_context, text, rating")
+        .eq("professional_id", professional!.id)
+        .eq("status", "approved")
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: false });
+      return data ?? [];
+    },
+    enabled: !!professional?.id,
+  });
+
   // Dark mode da landing pública: DESATIVADO. O estado/toggle abaixo e o helper de cores
   // escuras ficam preservados; enquanto esta flag for false a landing renderiza SEMPRE em
   // modo Claro e o botão de tema não aparece no header. Para reativar, basta voltar a true.
@@ -211,6 +232,15 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
   // Mesma lógica para Produtos e Serviços: a seção só entra quando há algo para mostrar.
   const hasProducts = products.length > 0 || services.length > 0;
 
+  // Seções novas (modelo Daiane): só entram quando o profissional preencheu / ativou —
+  // assim ninguém em produção vê seção nova com texto padrão sem ter editado.
+  const p = professional as any;
+  const hasVillain = !!(p.villain_body || p.villain_title);
+  const hasOffer = !!(p.offer_description || p.offer_title || (Array.isArray(p.offer_steps) && p.offer_steps.length > 0));
+  const hasAudience = Array.isArray(p.audience_for) && p.audience_for.length > 0;
+  const hasFaq = Array.isArray(p.faq_items) && p.faq_items.length > 0;
+  const showTestimonials = !!p.testimonials_enabled; // liga/desliga explícito na aba Depoimentos
+
   // Seções de conteúdo entre o Hero e o Contato, como DADOS (mapa key → nó). O profissional pode
   // reordenar e ocultar (tier Grátis, Fase 1): section_order define a ordem, section_hidden remove.
   // A zebra alterna o fundo pela POSIÇÃO na lista já ordenada/filtrada (sem faixa vazia).
@@ -219,6 +249,11 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     about: { id: "about", clip: false },
     content: { id: "content" },
     products: { id: "produtos" },
+    villain: { id: "villain" },
+    offer: { id: "oferta" },
+    testimonials: { id: "depoimentos" },
+    audience: { id: "para-quem" },
+    faq: { id: "faq" },
   };
   const sectionNodes: Record<string, React.ReactNode> = {
     pain: (
@@ -247,6 +282,67 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         approaches={professional.approaches ?? undefined}
       />
     ),
+    ...(hasVillain
+      ? {
+          villain: (
+            <VillainSection
+              title={p.villain_title ?? undefined}
+              body={p.villain_body ?? undefined}
+              imageUrl={p.villain_image_url ?? undefined}
+            />
+          ),
+        }
+      : {}),
+    ...(hasOffer
+      ? {
+          offer: (
+            <OfferSection
+              title={p.offer_title ?? undefined}
+              description={p.offer_description ?? undefined}
+              steps={p.offer_steps ?? undefined}
+              priceNote={p.offer_price_note ?? undefined}
+              whatsapp={professional.whatsapp ?? undefined}
+              ctaMessage={p.contact_cta_message ?? undefined}
+              campaignRef={campaignRef}
+              onWhatsAppClick={handleCtaClick}
+            />
+          ),
+        }
+      : {}),
+    ...(showTestimonials
+      ? {
+          testimonials: (
+            <TestimonialsSection
+              title={p.testimonials_title ?? undefined}
+              subtitle={p.testimonials_subtitle ?? undefined}
+              testimonials={testimonials as any}
+              professionalId={professional.id}
+              professionalName={name}
+            />
+          ),
+        }
+      : {}),
+    ...(hasAudience
+      ? {
+          audience: (
+            <AudienceSection
+              title={p.audience_title ?? undefined}
+              forItems={p.audience_for ?? undefined}
+              notForItems={p.audience_not_for ?? undefined}
+            />
+          ),
+        }
+      : {}),
+    ...(hasFaq
+      ? {
+          faq: (
+            <FaqSection
+              title={p.faq_title ?? undefined}
+              items={p.faq_items ?? undefined}
+            />
+          ),
+        }
+      : {}),
     ...(hasContent
       ? {
           content: (

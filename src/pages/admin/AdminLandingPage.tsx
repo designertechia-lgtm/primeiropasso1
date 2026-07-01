@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun, ListOrdered, ArrowUp, ArrowDown, Eye, EyeOff, Newspaper, PlayCircle, ShoppingBag, HelpCircle } from "lucide-react";
+import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun, ListOrdered, ArrowUp, ArrowDown, Eye, EyeOff, Newspaper, PlayCircle, ShoppingBag, HelpCircle, Quote, Users, Target, Gift } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
 import { TikTokIcon } from "@/components/icons/TikTokIcon";
@@ -24,6 +24,11 @@ import PainSection from "@/components/landing/PainSection";
 import ContactSection from "@/components/landing/ContactSection";
 import ContentSection from "@/components/landing/ContentSection";
 import ProductsSection from "@/components/landing/ProductsSection";
+import VillainSection from "@/components/landing/VillainSection";
+import OfferSection from "@/components/landing/OfferSection";
+import TestimonialsSection from "@/components/landing/TestimonialsSection";
+import AudienceSection from "@/components/landing/AudienceSection";
+import FaqSection from "@/components/landing/FaqSection";
 import LandingFooter from "@/components/landing/LandingFooter";
 import Section from "@/components/landing/Section";
 import { CONTENT_SECTION_KEYS, zebraTone } from "@/lib/landing/sections";
@@ -31,6 +36,7 @@ import { buildLandingVars, getFontScale, FONTS, FONT_SIZES, GOOGLE_FONTS_URL } f
 import GenerateAboutVideoDialog from "@/components/admin/landing/GenerateAboutVideoDialog";
 import ApproachesEditor from "@/components/admin/ApproachesEditor";
 import ProductsEditorTab from "@/components/admin/landing/ProductsEditorTab";
+import TestimonialsEditorTab from "@/components/admin/landing/TestimonialsEditorTab";
 
 // ── Vídeo: detecção de arquivo direto vs embed (YouTube/Vimeo) ────────────
 // Espelha a lógica do AboutSection da landing pública, pro preview do editor
@@ -147,11 +153,20 @@ const PALETTES = [
 // Mesmas chaves de CONTENT_SECTION_KEYS (sections.ts) — Hero e Contato são fixos, fora daqui.
 const CONTENT_SECTION_LABELS: Record<string, { label: string; icon: React.ElementType; hint?: string }> = {
   pain:     { label: "Dores",     icon: AlertCircle },
+  villain:  { label: "Vilão",     icon: Target, hint: "Por que nada funcionou. Aparece na página quando você preenche o texto." },
   solution: { label: "Solução",   icon: Lightbulb   },
   about:    { label: "Sobre",     icon: BookOpen    },
+  offer:    { label: "Oferta",    icon: Gift, hint: "Sua oferta principal + como funciona. Aparece quando você preenche." },
+  testimonials: { label: "Depoimentos", icon: Quote, hint: "Prova social. Aparece quando você ativa a seção na aba Depoimentos." },
+  audience: { label: "Para quem é", icon: Users, hint: "Para quem é / para quem não é. Aparece quando você preenche a lista." },
+  faq:      { label: "FAQ",       icon: HelpCircle, hint: "Perguntas frequentes. Aparece quando você adiciona perguntas." },
   content:  { label: "Conteúdos", icon: Newspaper, hint: "Aparece na página quando você publica artigos ou vídeos." },
   products: { label: "Produtos e Serviços", icon: ShoppingBag, hint: "Aparece na página quando você cadastra produtos ou serviços." },
 };
+
+// Normaliza listas jsonb (aceita ["texto"] ou [{text}]) para string[] usada nos editores simples.
+const toStrList = (arr: unknown): string[] =>
+  Array.isArray(arr) ? arr.map((x: any) => (typeof x === "string" ? x : (x?.text ?? ""))).filter((s: string) => s.trim() !== "") : [];
 
 // ── section overlay wrapper ────────────────────────────────
 function SectionBlock({
@@ -189,7 +204,7 @@ function SectionBlock({
   );
 }
 
-type Section = "secoes" | "hero" | "dores" | "solucao" | "sobre" | "produtos" | "cores" | "contatos";
+type Section = "secoes" | "hero" | "dores" | "vilao" | "solucao" | "sobre" | "oferta" | "depoimentos" | "publico" | "faq" | "produtos" | "cores" | "contatos";
 
 export default function AdminLandingPage() {
   const { data: professional, isLoading } = useProfessional();
@@ -303,6 +318,28 @@ export default function AdminLandingPage() {
   const [solutionSubtitle, setSolutionSubtitle] = useState("");
   const [solutionItems, setSolutionItems] = useState<{ title: string; desc: string }[]>([]);
 
+  // vilão (por que nada funcionou)
+  const [villainTitle, setVillainTitle] = useState("");
+  const [villainBody, setVillainBody] = useState("");
+  const [villainImageUrl, setVillainImageUrl] = useState("");
+
+  // oferta única / como funciona
+  const [offerTitle, setOfferTitle] = useState("");
+  const [offerDescription, setOfferDescription] = useState("");
+  const [offerSteps, setOfferSteps] = useState<{ title: string; desc: string }[]>([]);
+  const [offerPriceNote, setOfferPriceNote] = useState("");
+
+  // para quem é / para quem não é
+  const [audienceTitle, setAudienceTitle] = useState("");
+  const [audienceFor, setAudienceFor] = useState<string[]>([]);
+  const [audienceNotFor, setAudienceNotFor] = useState<string[]>([]);
+  const [newAudienceFor, setNewAudienceFor] = useState("");
+  const [newAudienceNotFor, setNewAudienceNotFor] = useState("");
+
+  // faq
+  const [faqTitle, setFaqTitle] = useState("");
+  const [faqItems, setFaqItems] = useState<{ q: string; a: string }[]>([]);
+
   // cores
   const [primaryColor, setPrimaryColor] = useState("#87A96B");
   const [secondaryColor, setSecondaryColor] = useState(() => deriveColors("#87A96B").secondary);
@@ -351,7 +388,7 @@ export default function AdminLandingPage() {
   // Deep-link da aba (ex.: /admin/landing?tab=produtos, usado pelo atalho do menu lateral).
   useEffect(() => {
     const tab = searchParams.get("tab");
-    const valid = ["secoes", "hero", "dores", "solucao", "sobre", "produtos", "cores", "contatos"];
+    const valid = ["secoes", "hero", "dores", "vilao", "solucao", "sobre", "oferta", "depoimentos", "publico", "faq", "produtos", "cores", "contatos"];
     if (tab && valid.includes(tab)) setActiveSection(tab as Section);
   }, [searchParams]);
   const [saving, setSaving] = useState(false);
@@ -370,6 +407,10 @@ export default function AdminLandingPage() {
     darkPrimaryColor: string; darkSecondaryColor: string; darkBgColor: string; darkModeEnabled: boolean;
     painTitle: string; painSubtitle: string; painItems: unknown[];
     solutionTitle: string; solutionSubtitle: string; solutionItems: unknown[];
+    villainTitle: string; villainBody: string; villainImageUrl: string;
+    offerTitle: string; offerDescription: string; offerSteps: unknown[]; offerPriceNote: string;
+    audienceTitle: string; audienceFor: unknown[]; audienceNotFor: unknown[];
+    faqTitle: string; faqItems: unknown[];
     sectionOrder: string[]; sectionHidden: string[];
     fontFamily: string; headingFontFamily: string; fontSizeScale: string;
     contactTitle: string; contactSubtitle: string; contactWhatsapp: string; contactCtaMessage: string;
@@ -384,6 +425,10 @@ export default function AdminLandingPage() {
       v.darkPrimaryColor, v.darkSecondaryColor, v.darkBgColor, v.darkModeEnabled,
       v.painTitle, v.painSubtitle, v.painItems,
       v.solutionTitle, v.solutionSubtitle, v.solutionItems,
+      v.villainTitle, v.villainBody, v.villainImageUrl,
+      v.offerTitle, v.offerDescription, v.offerSteps, v.offerPriceNote,
+      v.audienceTitle, v.audienceFor, v.audienceNotFor,
+      v.faqTitle, v.faqItems,
       v.sectionOrder, v.sectionHidden,
       v.fontFamily, v.headingFontFamily, v.fontSizeScale,
       v.contactTitle, v.contactSubtitle, v.contactWhatsapp, v.contactCtaMessage,
@@ -495,6 +540,18 @@ export default function AdminLandingPage() {
       solutionTitle: p.solution_title || "",
       solutionSubtitle: p.solution_subtitle || "",
       solutionItems: (p.solution_items || []) as unknown[],
+      villainTitle: p.villain_title || "",
+      villainBody: p.villain_body || "",
+      villainImageUrl: p.villain_image_url || "",
+      offerTitle: p.offer_title || "",
+      offerDescription: p.offer_description || "",
+      offerSteps: (p.offer_steps || []) as unknown[],
+      offerPriceNote: p.offer_price_note || "",
+      audienceTitle: p.audience_title || "",
+      audienceFor: toStrList(p.audience_for),
+      audienceNotFor: toStrList(p.audience_not_for),
+      faqTitle: p.faq_title || "",
+      faqItems: (p.faq_items || []) as unknown[],
       sectionOrder: [...validSaved, ...CONTENT_SECTION_KEYS.filter((k) => !validSaved.includes(k))] as string[],
       sectionHidden: (Array.isArray(p.section_hidden) ? p.section_hidden : []) as string[],
       fontFamily: p.font_family || "inter",
@@ -539,6 +596,18 @@ export default function AdminLandingPage() {
     setSolutionTitle(v.solutionTitle);
     setSolutionSubtitle(v.solutionSubtitle);
     setSolutionItems(v.solutionItems as any);
+    setVillainTitle(v.villainTitle);
+    setVillainBody(v.villainBody);
+    setVillainImageUrl(v.villainImageUrl);
+    setOfferTitle(v.offerTitle);
+    setOfferDescription(v.offerDescription);
+    setOfferSteps(v.offerSteps as any);
+    setOfferPriceNote(v.offerPriceNote);
+    setAudienceTitle(v.audienceTitle);
+    setAudienceFor(v.audienceFor as string[]);
+    setAudienceNotFor(v.audienceNotFor as string[]);
+    setFaqTitle(v.faqTitle);
+    setFaqItems(v.faqItems as any);
     setSectionOrder(v.sectionOrder);
     setSectionHidden(v.sectionHidden);
     setFontFamily(v.fontFamily);
@@ -562,7 +631,12 @@ export default function AdminLandingPage() {
     heroTitle, heroSubtitle, heroImageUrl, heroBgUrl, heroBgOpacity, heroBgOverlay, photoUrl, photoStyle, photoFit,
     aboutTitle, bio, aboutImageUrl, aboutVideoUrl, approaches, primaryColor, secondaryColor, bgColor,
     darkPrimaryColor, darkSecondaryColor, darkBgColor, darkModeEnabled,
-    painTitle, painSubtitle, painItems, solutionTitle, solutionSubtitle, solutionItems, sectionOrder, sectionHidden,
+    painTitle, painSubtitle, painItems, solutionTitle, solutionSubtitle, solutionItems,
+    villainTitle, villainBody, villainImageUrl,
+    offerTitle, offerDescription, offerSteps, offerPriceNote,
+    audienceTitle, audienceFor, audienceNotFor,
+    faqTitle, faqItems,
+    sectionOrder, sectionHidden,
     fontFamily, headingFontFamily, fontSizeScale, contactTitle, contactSubtitle, contactWhatsapp, contactCtaMessage,
     contactPhone, contactEmail, contactInstagram, contactLinkedin, contactTiktok, contactFacebook,
   });
@@ -628,6 +702,58 @@ export default function AdminLandingPage() {
     setSaving(false);
     if (error) toast.error("Erro ao salvar");
     else { toast.success("Seção Solução salva!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+  };
+
+  const saveVilao = async () => {
+    if (!professional) return;
+    setSaving(true);
+    const { error } = await supabase.from("professionals").update({
+      villain_title: villainTitle || null,
+      villain_body: villainBody || null,
+      villain_image_url: villainImageUrl || null,
+    } as any).eq("id", professional.id);
+    setSaving(false);
+    if (error) toast.error("Erro ao salvar");
+    else { toast.success("Seção Vilão salva!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+  };
+
+  const saveOferta = async () => {
+    if (!professional) return;
+    setSaving(true);
+    const { error } = await supabase.from("professionals").update({
+      offer_title: offerTitle || null,
+      offer_description: offerDescription || null,
+      offer_steps: offerSteps.length > 0 ? offerSteps : null,
+      offer_price_note: offerPriceNote || null,
+    } as any).eq("id", professional.id);
+    setSaving(false);
+    if (error) toast.error("Erro ao salvar");
+    else { toast.success("Seção Oferta salva!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+  };
+
+  const savePublico = async () => {
+    if (!professional) return;
+    setSaving(true);
+    const { error } = await supabase.from("professionals").update({
+      audience_title: audienceTitle || null,
+      audience_for: audienceFor.length > 0 ? audienceFor : null,
+      audience_not_for: audienceNotFor.length > 0 ? audienceNotFor : null,
+    } as any).eq("id", professional.id);
+    setSaving(false);
+    if (error) toast.error("Erro ao salvar");
+    else { toast.success("Seção Para quem é salva!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+  };
+
+  const saveFaq = async () => {
+    if (!professional) return;
+    setSaving(true);
+    const { error } = await supabase.from("professionals").update({
+      faq_title: faqTitle || null,
+      faq_items: faqItems.length > 0 ? faqItems : null,
+    } as any).eq("id", professional.id);
+    setSaving(false);
+    if (error) toast.error("Erro ao salvar");
+    else { toast.success("Seção FAQ salva!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
   };
 
   const saveCores = async () => {
@@ -710,6 +836,22 @@ export default function AdminLandingPage() {
       solution_title: solutionTitle || null,
       solution_subtitle: solutionSubtitle || null,
       solution_items: solutionItems.length > 0 ? solutionItems : null,
+      // Vilão
+      villain_title: villainTitle || null,
+      villain_body: villainBody || null,
+      villain_image_url: villainImageUrl || null,
+      // Oferta
+      offer_title: offerTitle || null,
+      offer_description: offerDescription || null,
+      offer_steps: offerSteps.length > 0 ? offerSteps : null,
+      offer_price_note: offerPriceNote || null,
+      // Para quem é
+      audience_title: audienceTitle || null,
+      audience_for: audienceFor.length > 0 ? audienceFor : null,
+      audience_not_for: audienceNotFor.length > 0 ? audienceNotFor : null,
+      // FAQ
+      faq_title: faqTitle || null,
+      faq_items: faqItems.length > 0 ? faqItems : null,
       // Cores & tipografia
       primary_color: primaryColor,
       secondary_color: secondaryColor,
@@ -804,6 +946,36 @@ export default function AdminLandingPage() {
       label: "Sobre", icon: BookOpen, active: activeSection === "sobre", clip: false, onClick: () => selectSection("sobre"),
       node: <AboutSection title={aboutTitle || undefined} name={name} bio={bio} crp={crp} photoUrl={photoUrl} aboutImageUrl={aboutImageUrl} aboutVideoUrl={aboutVideoUrl} approaches={approaches} autoplay={false} />,
     },
+    ...((villainBody || villainTitle) ? {
+      villain: {
+        label: "Vilão", icon: Target, active: activeSection === "vilao", onClick: () => selectSection("vilao"),
+        node: <VillainSection title={villainTitle || undefined} body={villainBody || undefined} imageUrl={villainImageUrl || undefined} />,
+      },
+    } : {}),
+    ...((offerDescription || offerTitle || offerSteps.length > 0) ? {
+      offer: {
+        label: "Oferta", icon: Gift, active: activeSection === "oferta", onClick: () => selectSection("oferta"),
+        node: <OfferSection title={offerTitle || undefined} description={offerDescription || undefined} steps={offerSteps.length > 0 ? offerSteps : undefined} priceNote={offerPriceNote || undefined} whatsapp={contactWhatsapp || undefined} />,
+      },
+    } : {}),
+    ...((professional as any)?.testimonials_enabled ? {
+      testimonials: {
+        label: "Depoimentos", icon: Quote, active: activeSection === "depoimentos", onClick: () => selectSection("depoimentos"),
+        node: <TestimonialsSection title={(professional as any)?.testimonials_title || undefined} subtitle={(professional as any)?.testimonials_subtitle || undefined} testimonials={[]} professionalId={(professional as any)?.id ?? ""} professionalName={name} interactive={false} />,
+      },
+    } : {}),
+    ...(audienceFor.length > 0 ? {
+      audience: {
+        label: "Para quem é", icon: Users, active: activeSection === "publico", onClick: () => selectSection("publico"),
+        node: <AudienceSection title={audienceTitle || undefined} forItems={audienceFor} notForItems={audienceNotFor} />,
+      },
+    } : {}),
+    ...(faqItems.length > 0 ? {
+      faq: {
+        label: "FAQ", icon: HelpCircle, active: activeSection === "faq", onClick: () => selectSection("faq"),
+        node: <FaqSection title={faqTitle || undefined} items={faqItems} />,
+      },
+    } : {}),
     ...(hasPreviewContent ? {
       content: {
         label: "Conteúdos", icon: Newspaper, active: false, onClick: () => navigate("/admin/artigos"),
@@ -981,8 +1153,13 @@ export default function AdminLandingPage() {
             { id: "secoes",   label: "Seções",   icon: ListOrdered   },
             { id: "hero",     label: "Hero",     icon: Layout        },
             { id: "dores",    label: "Dores",    icon: AlertCircle   },
+            { id: "vilao",    label: "Vilão",    icon: Target        },
             { id: "solucao",  label: "Solução",  icon: Lightbulb     },
             { id: "sobre",    label: "Sobre",    icon: BookOpen      },
+            { id: "oferta",   label: "Oferta",   icon: Gift          },
+            { id: "depoimentos", label: "Depoimentos", icon: Quote   },
+            { id: "publico",  label: "Para quem é", icon: Users      },
+            { id: "faq",      label: "FAQ",      icon: HelpCircle    },
             { id: "produtos", label: "Serviços", icon: ShoppingBag   },
             { id: "cores",    label: "Cores",    icon: Palette       },
             { id: "contatos", label: "Contatos", icon: MessageCircle },
@@ -1007,6 +1184,9 @@ export default function AdminLandingPage() {
 
           {/* ── PRODUTOS E SERVIÇOS (CRUD; reflete na seção do preview) ── */}
           {activeSection === "produtos" && <ProductsEditorTab />}
+
+          {/* ── DEPOIMENTOS (moderação + liga/desliga; tabela testimonials) ── */}
+          {activeSection === "depoimentos" && <TestimonialsEditorTab />}
 
           {/* ── SEÇÕES (ordem + ocultar) ── */}
           {activeSection === "secoes" && (
@@ -1382,6 +1562,165 @@ export default function AdminLandingPage() {
               </div>
               <Button onClick={saveSolution} disabled={saving} className="w-full">
                 {saving ? "Salvando..." : "Salvar Solução"}
+              </Button>
+            </>
+          )}
+
+          {/* ── VILÃO ── */}
+          {activeSection === "vilao" && (
+            <>
+              <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
+                Explica <strong>por que nada do que a pessoa tentou funcionou</strong> — a causa real, sem culpar o cliente. É o coração do seu diferencial. Aparece na página só quando preenchida.
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="villainTitle">Título da seção</Label>
+                <Input id="villainTitle" value={villainTitle} onChange={(e) => setVillainTitle(e.target.value)} placeholder="Por que nada do que você tentou funcionou até agora?" />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="villainBody">Texto <FieldHint text="Explique a causa real do problema sem culpar o leitor, e mostre que há saída. Separe parágrafos com Enter." /></Label>
+                  <AiButton loading={aiLoading === "villain_body"} onClick={() => generate("villain_body", setVillainBody)} />
+                </div>
+                <Textarea id="villainBody" rows={6} value={villainBody} onChange={(e) => setVillainBody(e.target.value)} placeholder="A verdade é que o problema nunca foi falta de esforço seu..." />
+              </div>
+              <div className="space-y-2">
+                <Label>Imagem de apoio (opcional)</Label>
+                <ImageUpload currentUrl={villainImageUrl || null} onUploaded={setVillainImageUrl} folder="villain" variant="logo" />
+                {villainImageUrl && (
+                  <button type="button" onClick={() => setVillainImageUrl("")} className="text-xs text-destructive hover:underline">Remover imagem</button>
+                )}
+              </div>
+              <Button onClick={saveVilao} disabled={saving} className="w-full">
+                {saving ? "Salvando..." : "Salvar Vilão"}
+              </Button>
+            </>
+          )}
+
+          {/* ── OFERTA ── */}
+          {activeSection === "oferta" && (
+            <>
+              <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
+                A seção decisiva de conversão: <strong>UMA oferta principal</strong> + como funciona + botão de WhatsApp. Sem promessa de cura. Aparece na página quando preenchida.
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="offerTitle">Título</Label>
+                <Input id="offerTitle" value={offerTitle} onChange={(e) => setOfferTitle(e.target.value)} placeholder="Como podemos caminhar juntos" />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="offerDescription">Descrição da oferta</Label>
+                  <AiButton loading={aiLoading === "offer_description"} onClick={() => generate("offer_description", setOfferDescription)} />
+                </div>
+                <Textarea id="offerDescription" rows={3} value={offerDescription} onChange={(e) => setOfferDescription(e.target.value)} placeholder="Descreva sua oferta principal (ex.: primeira conversa sem compromisso)..." />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Passos "como funciona"</Label>
+                  <AiButton loading={aiLoading === "offer_steps"} onClick={() => generate("offer_steps", setOfferSteps)} />
+                </div>
+                <div className="space-y-3">
+                  {offerSteps.map((item, i) => (
+                    <div key={i} className="rounded-lg border p-3 space-y-2">
+                      <div className="flex gap-2 items-center">
+                        <Input placeholder="Título do passo" value={item.title} onChange={(e) => { const u = [...offerSteps]; u[i] = { ...u[i], title: e.target.value }; setOfferSteps(u); }} />
+                        <button type="button" onClick={() => setOfferSteps(offerSteps.filter((_, j) => j !== i))}><X className="h-4 w-4 text-muted-foreground hover:text-destructive" /></button>
+                      </div>
+                      <Textarea placeholder="Descrição" rows={2} value={item.desc} onChange={(e) => { const u = [...offerSteps]; u[i] = { ...u[i], desc: e.target.value }; setOfferSteps(u); }} />
+                    </div>
+                  ))}
+                </div>
+                <Button type="button" variant="outline" className="w-full" onClick={() => setOfferSteps([...offerSteps, { title: "", desc: "" }])}>
+                  <Plus className="h-4 w-4 mr-2" /> Adicionar passo
+                </Button>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="offerPriceNote">Observação de preço/condições (opcional) <FieldHint text="Respeite as regras do seu conselho sobre divulgação de preços." /></Label>
+                <Input id="offerPriceNote" value={offerPriceNote} onChange={(e) => setOfferPriceNote(e.target.value)} placeholder="Ex.: valores sob consulta" />
+              </div>
+              <Button onClick={saveOferta} disabled={saving} className="w-full">
+                {saving ? "Salvando..." : "Salvar Oferta"}
+              </Button>
+            </>
+          )}
+
+          {/* ── PARA QUEM É ── */}
+          {activeSection === "publico" && (
+            <>
+              <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
+                Qualifica o lead: <strong>para quem é</strong> e <strong>para quem talvez não seja o momento</strong>. Aparece na página quando você adiciona itens.
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="audienceTitle">Título</Label>
+                  <AiButton loading={aiLoading === "audience_lists"} onClick={() => generate("audience_lists", (val: any) => { if (Array.isArray(val?.for)) setAudienceFor(val.for); if (Array.isArray(val?.not_for)) setAudienceNotFor(val.not_for); })} />
+                </div>
+                <Input id="audienceTitle" value={audienceTitle} onChange={(e) => setAudienceTitle(e.target.value)} placeholder="Este acompanhamento é para você?" />
+              </div>
+              <div className="space-y-2">
+                <Label>É para você se…</Label>
+                <div className="space-y-2">
+                  {audienceFor.map((item, i) => (
+                    <div key={i} className="flex gap-2 items-center">
+                      <Input value={item} onChange={(e) => { const u = [...audienceFor]; u[i] = e.target.value; setAudienceFor(u); }} />
+                      <button type="button" onClick={() => setAudienceFor(audienceFor.filter((_, j) => j !== i))}><X className="h-4 w-4 text-muted-foreground hover:text-destructive" /></button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <Input placeholder="Novo item..." value={newAudienceFor} onChange={(e) => setNewAudienceFor(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (newAudienceFor.trim()) { setAudienceFor([...audienceFor, newAudienceFor.trim()]); setNewAudienceFor(""); } } }} />
+                  <Button type="button" variant="outline" size="icon" onClick={() => { if (newAudienceFor.trim()) { setAudienceFor([...audienceFor, newAudienceFor.trim()]); setNewAudienceFor(""); } }}><Plus className="h-4 w-4" /></Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Talvez não seja o momento se…</Label>
+                <div className="space-y-2">
+                  {audienceNotFor.map((item, i) => (
+                    <div key={i} className="flex gap-2 items-center">
+                      <Input value={item} onChange={(e) => { const u = [...audienceNotFor]; u[i] = e.target.value; setAudienceNotFor(u); }} />
+                      <button type="button" onClick={() => setAudienceNotFor(audienceNotFor.filter((_, j) => j !== i))}><X className="h-4 w-4 text-muted-foreground hover:text-destructive" /></button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <Input placeholder="Novo item..." value={newAudienceNotFor} onChange={(e) => setNewAudienceNotFor(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (newAudienceNotFor.trim()) { setAudienceNotFor([...audienceNotFor, newAudienceNotFor.trim()]); setNewAudienceNotFor(""); } } }} />
+                  <Button type="button" variant="outline" size="icon" onClick={() => { if (newAudienceNotFor.trim()) { setAudienceNotFor([...audienceNotFor, newAudienceNotFor.trim()]); setNewAudienceNotFor(""); } }}><Plus className="h-4 w-4" /></Button>
+                </div>
+              </div>
+              <Button onClick={savePublico} disabled={saving} className="w-full">
+                {saving ? "Salvando..." : "Salvar Para quem é"}
+              </Button>
+            </>
+          )}
+
+          {/* ── FAQ ── */}
+          {activeSection === "faq" && (
+            <>
+              <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
+                Quebra objeções e protege seus limites éticos. Inclua sempre a pergunta se o acompanhamento substitui tratamento médico/psicológico. Aparece na página quando há perguntas.
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="faqTitle">Título</Label>
+                  <AiButton loading={aiLoading === "faq_items"} onClick={() => generate("faq_items", setFaqItems)} />
+                </div>
+                <Input id="faqTitle" value={faqTitle} onChange={(e) => setFaqTitle(e.target.value)} placeholder="Perguntas frequentes" />
+              </div>
+              <div className="space-y-3">
+                {faqItems.map((item, i) => (
+                  <div key={i} className="rounded-lg border p-3 space-y-2">
+                    <div className="flex gap-2 items-center">
+                      <Input placeholder="Pergunta" value={item.q} onChange={(e) => { const u = [...faqItems]; u[i] = { ...u[i], q: e.target.value }; setFaqItems(u); }} />
+                      <button type="button" onClick={() => setFaqItems(faqItems.filter((_, j) => j !== i))}><X className="h-4 w-4 text-muted-foreground hover:text-destructive" /></button>
+                    </div>
+                    <Textarea placeholder="Resposta" rows={2} value={item.a} onChange={(e) => { const u = [...faqItems]; u[i] = { ...u[i], a: e.target.value }; setFaqItems(u); }} />
+                  </div>
+                ))}
+              </div>
+              <Button type="button" variant="outline" className="w-full" onClick={() => setFaqItems([...faqItems, { q: "", a: "" }])}>
+                <Plus className="h-4 w-4 mr-2" /> Adicionar pergunta
+              </Button>
+              <Button onClick={saveFaq} disabled={saving} className="w-full">
+                {saving ? "Salvando..." : "Salvar FAQ"}
               </Button>
             </>
           )}

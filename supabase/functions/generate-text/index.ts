@@ -74,6 +74,49 @@ Cada card tem um título curto (2-4 palavras) e uma descrição (1-2 frases, má
 Responda APENAS um JSON válido com 6 cards: [{"title":"...","desc":"..."},{"title":"...","desc":"..."},{"title":"...","desc":"..."},{"title":"...","desc":"..."},{"title":"...","desc":"..."},{"title":"...","desc":"..."}]
 Sem comentários, sem markdown, apenas o JSON.`,
 
+  // Vilão — "por que nada funcionou": nomeia a causa-raiz sem culpar o cliente + a virada.
+  villain_body: (ctx) =>
+    `Você é um redator especialista em marketing para profissionais de saúde mental.
+Escreva o corpo da seção "por que nada do que a pessoa tentou funcionou até agora" da página de ${ctx.name}${ctx.specialty ? `, especialista em ${ctx.specialty}` : ""}.
+Explique a CAUSA REAL do problema SEM culpar o leitor (o problema não é falta de esforço nem "falha" dele), e termine deixando claro que isso tem saída quando se olha para a raiz certa.
+Escreva 2 parágrafos curtos, acolhedores, separados por uma linha em branco. Máx 90 palavras no total.
+Responda APENAS com o texto, sem título, sem aspas.`,
+
+  // Para quem é / para quem não é — qualifica o lead.
+  audience_lists: (ctx) =>
+    `Você é um redator especialista em marketing para profissionais de saúde mental.
+Para a página de ${ctx.name}${ctx.specialty ? `, especialista em ${ctx.specialty}` : ""}, crie duas listas curtas que qualificam o público.
+"for": 4 frases de "este acompanhamento é para você se..." (quem se beneficia).
+"not_for": 3 frases de "talvez não seja o momento se..." (respeitosas, sem julgar).
+Cada frase com no máx 12 palavras, em segunda pessoa.
+Responda APENAS um JSON válido: {"for":["...","...","...","..."],"not_for":["...","...","..."]}
+Sem comentários, sem markdown, apenas o JSON.`,
+
+  // FAQ — quebra objeção e protege limites éticos.
+  faq_items: (ctx) =>
+    `Você é um redator especialista em marketing para profissionais de saúde mental.
+Crie 5 perguntas frequentes com respostas para a página de ${ctx.name}${ctx.specialty ? `, especialista em ${ctx.specialty}` : ""}.
+O PRIMEIRO item DEVE ser obrigatoriamente a pergunta "Isto substitui acompanhamento médico ou psicológico?" com resposta responsável (complementa e não substitui tratamento médico/psiquiátrico/psicológico; em urgência, procurar serviços de emergência como SAMU 192 ou CVV 188).
+Os outros 4: dúvidas de tempo/duração, formato (online/presencial), "já tentei de tudo e não funcionou" e como começar. NUNCA prometa cura.
+Cada resposta com 2 a 3 frases, acolhedora.
+Responda APENAS um JSON válido: [{"q":"...","a":"..."},{"q":"...","a":"..."},{"q":"...","a":"..."},{"q":"...","a":"..."},{"q":"...","a":"..."}]
+Sem comentários, sem markdown, apenas o JSON.`,
+
+  // Oferta única — a seção decisiva de conversão.
+  offer_description: (ctx) =>
+    `Você é um redator especialista em marketing para profissionais de saúde mental.
+Descreva de forma clara UMA oferta/serviço principal de ${ctx.name}${ctx.specialty ? `, especialista em ${ctx.specialty}` : ""} (ex.: primeira sessão, acompanhamento contínuo).
+2 a 3 frases, específica e honesta, SEM promessa de cura nem resultado garantido, focada em como dar o primeiro passo.
+Responda APENAS com o texto, sem título, sem aspas.`,
+
+  // Oferta — "como funciona" em passos.
+  offer_steps: (ctx) =>
+    `Você é um redator especialista em marketing para profissionais de saúde mental.
+Crie 3 passos de "como funciona" para começar o acompanhamento com ${ctx.name}${ctx.specialty ? `, especialista em ${ctx.specialty}` : ""} (ex.: 1. Contato, 2. Primeira conversa, 3. Plano/acompanhamento).
+Cada passo tem um título curto (2-4 palavras) e uma descrição (1 frase, máx 18 palavras).
+Responda APENAS um JSON válido: [{"title":"...","desc":"..."},{"title":"...","desc":"..."},{"title":"...","desc":"..."}]
+Sem comentários, sem markdown, apenas o JSON.`,
+
   article_with_carousel: (ctx) => {
     const today = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
     const existingList = ctx.existing_titles?.length
@@ -199,7 +242,7 @@ Deno.serve(async (req) => {
     }
 
     // Se for um dos campos que espera JSON, tenta parsear
-    const jsonFields = ["pain_items", "solution_items", "article_with_carousel"];
+    const jsonFields = ["pain_items", "solution_items", "article_with_carousel", "faq_items", "offer_steps", "audience_lists"];
     if (jsonFields.includes(field)) {
       try {
         console.log(`Tentando parsear JSON para o campo: ${field}`);
@@ -285,8 +328,9 @@ Deno.serve(async (req) => {
         
         // Tentar extrair apenas o conteúdo entre chaves { } ou colchetes [ ]
         try {
-           const startChar = field === "article_with_carousel" ? '{' : '[';
-           const endChar = field === "article_with_carousel" ? '}' : ']';
+           const objectField = field === "article_with_carousel" || field === "audience_lists";
+           const startChar = objectField ? '{' : '[';
+           const endChar = objectField ? '}' : ']';
            
            const start = text.indexOf(startChar);
            const end = text.lastIndexOf(endChar);

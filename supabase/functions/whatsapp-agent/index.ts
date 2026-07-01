@@ -1888,7 +1888,7 @@ async function generateClonedAudio(text: string, voiceId: string): Promise<Uint8
     const res = await fetchT(`${sUrl}/functions/v1/elevenlabs-proxy?action=generate`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${sKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, voice_id: voiceId }),
+      body: JSON.stringify({ text, voice_id: voiceId, model_id: 'eleven_flash_v2_5' }),
     }, 30000)
     if (!res.ok) {
       console.error('[Audio] proxy generate falhou', res.status, (await res.text()).slice(0, 300))

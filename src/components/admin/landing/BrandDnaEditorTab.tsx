@@ -78,13 +78,14 @@ function buildDnaPrintHtml(prof: any, sections: Record<string, string>): string 
   @page { size: A4; margin: 18mm 16mm; }
   * { box-sizing: border-box; }
   body { font-family: -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: #23262b; line-height: 1.62; font-size: 11.5pt; }
-  .cover { padding: 2mm 0 0; margin-bottom: 9mm; }
-  .cover .logo { width: 62px; height: 62px; object-fit: contain; background: #fff; padding: 7px; border-radius: 16px; border: 1px solid #eceef1; box-shadow: 0 6px 18px rgba(0,0,0,.09); display: block; margin-bottom: 7mm; }
-  .cover .kicker { letter-spacing: .22em; text-transform: uppercase; font-size: 9pt; color: ${primary}; font-weight: 800; }
-  .cover h1 { font-size: 27pt; line-height: 1.1; margin: 2mm 0 1mm; font-weight: 800; letter-spacing: -.4px; color: #16181d; }
-  .cover .sub { color: ${secondary}; font-size: 13pt; font-weight: 600; }
-  .cover .meta { color: #8a8f98; font-size: 10pt; margin-top: 2mm; }
-  .rule { height: 5px; border-radius: 999px; background: linear-gradient(90deg, ${primary}, ${secondary}); margin-top: 6mm; }
+  .coverpage { page-break-after: always; }
+  .hero { display: flex; align-items: center; gap: 8mm; background: linear-gradient(135deg, ${primary}, ${secondary}); border-radius: 20px; padding: 11mm 12mm; color: #fff; box-shadow: 0 10px 30px ${primary}38; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .hero .logo { width: 66px; height: 66px; object-fit: contain; background: #fff; padding: 8px; border-radius: 16px; flex: none; box-shadow: 0 4px 12px rgba(0,0,0,.18); }
+  .hero .htext { min-width: 0; }
+  .hero .kicker { letter-spacing: .22em; text-transform: uppercase; font-size: 9pt; font-weight: 800; opacity: .85; }
+  .hero h1 { font-size: 26pt; font-weight: 800; margin: 1mm 0; line-height: 1.05; letter-spacing: -.4px; }
+  .hero .sub { font-size: 12.5pt; font-weight: 600; opacity: .92; }
+  .hero .meta { font-size: 9.5pt; opacity: .8; margin-top: 1.5mm; }
   .sec { page-break-inside: avoid; margin: 0 0 7mm; }
   h2 { display: flex; align-items: center; gap: 3mm; font-size: 13.5pt; font-weight: 800; color: #16181d; margin: 0 0 3mm; }
   h2 .num { display: inline-flex; align-items: center; justify-content: center; width: 7.5mm; height: 7.5mm; border-radius: 9px; background: ${primary}; color: #fff; font-size: 10pt; font-weight: 800; flex: none; }
@@ -96,18 +97,19 @@ function buildDnaPrintHtml(prof: any, sections: Record<string, string>): string 
   .foot { margin-top: 10mm; padding-top: 4mm; border-top: 1px solid #eceef1; color: #a0a4ab; font-size: 8.5pt; text-align: center; }
   .foot .contatos { color: ${primary}; font-weight: 700; font-size: 9.5pt; margin-bottom: 1.5mm; }
   @media screen { body { max-width: 800px; margin: 24px auto; padding: 0 28px; } }
-  @media print { .noprint { display: none; } }
+  @media print { .noprint { display: none; } .coverpage { min-height: 245mm; display: flex; align-items: center; } .coverpage .hero { width: 100%; } }
 </style></head>
 <body>
   <button class="noprint" onclick="window.print()" style="position:fixed;top:12px;right:12px;padding:8px 14px;font:14px Arial;background:${primary};color:#fff;border:none;border-radius:8px;cursor:pointer">Salvar como PDF</button>
-  <div class="cover">
+  <div class="coverpage"><div class="hero">
     ${logo ? `<img class="logo" src="${encodeURI(logo)}" alt="">` : ""}
-    <div class="kicker">DNA da Marca</div>
-    <h1>${escapeHtml(name)}</h1>
-    ${especialidade ? `<div class="sub">${escapeHtml(especialidade)}</div>` : ""}
-    <div class="meta">${escapeHtml(metaLine)}</div>
-    <div class="rule"></div>
-  </div>
+    <div class="htext">
+      <div class="kicker">DNA da Marca</div>
+      <h1>${escapeHtml(name)}</h1>
+      ${especialidade ? `<div class="sub">${escapeHtml(especialidade)}</div>` : ""}
+      <div class="meta">${escapeHtml(metaLine)}</div>
+    </div>
+  </div></div>
   ${body}
   <div class="foot">${contatos ? `<div class="contatos">${escapeHtml(contatos)}</div>` : ""}<div>Documento estratégico gerado no Primeiro Passo — revisão humana antes de uso público.</div></div>
   <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},350);});</script>

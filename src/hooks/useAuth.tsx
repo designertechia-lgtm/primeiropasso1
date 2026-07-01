@@ -60,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let mounted = true;
     let lastUserId: string | null = null;
     let initResolved = false;
+    let fetchInProgress = false;
 
     const resolveInit = () => {
       if (initResolved || !mounted) return;
@@ -87,7 +88,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
 
       if (!userChanged) {
-        resolveInit();
+        // Mesmo usuário (INITIAL_SESSION duplicando o getSession no boot, ou
+        // TOKEN_REFRESHED). NÃO liberar a UI se a busca inicial de roles/profile
+        // ainda está em voo — senão o ProtectedRoute vê roles=[] e joga pra "/"
+        // (landing) antes dos papéis chegarem, prendendo o usuário na landing.
+        if (!fetchInProgress) resolveInit();
         return;
       }
       lastUserId = newUserId;
@@ -97,11 +102,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // (Login redirect, ProtectedRoute, etc) esperem antes de decidir rota.
         setIsLoading(true);
         initResolved = false;
+        fetchInProgress = true;
         try {
           await fetchUserData(session.user.id);
         } catch (err) {
           console.error("[Auth] fetchUserData failed", err);
         } finally {
+          fetchInProgress = false;
           resolveInit();
         }
       } else {

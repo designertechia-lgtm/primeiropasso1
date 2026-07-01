@@ -256,6 +256,26 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     faq: { id: "faq" },
   };
   const sectionNodes: Record<string, React.ReactNode> = {
+    hero: (
+      <HeroSection
+        title={professional.hero_title ?? undefined}
+        subtitle={professional.hero_subtitle ?? undefined}
+        whatsapp={professional.whatsapp ?? undefined}
+        ctaMessage={p.contact_cta_message ?? undefined}
+        campaignRef={campaignRef}
+        onWhatsAppClick={handleCtaClick}
+        photoUrl={professional.photo_url ?? undefined}
+        heroImageUrl={professional.hero_image_url ?? undefined}
+        heroBgUrl={p.hero_bg_url ?? undefined}
+        heroBgOpacity={p.hero_bg_opacity ?? 70}
+        heroBgOverlay={p.hero_bg_overlay ?? "dark"}
+        slug={professional.slug}
+        professionalName={name}
+        crp={professional.crp ?? undefined}
+        photoStyle={p.photo_style ?? "portrait"}
+        photoFit={p.photo_fit ?? "contain"}
+      />
+    ),
     pain: (
       <PainSection
         title={(professional as any).pain_title ?? undefined}
@@ -387,29 +407,19 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         dark={effectiveDark}
         onToggleDark={DARK_MODE_ENABLED ? toggleDark : undefined}
       />
-      <HeroSection
-        title={professional.hero_title ?? undefined}
-        subtitle={professional.hero_subtitle ?? undefined}
-        whatsapp={professional.whatsapp ?? undefined}
-        ctaMessage={(professional as any).contact_cta_message ?? undefined}
-        campaignRef={campaignRef}
-        onWhatsAppClick={handleCtaClick}
-        photoUrl={professional.photo_url ?? undefined}
-        heroImageUrl={professional.hero_image_url ?? undefined}
-        heroBgUrl={(professional as any).hero_bg_url ?? undefined}
-        heroBgOpacity={(professional as any).hero_bg_opacity ?? 70}
-        heroBgOverlay={(professional as any).hero_bg_overlay ?? "dark"}
-        slug={professional.slug}
-        professionalName={name}
-        crp={professional.crp ?? undefined}
-        photoStyle={(professional as any).photo_style ?? "portrait"}
-        photoFit={(professional as any).photo_fit ?? "contain"}
-      />
-      {orderedKeys.map((key, i) => (
-        <Section key={key} id={sectionMeta[key]?.id} tone={zebraTone(i)} clip={sectionMeta[key]?.clip}>
-          {sectionNodes[key]}
-        </Section>
-      ))}
+      {(() => {
+        let z = 0;
+        return orderedKeys.map((key) => {
+          // Hero renderiza "puro" (tem seu próprio <section> full-bleed) e fica fora da zebra.
+          if (key === "hero") return <div key="hero">{sectionNodes.hero}</div>;
+          const tone = zebraTone(z++);
+          return (
+            <Section key={key} id={sectionMeta[key]?.id} tone={tone} clip={sectionMeta[key]?.clip}>
+              {sectionNodes[key]}
+            </Section>
+          );
+        });
+      })()}
       <Section id="contact" tone="accent">
         <ContactSection
           title={(professional as any).contact_title ?? undefined}

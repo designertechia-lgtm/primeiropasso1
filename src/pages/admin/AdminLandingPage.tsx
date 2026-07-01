@@ -31,7 +31,7 @@ import AudienceSection from "@/components/landing/AudienceSection";
 import FaqSection from "@/components/landing/FaqSection";
 import LandingFooter from "@/components/landing/LandingFooter";
 import Section from "@/components/landing/Section";
-import { CONTENT_SECTION_KEYS, zebraTone } from "@/lib/landing/sections";
+import { REORDERABLE_SECTION_KEYS, normalizeEditableOrder, zebraTone } from "@/lib/landing/sections";
 import { buildLandingVars, getFontScale, FONTS, FONT_SIZES, GOOGLE_FONTS_URL } from "@/lib/landing/buildLandingVars";
 import GenerateAboutVideoDialog from "@/components/admin/landing/GenerateAboutVideoDialog";
 import ApproachesEditor from "@/components/admin/ApproachesEditor";
@@ -150,8 +150,9 @@ const PALETTES = [
 ];
 
 // Rótulos/ícones das seções de conteúdo reordenáveis (tier Grátis, aba "Seções").
-// Mesmas chaves de CONTENT_SECTION_KEYS (sections.ts) — Hero e Contato são fixos, fora daqui.
+// Inclui o Hero (agora reordenável) + as seções de conteúdo. Só o Contato fica fixo no fim, fora daqui.
 const CONTENT_SECTION_LABELS: Record<string, { label: string; icon: React.ElementType; hint?: string }> = {
+  hero:     { label: "Hero",      icon: Layout, hint: "Primeira dobra. Fica no topo por padrão, mas você pode movê-lo." },
   pain:     { label: "Dores",     icon: AlertCircle },
   villain:  { label: "Vilão",     icon: Target, hint: "Por que nada funcionou. Aparece na página quando você preenche o texto." },
   solution: { label: "Solução",   icon: Lightbulb   },
@@ -356,7 +357,7 @@ export default function AdminLandingPage() {
   const [fontSizeScale, setFontSizeScale] = useState("md");
 
   // seções (ordem + ocultar) — tier Grátis
-  const [sectionOrder, setSectionOrder] = useState<string[]>([...CONTENT_SECTION_KEYS]);
+  const [sectionOrder, setSectionOrder] = useState<string[]>([...REORDERABLE_SECTION_KEYS]);
   const [sectionHidden, setSectionHidden] = useState<string[]>([]);
 
   // contatos
@@ -510,7 +511,6 @@ export default function AdminLandingPage() {
     // Ordem das seções: garante que as 4 chaves estejam presentes (anexa as faltantes na ordem canônica),
     // mesmo que o banco tenha um subconjunto ou null → a aba "Seções" sempre lista as 4.
     const savedOrder: string[] = Array.isArray(p.section_order) ? p.section_order : [];
-    const validSaved = savedOrder.filter((k) => (CONTENT_SECTION_KEYS as readonly string[]).includes(k));
 
     const v = {
       heroTitle: professional.hero_title || "",
@@ -552,7 +552,7 @@ export default function AdminLandingPage() {
       audienceNotFor: toStrList(p.audience_not_for),
       faqTitle: p.faq_title || "",
       faqItems: (p.faq_items || []) as unknown[],
-      sectionOrder: [...validSaved, ...CONTENT_SECTION_KEYS.filter((k) => !validSaved.includes(k))] as string[],
+      sectionOrder: normalizeEditableOrder(savedOrder),
       sectionHidden: (Array.isArray(p.section_hidden) ? p.section_hidden : []) as string[],
       fontFamily: p.font_family || "inter",
       headingFontFamily: p.heading_font_family || "playfair",
@@ -933,7 +933,11 @@ export default function AdminLandingPage() {
   // Blocos de conteúdo do preview como DADOS, pra reordenar/ocultar conforme a aba "Seções" e
   // refletir a página pública (mesmas seções, mesma ordem/zebra). Conteúdos só entra quando há
   // artigos/vídeos (igual ao guard `hasContent` do público); ao clicar, leva à gestão de Artigos.
-  const previewBlocksMeta: Record<string, { label: string; icon: React.ElementType; active: boolean; clip?: boolean; onClick: () => void; node: React.ReactNode }> = {
+  const previewBlocksMeta: Record<string, { label: string; icon: React.ElementType; active: boolean; clip?: boolean; bare?: boolean; onClick: () => void; node: React.ReactNode }> = {
+    hero: {
+      label: "Hero", icon: Layout, active: activeSection === "hero", bare: true, onClick: () => selectSection("hero"),
+      node: <HeroSection title={heroTitle} subtitle={heroSubtitle} photoUrl={photoUrl} heroImageUrl={heroImageUrl} heroBgUrl={heroBgUrl} heroBgOpacity={heroBgOpacity} heroBgOverlay={heroBgOverlay} professionalName={name} crp={crp} photoStyle={photoStyle} photoFit={photoFit} />,
+    },
     pain: {
       label: "Dores", icon: AlertCircle, active: activeSection === "dores", onClick: () => selectSection("dores"),
       node: <PainSection title={painTitle || undefined} subtitle={painSubtitle || undefined} items={painItems.length > 0 ? painItems : undefined} />,
@@ -1051,32 +1055,28 @@ export default function AdminLandingPage() {
         }, previewMode === "dark" ? "dark" : "light") } as React.CSSProperties}>
           <div className="bg-background text-foreground" style={{ pointerEvents: "auto" }}>
 
-            <SectionBlock label="Hero" icon={Layout} active={activeSection === "hero"} onClick={() => selectSection("hero")}>
-              <HeroSection
-                title={heroTitle}
-                subtitle={heroSubtitle}
-                photoUrl={photoUrl}
-                heroImageUrl={heroImageUrl}
-                heroBgUrl={heroBgUrl}
-                heroBgOpacity={heroBgOpacity}
-                heroBgOverlay={heroBgOverlay}
-                professionalName={name}
-                crp={crp}
-                photoStyle={photoStyle}
-                photoFit={photoFit}
-              />
-            </SectionBlock>
-
-            {previewContentOrder.map((k, i) => {
-              const b = previewBlocksMeta[k];
-              return (
-                <SectionBlock key={k} label={b.label} icon={b.icon} active={b.active} hidden={sectionHidden.includes(k)} onClick={b.onClick}>
-                  <Section tone={zebraTone(i)} clip={b.clip}>
-                    {b.node}
-                  </Section>
-                </SectionBlock>
-              );
-            })}
+            {(() => {
+              let z = 0;
+              return previewContentOrder.map((k) => {
+                const b = previewBlocksMeta[k];
+                // Hero renderiza puro (fora da zebra); as demais entram na alternância.
+                if (b.bare) {
+                  return (
+                    <SectionBlock key={k} label={b.label} icon={b.icon} active={b.active} onClick={b.onClick}>
+                      {b.node}
+                    </SectionBlock>
+                  );
+                }
+                const tone = zebraTone(z++);
+                return (
+                  <SectionBlock key={k} label={b.label} icon={b.icon} active={b.active} hidden={sectionHidden.includes(k)} onClick={b.onClick}>
+                    <Section tone={tone} clip={b.clip}>
+                      {b.node}
+                    </Section>
+                  </SectionBlock>
+                );
+              });
+            })()}
 
             <SectionBlock label="Contatos" icon={MessageCircle} active={activeSection === "contatos"} onClick={() => selectSection("contatos")}>
               <Section tone="accent">
@@ -1192,17 +1192,10 @@ export default function AdminLandingPage() {
           {activeSection === "secoes" && (
             <>
               <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
-                Organize a <strong>ordem</strong> das seções e <strong>oculte</strong> o que não quiser mostrar. O <strong>Hero</strong> fica sempre no topo e o <strong>Contato</strong> sempre no fim.
+                Organize a <strong>ordem</strong> das seções e <strong>oculte</strong> o que não quiser mostrar. O <strong>Contato</strong> fica sempre no fim; as demais (incluindo o <strong>Hero</strong>) você reordena livremente. O Hero não pode ser ocultado.
               </div>
 
-              {/* Hero — fixo no topo */}
-              <div className="flex items-center gap-3 rounded-xl border border-dashed bg-muted/30 px-3 py-2.5">
-                <Layout className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                <span className="text-sm font-medium flex-1">Hero</span>
-                <span className="text-[10px] text-muted-foreground">Sempre no topo</span>
-              </div>
-
-              {/* Seções reordenáveis */}
+              {/* Seções reordenáveis (inclui o Hero) */}
               <div className="space-y-2">
                 {sectionOrder.map((key, i) => {
                   const meta = CONTENT_SECTION_LABELS[key];
@@ -1239,14 +1232,16 @@ export default function AdminLandingPage() {
                         <p className="text-sm font-medium leading-tight">{meta.label}</p>
                         {meta.hint && <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{meta.hint}</p>}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => toggleHidden(key)}
-                        title={hidden ? "Mostrar seção" : "Ocultar seção"}
-                        className="rounded-md p-1.5 hover:bg-muted transition-colors flex-shrink-0"
-                      >
-                        {hidden ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-primary" />}
-                      </button>
+                      {key !== "hero" && (
+                        <button
+                          type="button"
+                          onClick={() => toggleHidden(key)}
+                          title={hidden ? "Mostrar seção" : "Ocultar seção"}
+                          className="rounded-md p-1.5 hover:bg-muted transition-colors flex-shrink-0"
+                        >
+                          {hidden ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-primary" />}
+                        </button>
+                      )}
                     </div>
                   );
                 })}

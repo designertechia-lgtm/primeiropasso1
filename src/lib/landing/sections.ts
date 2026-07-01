@@ -34,6 +34,23 @@ export function zebraTone(index: number): SectionTone {
 export const CONTENT_SECTION_KEYS = ["pain", "villain", "solution", "about", "offer", "testimonials", "audience", "faq", "content", "products"] as const;
 export type ContentSectionKey = (typeof CONTENT_SECTION_KEYS)[number];
 
+// O Hero passou a ser REORDENÁVEL (pode sair do topo). Continua não-ocultável.
+// Ordem canônica completa: Hero primeiro, depois as seções de conteúdo.
+export const HERO_KEY = "hero";
+export const REORDERABLE_SECTION_KEYS = [HERO_KEY, ...CONTENT_SECTION_KEYS] as const;
+
+// Lista editável completa (sempre inclui todas as chaves reordenáveis, na ordem salva + faltantes
+// na ordem canônica). Retrocompat: se o order salvo não tiver "hero" (salvo antes do Hero ser
+// reordenável), o Hero volta pro topo por padrão. Consumida pelo editor (aba "Seções").
+export function normalizeEditableOrder(saved?: string[] | null): string[] {
+  const all = REORDERABLE_SECTION_KEYS as readonly string[];
+  const base = (saved ?? []).filter((k) => all.includes(k));
+  const rest = REORDERABLE_SECTION_KEYS.filter((k) => !base.includes(k)) as string[];
+  let merged = [...base, ...rest];
+  if (!base.includes(HERO_KEY)) merged = [HERO_KEY, ...merged.filter((k) => k !== HERO_KEY)];
+  return merged;
+}
+
 // Aplica a ordem salva pelo profissional + remove as ocultas, mantendo só as chaves que existem
 // nesta landing (ex.: 'content' some quando não há artigos/vídeos). Chaves novas no futuro que
 // não estejam em `order` entram no fim, na ordem canônica — à prova de evolução do schema.
@@ -45,8 +62,14 @@ export function orderContentSections(
 ): string[] {
   const hide = new Set(hidden ?? []);
   const base = (order ?? []).filter((k) => available.includes(k));
-  const rest = CONTENT_SECTION_KEYS.filter((k) => available.includes(k) && !base.includes(k));
-  return [...base, ...rest].filter((k) => !hide.has(k));
+  const rest = REORDERABLE_SECTION_KEYS.filter((k) => available.includes(k) && !base.includes(k)) as string[];
+  let merged = [...base, ...rest];
+  // Retrocompat: orders salvos antes do Hero ser reordenável não têm "hero" → Hero volta pro topo.
+  if (available.includes(HERO_KEY) && !base.includes(HERO_KEY)) {
+    merged = [HERO_KEY, ...merged.filter((k) => k !== HERO_KEY)];
+  }
+  // O Hero nunca é ocultável.
+  return merged.filter((k) => k === HERO_KEY || !hide.has(k));
 }
 
 // Divide o título da seção em [lead, accent] pra colorir a 2ª parte (formato "frase. complemento colorido").

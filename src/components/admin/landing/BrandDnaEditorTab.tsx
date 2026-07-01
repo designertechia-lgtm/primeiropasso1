@@ -32,6 +32,13 @@ const escapeHtml = (s: string) =>
 const inlineMd = (s: string) => s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
 // Remove um cabeçalho markdown que a IA às vezes coloca no início da seção (o rótulo já é o <h2>).
 const stripLeadingHeading = (t: string) => (t || "").replace(/^\s*#{1,6}\s+.*(?:\r?\n)+/, "").trim();
+// Escurece um hex (f<1) para um fundo de capa profundo/legível independente da cor de marca base.
+const darken = (hex: string, f: number): string => {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || "");
+  if (!m) return hex;
+  const c = [1, 2, 3].map((i) => Math.max(0, Math.min(255, Math.round(parseInt(m[i], 16) * f))));
+  return `#${c.map((x) => x.toString(16).padStart(2, "0")).join("")}`;
+};
 
 function mdToHtml(md: string): string {
   const lines = (md || "").split(/\r?\n/);
@@ -65,6 +72,10 @@ function buildDnaPrintHtml(prof: any, sections: Record<string, string>): string 
   const contatos = [prof?.whatsapp && `WhatsApp ${prof.whatsapp}`, prof?.email, instagram].filter(Boolean).join("  ·  ");
   const date = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
   const metaLine = [crp, modalidade, date].filter(Boolean).join(" · ");
+  const d1 = darken(primary, 0.72);
+  const d2 = darken(primary, 0.46);
+  // Última palavra do nome em itálico (ênfase editorial estilo "começa aqui").
+  const nameHtml = (() => { const w = escapeHtml(name).split(" "); if (w.length > 1) { const last = w.pop(); return `${w.join(" ")} <em>${last}</em>`; } return escapeHtml(name); })();
   let n = 0;
   const body = DNA_SECTIONS.map((s) => {
     const content = stripLeadingHeading(sections[s.key] || "");
@@ -81,13 +92,22 @@ function buildDnaPrintHtml(prof: any, sections: Record<string, string>): string 
   @page cover { margin: 0; }
   * { box-sizing: border-box; }
   body { font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; color: #262a30; line-height: 1.6; font-size: 11pt; }
-  .coverpage { position: relative; page: cover; page-break-after: always; background: linear-gradient(160deg, ${primary}, ${secondary}); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 28mm; min-height: 262mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .coverpage .logo { width: 100px; height: 100px; object-fit: contain; background: #fff; padding: 13px; border-radius: 28px; box-shadow: 0 16px 44px rgba(0,0,0,.30); margin-bottom: 13mm; }
-  .coverpage .kicker { font-family: 'Inter', sans-serif; letter-spacing: .34em; text-transform: uppercase; font-size: 10.5pt; font-weight: 700; opacity: .88; }
-  .coverpage h1 { font-family: 'Fraunces', Georgia, serif; font-size: 46pt; font-weight: 600; margin: 5mm 0 4mm; line-height: 1.02; letter-spacing: -.5px; }
-  .coverpage .sub { font-size: 15pt; font-weight: 500; opacity: .95; }
-  .coverpage .meta { font-size: 10.5pt; opacity: .8; margin-top: 9mm; }
-  .coverpage .brandmark { position: absolute; bottom: 16mm; left: 0; right: 0; font-family: 'Inter', sans-serif; font-size: 9pt; letter-spacing: .24em; text-transform: uppercase; opacity: .72; }
+  .coverpage { position: relative; overflow: hidden; page: cover; page-break-after: always; background: linear-gradient(158deg, ${d1}, ${d2}); color: #fff; display: flex; flex-direction: column; justify-content: space-between; text-align: left; padding: 26mm 24mm; min-height: 262mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .coverpage .rings { position: absolute; top: -150px; right: -150px; width: 560px; height: 560px; opacity: .5; }
+  .coverpage .rings span { position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.16); }
+  .coverpage .rings span:nth-child(2) { inset: 92px; }
+  .coverpage .rings span:nth-child(3) { inset: 196px; border-color: rgba(255,255,255,.24); }
+  .coverpage .lh { position: relative; z-index: 1; display: flex; align-items: center; gap: 3mm; min-height: 40px; }
+  .coverpage .lh img { width: 38px; height: 38px; object-fit: contain; background: #fff; padding: 5px; border-radius: 11px; }
+  .coverpage .main { position: relative; z-index: 1; max-width: 156mm; }
+  .coverpage .kicker { font-family: 'Inter', sans-serif; letter-spacing: .32em; text-transform: uppercase; font-size: 9.5pt; font-weight: 700; opacity: .82; margin-bottom: 5mm; }
+  .coverpage h1 { font-family: 'Fraunces', Georgia, serif; font-size: 44pt; font-weight: 500; line-height: 1.03; letter-spacing: -.5px; margin: 0; }
+  .coverpage h1 em { font-style: italic; }
+  .coverpage .sub { font-family: 'Fraunces', Georgia, serif; font-style: italic; font-size: 16pt; opacity: .9; margin-top: 4mm; }
+  .coverpage .desc { font-family: 'Inter', sans-serif; font-size: 10.5pt; line-height: 1.62; opacity: .82; margin-top: 7mm; max-width: 122mm; }
+  .coverpage .foot2 { position: relative; z-index: 1; }
+  .coverpage .foot2 .r { height: 1px; background: rgba(255,255,255,.28); margin-bottom: 4mm; }
+  .coverpage .foot2 .m { font-family: 'Inter', sans-serif; font-size: 8.5pt; letter-spacing: .18em; text-transform: uppercase; opacity: .78; }
   .sec { page-break-inside: avoid; margin: 0 0 7mm; }
   h2 { display: flex; align-items: center; gap: 3mm; font-family: 'Fraunces', Georgia, serif; font-size: 15.5pt; font-weight: 600; color: #16181d; margin: 0 0 3mm; }
   h2 .num { display: inline-flex; align-items: center; justify-content: center; width: 7.5mm; height: 7.5mm; border-radius: 9px; background: ${primary}; color: #fff; font-size: 10pt; font-weight: 800; flex: none; }
@@ -104,12 +124,15 @@ function buildDnaPrintHtml(prof: any, sections: Record<string, string>): string 
 <body>
   <button class="noprint" onclick="window.print()" style="position:fixed;top:12px;right:12px;padding:8px 14px;font:14px Arial;background:${primary};color:#fff;border:none;border-radius:8px;cursor:pointer">Salvar como PDF</button>
   <div class="coverpage">
-    ${logo ? `<img class="logo" src="${encodeURI(logo)}" alt="">` : ""}
-    <div class="kicker">DNA da Marca</div>
-    <h1>${escapeHtml(name)}</h1>
-    ${especialidade ? `<div class="sub">${escapeHtml(especialidade)}</div>` : ""}
-    <div class="meta">${escapeHtml(metaLine)}</div>
-    <div class="brandmark">Primeiro Passo</div>
+    <div class="rings"><span></span><span></span><span></span></div>
+    <div class="lh">${logo ? `<img src="${encodeURI(logo)}" alt="">` : ""}</div>
+    <div class="main">
+      <div class="kicker">DNA da Marca</div>
+      <h1>${nameHtml}</h1>
+      ${especialidade ? `<div class="sub">${escapeHtml(especialidade)}</div>` : ""}
+      <p class="desc">A base única da sua comunicação — posicionamento, persona, vilão, voz e limites — para uma marca coerente em cada ponto de contato.</p>
+    </div>
+    <div class="foot2"><div class="r"></div><div class="m">${escapeHtml([modalidade, "Primeiro Passo", date].filter(Boolean).join("  ·  "))}</div></div>
   </div>
   ${body}
   <div class="foot">${contatos ? `<div class="contatos">${escapeHtml(contatos)}</div>` : ""}<div>Documento estratégico gerado no Primeiro Passo — revisão humana antes de uso público.</div></div>

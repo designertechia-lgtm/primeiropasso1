@@ -53,9 +53,18 @@ function mdToHtml(md: string): string {
 
 function buildDnaPrintHtml(prof: any, sections: Record<string, string>): string {
   const primary = prof?.primary_color || "#87A96B";
+  const secondary = prof?.secondary_color || primary;
   const name = prof?.full_name || "Profissional";
   const crp = prof?.crp || "";
+  const logo = prof?.logo_url || "";
+  const especialidade = (prof?.approaches || [])[0] || prof?.category_custom || prof?.category || "";
+  const mod = prof?.attendance_mode;
+  const modalidade = mod === "online" ? "Atendimento online" : mod === "presencial" ? "Atendimento presencial"
+    : (mod === "hybrid" || mod === "hibrido") ? "Atendimento online e presencial" : "";
+  const instagram = prof?.instagram ? (String(prof.instagram).startsWith("@") ? prof.instagram : "@" + prof.instagram) : "";
+  const contatos = [prof?.whatsapp && `WhatsApp ${prof.whatsapp}`, prof?.email, instagram].filter(Boolean).join("  ·  ");
   const date = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+  const metaLine = [crp, modalidade, date].filter(Boolean).join(" · ");
   const body = DNA_SECTIONS.map((s) => {
     const content = stripLeadingHeading(sections[s.key] || "");
     if (!content) return "";
@@ -67,25 +76,32 @@ function buildDnaPrintHtml(prof: any, sections: Record<string, string>): string 
   @page { size: A4; margin: 22mm 18mm; }
   * { box-sizing: border-box; }
   body { font-family: Georgia, 'Times New Roman', serif; color: #1a1a1a; line-height: 1.55; font-size: 12pt; }
-  .cover { text-align: center; padding: 24mm 0 12mm; border-bottom: 3px solid ${primary}; margin-bottom: 10mm; }
-  .cover .kicker { letter-spacing: .25em; text-transform: uppercase; font-size: 10pt; color: ${primary}; font-family: Arial, sans-serif; }
-  .cover h1 { font-size: 30pt; margin: 5mm 0 2mm; }
-  .cover .meta { color: #555; font-size: 11pt; font-family: Arial, sans-serif; }
-  h2 { color: ${primary}; font-size: 15pt; margin: 9mm 0 3mm; border-left: 4px solid ${primary}; padding-left: 3mm; font-family: Arial, sans-serif; }
+  .cover { text-align: center; padding: 16mm 0 10mm; border-bottom: 4px solid ${primary}; margin-bottom: 10mm; background: linear-gradient(180deg, ${primary}14, transparent); }
+  .cover .logo { max-height: 64px; max-width: 60%; margin: 0 auto 6mm; display: block; object-fit: contain; }
+  .cover .kicker { letter-spacing: .25em; text-transform: uppercase; font-size: 10pt; color: ${primary}; font-family: Arial, sans-serif; font-weight: 700; }
+  .cover h1 { font-size: 30pt; margin: 4mm 0 1mm; }
+  .cover .sub { color: ${secondary}; font-size: 13pt; font-family: Arial, sans-serif; margin-bottom: 3mm; }
+  .cover .meta { color: #666; font-size: 10.5pt; font-family: Arial, sans-serif; }
+  h2 { color: ${primary}; font-size: 15pt; margin: 9mm 0 3mm; border-left: 4px solid ${secondary}; padding-left: 3mm; font-family: Arial, sans-serif; }
   h3 { font-size: 12.5pt; margin: 4mm 0 2mm; }
   p { margin: 0 0 3mm; text-align: justify; }
   ul { margin: 0 0 3mm 5mm; padding: 0; } li { margin: 0 0 1.5mm; }
   .sec { page-break-inside: avoid; }
   .foot { margin-top: 12mm; padding-top: 4mm; border-top: 1px solid #ddd; color: #888; font-size: 9pt; text-align: center; font-family: Arial, sans-serif; }
+  .foot .contatos { color: ${primary}; font-weight: 700; font-size: 10pt; margin-bottom: 2mm; }
   @media screen { body { max-width: 820px; margin: 24px auto; padding: 0 24px; } }
   @media print { .noprint { display: none; } }
 </style></head>
 <body>
   <button class="noprint" onclick="window.print()" style="position:fixed;top:12px;right:12px;padding:8px 14px;font:14px Arial;background:${primary};color:#fff;border:none;border-radius:8px;cursor:pointer">Salvar como PDF</button>
-  <div class="cover"><div class="kicker">DNA da Marca</div><h1>${escapeHtml(name)}</h1>
-    <div class="meta">${escapeHtml([crp, "Primeiro Passo"].filter(Boolean).join(" · "))}<br>${date}</div></div>
+  <div class="cover">
+    ${logo ? `<img class="logo" src="${encodeURI(logo)}" alt="">` : ""}
+    <div class="kicker">DNA da Marca</div><h1>${escapeHtml(name)}</h1>
+    ${especialidade ? `<div class="sub">${escapeHtml(especialidade)}</div>` : ""}
+    <div class="meta">${escapeHtml(metaLine)}</div>
+  </div>
   ${body}
-  <div class="foot">Documento estratégico gerado no Primeiro Passo — revisão humana antes de uso público.</div>
+  <div class="foot">${contatos ? `<div class="contatos">${escapeHtml(contatos)}</div>` : ""}<div>Documento estratégico gerado no Primeiro Passo — revisão humana antes de uso público.</div></div>
   <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},350);});</script>
 </body></html>`;
 }
@@ -225,7 +241,7 @@ export default function BrandDnaEditorTab({ expanded = false }: { expanded?: boo
   };
 
   return (
-    <div className="space-y-5">
+    <div className={`space-y-5 ${expanded ? "max-w-4xl mx-auto" : ""}`}>
       <div className="flex gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3.5">
         <Dna className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
         <div className="space-y-1">
@@ -244,12 +260,12 @@ export default function BrandDnaEditorTab({ expanded = false }: { expanded?: boo
           : <><Sparkles className="h-4 w-4" /> {hasContent ? "Gerar novo rascunho com IA" : "Gerar meu DNA com IA"}</>}
       </Button>
 
-      <div className={expanded ? "grid md:grid-cols-2 gap-4" : "space-y-4"}>
+      <div className="space-y-4">
         {DNA_SECTIONS.map((s) => (
           <div key={s.key} className="space-y-1.5">
             <label className="text-sm font-semibold text-foreground">{s.label}</label>
             <Textarea
-              rows={4}
+              rows={expanded ? 9 : 4}
               value={sections[s.key] || ""}
               onChange={(e) => setSections((prev) => ({ ...prev, [s.key]: e.target.value }))}
               placeholder={generating ? "Gerando…" : "Clique em “Gerar meu DNA com IA” ou escreva aqui."}

@@ -15,5 +15,8 @@ verify_jwt = false
 [functions.whatsapp-webhook]
 verify_jwt = false
 
+[functions.whatsapp-cloud-webhook]
+verify_jwt = false
+
 [functions.impersonate-user]
 verify_jwt = false

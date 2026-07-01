@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Dna, Sparkles, Loader2, Wand2, ShieldAlert } from "lucide-react";
+import { Dna, Sparkles, Loader2, Wand2, ShieldAlert, FileDown } from "lucide-react";
 
 // Aba "DNA da Marca" do editor da landing. Fonte única da marca do profissional (11 seções,
 // modelo Daiane). Autossuficiente (grava em professionals.brand_bible). A IA gera um rascunho a
@@ -25,6 +25,70 @@ const DNA_SECTIONS: { key: string; label: string }[] = [
   { key: "limites_eticos", label: "Limites éticos e conformidade" },
   { key: "oferta", label: "Arquitetura de oferta" },
 ];
+
+// ── PDF (impressão via nova aba; texto selecionável, sem dependência nova) ──
+const escapeHtml = (s: string) =>
+  (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const inlineMd = (s: string) => s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+// Remove um cabeçalho markdown que a IA às vezes coloca no início da seção (o rótulo já é o <h2>).
+const stripLeadingHeading = (t: string) => (t || "").replace(/^\s*#{1,6}\s+.*(?:\r?\n)+/, "").trim();
+
+function mdToHtml(md: string): string {
+  const lines = (md || "").split(/\r?\n/);
+  let html = "", inList = false;
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    if (/^\s*[-*]\s+/.test(line)) {
+      if (!inList) { html += "<ul>"; inList = true; }
+      html += `<li>${inlineMd(escapeHtml(line.replace(/^\s*[-*]\s+/, "")))}</li>`;
+      continue;
+    }
+    if (inList) { html += "</ul>"; inList = false; }
+    if (/^#{2,6}\s+/.test(line)) html += `<h3>${inlineMd(escapeHtml(line.replace(/^#{2,6}\s+/, "")))}</h3>`;
+    else if (line.trim() !== "") html += `<p>${inlineMd(escapeHtml(line))}</p>`;
+  }
+  if (inList) html += "</ul>";
+  return html;
+}
+
+function buildDnaPrintHtml(prof: any, sections: Record<string, string>): string {
+  const primary = prof?.primary_color || "#87A96B";
+  const name = prof?.full_name || "Profissional";
+  const crp = prof?.crp || "";
+  const date = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+  const body = DNA_SECTIONS.map((s) => {
+    const content = stripLeadingHeading(sections[s.key] || "");
+    if (!content) return "";
+    return `<section class="sec"><h2>${escapeHtml(s.label)}</h2>${mdToHtml(content)}</section>`;
+  }).join("");
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<title>DNA da Marca — ${escapeHtml(name)}</title>
+<style>
+  @page { size: A4; margin: 22mm 18mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Georgia, 'Times New Roman', serif; color: #1a1a1a; line-height: 1.55; font-size: 12pt; }
+  .cover { text-align: center; padding: 24mm 0 12mm; border-bottom: 3px solid ${primary}; margin-bottom: 10mm; }
+  .cover .kicker { letter-spacing: .25em; text-transform: uppercase; font-size: 10pt; color: ${primary}; font-family: Arial, sans-serif; }
+  .cover h1 { font-size: 30pt; margin: 5mm 0 2mm; }
+  .cover .meta { color: #555; font-size: 11pt; font-family: Arial, sans-serif; }
+  h2 { color: ${primary}; font-size: 15pt; margin: 9mm 0 3mm; border-left: 4px solid ${primary}; padding-left: 3mm; font-family: Arial, sans-serif; }
+  h3 { font-size: 12.5pt; margin: 4mm 0 2mm; }
+  p { margin: 0 0 3mm; text-align: justify; }
+  ul { margin: 0 0 3mm 5mm; padding: 0; } li { margin: 0 0 1.5mm; }
+  .sec { page-break-inside: avoid; }
+  .foot { margin-top: 12mm; padding-top: 4mm; border-top: 1px solid #ddd; color: #888; font-size: 9pt; text-align: center; font-family: Arial, sans-serif; }
+  @media screen { body { max-width: 820px; margin: 24px auto; padding: 0 24px; } }
+  @media print { .noprint { display: none; } }
+</style></head>
+<body>
+  <button class="noprint" onclick="window.print()" style="position:fixed;top:12px;right:12px;padding:8px 14px;font:14px Arial;background:${primary};color:#fff;border:none;border-radius:8px;cursor:pointer">Salvar como PDF</button>
+  <div class="cover"><div class="kicker">DNA da Marca</div><h1>${escapeHtml(name)}</h1>
+    <div class="meta">${escapeHtml([crp, "Primeiro Passo"].filter(Boolean).join(" · "))}<br>${date}</div></div>
+  ${body}
+  <div class="foot">Documento estratégico gerado no Primeiro Passo — revisão humana antes de uso público.</div>
+  <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},350);});</script>
+</body></html>`;
+}
 
 async function invokeFn(fn: string, body: any) {
   const { data, error } = await supabase.functions.invoke(fn, { body });
@@ -152,6 +216,14 @@ export default function BrandDnaEditorTab() {
     queryClient.invalidateQueries({ queryKey: ["my-professional"] });
   };
 
+  const printPdf = () => {
+    if (!hasContent) { toast.error("Gere ou escreva o DNA antes."); return; }
+    const w = window.open("", "_blank");
+    if (!w) { toast.error("Permita pop-ups para gerar o PDF."); return; }
+    w.document.write(buildDnaPrintHtml(p, sections));
+    w.document.close();
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3.5">
@@ -194,6 +266,9 @@ export default function BrandDnaEditorTab() {
           {generatingLanding
             ? <><Loader2 className="h-4 w-4 animate-spin" /> Gerando landing…</>
             : <><Wand2 className="h-4 w-4" /> Gerar landing a partir do DNA</>}
+        </Button>
+        <Button onClick={printPdf} disabled={!hasContent} variant="ghost" className="w-full gap-2">
+          <FileDown className="h-4 w-4" /> Baixar PDF do DNA
         </Button>
       </div>
 

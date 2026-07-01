@@ -76,16 +76,15 @@ function buildDnaPrintHtml(prof: any, sections: Record<string, string>): string 
 <title>DNA da Marca — ${escapeHtml(name)}</title>
 <style>
   @page { size: A4; margin: 18mm 16mm; }
+  @page cover { margin: 0; }
   * { box-sizing: border-box; }
   body { font-family: -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: #23262b; line-height: 1.62; font-size: 11.5pt; }
-  .coverpage { page-break-after: always; }
-  .hero { display: flex; align-items: center; gap: 8mm; background: linear-gradient(135deg, ${primary}, ${secondary}); border-radius: 20px; padding: 11mm 12mm; color: #fff; box-shadow: 0 10px 30px ${primary}38; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .hero .logo { width: 66px; height: 66px; object-fit: contain; background: #fff; padding: 8px; border-radius: 16px; flex: none; box-shadow: 0 4px 12px rgba(0,0,0,.18); }
-  .hero .htext { min-width: 0; }
-  .hero .kicker { letter-spacing: .22em; text-transform: uppercase; font-size: 9pt; font-weight: 800; opacity: .85; }
-  .hero h1 { font-size: 26pt; font-weight: 800; margin: 1mm 0; line-height: 1.05; letter-spacing: -.4px; }
-  .hero .sub { font-size: 12.5pt; font-weight: 600; opacity: .92; }
-  .hero .meta { font-size: 9.5pt; opacity: .8; margin-top: 1.5mm; }
+  .coverpage { page: cover; page-break-after: always; background: linear-gradient(160deg, ${primary}, ${secondary}); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 28mm; min-height: 262mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .coverpage .logo { width: 96px; height: 96px; object-fit: contain; background: #fff; padding: 12px; border-radius: 26px; box-shadow: 0 14px 40px rgba(0,0,0,.28); margin-bottom: 12mm; }
+  .coverpage .kicker { letter-spacing: .3em; text-transform: uppercase; font-size: 11pt; font-weight: 800; opacity: .9; }
+  .coverpage h1 { font-size: 40pt; font-weight: 800; margin: 4mm 0 3mm; line-height: 1.04; letter-spacing: -1px; }
+  .coverpage .sub { font-size: 15pt; font-weight: 600; opacity: .95; }
+  .coverpage .meta { font-size: 11pt; opacity: .82; margin-top: 9mm; }
   .sec { page-break-inside: avoid; margin: 0 0 7mm; }
   h2 { display: flex; align-items: center; gap: 3mm; font-size: 13.5pt; font-weight: 800; color: #16181d; margin: 0 0 3mm; }
   h2 .num { display: inline-flex; align-items: center; justify-content: center; width: 7.5mm; height: 7.5mm; border-radius: 9px; background: ${primary}; color: #fff; font-size: 10pt; font-weight: 800; flex: none; }
@@ -97,19 +96,17 @@ function buildDnaPrintHtml(prof: any, sections: Record<string, string>): string 
   .foot { margin-top: 10mm; padding-top: 4mm; border-top: 1px solid #eceef1; color: #a0a4ab; font-size: 8.5pt; text-align: center; }
   .foot .contatos { color: ${primary}; font-weight: 700; font-size: 9.5pt; margin-bottom: 1.5mm; }
   @media screen { body { max-width: 800px; margin: 24px auto; padding: 0 28px; } }
-  @media print { .noprint { display: none; } .coverpage { min-height: 245mm; display: flex; align-items: center; } .coverpage .hero { width: 100%; } }
+  @media print { .noprint { display: none; } .coverpage { width: 210mm; height: 297mm; min-height: 297mm; } }
 </style></head>
 <body>
   <button class="noprint" onclick="window.print()" style="position:fixed;top:12px;right:12px;padding:8px 14px;font:14px Arial;background:${primary};color:#fff;border:none;border-radius:8px;cursor:pointer">Salvar como PDF</button>
-  <div class="coverpage"><div class="hero">
+  <div class="coverpage">
     ${logo ? `<img class="logo" src="${encodeURI(logo)}" alt="">` : ""}
-    <div class="htext">
-      <div class="kicker">DNA da Marca</div>
-      <h1>${escapeHtml(name)}</h1>
-      ${especialidade ? `<div class="sub">${escapeHtml(especialidade)}</div>` : ""}
-      <div class="meta">${escapeHtml(metaLine)}</div>
-    </div>
-  </div></div>
+    <div class="kicker">DNA da Marca</div>
+    <h1>${escapeHtml(name)}</h1>
+    ${especialidade ? `<div class="sub">${escapeHtml(especialidade)}</div>` : ""}
+    <div class="meta">${escapeHtml(metaLine)}</div>
+  </div>
   ${body}
   <div class="foot">${contatos ? `<div class="contatos">${escapeHtml(contatos)}</div>` : ""}<div>Documento estratégico gerado no Primeiro Passo — revisão humana antes de uso público.</div></div>
   <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},350);});</script>

@@ -40,6 +40,11 @@ export default function LandingFooter({ professionalName, whatsapp, ctaMessage, 
             Feito com <Heart className="h-3 w-3 text-destructive" /> por {professionalName || "Primeiro Passo"}
           </p>
           <p className="mt-1">© {new Date().getFullYear()} — Todos os direitos reservados</p>
+          <p className="mt-2">
+            <a href="/politica-privacidade" target="_blank" rel="noopener noreferrer" className="underline hover:text-primary">
+              Política de Privacidade
+            </a>
+          </p>
         </div>
       </div>
     </footer>

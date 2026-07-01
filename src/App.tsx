@@ -13,6 +13,7 @@ import Login from "./pages/Login.tsx";
 import Cadastro from "./pages/Cadastro.tsx";
 import Reset from "./pages/Reset.tsx";
 import ProfessionalLanding from "./pages/ProfessionalLanding.tsx";
+import PoliticaPrivacidade from "./pages/PoliticaPrivacidade.tsx";
 import ArticlePage from "./pages/ArticlePage.tsx";
 import ArticlesListPage from "./pages/ArticlesListPage.tsx";
 import ProductsListPage from "./pages/ProductsListPage.tsx";
@@ -119,6 +120,8 @@ const App = () => (
             <Route path="/admin/produtos" element={<Navigate to="/admin/landing?tab=produtos" replace />} />
             <Route path="/admin-gerente" element={<OwnerOnlyRoute><AdminGerente /></OwnerOnlyRoute>} />
             <Route path="/admin-proprietario" element={<Navigate to="/admin-gerente" replace />} />
+
+            <Route path="/politica-privacidade" element={<PoliticaPrivacidade />} />
 
             {/* Dynamic professional landing page - MUST be last before catch-all */}
             <Route path="/pedido/:token" element={<OrderStatusPage />} />

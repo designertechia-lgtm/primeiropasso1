@@ -19,6 +19,10 @@ import LandingFooter from "@/components/landing/LandingFooter";
 import { buildLandingVars, getFontScale, GOOGLE_FONTS_URL } from "@/lib/landing/buildLandingVars";
 import Section from "@/components/landing/Section";
 import { zebraTone, orderContentSections } from "@/lib/landing/sections";
+import CookieConsent from "@/components/landing/CookieConsent";
+import StickyMobileCta from "@/components/landing/StickyMobileCta";
+import { getConsent, setConsent, type ConsentValue } from "@/lib/landing/consent";
+import { loadTrackers, trackLead, type TrackingIds } from "@/lib/landing/tracking";
 
 export default function ProfessionalLanding({ slugOverride }: { slugOverride?: string }) {
   const { slug: paramSlug } = useParams<{ slug: string }>();
@@ -176,6 +180,27 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     return () => { html.style.fontSize = prev; };
   }, [fontScaleKey]);
 
+  // SEO dinâmico por profissional: title + meta description próprios (Googlebot renderiza JS).
+  // Obs.: preview social (og:*) exige server-side, fora deste SPA — fica p/ Tier 3.
+  useEffect(() => {
+    if (!professional) return;
+    const prof = professional as any;
+    const seoName = prof.full_name || "Profissional";
+    const prevTitle = document.title;
+    document.title = `${seoName}${prof.hero_title ? ` — ${prof.hero_title}` : ""}`.slice(0, 65);
+    const descText = (prof.hero_subtitle || prof.bio || "").toString().replace(/\s+/g, " ").trim().slice(0, 155);
+    let meta = document.querySelector('meta[name="description"]') as HTMLMetaElement | null;
+    const created = !meta;
+    if (!meta) { meta = document.createElement("meta"); meta.name = "description"; document.head.appendChild(meta); }
+    const prevDesc = meta.content;
+    if (descText) meta.content = descText;
+    return () => {
+      document.title = prevTitle;
+      if (created) meta?.remove();
+      else if (meta) meta.content = prevDesc;
+    };
+  }, [professional]);
+
   // Captura UTMs da URL para atribuição de tráfego pago.
   // Persiste em landing_visits quando o visitante clica no CTA do WhatsApp.
   const utmParams = useMemo(() => {
@@ -195,15 +220,38 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     [utmParams, gclid],
   );
 
+  // IDs de rastreamento do profissional (Meta Pixel / Google Tag / Google Ads).
+  const trackingIds: TrackingIds = useMemo(() => ({
+    metaPixelId: (professional as any)?.meta_pixel_id ?? null,
+    ga4MeasurementId: (professional as any)?.ga4_measurement_id ?? null,
+    googleAdsConversionId: (professional as any)?.google_ads_conversion_id ?? null,
+    googleAdsConversionLabel: (professional as any)?.google_ads_conversion_label ?? null,
+  }), [professional]);
+  const hasTrackers = !!(trackingIds.metaPixelId || trackingIds.ga4MeasurementId || trackingIds.googleAdsConversionId);
+
+  // Consentimento LGPD (por slug). Enquanto null, mostra o banner e NÃO carrega pixels.
+  const [consent, setConsentState] = useState<ConsentValue | null>(() => getConsent(slug));
+  const trackersLoaded = useRef(false);
+  useEffect(() => {
+    if (consent === "granted" && hasTrackers && !trackersLoaded.current) {
+      trackersLoaded.current = true;
+      loadTrackers(trackingIds);
+    }
+  }, [consent, hasTrackers, trackingIds]);
+  const acceptConsent = useCallback(() => { setConsent(slug, "granted"); setConsentState("granted"); }, [slug]);
+  const rejectConsent = useCallback(() => { setConsent(slug, "denied"); setConsentState("denied"); }, [slug]);
+
   const handleCtaClick = useCallback(() => {
     if (!professional?.id) return;
+    // Evento de conversão (Lead) nos pixels — no-op se não houve consentimento/pixel.
+    trackLead(trackingIds);
     if (!Object.keys(utmParams).length && !gclid) return;
     // Fire-and-forget: registra a visita com atribuição UTM + ref_code p/ casar no fluxo
     supabase
       .from("landing_visits")
       .insert({ professional_id: professional.id, utm: utmParams, gclid: gclid ?? null, ref_code: campaignRef ?? null })
       .then(({ error }) => { if (error) console.warn("[landing_visits]", error.message); });
-  }, [professional?.id, utmParams, gclid, campaignRef]);
+  }, [professional?.id, utmParams, gclid, campaignRef, trackingIds]);
 
   if (isLoading) {
     return (
@@ -443,6 +491,17 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         campaignRef={campaignRef}
         onWhatsAppClick={handleCtaClick}
       />
+      {consent !== null && (
+        <StickyMobileCta
+          whatsapp={professional.whatsapp ?? undefined}
+          ctaMessage={(professional as any).contact_cta_message ?? undefined}
+          campaignRef={campaignRef}
+          onWhatsAppClick={handleCtaClick}
+        />
+      )}
+      {consent === null && (
+        <CookieConsent onAccept={acceptConsent} onReject={rejectConsent} />
+      )}
     </div>
   );
 }

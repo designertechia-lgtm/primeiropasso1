@@ -19,7 +19,7 @@ Permitir que cada profissional **conecte suas redes** (Instagram/Facebook/Thread
 - `supabase/functions/oauth-connect` → gera a URL de autorização por plataforma.
 - `oauth-{meta,facebook,threads,linkedin}-callback` → trocam o `code` por token e salvam em `social_accounts`.
 - `oauth-meta-refresh` (cron) → renova tokens de IG/Threads.
-- Publicação: `worker-primeiropasso/app/social_publisher.py` + `supabase/functions/publish-social-posts`.
+- Publicação: `supabase/functions/publish-social-posts` (única; disparada pelo pg_cron a cada 5 min). O publicador Python antigo (`social_publisher.py`) era código morto incompatível (Graph API do Facebook, sem scheduler) e foi removido em 2026-06-26.
 - UI: `src/components/dashboard/ConnectedAccounts.tsx` (aba "Contas Conectadas") e `PublicationCalendarTab.tsx` (Calendário).
 
 ### Correção do bug de credenciais (importante)

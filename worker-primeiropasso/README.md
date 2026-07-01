@@ -22,7 +22,6 @@ uvicorn app.main:app --reload --port 8000
 |--------|------|-----------|
 | GET | /health | Health check |
 | POST | /webhook/evolution | Webhook EvolutionAPI |
-| POST | /cron/publish | Publica posts sociais pendentes |
 | POST | /cron/mark-inactive | Marca leads inativos (7+ dias) |
 | **POST** | **/rag/ingest** | **Webhook RAG — recebe PDF, embeda e armazena (async)** |
 | POST | /rag/ingest/sync | Versão sync do ingest (debug/teste) |
@@ -73,7 +72,7 @@ funcionando via n8n.
 ## Cron (VPS)
 
 ```
-*/5 * * * * curl -sX POST http://localhost:8000/cron/publish
+# Publicação de posts sociais NÃO mora aqui — é da edge `publish-social-posts` (pg_cron, a cada 5 min).
 0 3 * * * curl -sX POST http://localhost:8000/cron/mark-inactive
 ```
 

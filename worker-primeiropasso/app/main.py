@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.social_publisher import router as social_router
+from app.maintenance import router as maintenance_router
 from app.rag_router import router as rag_router
 
 
@@ -27,7 +27,7 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization"],
 )
 
-app.include_router(social_router)
+app.include_router(maintenance_router)
 app.include_router(rag_router)
 
 

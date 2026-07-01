@@ -131,7 +131,9 @@ serve(async (req) => {
     // ── Gerar áudio com voz clonada ───────────────────────────
     if (action === "generate") {
       const authHeader = req.headers.get("Authorization") ?? "";
-      const { text, voice_id } = await req.json();
+      // model_id opcional: WhatsApp manda "eleven_flash_v2_5" (metade do custo, mais rápido);
+      // vídeos omitem e seguem no multilingual_v2 (qualidade premium).
+      const { text, voice_id, model_id } = await req.json();
 
       // Service role (video-api/workers) NÃO debita aqui — a cobrança é do fluxo chamador.
       const token = authHeader.replace("Bearer ", "");
@@ -159,7 +161,7 @@ serve(async (req) => {
         headers: { "xi-api-key": ELEVENLABS_KEY, "Content-Type": "application/json" },
         body: JSON.stringify({
           text,
-          model_id: "eleven_multilingual_v2",
+          model_id: model_id || "eleven_multilingual_v2",
           voice_settings: { stability: 0.45, similarity_boost: 0.80 },
         }),
       });

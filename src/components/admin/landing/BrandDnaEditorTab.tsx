@@ -98,7 +98,7 @@ function buildDnaPrintHtml(prof: any, sections: Record<string, string>): string 
   .coverpage .rings span:nth-child(2) { inset: 92px; }
   .coverpage .rings span:nth-child(3) { inset: 196px; border-color: rgba(255,255,255,.24); }
   .coverpage .lh { position: relative; z-index: 1; display: flex; align-items: center; gap: 3mm; min-height: 40px; }
-  .coverpage .lh img { width: 112px; height: 112px; object-fit: contain; background: #fff; padding: 14px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,.22); }
+  .coverpage .lh img { width: 128px; height: 128px; object-fit: contain; background: #fff; padding: 8px; border-radius: 26px; box-shadow: 0 10px 30px rgba(0,0,0,.22); }
   .coverpage .main { position: relative; z-index: 1; max-width: 156mm; }
   .coverpage .kicker { font-family: 'Inter', sans-serif; letter-spacing: .32em; text-transform: uppercase; font-size: 9.5pt; font-weight: 700; opacity: .82; margin-bottom: 5mm; }
   .coverpage h1 { font-family: 'Fraunces', Georgia, serif; font-size: 44pt; font-weight: 500; line-height: 1.03; letter-spacing: -.5px; margin: 0; }

@@ -74,19 +74,22 @@ function buildDnaPrintHtml(prof: any, sections: Record<string, string>): string 
   }).join("");
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <title>DNA da Marca — ${escapeHtml(name)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   @page { size: A4; margin: 18mm 16mm; }
   @page cover { margin: 0; }
   * { box-sizing: border-box; }
-  body { font-family: -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: #23262b; line-height: 1.62; font-size: 11.5pt; }
-  .coverpage { page: cover; page-break-after: always; background: linear-gradient(160deg, ${primary}, ${secondary}); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 28mm; min-height: 262mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .coverpage .logo { width: 96px; height: 96px; object-fit: contain; background: #fff; padding: 12px; border-radius: 26px; box-shadow: 0 14px 40px rgba(0,0,0,.28); margin-bottom: 12mm; }
-  .coverpage .kicker { letter-spacing: .3em; text-transform: uppercase; font-size: 11pt; font-weight: 800; opacity: .9; }
-  .coverpage h1 { font-size: 40pt; font-weight: 800; margin: 4mm 0 3mm; line-height: 1.04; letter-spacing: -1px; }
-  .coverpage .sub { font-size: 15pt; font-weight: 600; opacity: .95; }
-  .coverpage .meta { font-size: 11pt; opacity: .82; margin-top: 9mm; }
+  body { font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; color: #262a30; line-height: 1.6; font-size: 11pt; }
+  .coverpage { position: relative; page: cover; page-break-after: always; background: linear-gradient(160deg, ${primary}, ${secondary}); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 28mm; min-height: 262mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .coverpage .logo { width: 100px; height: 100px; object-fit: contain; background: #fff; padding: 13px; border-radius: 28px; box-shadow: 0 16px 44px rgba(0,0,0,.30); margin-bottom: 13mm; }
+  .coverpage .kicker { font-family: 'Inter', sans-serif; letter-spacing: .34em; text-transform: uppercase; font-size: 10.5pt; font-weight: 700; opacity: .88; }
+  .coverpage h1 { font-family: 'Fraunces', Georgia, serif; font-size: 46pt; font-weight: 600; margin: 5mm 0 4mm; line-height: 1.02; letter-spacing: -.5px; }
+  .coverpage .sub { font-size: 15pt; font-weight: 500; opacity: .95; }
+  .coverpage .meta { font-size: 10.5pt; opacity: .8; margin-top: 9mm; }
+  .coverpage .brandmark { position: absolute; bottom: 16mm; left: 0; right: 0; font-family: 'Inter', sans-serif; font-size: 9pt; letter-spacing: .24em; text-transform: uppercase; opacity: .72; }
   .sec { page-break-inside: avoid; margin: 0 0 7mm; }
-  h2 { display: flex; align-items: center; gap: 3mm; font-size: 13.5pt; font-weight: 800; color: #16181d; margin: 0 0 3mm; }
+  h2 { display: flex; align-items: center; gap: 3mm; font-family: 'Fraunces', Georgia, serif; font-size: 15.5pt; font-weight: 600; color: #16181d; margin: 0 0 3mm; }
   h2 .num { display: inline-flex; align-items: center; justify-content: center; width: 7.5mm; height: 7.5mm; border-radius: 9px; background: ${primary}; color: #fff; font-size: 10pt; font-weight: 800; flex: none; }
   .secbody { padding-left: 10.5mm; border-left: 2px solid ${primary}22; }
   h3 { font-size: 11.5pt; margin: 3.5mm 0 1.5mm; color: #16181d; font-weight: 700; }
@@ -106,10 +109,20 @@ function buildDnaPrintHtml(prof: any, sections: Record<string, string>): string 
     <h1>${escapeHtml(name)}</h1>
     ${especialidade ? `<div class="sub">${escapeHtml(especialidade)}</div>` : ""}
     <div class="meta">${escapeHtml(metaLine)}</div>
+    <div class="brandmark">Primeiro Passo</div>
   </div>
   ${body}
   <div class="foot">${contatos ? `<div class="contatos">${escapeHtml(contatos)}</div>` : ""}<div>Documento estratégico gerado no Primeiro Passo — revisão humana antes de uso público.</div></div>
-  <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},350);});</script>
+  <script>
+    (function(){
+      var printed=false;
+      function go(){ if(printed) return; printed=true; window.print(); }
+      window.addEventListener('load', function(){
+        var fonts = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+        Promise.race([ fonts, new Promise(function(r){ setTimeout(r, 3000); }) ]).then(function(){ setTimeout(go, 200); });
+      });
+    })();
+  </script>
 </body></html>`;
 }
 

@@ -65,40 +65,48 @@ function buildDnaPrintHtml(prof: any, sections: Record<string, string>): string 
   const contatos = [prof?.whatsapp && `WhatsApp ${prof.whatsapp}`, prof?.email, instagram].filter(Boolean).join("  ·  ");
   const date = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
   const metaLine = [crp, modalidade, date].filter(Boolean).join(" · ");
+  let n = 0;
   const body = DNA_SECTIONS.map((s) => {
     const content = stripLeadingHeading(sections[s.key] || "");
     if (!content) return "";
-    return `<section class="sec"><h2>${escapeHtml(s.label)}</h2>${mdToHtml(content)}</section>`;
+    n += 1;
+    return `<section class="sec"><h2><span class="num">${n}</span>${escapeHtml(s.label)}</h2><div class="secbody">${mdToHtml(content)}</div></section>`;
   }).join("");
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <title>DNA da Marca — ${escapeHtml(name)}</title>
 <style>
-  @page { size: A4; margin: 22mm 18mm; }
+  @page { size: A4; margin: 18mm 16mm; }
   * { box-sizing: border-box; }
-  body { font-family: Georgia, 'Times New Roman', serif; color: #1a1a1a; line-height: 1.55; font-size: 12pt; }
-  .cover { text-align: center; padding: 16mm 0 10mm; border-bottom: 4px solid ${primary}; margin-bottom: 10mm; background: linear-gradient(180deg, ${primary}14, transparent); }
-  .cover .logo { max-height: 64px; max-width: 60%; margin: 0 auto 6mm; display: block; object-fit: contain; }
-  .cover .kicker { letter-spacing: .25em; text-transform: uppercase; font-size: 10pt; color: ${primary}; font-family: Arial, sans-serif; font-weight: 700; }
-  .cover h1 { font-size: 30pt; margin: 4mm 0 1mm; }
-  .cover .sub { color: ${secondary}; font-size: 13pt; font-family: Arial, sans-serif; margin-bottom: 3mm; }
-  .cover .meta { color: #666; font-size: 10.5pt; font-family: Arial, sans-serif; }
-  h2 { color: ${primary}; font-size: 15pt; margin: 9mm 0 3mm; border-left: 4px solid ${secondary}; padding-left: 3mm; font-family: Arial, sans-serif; }
-  h3 { font-size: 12.5pt; margin: 4mm 0 2mm; }
-  p { margin: 0 0 3mm; text-align: justify; }
-  ul { margin: 0 0 3mm 5mm; padding: 0; } li { margin: 0 0 1.5mm; }
-  .sec { page-break-inside: avoid; }
-  .foot { margin-top: 12mm; padding-top: 4mm; border-top: 1px solid #ddd; color: #888; font-size: 9pt; text-align: center; font-family: Arial, sans-serif; }
-  .foot .contatos { color: ${primary}; font-weight: 700; font-size: 10pt; margin-bottom: 2mm; }
-  @media screen { body { max-width: 820px; margin: 24px auto; padding: 0 24px; } }
+  body { font-family: -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: #23262b; line-height: 1.62; font-size: 11.5pt; }
+  .cover { padding: 2mm 0 0; margin-bottom: 9mm; }
+  .cover .logo { width: 62px; height: 62px; object-fit: contain; background: #fff; padding: 7px; border-radius: 16px; border: 1px solid #eceef1; box-shadow: 0 6px 18px rgba(0,0,0,.09); display: block; margin-bottom: 7mm; }
+  .cover .kicker { letter-spacing: .22em; text-transform: uppercase; font-size: 9pt; color: ${primary}; font-weight: 800; }
+  .cover h1 { font-size: 27pt; line-height: 1.1; margin: 2mm 0 1mm; font-weight: 800; letter-spacing: -.4px; color: #16181d; }
+  .cover .sub { color: ${secondary}; font-size: 13pt; font-weight: 600; }
+  .cover .meta { color: #8a8f98; font-size: 10pt; margin-top: 2mm; }
+  .rule { height: 5px; border-radius: 999px; background: linear-gradient(90deg, ${primary}, ${secondary}); margin-top: 6mm; }
+  .sec { page-break-inside: avoid; margin: 0 0 7mm; }
+  h2 { display: flex; align-items: center; gap: 3mm; font-size: 13.5pt; font-weight: 800; color: #16181d; margin: 0 0 3mm; }
+  h2 .num { display: inline-flex; align-items: center; justify-content: center; width: 7.5mm; height: 7.5mm; border-radius: 9px; background: ${primary}; color: #fff; font-size: 10pt; font-weight: 800; flex: none; }
+  .secbody { padding-left: 10.5mm; border-left: 2px solid ${primary}22; }
+  h3 { font-size: 11.5pt; margin: 3.5mm 0 1.5mm; color: #16181d; font-weight: 700; }
+  p { margin: 0 0 2.5mm; }
+  ul { margin: 0 0 2.5mm 4mm; padding: 0; } li { margin: 0 0 1.2mm; }
+  strong { color: #16181d; }
+  .foot { margin-top: 10mm; padding-top: 4mm; border-top: 1px solid #eceef1; color: #a0a4ab; font-size: 8.5pt; text-align: center; }
+  .foot .contatos { color: ${primary}; font-weight: 700; font-size: 9.5pt; margin-bottom: 1.5mm; }
+  @media screen { body { max-width: 800px; margin: 24px auto; padding: 0 28px; } }
   @media print { .noprint { display: none; } }
 </style></head>
 <body>
   <button class="noprint" onclick="window.print()" style="position:fixed;top:12px;right:12px;padding:8px 14px;font:14px Arial;background:${primary};color:#fff;border:none;border-radius:8px;cursor:pointer">Salvar como PDF</button>
   <div class="cover">
     ${logo ? `<img class="logo" src="${encodeURI(logo)}" alt="">` : ""}
-    <div class="kicker">DNA da Marca</div><h1>${escapeHtml(name)}</h1>
+    <div class="kicker">DNA da Marca</div>
+    <h1>${escapeHtml(name)}</h1>
     ${especialidade ? `<div class="sub">${escapeHtml(especialidade)}</div>` : ""}
     <div class="meta">${escapeHtml(metaLine)}</div>
+    <div class="rule"></div>
   </div>
   ${body}
   <div class="foot">${contatos ? `<div class="contatos">${escapeHtml(contatos)}</div>` : ""}<div>Documento estratégico gerado no Primeiro Passo — revisão humana antes de uso público.</div></div>

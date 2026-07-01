@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun, ListOrdered, ArrowUp, ArrowDown, Eye, EyeOff, Newspaper, PlayCircle, ShoppingBag, HelpCircle, Quote, Users, Target, Gift, BarChart3 } from "lucide-react";
+import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun, ListOrdered, ArrowUp, ArrowDown, Eye, EyeOff, Newspaper, PlayCircle, ShoppingBag, HelpCircle, Quote, Users, Target, Gift, BarChart3, Dna } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
 import { TikTokIcon } from "@/components/icons/TikTokIcon";
@@ -38,6 +38,7 @@ import ApproachesEditor from "@/components/admin/ApproachesEditor";
 import ProductsEditorTab from "@/components/admin/landing/ProductsEditorTab";
 import TestimonialsEditorTab from "@/components/admin/landing/TestimonialsEditorTab";
 import TrackingEditorTab from "@/components/admin/landing/TrackingEditorTab";
+import BrandDnaEditorTab from "@/components/admin/landing/BrandDnaEditorTab";
 
 // ── Vídeo: detecção de arquivo direto vs embed (YouTube/Vimeo) ────────────
 // Espelha a lógica do AboutSection da landing pública, pro preview do editor
@@ -206,7 +207,7 @@ function SectionBlock({
   );
 }
 
-type Section = "secoes" | "hero" | "dores" | "vilao" | "solucao" | "sobre" | "oferta" | "depoimentos" | "publico" | "faq" | "produtos" | "cores" | "contatos" | "rastreamento";
+type Section = "dna" | "secoes" | "hero" | "dores" | "vilao" | "solucao" | "sobre" | "oferta" | "depoimentos" | "publico" | "faq" | "produtos" | "cores" | "contatos" | "rastreamento";
 
 export default function AdminLandingPage() {
   const { data: professional, isLoading } = useProfessional();
@@ -390,7 +391,7 @@ export default function AdminLandingPage() {
   // Deep-link da aba (ex.: /admin/landing?tab=produtos, usado pelo atalho do menu lateral).
   useEffect(() => {
     const tab = searchParams.get("tab");
-    const valid = ["secoes", "hero", "dores", "vilao", "solucao", "sobre", "oferta", "depoimentos", "publico", "faq", "produtos", "cores", "contatos", "rastreamento"];
+    const valid = ["dna", "secoes", "hero", "dores", "vilao", "solucao", "sobre", "oferta", "depoimentos", "publico", "faq", "produtos", "cores", "contatos", "rastreamento"];
     if (tab && valid.includes(tab)) setActiveSection(tab as Section);
   }, [searchParams]);
   const [saving, setSaving] = useState(false);
@@ -1151,6 +1152,7 @@ export default function AdminLandingPage() {
         <div className="flex flex-wrap border-b sticky top-0 bg-background z-10">
 
           {([
+            { id: "dna",      label: "DNA",      icon: Dna           },
             { id: "secoes",   label: "Seções",   icon: ListOrdered   },
             { id: "hero",     label: "Hero",     icon: Layout        },
             { id: "dores",    label: "Dores",    icon: AlertCircle   },
@@ -1183,6 +1185,9 @@ export default function AdminLandingPage() {
         </div>
 
         <div className="p-5 space-y-5">
+
+          {/* ── DNA DA MARCA (fonte única; gera a landing) ── */}
+          {activeSection === "dna" && <BrandDnaEditorTab />}
 
           {/* ── PRODUTOS E SERVIÇOS (CRUD; reflete na seção do preview) ── */}
           {activeSection === "produtos" && <ProductsEditorTab />}

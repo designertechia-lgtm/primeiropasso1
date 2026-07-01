@@ -2,6 +2,7 @@
 // Gera a BÍBLIA DE MARCA de um profissional a partir da ficha dele (Modelo_Biblia_de_Marca).
 // Aplica os princípios inegociáveis (Parte 3) + as regras de publicidade do conselho detectado.
 // Saída: JSON com as 11 seções (texto/markdown por seção). O markdown legível é montado aqui.
+// Gera em 2 CHAMADAS PARALELAS (6 + 5 seções) para não estourar max_tokens (JSON truncado) e ganhar velocidade.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -40,10 +41,9 @@ const SECTIONS: { key: string; label: string; instr: string }[] = [
   { key: "oferta", label: "11. Arquitetura de oferta", instr: "Se houver dados, sugerir uma escada de oferta (topo de funil → alto valor) e o CTA recomendado, alinhado ao objetivo (volume vs. ticket alto)." },
 ];
 
-function buildPrompt(profile: any): string {
-  const { conselho, regras } = conselhoRules(profile.conselho_registro, profile.profissao);
+function fichaBlock(profile: any): string {
   const v = (label: string, val: any) => (val && String(val).trim() ? `- ${label}: ${Array.isArray(val) ? val.join("; ") : val}` : "");
-  const ficha = [
+  return [
     v("Profissão", profile.profissao),
     v("Conselho e registro", profile.conselho_registro),
     v("Especialidade/nicho", profile.especialidade),
@@ -58,10 +58,14 @@ function buildPrompt(profile: any): string {
     v("Serviços e produtos", profile.servicos),
     v("Tom de voz", profile.tom),
   ].filter(Boolean).join("\n");
+}
 
-  const secoes = SECTIONS.map((s) => `### ${s.key}\n${s.label} — ${s.instr}`).join("\n\n");
-
-  return `Você é um estrategista de marca especialista em profissionais de saúde. Gere a BÍBLIA DE MARCA de ${profile.nome || "o profissional"}.
+function buildPrompt(profile: any, subset: typeof SECTIONS): string {
+  const { conselho, regras } = conselhoRules(profile.conselho_registro, profile.profissao);
+  const ficha = fichaBlock(profile);
+  const secoes = subset.map((s) => `### ${s.key}\n${s.label} — ${s.instr}`).join("\n\n");
+  const jsonTemplate = "{" + subset.map((s) => `"${s.key}":"..."`).join(",") + "}";
+  return `Você é um estrategista de marca especialista em profissionais de saúde. Gere PARTE da BÍBLIA DE MARCA de ${profile.nome || "o profissional"}.
 Princípio que organiza tudo: ESPECIFICIDADE é o novo sensacionalismo — nomeie com precisão a dor e a experiência interna do público, NUNCA prometa milagre.
 
 FICHA DO PROFISSIONAL:
@@ -72,19 +76,37 @@ Pontos de atenção de publicidade deste conselho: ${regras}
 
 RESTRIÇÕES RÍGIDAS (NUNCA violar, mesmo se pedido):
 - Nunca prometer cura, resultado garantido ou "antes e depois" que sugira garantia.
-- Nunca expor casos de pacientes/clientes, mesmo anonimizados ou "com consentimento". Use segunda pessoa e composições de padrões sinalizadas como tal.
-- Nunca induzir o profissional a ultrapassar o escopo legal da profissão (ex.: diagnóstico/tratamento fora da competência).
-- Respeitar a LGPD (nenhum dado pessoal de paciente no conteúdo). Sem alarmismo ou exploração de medo.
-- Dor antes de solução; evidência sustentável; linguagem humana e clara.
+- Nunca expor casos de pacientes/clientes, mesmo anonimizados. Use segunda pessoa e composições de padrões sinalizadas como tal.
+- Nunca induzir o profissional a ultrapassar o escopo legal da profissão.
+- Respeitar a LGPD. Sem alarmismo ou exploração de medo. Dor antes de solução; evidência sustentável; linguagem humana.
 
-SEJA CONCISO E ESTRATÉGICO: cada seção em 1–3 parágrafos curtos ou listas curtas — NÃO um ensaio. O valor está na precisão emocional, não no tamanho.
+SEJA CONCISO E ESTRATÉGICO: cada seção em 1–3 parágrafos curtos ou listas curtas — NÃO um ensaio.
 
-Gere EXATAMENTE estas seções (cada uma com texto pronto, em markdown, na voz definida):
+Gere APENAS estas seções (cada uma com texto pronto, em markdown, na voz definida):
 ${secoes}
 
-Responda APENAS um JSON válido, uma chave por seção (exatamente estas chaves), com o conteúdo de cada seção como string markdown:
-{"essencia":"...","posicionamento":"...","persona":"...","vilao":"...","diferenciacao":"...","mensagem":"...","metodo":"...","voz_tom":"...","conteudo":"...","limites_eticos":"...","oferta":"..."}
+Responda APENAS um JSON válido com EXATAMENTE estas chaves, cada valor uma string markdown:
+${jsonTemplate}
 Sem comentários, sem cercas de código, apenas o JSON.`;
+}
+
+// Uma chamada ao Claude que já devolve o objeto JSON das seções pedidas (lança em falha).
+async function callClaude(prompt: string, apiKey: string): Promise<any> {
+  const resp = await fetch(CLAUDE_URL, {
+    method: "POST",
+    headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 4096, messages: [{ role: "user", content: prompt }] }),
+  });
+  if (!resp.ok) throw new Error(`Claude ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+  const data = await resp.json();
+  let text = (data.content?.find((b: any) => b.type === "text")?.text || "").trim().replace(/```json|```/g, "").trim();
+  try {
+    return JSON.parse(text);
+  } catch {
+    const s = text.indexOf("{"), e = text.lastIndexOf("}");
+    if (s !== -1 && e !== -1) return JSON.parse(text.substring(s, e + 1));
+    throw new Error("A IA retornou um formato inválido.");
+  }
 }
 
 Deno.serve(async (req) => {
@@ -98,37 +120,17 @@ Deno.serve(async (req) => {
       });
     }
 
-    const prompt = buildPrompt(profile ?? {});
-    const resp = await fetch(CLAUDE_URL, {
-      method: "POST",
-      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 5000, messages: [{ role: "user", content: prompt }] }),
-    });
-    if (!resp.ok) {
-      const errText = await resp.text();
-      console.error("[generate-brand-bible] Anthropic error:", errText);
-      return new Response(JSON.stringify({ error: "Erro ao gerar a bíblia", details: `Claude ${resp.status}: ${errText.slice(0, 200)}` }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    const data = await resp.json();
-    let text = (data.content?.find((b: any) => b.type === "text")?.text || "").trim();
-    text = text.replace(/```json|```/g, "").trim();
+    const p = profile ?? {};
+    const mid = 6; // grupo A: seções 1–6, grupo B: 7–11
+    const [a, b] = await Promise.all([
+      callClaude(buildPrompt(p, SECTIONS.slice(0, mid)), apiKey),
+      callClaude(buildPrompt(p, SECTIONS.slice(mid)), apiKey),
+    ]);
+    const bible: any = { ...a, ...b };
 
-    let bible: any;
-    try {
-      bible = JSON.parse(text);
-    } catch {
-      const start = text.indexOf("{"), end = text.lastIndexOf("}");
-      if (start !== -1 && end !== -1) bible = JSON.parse(text.substring(start, end + 1));
-      else throw new Error("A IA retornou um formato inválido.");
-    }
-
-    // Monta o markdown legível a partir das seções.
-    const { conselho } = conselhoRules(profile?.conselho_registro, profile?.profissao);
-    const markdown = SECTIONS.map((s) => `## ${s.label}\n\n${(bible?.[s.key] ?? "").toString().trim()}`).join("\n\n");
-    bible._meta = { conselho, profissao: profile?.profissao ?? null };
-    bible.markdown = markdown;
+    const { conselho } = conselhoRules(p.conselho_registro, p.profissao);
+    bible.markdown = SECTIONS.map((s) => `## ${s.label}\n\n${(bible?.[s.key] ?? "").toString().trim()}`).join("\n\n");
+    bible._meta = { conselho, profissao: p.profissao ?? null };
 
     return new Response(JSON.stringify({ result: bible }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (err) {

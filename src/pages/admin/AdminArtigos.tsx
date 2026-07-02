@@ -356,7 +356,8 @@ export default function AdminArtigos() {
                     currentUrl={form.cover_image_url || null}
                     onUploaded={(url) => setForm((p) => ({ ...p, cover_image_url: url }))}
                     folder="articles"
-                    variant="logo"
+                    variant="wide"
+                    expandable
                   />
                   <Input
                     value={form.cover_image_url}

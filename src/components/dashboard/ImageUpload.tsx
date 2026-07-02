@@ -2,8 +2,9 @@ import { useRef, useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Upload, X } from "lucide-react";
+import { Upload, X, Maximize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ImageUploadProps {
@@ -13,12 +14,15 @@ interface ImageUploadProps {
   variant?: "logo" | "avatar" | "wide";
   className?: string;
   accept?: string;
+  /** Opt-in: clique na imagem (ou na lupa) abre a visualização ampliada num Dialog. */
+  expandable?: boolean;
 }
 
-export default function ImageUpload({ currentUrl, onUploaded, folder, variant = "logo", className, accept = "image/*" }: ImageUploadProps) {
+export default function ImageUpload({ currentUrl, onUploaded, folder, variant = "logo", className, accept = "image/*", expandable = false }: ImageUploadProps) {
   const { user } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [preview, setPreview] = useState<string | null>(currentUrl);
   // Falha ao CARREGAR a imagem (404/503 transitório). Só mostra aviso — NUNCA
   // zera o campo (onUploaded("")), senão um piscar da rede apagaria a foto do form.
@@ -128,13 +132,25 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
               src={preview}
               alt="Preview"
               onError={() => setLoadError(true)}
+              onClick={expandable ? () => setExpanded(true) : undefined}
               className={cn(
                 "object-cover object-center border",
+                expandable && "cursor-zoom-in",
                 isAvatar ? "h-[116px] w-[116px] rounded-full"
                   : isWide ? "h-40 w-full rounded-xl"
                   : "h-16 max-w-[200px] rounded-md"
               )}
             />
+          )}
+          {expandable && !loadError && !isPreviewVideo && (
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              title="Expandir imagem"
+              className="absolute bottom-2 right-2 rounded-full bg-black/50 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+            </button>
           )}
           <button
             type="button"
@@ -169,6 +185,22 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
       >
         {uploading ? "Enviando..." : preview ? "Trocar arquivo" : "Enviar arquivo"}
       </Button>
+
+      {/* Visualização ampliada (opt-in via `expandable`) */}
+      {expandable && (
+        <Dialog open={expanded} onOpenChange={setExpanded}>
+          <DialogContent className="max-w-4xl p-2 sm:p-3">
+            <DialogTitle className="sr-only">Visualização da imagem</DialogTitle>
+            {preview && (
+              <img
+                src={preview}
+                alt="Imagem ampliada"
+                className="mx-auto max-h-[80vh] w-auto max-w-full rounded-lg object-contain"
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

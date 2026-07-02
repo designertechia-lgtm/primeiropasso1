@@ -7,6 +7,8 @@ interface AboutSectionProps {
   name?: string;
   bio?: string;
   crp?: string;
+  /** Selo de autoridade — linha discreta abaixo do nome (ex.: "Naturóloga • 14 anos de experiência • ABRANA/100217"). */
+  badge?: string;
   photoUrl?: string;
   aboutImageUrl?: string;
   aboutVideoUrl?: string;
@@ -15,7 +17,7 @@ interface AboutSectionProps {
   autoplay?: boolean;
 }
 
-export default function AboutSection({ title, name, bio, crp, photoUrl, aboutImageUrl, aboutVideoUrl, approaches, autoplay = true }: AboutSectionProps) {
+export default function AboutSection({ title, name, bio, crp, badge, photoUrl, aboutImageUrl, aboutVideoUrl, approaches, autoplay = true }: AboutSectionProps) {
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [activeCard, setActiveCard] = useState(0);
   // Passagem automática: só arranca quando a seção entra na tela; o clique do usuário a interrompe de vez.
@@ -206,11 +208,16 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
           <div className="w-full lg:w-1/2 space-y-8">
             <div className="space-y-4">
               <h2 className="font-heading text-4xl md:text-5xl font-bold text-foreground leading-tight">
-                {title || "Muito prazer, sou o(a)"}<br/> 
+                {title || "Muito prazer, sou o(a)"}<br/>
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent">
                   {name || "Profissional"}
                 </span>
               </h2>
+              {badge && (
+                <p className="text-sm md:text-base font-medium text-muted-foreground tracking-wide text-balance">
+                  {badge}
+                </p>
+              )}
             </div>
 
             <div ref={cardsRef} className="relative pt-8 pb-4">

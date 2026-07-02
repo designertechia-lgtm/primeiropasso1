@@ -374,6 +374,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         name={name}
         bio={professional.bio ?? undefined}
         crp={professional.crp ?? undefined}
+        badge={(professional as any).about_badge ?? undefined}
         photoUrl={professional.photo_url ?? undefined}
         aboutImageUrl={professional.about_image_url ?? undefined}
         aboutVideoUrl={(professional as any).about_video_url ?? undefined}

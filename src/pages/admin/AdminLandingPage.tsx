@@ -345,6 +345,7 @@ export default function AdminLandingPage() {
 
   // sobre
   const [aboutTitle, setAboutTitle] = useState("");
+  const [aboutBadge, setAboutBadge] = useState("");
   const [bio, setBio] = useState("");
   const [aboutImageUrl, setAboutImageUrl] = useState("");
   const [aboutVideoUrl, setAboutVideoUrl] = useState("");
@@ -580,6 +581,7 @@ export default function AdminLandingPage() {
       photoStyle: p.photo_style || "portrait",
       photoFit: p.photo_fit || "contain",
       aboutTitle: p.about_title || "",
+      aboutBadge: p.about_badge || "",
       bio: professional.bio || "",
       aboutImageUrl: p.about_image_url || "",
       aboutVideoUrl: p.about_video_url || "",
@@ -637,6 +639,7 @@ export default function AdminLandingPage() {
     setPhotoStyle(v.photoStyle);
     setPhotoFit(v.photoFit);
     setAboutTitle(v.aboutTitle);
+    setAboutBadge(v.aboutBadge);
     setBio(v.bio);
     setAboutImageUrl(v.aboutImageUrl);
     setAboutVideoUrl(v.aboutVideoUrl);
@@ -689,7 +692,7 @@ export default function AdminLandingPage() {
   // Retrato dos valores atuais de TODAS as seções (mesmo formato do baseline).
   const currentValues = {
     heroTitle, heroSubtitle, heroImageUrl, heroBgUrl, heroBgOpacity, heroBgOverlay, photoUrl, photoStyle, photoFit,
-    aboutTitle, bio, aboutImageUrl, aboutVideoUrl, approaches, primaryColor, secondaryColor, bgColor,
+    aboutTitle, aboutBadge, bio, aboutImageUrl, aboutVideoUrl, approaches, primaryColor, secondaryColor, bgColor,
     darkPrimaryColor, darkSecondaryColor, darkBgColor, darkModeEnabled,
     painTitle, painSubtitle, painItems, solutionTitle, solutionSubtitle, solutionItems,
     villainTitle, villainBody, villainImageUrl,
@@ -709,7 +712,7 @@ export default function AdminLandingPage() {
   // salvas" (isDirty permanece true), então a guarda de reidratação as preserva (auditoria C1).
   const SECTION_KEYS: Record<string, string[]> = {
     hero:     ["heroTitle", "heroSubtitle", "heroImageUrl", "heroBgUrl", "heroBgOpacity", "heroBgOverlay", "photoUrl", "photoStyle", "photoFit"],
-    sobre:    ["aboutTitle", "bio", "aboutImageUrl", "aboutVideoUrl", "approaches"],
+    sobre:    ["aboutTitle", "aboutBadge", "bio", "aboutImageUrl", "aboutVideoUrl", "approaches"],
     dores:    ["painTitle", "painSubtitle", "painItems"],
     solucao:  ["solutionTitle", "solutionSubtitle", "solutionItems"],
     vilao:    ["villainTitle", "villainBody", "villainImageUrl"],
@@ -752,6 +755,7 @@ export default function AdminLandingPage() {
     setSaving(true);
     const { error } = await supabase.from("professionals").update({
       about_title: aboutTitle || null,
+      about_badge: aboutBadge || null,
       bio,
       about_image_url: aboutImageUrl || null,
       about_video_url: aboutVideoUrl || null,
@@ -933,6 +937,7 @@ export default function AdminLandingPage() {
       photo_fit: photoFit,
       // Sobre
       about_title: aboutTitle || null,
+      about_badge: aboutBadge || null,
       bio,
       about_image_url: aboutImageUrl || null,
       about_video_url: aboutVideoUrl || null,
@@ -1058,7 +1063,7 @@ export default function AdminLandingPage() {
     },
     about: {
       label: "Sobre", icon: BookOpen, active: activeSection === "sobre", clip: false, onClick: () => selectSection("sobre"),
-      node: <AboutSection title={aboutTitle || undefined} name={name} bio={bio} crp={crp} photoUrl={photoUrl} aboutImageUrl={aboutImageUrl} aboutVideoUrl={aboutVideoUrl} approaches={approaches} autoplay={false} />,
+      node: <AboutSection title={aboutTitle || undefined} name={name} bio={bio} crp={crp} badge={aboutBadge || undefined} photoUrl={photoUrl} aboutImageUrl={aboutImageUrl} aboutVideoUrl={aboutVideoUrl} approaches={approaches} autoplay={false} />,
     },
     ...((villainBody || villainTitle) ? {
       villain: {
@@ -1869,6 +1874,12 @@ export default function AdminLandingPage() {
                 </div>
                 <Input id="aboutTitle" value={aboutTitle} onChange={(e) => setAboutTitle(e.target.value)} placeholder="Muito prazer, sou o(a)..." />
                 <p className="text-xs text-muted-foreground">O seu nome será exibido automaticamente abaixo desta saudação, com o efeito colorido.</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="aboutBadge">Selo de autoridade</Label>
+                <Input id="aboutBadge" value={aboutBadge} onChange={(e) => setAboutBadge(e.target.value)} placeholder="Ex.: Naturóloga e terapeuta integrativa • 14 anos de experiência • ABRANA/100217" />
+                <p className="text-xs text-muted-foreground">Linha discreta (letra menor) exibida logo abaixo do seu nome. Separe os itens com "•". Deixe vazio para não exibir.</p>
               </div>
 
               <div className="space-y-2">

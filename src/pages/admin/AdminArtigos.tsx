@@ -356,7 +356,7 @@ export default function AdminArtigos() {
                     currentUrl={form.cover_image_url || null}
                     onUploaded={(url) => setForm((p) => ({ ...p, cover_image_url: url }))}
                     folder="articles"
-                    variant="wide"
+                    variant="flex"
                     expandable
                   />
                   <Input
@@ -420,7 +420,8 @@ export default function AdminArtigos() {
                             currentUrl={item.image_url || null}
                             onUploaded={(url) => updateCarouselItem(index, "image_url", url)}
                             folder="articles/carousel"
-                            variant="logo"
+                            variant="flex"
+                            expandable
                           />
                           <Input
                             value={item.image_url}

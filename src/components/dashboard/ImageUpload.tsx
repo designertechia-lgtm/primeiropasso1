@@ -11,7 +11,8 @@ interface ImageUploadProps {
   currentUrl: string | null;
   onUploaded: (url: string) => void;
   folder: string; // e.g. "logos" or "photos"
-  variant?: "logo" | "avatar" | "wide";
+  /** "flex": preview flexível — mostra a imagem INTEIRA (object-contain, altura automática), sem recorte. */
+  variant?: "logo" | "avatar" | "wide" | "flex";
   className?: string;
   accept?: string;
   /** Opt-in: clique na imagem (ou na lupa) abre a visualização ampliada num Dialog. */
@@ -88,12 +89,14 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
 
   const isAvatar = variant === "avatar";
   const isWide   = variant === "wide";
+  const isFlex   = variant === "flex";
   const isPreviewVideo = preview && /\.(mp4|webm|ogg|mov|m4v)($|\?)/i.test(preview);
 
   return (
     <div className={cn("space-y-3", className)}>
       {preview ? (
-        <div className={cn("relative", isAvatar ? "w-fit" : isWide ? "w-full" : "inline-block")}>
+        // No modo flex o wrapper COLA na imagem (w-fit), pra o X e a lupa ficarem na borda dela.
+        <div className={cn("relative", isAvatar ? "w-fit" : isFlex ? "w-fit max-w-full" : isWide ? "w-full" : "inline-block")}>
           {isPreviewVideo ? (
             <video
               src={preview}
@@ -102,10 +105,11 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
               muted
               playsInline
               className={cn(
-                "object-cover object-center border",
-                isAvatar ? "h-[116px] w-[116px] rounded-full"
-                  : isWide ? "h-40 w-full rounded-xl"
-                  : "h-16 max-w-[200px] rounded-md"
+                "object-center border",
+                isAvatar ? "h-[116px] w-[116px] rounded-full object-cover"
+                  : isFlex ? "h-auto w-auto max-h-72 max-w-full rounded-xl object-contain"
+                  : isWide ? "h-40 w-full rounded-xl object-cover"
+                  : "h-16 max-w-[200px] rounded-md object-cover"
               )}
             />
           ) : loadError ? (
@@ -114,6 +118,7 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
               className={cn(
                 "flex flex-col items-center justify-center gap-1 border border-dashed border-destructive/40 bg-destructive/5 text-center text-[10px] text-muted-foreground p-2",
                 isAvatar ? "h-[116px] w-[116px] rounded-full"
+                  : isFlex ? "h-24 w-full min-w-48 rounded-xl"
                   : isWide ? "h-40 w-full rounded-xl"
                   : "h-16 max-w-[200px] rounded-md"
               )}
@@ -134,11 +139,12 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
               onError={() => setLoadError(true)}
               onClick={expandable ? () => setExpanded(true) : undefined}
               className={cn(
-                "object-cover object-center border",
+                "object-center border",
                 expandable && "cursor-zoom-in",
-                isAvatar ? "h-[116px] w-[116px] rounded-full"
-                  : isWide ? "h-40 w-full rounded-xl"
-                  : "h-16 max-w-[200px] rounded-md"
+                isAvatar ? "h-[116px] w-[116px] rounded-full object-cover"
+                  : isFlex ? "h-auto w-auto max-h-72 max-w-full rounded-xl object-contain"
+                  : isWide ? "h-40 w-full rounded-xl object-cover"
+                  : "h-16 max-w-[200px] rounded-md object-cover"
               )}
             />
           )}
@@ -166,6 +172,7 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
           className={cn(
             "border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer hover:border-primary/50 transition-colors text-muted-foreground",
             isAvatar ? "h-[116px] w-[116px] rounded-full"
+              : isFlex ? "h-24 w-full rounded-xl"
               : isWide ? "h-40 w-full rounded-xl"
               : "h-20 w-full max-w-[200px]"
           )}

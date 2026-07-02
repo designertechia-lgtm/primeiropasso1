@@ -162,6 +162,37 @@ async function invokeFn(fn: string, body: any) {
   return data.result;
 }
 
+// ── Geração resiliente à navegação ──────────────────────────────────────────
+// A geração vive no escopo do módulo, não no componente: o profissional pode
+// navegar pelo painel enquanto espera. Ao voltar, a aba re-adota o trabalho em
+// andamento (ou o rascunho que ficou pronto enquanto estava fora). Fechar ou
+// recarregar o navegador ainda cancela — o resultado não teria onde chegar.
+const dnaJob = {
+  running: false,
+  result: null as Record<string, string> | null, // rascunho pronto, ainda não exibido
+  onChange: null as (() => void) | null,          // aba montada, se houver
+};
+
+async function runDnaGeneration(profile: any) {
+  dnaJob.running = true;
+  try {
+    const result = await invokeFn("generate-brand-bible", { profile });
+    const next: Record<string, string> = {};
+    for (const s of DNA_SECTIONS) next[s.key] = result[s.key] || "";
+    dnaJob.result = next;
+    if (dnaJob.onChange) toast.success("DNA da Marca gerado! Revise e salve.");
+    else toast.success("Seu DNA da Marca ficou pronto!", {
+      description: "Abra o editor da landing → Marca → DNA para revisar e salvar.",
+      duration: 12000,
+    });
+  } catch (e: any) {
+    toast.error("Erro ao gerar o DNA", { description: e.message ?? String(e), duration: 7000 });
+  } finally {
+    dnaJob.running = false;
+    dnaJob.onChange?.();
+  }
+}
+
 export default function BrandDnaEditorTab({ expanded = false }: { expanded?: boolean }) {
   const { data: professional } = useProfessional();
   const queryClient = useQueryClient();
@@ -169,7 +200,7 @@ export default function BrandDnaEditorTab({ expanded = false }: { expanded?: boo
   const p = professional as any;
 
   const [sections, setSections] = useState<Record<string, string>>({});
-  const [generating, setGenerating] = useState(false);
+  const [generating, setGenerating] = useState(dnaJob.running);
   const [saving, setSaving] = useState(false);
   const [generatingLanding, setGeneratingLanding] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -177,11 +208,26 @@ export default function BrandDnaEditorTab({ expanded = false }: { expanded?: boo
 
   useEffect(() => {
     if (!professional) return;
+    if (dnaJob.result) return; // rascunho recém-gerado pendente tem prioridade sobre o salvo
     const bb = p.brand_bible || {};
     const next: Record<string, string> = {};
     for (const s of DNA_SECTIONS) next[s.key] = bb[s.key] || "";
     setSections(next);
   }, [professional]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-adota a geração em andamento (ou o rascunho pronto) ao montar / quando o job muda.
+  useEffect(() => {
+    const sync = () => {
+      setGenerating(dnaJob.running);
+      if (dnaJob.result) {
+        setSections(dnaJob.result);
+        dnaJob.result = null;
+      }
+    };
+    dnaJob.onChange = sync;
+    sync();
+    return () => { if (dnaJob.onChange === sync) dnaJob.onChange = null; };
+  }, []);
 
   const hasContent = DNA_SECTIONS.some((s) => (sections[s.key] || "").trim() !== "");
 
@@ -199,23 +245,18 @@ export default function BrandDnaEditorTab({ expanded = false }: { expanded?: boo
   const rebuildMarkdown = (secs: Record<string, string>) =>
     DNA_SECTIONS.map((s) => `## ${s.label}\n\n${(secs[s.key] || "").trim()}`).join("\n\n");
 
-  const generate = async () => {
+  const generate = () => {
     if (!p.full_name || (p.approaches || []).length === 0) {
       toast.error("Complete seu perfil primeiro", { description: "Precisa de nome e abordagens (aba Sobre / Meu Perfil) para gerar." });
       return;
     }
+    if (dnaJob.running) return;
     setGenerating(true);
-    try {
-      const result = await invokeFn("generate-brand-bible", { profile: buildProfile() });
-      const next: Record<string, string> = {};
-      for (const s of DNA_SECTIONS) next[s.key] = result[s.key] || "";
-      setSections(next);
-      toast.success("DNA da Marca gerado! Revise e salve.");
-    } catch (e: any) {
-      toast.error("Erro ao gerar o DNA", { description: e.message ?? String(e), duration: 7000 });
-    } finally {
-      setGenerating(false);
-    }
+    toast.info("Gerando seu DNA da Marca…", {
+      description: "Leva ~1 min. Pode continuar usando o painel — avisamos quando ficar pronto.",
+      duration: 8000,
+    });
+    runDnaGeneration(buildProfile()); // vive no módulo: sobrevive à troca de tela
   };
 
   const save = async () => {
@@ -300,6 +341,14 @@ export default function BrandDnaEditorTab({ expanded = false }: { expanded?: boo
           ? <><Loader2 className="h-4 w-4 animate-spin" /> Gerando… pode levar ~1 min</>
           : <><Sparkles className="h-4 w-4" /> {hasContent ? "Gerar novo rascunho com IA" : "Gerar meu DNA com IA"}</>}
       </Button>
+
+      {generating && (
+        <div className="rounded-lg border border-border bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground leading-relaxed">
+          <span className="font-medium text-foreground">Pode ir fazendo outra coisa.</span>{" "}
+          Enquanto o DNA é gerado, você pode navegar pelo painel normalmente — avisamos aqui quando
+          ficar pronto. Só não feche nem recarregue o navegador.
+        </div>
+      )}
 
       <div className="space-y-4">
         {DNA_SECTIONS.map((s) => (

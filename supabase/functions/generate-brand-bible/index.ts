@@ -3,11 +3,48 @@
 // Aplica os princípios inegociáveis (Parte 3) + as regras de publicidade do conselho detectado.
 // Saída: JSON com as 11 seções (texto/markdown por seção). O markdown legível é montado aqui.
 // Gera em 2 CHAMADAS PARALELAS (6 + 5 seções) para não estourar max_tokens (JSON truncado) e ganhar velocidade.
+// JSON garantido por structured outputs (output_config.format) — o modelo não devolve mais JSON quebrado.
+// Cada chamada ao Claude custa dinheiro real: exige usuário autenticado (ou service role) antes de gerar.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+// A edge roda com verify_jwt desligado no gateway — o bloqueio é aqui.
+// Aceita usuário logado (JWT da sessão, que o supabase.functions.invoke manda sozinho)
+// ou a service role (chamadas server-to-server / testes).
+// A env SUPABASE_SERVICE_ROLE_KEY nem sempre bate com a legacy key em uso (projeto tem
+// as API keys novas), então a service role é provada no GoTrue: só ela passa no /admin.
+async function isServiceRole(token: string): Promise<boolean> {
+  if (token === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")) return true;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 5000);
+    const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/auth/v1/admin/users?per_page=1`, {
+      headers: { Authorization: `Bearer ${token}`, apikey: token },
+      signal: ctrl.signal,
+    });
+    clearTimeout(t);
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function requireCaller(req: Request): Promise<Response | null> {
+  const token = (req.headers.get("Authorization") ?? "").replace("Bearer ", "");
+  if (token) {
+    const anonClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!);
+    const { data: { user }, error } = await anonClient.auth.getUser(token);
+    if (!error && user) return null;
+    if (await isServiceRole(token)) return null;
+  }
+  return new Response(JSON.stringify({ error: "Faça login para gerar o DNA da Marca." }), {
+    status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
 
 const CLAUDE_URL = "https://api.anthropic.com/v1/messages";
 const CLAUDE_MODEL = "claude-sonnet-4-6";
@@ -90,28 +127,54 @@ ${jsonTemplate}
 Sem comentários, sem cercas de código, apenas o JSON.`;
 }
 
+// Schema JSON do subset: cada seção é uma string markdown obrigatória.
+// Passado em output_config.format, faz a API garantir JSON válido por construção.
+function subsetSchema(subset: typeof SECTIONS) {
+  const properties: Record<string, any> = {};
+  for (const s of subset) properties[s.key] = { type: "string", description: `${s.label} (markdown pronto)` };
+  return { type: "object", properties, required: subset.map((s) => s.key), additionalProperties: false };
+}
+
 // Uma chamada ao Claude que já devolve o objeto JSON das seções pedidas (lança em falha).
-async function callClaude(prompt: string, apiKey: string): Promise<any> {
+async function callClaude(prompt: string, apiKey: string, subset: typeof SECTIONS): Promise<any> {
   const resp = await fetch(CLAUDE_URL, {
     method: "POST",
     headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 4096, messages: [{ role: "user", content: prompt }] }),
+    body: JSON.stringify({
+      model: CLAUDE_MODEL,
+      max_tokens: 4096,
+      output_config: { format: { type: "json_schema", schema: subsetSchema(subset) } },
+      messages: [{ role: "user", content: prompt }],
+    }),
   });
   if (!resp.ok) throw new Error(`Claude ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
   const data = await resp.json();
-  let text = (data.content?.find((b: any) => b.type === "text")?.text || "").trim().replace(/```json|```/g, "").trim();
+  if (data.stop_reason === "max_tokens") throw new Error("Resposta truncada (max_tokens) — o JSON veio incompleto.");
+  const text = (data.content?.find((b: any) => b.type === "text")?.text || "").trim();
   try {
     return JSON.parse(text);
-  } catch {
-    const s = text.indexOf("{"), e = text.lastIndexOf("}");
-    if (s !== -1 && e !== -1) return JSON.parse(text.substring(s, e + 1));
+  } catch (parseErr) {
+    console.error("[generate-brand-bible] JSON inválido apesar do schema:", String(parseErr), "| bruto:", text.slice(0, 500));
     throw new Error("A IA retornou um formato inválido.");
+  }
+}
+
+// Tolera 1 falha transitória (rede/overload) por metade, sem descartar a metade que deu certo.
+async function callClaudeWithRetry(prompt: string, apiKey: string, subset: typeof SECTIONS): Promise<any> {
+  try {
+    return await callClaude(prompt, apiKey, subset);
+  } catch (err) {
+    console.warn("[generate-brand-bible] 1ª tentativa falhou, retentando:", String(err));
+    return await callClaude(prompt, apiKey, subset);
   }
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
+    const unauthorized = await requireCaller(req);
+    if (unauthorized) return unauthorized;
+
     const { profile } = await req.json() as { profile: any };
     const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
     if (!apiKey) {
@@ -123,8 +186,8 @@ Deno.serve(async (req) => {
     const p = profile ?? {};
     const mid = 6; // grupo A: seções 1–6, grupo B: 7–11
     const [a, b] = await Promise.all([
-      callClaude(buildPrompt(p, SECTIONS.slice(0, mid)), apiKey),
-      callClaude(buildPrompt(p, SECTIONS.slice(mid)), apiKey),
+      callClaudeWithRetry(buildPrompt(p, SECTIONS.slice(0, mid)), apiKey, SECTIONS.slice(0, mid)),
+      callClaudeWithRetry(buildPrompt(p, SECTIONS.slice(mid)), apiKey, SECTIONS.slice(mid)),
     ]);
     const bible: any = { ...a, ...b };
 
@@ -134,7 +197,10 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({ result: bible }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (err) {
+    // Erro técnico fica no log; o profissional recebe uma mensagem acionável.
     console.error("[generate-brand-bible]", err);
-    return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ error: "A geração falhou desta vez. Aguarde alguns segundos e tente novamente." }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });

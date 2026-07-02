@@ -2,6 +2,9 @@
 // Gera TODAS as seções da landing a partir da BÍBLIA DE MARCA (contexto único),
 // numa voz coesa e dentro dos limites éticos. Devolve JSON estruturado pronto para
 // preencher as colunas de professionals. O editor mostra um preview antes de aplicar.
+// JSON garantido por structured outputs (output_config.format) — o modelo não devolve mais JSON quebrado.
+// Cada chamada ao Claude custa dinheiro real: exige usuário autenticado (ou service role) antes de gerar.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,6 +13,68 @@ const corsHeaders = {
 
 const CLAUDE_URL = "https://api.anthropic.com/v1/messages";
 const CLAUDE_MODEL = "claude-sonnet-4-6";
+
+// A edge roda com verify_jwt desligado no gateway — o bloqueio é aqui.
+// Aceita usuário logado (JWT da sessão, que o supabase.functions.invoke manda sozinho)
+// ou a service role (chamadas server-to-server / testes).
+// A env SUPABASE_SERVICE_ROLE_KEY nem sempre bate com a legacy key em uso (projeto tem
+// as API keys novas), então a service role é provada no GoTrue: só ela passa no /admin.
+async function isServiceRole(token: string): Promise<boolean> {
+  if (token === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")) return true;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 5000);
+    const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/auth/v1/admin/users?per_page=1`, {
+      headers: { Authorization: `Bearer ${token}`, apikey: token },
+      signal: ctrl.signal,
+    });
+    clearTimeout(t);
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function requireCaller(req: Request): Promise<Response | null> {
+  const token = (req.headers.get("Authorization") ?? "").replace("Bearer ", "");
+  if (token) {
+    const anonClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!);
+    const { data: { user }, error } = await anonClient.auth.getUser(token);
+    if (!error && user) return null;
+    if (await isServiceRole(token)) return null;
+  }
+  return new Response(JSON.stringify({ error: "Faça login para gerar a landing." }), {
+    status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+// Schema das seções da landing (espelha o template do prompt). Passado em output_config.format,
+// a API garante JSON válido por construção. Contagens exatas (6 itens etc.) seguem no prompt —
+// o schema JSON da API não suporta minItems/maxItems.
+const str = { type: "string" };
+const arrOf = (props: Record<string, any>) => ({
+  type: "array",
+  items: { type: "object", properties: props, required: Object.keys(props), additionalProperties: false },
+});
+const LANDING_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    hero_title: str, hero_subtitle: str,
+    pain_title: str, pain_subtitle: str, pain_items: arrOf({ text: str }),
+    villain_title: str, villain_body: str,
+    solution_title: str, solution_subtitle: str, solution_items: arrOf({ title: str, desc: str }),
+    offer_title: str, offer_description: str, offer_steps: arrOf({ title: str, desc: str }),
+    audience_title: str, audience_for: { type: "array", items: str }, audience_not_for: { type: "array", items: str },
+    faq_title: str, faq_items: arrOf({ q: str, a: str }),
+    testimonials_title: str, testimonials_subtitle: str,
+  },
+  required: [
+    "hero_title", "hero_subtitle", "pain_title", "pain_subtitle", "pain_items", "villain_title", "villain_body",
+    "solution_title", "solution_subtitle", "solution_items", "offer_title", "offer_description", "offer_steps",
+    "audience_title", "audience_for", "audience_not_for", "faq_title", "faq_items", "testimonials_title", "testimonials_subtitle",
+  ],
+};
 
 function buildPrompt(bibleMarkdown: string, profile: any): string {
   return `Você é um redator de conversão especialista em profissionais de saúde. Escreva a copy de TODAS as seções da landing page de ${profile?.nome || "o profissional"} A PARTIR DA BÍBLIA DE MARCA abaixo — mantendo a MESMA voz, o mesmo posicionamento e o mesmo vilão da bíblia.
@@ -37,9 +102,40 @@ Responda APENAS um JSON válido com EXATAMENTE estas chaves:
 Sem comentários, sem cercas de código, apenas o JSON.`;
 }
 
+// Uma chamada ao Claude que já devolve as seções parseadas (lança em falha).
+async function callClaude(prompt: string, apiKey: string): Promise<any> {
+  const resp = await fetch(CLAUDE_URL, {
+    method: "POST",
+    headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({
+      model: CLAUDE_MODEL,
+      max_tokens: 5000,
+      output_config: { format: { type: "json_schema", schema: LANDING_SCHEMA } },
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    console.error("[generate-landing] Anthropic error:", errText);
+    throw new Error(`Claude ${resp.status}: ${errText.slice(0, 200)}`);
+  }
+  const data = await resp.json();
+  if (data.stop_reason === "max_tokens") throw new Error("Resposta truncada (max_tokens) — o JSON veio incompleto.");
+  const text = (data.content?.find((b: any) => b.type === "text")?.text || "").trim();
+  try {
+    return JSON.parse(text);
+  } catch (parseErr) {
+    console.error("[generate-landing] JSON inválido apesar do schema:", String(parseErr), "| bruto:", text.slice(0, 500));
+    throw new Error("A IA retornou um formato inválido.");
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
+    const unauthorized = await requireCaller(req);
+    if (unauthorized) return unauthorized;
+
     const { bible, profile } = await req.json() as { bible: any; profile: any };
     const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
     if (!apiKey) {
@@ -56,34 +152,22 @@ Deno.serve(async (req) => {
       });
     }
 
-    const resp = await fetch(CLAUDE_URL, {
-      method: "POST",
-      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 5000, messages: [{ role: "user", content: buildPrompt(bibleMarkdown, profile ?? {}) }] }),
-    });
-    if (!resp.ok) {
-      const errText = await resp.text();
-      console.error("[generate-landing] Anthropic error:", errText);
-      return new Response(JSON.stringify({ error: "Erro ao gerar a landing", details: `Claude ${resp.status}: ${errText.slice(0, 200)}` }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    const data = await resp.json();
-    let text = (data.content?.find((b: any) => b.type === "text")?.text || "").trim();
-    text = text.replace(/```json|```/g, "").trim();
-
+    const prompt = buildPrompt(bibleMarkdown, profile ?? {});
     let sections: any;
     try {
-      sections = JSON.parse(text);
-    } catch {
-      const start = text.indexOf("{"), end = text.lastIndexOf("}");
-      if (start !== -1 && end !== -1) sections = JSON.parse(text.substring(start, end + 1));
-      else throw new Error("A IA retornou um formato inválido.");
+      sections = await callClaude(prompt, apiKey);
+    } catch (firstErr) {
+      // 1 retry para falha transitória (rede/overload) — evita perder o clique do usuário.
+      console.warn("[generate-landing] 1ª tentativa falhou, retentando:", String(firstErr));
+      sections = await callClaude(prompt, apiKey);
     }
 
     return new Response(JSON.stringify({ result: sections }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (err) {
+    // Erro técnico fica no log; o profissional recebe uma mensagem acionável.
     console.error("[generate-landing]", err);
-    return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ error: "A geração falhou desta vez. Aguarde alguns segundos e tente novamente." }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });

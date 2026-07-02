@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { splitHeadline } from "@/lib/landing/sections";
-import { buildWhatsAppLink, buildLandingCtaMessage } from "@/lib/utils";
+import { buildWhatsAppLink, buildLandingCtaMessage, landingCtaLabel } from "@/lib/utils";
 
 // Seção "Oferta / como funciona" — a seção decisiva de conversão (modelo Daiane).
 // UMA oferta principal + passos de "como funciona" + CTA primária destacada (WhatsApp).
@@ -15,6 +15,7 @@ interface OfferSectionProps {
   priceNote?: string;
   whatsapp?: string;
   ctaMessage?: string;
+  ctaLabel?: string;
   campaignRef?: string;
   onWhatsAppClick?: () => void;
 }
@@ -30,7 +31,7 @@ const stepDesc = (s: OfferStep | string) => (typeof s === "string" ? "" : (s?.de
 const clean = (t: string) => (t ?? "").replace(/\*\*/g, "");
 
 export default function OfferSection({
-  title, description, steps, priceNote, whatsapp, ctaMessage, campaignRef, onWhatsAppClick,
+  title, description, steps, priceNote, whatsapp, ctaMessage, ctaLabel, campaignRef, onWhatsAppClick,
 }: OfferSectionProps) {
   const displayTitle = title || "Como podemos caminhar juntos";
   const displayDescription = description || "Dê o primeiro passo no seu tempo. A primeira conversa é o espaço para você entender como o acompanhamento pode ajudar — sem pressa e sem compromisso.";
@@ -82,7 +83,7 @@ export default function OfferSection({
           <div className="mt-10 flex justify-center">
             <a href={whatsappLink} target="_blank" rel="noopener noreferrer" onClick={onWhatsAppClick}>
               <Button size="lg" className="text-base gap-2 shadow-lg hover:shadow-xl transition-shadow duration-300">
-                Quero dar o primeiro passo <ArrowRight className="h-4 w-4" />
+                {landingCtaLabel(ctaLabel, "Quero dar o primeiro passo")} <ArrowRight className="h-4 w-4" />
               </Button>
             </a>
           </div>

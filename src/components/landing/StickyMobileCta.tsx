@@ -1,17 +1,18 @@
 import { useEffect, useState } from "react";
 import { MessageCircle } from "lucide-react";
-import { buildWhatsAppLink, buildLandingCtaMessage } from "@/lib/utils";
+import { buildWhatsAppLink, buildLandingCtaMessage, landingCtaLabel } from "@/lib/utils";
 
 // CTA fixo no rodapé, SÓ no mobile, que aparece depois de rolar um pouco.
 // Mantém o botão de agendamento sempre ao alcance (requisito de conversão).
 interface StickyMobileCtaProps {
   whatsapp?: string;
   ctaMessage?: string;
+  ctaLabel?: string;
   campaignRef?: string;
   onWhatsAppClick?: () => void;
 }
 
-export default function StickyMobileCta({ whatsapp, ctaMessage, campaignRef, onWhatsAppClick }: StickyMobileCtaProps) {
+export default function StickyMobileCta({ whatsapp, ctaMessage, ctaLabel, campaignRef, onWhatsAppClick }: StickyMobileCtaProps) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -38,7 +39,7 @@ export default function StickyMobileCta({ whatsapp, ctaMessage, campaignRef, onW
         className="flex items-center justify-center gap-2 w-full rounded-full bg-primary text-primary-foreground font-semibold py-3.5 shadow-2xl shadow-primary/30"
       >
         <MessageCircle className="h-5 w-5" />
-        Agendar pelo WhatsApp
+        {landingCtaLabel(ctaLabel, "Agendar pelo WhatsApp")}
       </a>
     </div>
   );

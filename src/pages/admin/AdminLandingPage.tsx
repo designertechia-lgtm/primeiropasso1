@@ -407,6 +407,7 @@ export default function AdminLandingPage() {
   const [contactSubtitle, setContactSubtitle] = useState("");
   const [contactWhatsapp, setContactWhatsapp] = useState("");
   const [contactCtaMessage, setContactCtaMessage] = useState("");
+  const [contactCtaLabel, setContactCtaLabel] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactInstagram, setContactInstagram] = useState("");
@@ -462,7 +463,7 @@ export default function AdminLandingPage() {
     faqTitle: string; faqItems: unknown[];
     sectionOrder: string[]; sectionHidden: string[];
     fontFamily: string; headingFontFamily: string; fontSizeScale: string;
-    contactTitle: string; contactSubtitle: string; contactWhatsapp: string; contactCtaMessage: string;
+    contactTitle: string; contactSubtitle: string; contactWhatsapp: string; contactCtaMessage: string; contactCtaLabel: string;
     contactPhone: string; contactEmail: string; contactInstagram: string; contactLinkedin: string;
     contactTiktok: string; contactFacebook: string;
   }) =>
@@ -480,7 +481,7 @@ export default function AdminLandingPage() {
       v.faqTitle, v.faqItems,
       v.sectionOrder, v.sectionHidden,
       v.fontFamily, v.headingFontFamily, v.fontSizeScale,
-      v.contactTitle, v.contactSubtitle, v.contactWhatsapp, v.contactCtaMessage,
+      v.contactTitle, v.contactSubtitle, v.contactWhatsapp, v.contactCtaMessage, v.contactCtaLabel,
       v.contactPhone, v.contactEmail, v.contactInstagram, v.contactLinkedin, v.contactTiktok, v.contactFacebook,
     ]);
 
@@ -617,6 +618,7 @@ export default function AdminLandingPage() {
       contactSubtitle: p.contact_subtitle || "",
       contactWhatsapp: p.whatsapp || "",
       contactCtaMessage: p.contact_cta_message || "",
+      contactCtaLabel: p.contact_cta_label || "",
       contactPhone: p.phone || "",
       contactEmail: p.email || "",
       contactInstagram: p.instagram || "",
@@ -673,6 +675,7 @@ export default function AdminLandingPage() {
     setContactSubtitle(v.contactSubtitle);
     setContactWhatsapp(v.contactWhatsapp);
     setContactCtaMessage(v.contactCtaMessage);
+    setContactCtaLabel(v.contactCtaLabel);
     setContactPhone(v.contactPhone);
     setContactEmail(v.contactEmail);
     setContactInstagram(v.contactInstagram);
@@ -694,7 +697,7 @@ export default function AdminLandingPage() {
     audienceTitle, audienceFor, audienceNotFor,
     faqTitle, faqItems,
     sectionOrder, sectionHidden,
-    fontFamily, headingFontFamily, fontSizeScale, contactTitle, contactSubtitle, contactWhatsapp, contactCtaMessage,
+    fontFamily, headingFontFamily, fontSizeScale, contactTitle, contactSubtitle, contactWhatsapp, contactCtaMessage, contactCtaLabel,
     contactPhone, contactEmail, contactInstagram, contactLinkedin, contactTiktok, contactFacebook,
   };
   const snapshot = buildSnapshot(currentValues);
@@ -714,7 +717,7 @@ export default function AdminLandingPage() {
     publico:  ["audienceTitle", "audienceFor", "audienceNotFor"],
     faq:      ["faqTitle", "faqItems"],
     cores:    ["primaryColor", "secondaryColor", "bgColor", "darkPrimaryColor", "darkSecondaryColor", "darkBgColor", "darkModeEnabled", "fontFamily", "headingFontFamily", "fontSizeScale"],
-    contatos: ["contactTitle", "contactSubtitle", "contactCtaMessage", "contactWhatsapp", "contactPhone", "contactEmail", "contactInstagram", "contactLinkedin", "contactTiktok", "contactFacebook"],
+    contatos: ["contactTitle", "contactSubtitle", "contactCtaMessage", "contactCtaLabel", "contactWhatsapp", "contactPhone", "contactEmail", "contactInstagram", "contactLinkedin", "contactTiktok", "contactFacebook"],
     secoes:   ["sectionOrder", "sectionHidden"],
   };
   const sealSection = (keys: string[]) => {
@@ -878,6 +881,7 @@ export default function AdminLandingPage() {
       contact_title: contactTitle || null,
       contact_subtitle: contactSubtitle || null,
       contact_cta_message: contactCtaMessage || null,
+      contact_cta_label: contactCtaLabel || null,
       whatsapp: contactWhatsapp ? toWhatsAppNumber(contactWhatsapp) : null,
       phone: contactPhone || null,
       email: contactEmail || null,
@@ -972,6 +976,7 @@ export default function AdminLandingPage() {
       contact_title: contactTitle || null,
       contact_subtitle: contactSubtitle || null,
       contact_cta_message: contactCtaMessage || null,
+      contact_cta_label: contactCtaLabel || null,
       whatsapp: contactWhatsapp ? toWhatsAppNumber(contactWhatsapp) : null,
       phone: contactPhone || null,
       email: contactEmail || null,
@@ -1041,7 +1046,7 @@ export default function AdminLandingPage() {
   const previewBlocksMeta: Record<string, { label: string; icon: React.ElementType; active: boolean; clip?: boolean; bare?: boolean; onClick: () => void; node: React.ReactNode }> = {
     hero: {
       label: "Hero", icon: Layout, active: activeSection === "hero", bare: true, onClick: () => selectSection("hero"),
-      node: <HeroSection title={heroTitle} subtitle={heroSubtitle} whatsapp={contactWhatsapp || undefined} ctaMessage={contactCtaMessage || undefined} photoUrl={photoUrl} heroImageUrl={heroImageUrl} heroBgUrl={heroBgUrl} heroBgOpacity={heroBgOpacity} heroBgOverlay={heroBgOverlay} professionalName={name} crp={crp} photoStyle={photoStyle} photoFit={photoFit} />,
+      node: <HeroSection title={heroTitle} subtitle={heroSubtitle} whatsapp={contactWhatsapp || undefined} ctaMessage={contactCtaMessage || undefined} ctaLabel={contactCtaLabel || undefined} photoUrl={photoUrl} heroImageUrl={heroImageUrl} heroBgUrl={heroBgUrl} heroBgOpacity={heroBgOpacity} heroBgOverlay={heroBgOverlay} professionalName={name} crp={crp} photoStyle={photoStyle} photoFit={photoFit} />,
     },
     pain: {
       label: "Dores", icon: AlertCircle, active: activeSection === "dores", onClick: () => selectSection("dores"),
@@ -1200,7 +1205,7 @@ export default function AdminLandingPage() {
                 title={contactTitle || undefined}
                 subtitle={contactSubtitle || undefined}
                 whatsapp={contactWhatsapp || undefined}
-                ctaMessage={contactCtaMessage || undefined}
+                ctaMessage={contactCtaMessage || undefined} ctaLabel={contactCtaLabel || undefined}
                 phone={contactPhone || undefined}
                 email={contactEmail || undefined}
                 instagram={contactInstagram || undefined}
@@ -2198,6 +2203,11 @@ export default function AdminLandingPage() {
               <div className="space-y-2">
                 <Label htmlFor="contactCtaMessage" className="flex items-center gap-2"><MessageCircle className="h-4 w-4 text-green-500" />Mensagem do botão de agendamento <FieldHint text="Texto que já vai escrito no WhatsApp quando o lead clica no botão. Se contiver 'agendar' ou 'marcar', o assistente leva direto pra agenda; um texto neutro faz passar pela apresentação do Axel. Em branco usa o padrão." /></Label>
                 <Textarea id="contactCtaMessage" rows={2} value={contactCtaMessage} onChange={(e) => setContactCtaMessage(e.target.value)} placeholder="Olá, gostaria de mais informações!" />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="contactCtaLabel" className="flex items-center gap-2"><MessageCircle className="h-4 w-4 text-green-500" />Texto do botão <FieldHint text="O texto que o visitante VÊ no botão (ex.: 'Agendar consulta', 'Falar agora', 'Quero começar'). Vale para TODOS os botões da página. Em branco, cada botão usa seu texto padrão." /></Label>
+                <Input id="contactCtaLabel" value={contactCtaLabel} onChange={(e) => setContactCtaLabel(e.target.value)} placeholder="Quero mais informações" maxLength={40} />
               </div>
 
               <div className="space-y-2">

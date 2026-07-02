@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { DEMO_PROFESSIONAL } from "@/data/demoProfessional";
-import { buildWhatsAppLink, buildLandingCtaMessage } from "@/lib/utils";
+import { buildWhatsAppLink, buildLandingCtaMessage, landingCtaLabel } from "@/lib/utils";
 
 type PhotoStyle = "portrait" | "circle" | "square" | "horizontal";
 
@@ -25,6 +25,8 @@ interface HeroSectionProps {
   whatsapp?: string;
   /** Mensagem pré-preenchida do botão (editável na tab Contatos). */
   ctaMessage?: string;
+  /** Rótulo visível do botão (editável na tab Contatos). Vazio = padrão. */
+  ctaLabel?: string;
   /** Código de campanha (utm/gclid) anexado à mensagem p/ atribuição. */
   campaignRef?: string;
   /** Registra a visita com atribuição ao clicar no CTA. */
@@ -43,7 +45,7 @@ interface HeroSectionProps {
 
 const DEFAULT_HERO_BG = "/hero-bg-default.jpg";
 
-export default function HeroSection({ title, subtitle, whatsapp, ctaMessage, campaignRef, onWhatsAppClick, photoUrl, heroImageUrl, heroBgUrl, heroBgOpacity = 70, heroBgOverlay = "dark", slug, professionalName, crp, photoStyle = "portrait", photoFit = "contain" }: HeroSectionProps) {
+export default function HeroSection({ title, subtitle, whatsapp, ctaMessage, ctaLabel, campaignRef, onWhatsAppClick, photoUrl, heroImageUrl, heroBgUrl, heroBgOpacity = 70, heroBgOverlay = "dark", slug, professionalName, crp, photoStyle = "portrait", photoFit = "contain" }: HeroSectionProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const activeBgUrl = heroBgUrl || DEFAULT_HERO_BG;
@@ -172,7 +174,7 @@ export default function HeroSection({ title, subtitle, whatsapp, ctaMessage, cam
               <div className="flex flex-col sm:flex-row gap-3 pt-4 w-full justify-center lg:justify-start">
                 <a href={whatsappLink} target="_blank" rel="noopener noreferrer" onClick={onWhatsAppClick}>
                   <Button size="lg" className="text-base gap-2 shadow-lg hover:shadow-xl transition-shadow duration-300 w-full sm:w-auto">
-                    Quero mais informações <ArrowRight className="h-4 w-4" />
+                    {landingCtaLabel(ctaLabel)} <ArrowRight className="h-4 w-4" />
                   </Button>
                 </a>
               </div>

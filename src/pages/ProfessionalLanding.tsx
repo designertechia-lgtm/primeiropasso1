@@ -310,6 +310,8 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
   const heroTitle = abEnabled && variant === "b" && p.hero_title_b ? p.hero_title_b : p.hero_title;
   const heroSubtitle = abEnabled && variant === "b" && p.hero_subtitle_b ? p.hero_subtitle_b : p.hero_subtitle;
   const ctaMessage = abEnabled && variant === "b" && p.contact_cta_message_b ? p.contact_cta_message_b : p.contact_cta_message;
+  // Rótulo VISÍVEL dos botões (editável na tab Contatos). Vazio = cada botão mantém seu texto padrão.
+  const ctaLabel = (p as any).contact_cta_label as string | undefined;
   const hasVillain = !!(p.villain_body || p.villain_title);
   const hasOffer = !!(p.offer_description || p.offer_title || (Array.isArray(p.offer_steps) && p.offer_steps.length > 0));
   const hasAudience = Array.isArray(p.audience_for) && p.audience_for.length > 0;
@@ -337,6 +339,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         subtitle={heroSubtitle ?? undefined}
         whatsapp={professional.whatsapp ?? undefined}
         ctaMessage={ctaMessage ?? undefined}
+        ctaLabel={ctaLabel ?? undefined}
         campaignRef={campaignRef}
         onWhatsAppClick={handleCtaClick}
         photoUrl={professional.photo_url ?? undefined}
@@ -398,6 +401,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
               priceNote={p.offer_price_note ?? undefined}
               whatsapp={professional.whatsapp ?? undefined}
               ctaMessage={ctaMessage ?? undefined}
+        ctaLabel={ctaLabel ?? undefined}
               campaignRef={campaignRef}
               onWhatsAppClick={handleCtaClick}
             />
@@ -441,7 +445,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     ...(hasContent
       ? {
           content: (
-            <ContentSection articles={articles} videos={videos} slug={professional.slug} whatsapp={professional.whatsapp} />
+            <ContentSection articles={articles} videos={videos} slug={professional.slug} whatsapp={professional.whatsapp} ctaLabel={ctaLabel ?? undefined} />
           ),
         }
       : {}),
@@ -475,6 +479,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         professionalName={name}
         whatsapp={professional.whatsapp ?? undefined}
         ctaMessage={ctaMessage ?? undefined}
+        ctaLabel={ctaLabel ?? undefined}
         campaignRef={campaignRef}
         onWhatsAppClick={handleCtaClick}
         logoUrl={professional.logo_url ?? undefined}
@@ -501,6 +506,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
           subtitle={(professional as any).contact_subtitle ?? undefined}
           whatsapp={professional.whatsapp ?? undefined}
           ctaMessage={ctaMessage ?? undefined}
+        ctaLabel={ctaLabel ?? undefined}
           campaignRef={campaignRef}
           phone={(professional as any).phone ?? undefined}
           email={(professional as any).email ?? undefined}
@@ -515,6 +521,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         professionalName={name}
         whatsapp={professional.whatsapp ?? undefined}
         ctaMessage={ctaMessage ?? undefined}
+        ctaLabel={ctaLabel ?? undefined}
         campaignRef={campaignRef}
         onWhatsAppClick={handleCtaClick}
       />
@@ -522,6 +529,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         <StickyMobileCta
           whatsapp={professional.whatsapp ?? undefined}
           ctaMessage={ctaMessage ?? undefined}
+        ctaLabel={ctaLabel ?? undefined}
           campaignRef={campaignRef}
           onWhatsAppClick={handleCtaClick}
         />

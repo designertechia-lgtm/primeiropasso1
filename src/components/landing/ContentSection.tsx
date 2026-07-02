@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BookOpen, Play, MessageCircle, Calendar, Lock } from "lucide-react";
-import { buildWhatsAppLink } from "@/lib/utils";
+import { buildWhatsAppLink, landingCtaLabel } from "@/lib/utils";
 
 interface Article {
   id: string;
@@ -28,6 +28,7 @@ interface ContentSectionProps {
   videos: Video[];
   slug?: string;
   whatsapp?: string | null;
+  ctaLabel?: string;
 }
 
 function toEmbedUrl(url: string): string {
@@ -122,7 +123,7 @@ function buildContactHref(whatsapp: string | null | undefined, slug: string | un
   return { href: `/${slug}#agendar`, isWa: false };
 }
 
-export default function ContentSection({ articles, videos, slug, whatsapp }: ContentSectionProps) {
+export default function ContentSection({ articles, videos, slug, whatsapp, ctaLabel }: ContentSectionProps) {
   const contact = buildContactHref(whatsapp, slug);
   if (articles.length === 0 && videos.length === 0) return null;
 
@@ -216,8 +217,8 @@ export default function ContentSection({ articles, videos, slug, whatsapp }: Con
                             rel={contact.isWa ? "noopener noreferrer" : undefined}
                           >
                             {contact.isWa
-                              ? <><MessageCircle className="h-4 w-4" /> Falar pelo WhatsApp</>
-                              : <><Calendar className="h-4 w-4" /> Quero mais informações</>
+                              ? <><MessageCircle className="h-4 w-4" /> {landingCtaLabel(ctaLabel, "Falar pelo WhatsApp")}</>
+                              : <><Calendar className="h-4 w-4" /> {landingCtaLabel(ctaLabel, "Quero mais informações")}</>
                             }
                           </a>
                         </Button>

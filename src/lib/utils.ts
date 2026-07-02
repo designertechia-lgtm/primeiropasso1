@@ -208,3 +208,13 @@ export function buildLandingCtaMessage(ctaMessage?: string, campaignRef?: string
   const base = ctaMessage?.trim() || DEFAULT_LANDING_CTA_MESSAGE;
   return campaignRef ? `${base} (ref: ${campaignRef})` : base;
 }
+
+/**
+ * Rótulo VISÍVEL dos botões de CTA da landing (o texto que o visitante lê), editável pelo
+ * profissional (tab Contato → professionals.contact_cta_label). Quando vazio, cada botão mantém
+ * o SEU texto padrão (passado em `fallback`); quando preenchido, vale para TODOS os botões.
+ */
+export const DEFAULT_LANDING_CTA_LABEL = "Quero mais informações";
+export function landingCtaLabel(ctaLabel?: string, fallback: string = DEFAULT_LANDING_CTA_LABEL): string {
+  return ctaLabel?.trim() || fallback;
+}

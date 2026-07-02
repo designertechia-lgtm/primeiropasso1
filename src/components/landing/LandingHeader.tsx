@@ -3,13 +3,15 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Leaf, Menu, X, Moon, Sun } from "lucide-react";
 import { useState } from "react";
-import { buildWhatsAppLink, buildLandingCtaMessage } from "@/lib/utils";
+import { buildWhatsAppLink, buildLandingCtaMessage, landingCtaLabel } from "@/lib/utils";
 
 interface LandingHeaderProps {
   professionalName?: string;
   whatsapp?: string;
   /** Mensagem pré-preenchida do botão (editável na tab Contatos). */
   ctaMessage?: string;
+  /** Rótulo visível do botão (editável na tab Contatos). Vazio = padrão. */
+  ctaLabel?: string;
   /** Código de campanha (utm/gclid) anexado à mensagem p/ atribuição. */
   campaignRef?: string;
   /** Registra a visita com atribuição ao clicar no CTA. */
@@ -20,7 +22,7 @@ interface LandingHeaderProps {
   onToggleDark?: () => void;
 }
 
-export default function LandingHeader({ professionalName, whatsapp, ctaMessage, campaignRef, onWhatsAppClick, logoUrl, slug, dark, onToggleDark }: LandingHeaderProps) {
+export default function LandingHeader({ professionalName, whatsapp, ctaMessage, ctaLabel, campaignRef, onWhatsAppClick, logoUrl, slug, dark, onToggleDark }: LandingHeaderProps) {
   const { user, isProfessional } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -70,7 +72,7 @@ export default function LandingHeader({ professionalName, whatsapp, ctaMessage, 
           )}
           {whatsapp && (
             <a href={whatsappLink} target="_blank" rel="noopener noreferrer" onClick={onWhatsAppClick}>
-              <Button size="sm">Quero mais informações</Button>
+              <Button size="sm">{landingCtaLabel(ctaLabel)}</Button>
             </a>
           )}
         </nav>
@@ -101,7 +103,7 @@ export default function LandingHeader({ professionalName, whatsapp, ctaMessage, 
             <Link to={slug ? `/login?ref=${slug}` : "/login"} className="block"><Button variant="outline" size="sm" className="w-full">Entrar</Button></Link>
           )}
           {whatsapp && (
-            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="block" onClick={onWhatsAppClick}><Button size="sm" className="w-full">Quero mais informações</Button></a>
+            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="block" onClick={onWhatsAppClick}><Button size="sm" className="w-full">{landingCtaLabel(ctaLabel)}</Button></a>
           )}
         </div>
       )}

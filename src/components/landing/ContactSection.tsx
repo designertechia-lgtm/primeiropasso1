@@ -1,7 +1,7 @@
 import { MessageCircle, Phone, Mail, Instagram, Linkedin, Facebook } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TikTokIcon } from "@/components/icons/TikTokIcon";
-import { buildWhatsAppLink, buildLandingCtaMessage } from "@/lib/utils";
+import { buildWhatsAppLink, buildLandingCtaMessage, landingCtaLabel } from "@/lib/utils";
 
 interface ContactSectionProps {
   title?: string;
@@ -9,6 +9,8 @@ interface ContactSectionProps {
   whatsapp?: string;
   /** Mensagem pré-preenchida do botão de agendamento (editável na tab Contatos). */
   ctaMessage?: string;
+  /** Rótulo visível do botão (editável na tab Contatos). Vazio = padrão. */
+  ctaLabel?: string;
   /** Código de campanha (utm/gclid) anexado à mensagem p/ atribuição no fluxo. */
   campaignRef?: string;
   phone?: string;
@@ -31,6 +33,7 @@ export default function ContactSection({
   subtitle,
   whatsapp,
   ctaMessage,
+  ctaLabel,
   campaignRef,
   phone,
   email,
@@ -71,7 +74,7 @@ export default function ContactSection({
                   onClick={onWhatsAppClick}
                 >
                   <MessageCircle className="h-5 w-5" />
-                  Quero mais informações
+                  {landingCtaLabel(ctaLabel)}
                 </a>
               </Button>
             )}

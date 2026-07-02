@@ -9,7 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { FieldHint } from "@/components/ui/FieldHint";
 import { toast } from "sonner";
-import { FlaskConical, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
+import { InfoHint } from "@/components/ui/InfoHint";
 
 // Aba "Teste A/B" (grupo Ajustes). Autossuficiente: define a variante B de título/subtítulo/CTA
 // e mostra os resultados (views, leads e taxa por variante) lidos de landing_visits.
@@ -72,16 +73,13 @@ export default function AbTestEditorTab() {
 
   return (
     <div className="space-y-6">
-      <div className="flex gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3.5">
-        <FlaskConical className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-        <div className="space-y-1">
-          <p className="text-sm font-semibold text-foreground">Teste A/B de título e CTA</p>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            Crie uma <strong>versão B</strong> do título/subtítulo do topo e da mensagem do botão. Cada visitante
-            vê A ou B (sorteado e fixo), e a página mede qual converte mais. <strong>Só vale a pena com bom
-            volume de acessos</strong> — com pouco tráfego, a diferença não é confiável.
-          </p>
-        </div>
+      <div className="flex items-center gap-1.5 mb-3">
+        <span className="text-sm font-semibold text-foreground">Teste A/B de título e CTA</span>
+        <InfoHint>
+          Crie uma <strong>versão B</strong> do título/subtítulo do topo e da mensagem do botão. Cada visitante
+          vê A ou B (sorteado e fixo), e a página mede qual converte mais. <strong>Só vale a pena com bom
+          volume de acessos</strong> — com pouco tráfego, a diferença não é confiável.
+        </InfoHint>
       </div>
 
       {/* Liga/desliga */}

@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Dna, Sparkles, Loader2, Wand2, ShieldAlert, FileDown } from "lucide-react";
+import { Sparkles, Loader2, Wand2, FileDown } from "lucide-react";
+import { InfoHint } from "@/components/ui/InfoHint";
 
 // Aba "DNA da Marca" do editor da landing. Fonte única da marca do profissional (11 seções,
 // modelo Daiane). Autossuficiente (grava em professionals.brand_bible). A IA gera um rascunho a
@@ -285,16 +286,13 @@ export default function BrandDnaEditorTab({ expanded = false }: { expanded?: boo
 
   return (
     <div className={`space-y-5 ${expanded ? "max-w-4xl mx-auto" : ""}`}>
-      <div className="flex gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3.5">
-        <Dna className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-        <div className="space-y-1">
-          <p className="text-sm font-semibold text-foreground">DNA da Marca</p>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            A base única da sua comunicação: posicionamento, persona, vilão, voz e limites. A IA monta um
-            rascunho a partir do seu perfil; você edita. Depois, dá pra <strong>gerar a landing inteira</strong> a
-            partir dele, numa voz coesa.
-          </p>
-        </div>
+      <div className="flex items-center gap-1.5 mb-3">
+        <span className="text-sm font-semibold text-foreground">DNA da Marca</span>
+        <InfoHint>
+          A base única da sua comunicação: posicionamento, persona, vilão, voz e limites. A IA monta um
+          rascunho a partir do seu perfil; você edita. Depois, dá pra <strong>gerar a landing inteira</strong> a
+          partir dele, numa voz coesa.
+        </InfoHint>
       </div>
 
       <Button onClick={generate} disabled={generating} className="w-full gap-2">
@@ -331,9 +329,9 @@ export default function BrandDnaEditorTab({ expanded = false }: { expanded?: boo
         </Button>
       </div>
 
-      <div className="flex gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 leading-relaxed">
-        <ShieldAlert className="h-4 w-4 flex-shrink-0 mt-0.5 text-amber-500" />
-        <span>Revisão humana obrigatória: a IA aplica os limites do seu conselho, mas a conformidade final é sua. Revise antes de publicar.</span>
+      <div className="flex items-center gap-1.5 mb-3">
+        <span className="text-sm font-semibold text-foreground">Conformidade</span>
+        <InfoHint>Revisão humana obrigatória: a IA aplica os limites do seu conselho, mas a conformidade final é sua. Revise antes de publicar.</InfoHint>
       </div>
 
       {/* Preview antes de aplicar na landing */}

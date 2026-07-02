@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Check, X, Trash2, Star, Plus, ShieldAlert, Clock, Loader2 } from "lucide-react";
+import { Check, X, Trash2, Star, Plus, Clock, Loader2 } from "lucide-react";
+import { InfoHint } from "@/components/ui/InfoHint";
 
 interface Row {
   id: string;
@@ -152,16 +153,13 @@ export default function TestimonialsEditorTab() {
   return (
     <div className="space-y-6">
       {/* Aviso de conformidade */}
-      <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3.5">
-        <ShieldAlert className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
-        <div className="space-y-1">
-          <p className="text-sm font-semibold text-amber-800">Sua responsabilidade sobre os depoimentos</p>
-          <p className="text-xs text-amber-700 leading-relaxed">
-            Publique apenas depoimentos espontâneos e com autorização de quem os escreveu — nunca exponha
-            pacientes ou casos clínicos. Respeite as regras do seu conselho de classe sobre publicidade
-            (alguns conselhos, como o CFP, restringem depoimentos de pacientes). Nada aparece na sua página sem a sua aprovação.
-          </p>
-        </div>
+      <div className="flex items-center gap-1.5 mb-3">
+        <span className="text-sm font-semibold text-foreground">Sua responsabilidade sobre os depoimentos</span>
+        <InfoHint>
+          Publique apenas depoimentos espontâneos e com autorização de quem os escreveu — nunca exponha
+          pacientes ou casos clínicos. Respeite as regras do seu conselho de classe sobre publicidade
+          (alguns conselhos, como o CFP, restringem depoimentos de pacientes). Nada aparece na sua página sem a sua aprovação.
+        </InfoHint>
       </div>
 
       {/* Cabeçalho + liga/desliga */}

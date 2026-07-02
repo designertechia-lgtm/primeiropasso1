@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Eye, FileText, Upload, ShoppingBag, BookOpen, Package, Briefcase } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
+import { InfoHint } from "@/components/ui/InfoHint";
 import { formatPrice } from "@/components/landing/ProductsSection";
 import ServicesEditor from "@/components/admin/landing/ServicesEditor";
 import ReceivablesOnboarding from "@/components/admin/landing/ReceivablesOnboarding";
@@ -213,9 +214,12 @@ export default function ProductsEditorTab() {
 
   return (
     <div className="space-y-8">
-      <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
-        Esta seção reúne suas <strong>sessões de terapia</strong> (o principal) e seus <strong>produtos</strong> (e-books, materiais).
-        Tudo é editável. A seção fica oculta na página enquanto não houver nenhum item.
+      <div className="flex items-center gap-1.5 mb-3">
+        <span className="text-sm font-semibold text-foreground">Produtos e Serviços</span>
+        <InfoHint>
+          Esta seção reúne suas <strong>sessões de terapia</strong> (o principal) e seus <strong>produtos</strong> (e-books, materiais).
+          Tudo é editável. A seção fica oculta na página enquanto não houver nenhum item.
+        </InfoHint>
       </div>
 
       {/* Ativação de recebimentos (subconta Asaas) — necessária para vender */}

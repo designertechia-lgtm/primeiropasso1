@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FieldHint } from "@/components/ui/FieldHint";
+import { InfoHint } from "@/components/ui/InfoHint";
 import { toast } from "sonner";
-import { ShieldCheck, BarChart3 } from "lucide-react";
 
 // Aba "Rastreamento" do editor da landing (/admin/landing). Autossuficiente (como ProductsEditorTab):
 // grava os IDs de pixel/tag em professionals. A landing só carrega esses scripts DEPOIS do
@@ -47,24 +47,21 @@ export default function TrackingEditorTab() {
 
   return (
     <div className="space-y-5">
-      <div className="flex gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3.5">
-        <BarChart3 className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-        <div className="space-y-1">
-          <p className="text-sm font-semibold text-foreground">Medição de anúncios (Meta e Google)</p>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            Cole aqui os IDs das suas contas de anúncio. A página envia automaticamente um evento de
-            <strong> Lead</strong> quando o visitante clica no botão de WhatsApp — é o que o Meta e o Google
-            usam para otimizar suas campanhas. Deixe em branco o que não usar.
-          </p>
-        </div>
+      <div className="flex items-center gap-1.5 mb-3">
+        <span className="text-sm font-semibold text-foreground">Medição de anúncios (Meta e Google)</span>
+        <InfoHint>
+          Cole aqui os IDs das suas contas de anúncio. A página envia automaticamente um evento de
+          <strong> Lead</strong> quando o visitante clica no botão de WhatsApp — é o que o Meta e o Google
+          usam para otimizar suas campanhas. Deixe em branco o que não usar.
+        </InfoHint>
       </div>
 
-      <div className="flex gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5">
-        <ShieldCheck className="h-5 w-5 text-emerald-600 flex-shrink-0 mt-0.5" />
-        <p className="text-xs text-emerald-800 leading-relaxed">
+      <div className="flex items-center gap-1.5 mb-3">
+        <span className="text-sm font-semibold text-foreground">LGPD</span>
+        <InfoHint>
           <strong>LGPD:</strong> nada é rastreado sem permissão. Os pixels só carregam depois que o visitante
           <strong> aceita</strong> os cookies no aviso da página.
-        </p>
+        </InfoHint>
       </div>
 
       <div className="space-y-2">

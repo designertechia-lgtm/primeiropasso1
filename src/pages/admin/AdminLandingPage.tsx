@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun, ListOrdered, ArrowUp, ArrowDown, Eye, EyeOff, Newspaper, PlayCircle, ShoppingBag, HelpCircle, Quote, Users, Target, Gift, BarChart3, Dna, Maximize2, Minimize2, Settings, FlaskConical } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
+import { InfoHint } from "@/components/ui/InfoHint";
 import { TikTokIcon } from "@/components/icons/TikTokIcon";
 import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -1232,34 +1233,15 @@ export default function AdminLandingPage() {
         )}
 
         {/* ── card de orientação IA ── */}
-        {approaches.length === 0 ? (
-          <div className="mx-4 mt-4 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3.5">
-            <Sparkles className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <p className="text-sm font-semibold text-amber-800">Melhore os textos gerados com IA</p>
-              <p className="text-xs text-amber-700 leading-relaxed">
-                Para gerar textos personalizados, preencha suas <strong>abordagens profissionais</strong> (na aba <strong>Sobre</strong> ou no seu <strong>Perfil</strong>). Quanto mais detalhado, melhor o resultado.
-              </p>
-              <button
-                type="button"
-                onClick={() => setActiveSection("sobre")}
-                className="mt-1 text-xs font-medium text-amber-800 underline hover:no-underline"
-              >
-                Ir para Sobre →
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="mx-4 mt-4 flex gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3.5">
-            <Sparkles className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-            <div className="space-y-0.5">
-              <p className="text-sm font-semibold text-foreground">IA pronta para gerar</p>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Baseando-se em <strong>{approaches.join(", ")}</strong>. Clique em <strong>✦ IA</strong> ao lado de qualquer campo para gerar o texto.
-              </p>
-            </div>
-          </div>
-        )}
+        <div className="mx-4 mt-4 flex items-center gap-1.5">
+          <span className="text-sm font-semibold text-foreground">Gerar com IA</span>
+          <InfoHint>Para gerar textos personalizados, preencha suas <strong>abordagens profissionais</strong> (aba <strong>Sobre</strong> ou no seu Perfil). Clique em <strong>✦ IA</strong> ao lado de qualquer campo.</InfoHint>
+          {approaches.length === 0 && (
+            <button type="button" onClick={() => setActiveSection("sobre")} className="text-xs font-medium text-amber-700 underline hover:no-underline">
+              Adicionar abordagens →
+            </button>
+          )}
+        </div>
 
         {/* nav em 2 níveis: grupos (Marca/Página/Ajustes) + abas do grupo ativo */}
         <div className="sticky top-0 bg-background z-10 border-b">
@@ -1328,8 +1310,11 @@ export default function AdminLandingPage() {
           {/* ── SEÇÕES (ordem + ocultar) ── */}
           {activeSection === "secoes" && (
             <>
-              <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
-                Organize a <strong>ordem</strong> das seções e <strong>oculte</strong> o que não quiser mostrar. O <strong>Contato</strong> fica sempre no fim; as demais (incluindo o <strong>Hero</strong>) você reordena livremente. O Hero não pode ser ocultado.
+              <div className="flex items-center gap-1.5 mb-3">
+                <span className="text-sm font-semibold text-foreground">Organização</span>
+                <InfoHint>
+                  Organize a <strong>ordem</strong> das seções e <strong>oculte</strong> o que não quiser mostrar. O <strong>Contato</strong> fica sempre no fim; as demais (incluindo o <strong>Hero</strong>) você reordena livremente. O Hero não pode ser ocultado.
+                </InfoHint>
               </div>
 
               {/* Seções reordenáveis (inclui o Hero) */}
@@ -1701,8 +1686,11 @@ export default function AdminLandingPage() {
           {/* ── VILÃO ── */}
           {activeSection === "vilao" && (
             <>
-              <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
-                Explica <strong>por que nada do que a pessoa tentou funcionou</strong> — a causa real, sem culpar o cliente. É o coração do seu diferencial. Aparece na página só quando preenchida.
+              <div className="flex items-center gap-1.5 mb-3">
+                <span className="text-sm font-semibold text-foreground">Vilão</span>
+                <InfoHint>
+                  Explica <strong>por que nada do que a pessoa tentou funcionou</strong> — a causa real, sem culpar o cliente. É o coração do seu diferencial. Aparece na página só quando preenchida.
+                </InfoHint>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="villainTitle">Título da seção</Label>
@@ -1731,8 +1719,11 @@ export default function AdminLandingPage() {
           {/* ── OFERTA ── */}
           {activeSection === "oferta" && (
             <>
-              <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
-                A seção decisiva de conversão: <strong>UMA oferta principal</strong> + como funciona + botão de WhatsApp. Sem promessa de cura. Aparece na página quando preenchida.
+              <div className="flex items-center gap-1.5 mb-3">
+                <span className="text-sm font-semibold text-foreground">Oferta</span>
+                <InfoHint>
+                  A seção decisiva de conversão: <strong>UMA oferta principal</strong> + como funciona + botão de WhatsApp. Sem promessa de cura. Aparece na página quando preenchida.
+                </InfoHint>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="offerTitle">Título</Label>
@@ -1778,8 +1769,11 @@ export default function AdminLandingPage() {
           {/* ── PARA QUEM É ── */}
           {activeSection === "publico" && (
             <>
-              <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
-                Qualifica o lead: <strong>para quem é</strong> e <strong>para quem talvez não seja o momento</strong>. Aparece na página quando você adiciona itens.
+              <div className="flex items-center gap-1.5 mb-3">
+                <span className="text-sm font-semibold text-foreground">Para quem é</span>
+                <InfoHint>
+                  Qualifica o lead: <strong>para quem é</strong> e <strong>para quem talvez não seja o momento</strong>. Aparece na página quando você adiciona itens.
+                </InfoHint>
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -1827,8 +1821,11 @@ export default function AdminLandingPage() {
           {/* ── FAQ ── */}
           {activeSection === "faq" && (
             <>
-              <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
-                Quebra objeções e protege seus limites éticos. Inclua sempre a pergunta se o acompanhamento substitui tratamento médico/psicológico. Aparece na página quando há perguntas.
+              <div className="flex items-center gap-1.5 mb-3">
+                <span className="text-sm font-semibold text-foreground">FAQ</span>
+                <InfoHint>
+                  Quebra objeções e protege seus limites éticos. Inclua sempre a pergunta se o acompanhamento substitui tratamento médico/psicológico. Aparece na página quando há perguntas.
+                </InfoHint>
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -2176,8 +2173,11 @@ export default function AdminLandingPage() {
           {/* ── CONTATOS ── */}
           {activeSection === "contatos" && (
             <>
-              <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
-                Esta seção é a <strong>última e fixa</strong> da sua página. Pré-preenchida com seus dados de contato — edite aqui ou em <em>Meu Perfil</em>.
+              <div className="flex items-center gap-1.5 mb-3">
+                <span className="text-sm font-semibold text-foreground">Contatos</span>
+                <InfoHint>
+                  Esta seção é a <strong>última e fixa</strong> da sua página. Pré-preenchida com seus dados de contato — edite aqui ou em <em>Meu Perfil</em>.
+                </InfoHint>
               </div>
 
               <div className="space-y-2">

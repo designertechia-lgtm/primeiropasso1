@@ -359,7 +359,8 @@ export default function ProductsEditorTab() {
                 currentUrl={form.cover_image_url || null}
                 onUploaded={(url) => setForm((p) => ({ ...p, cover_image_url: url }))}
                 folder="products"
-                variant="wide"
+                variant="flex"
+                expandable
               />
             </div>
 

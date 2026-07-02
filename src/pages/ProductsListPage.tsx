@@ -61,9 +61,13 @@ function ItemCard({ item, whatsapp, professionalName }: { item: Unified; whatsap
 
   return (
     <div className="group rounded-2xl overflow-hidden border bg-card transition-all duration-300 flex flex-col hover:shadow-xl hover:-translate-y-1">
-      <div className="aspect-[3/2] overflow-hidden bg-muted relative">
+      {/* Capa "flex": imagem INTEIRA (object-contain) sobre a própria capa desfocada — igual à ProductsSection. */}
+      <div className="aspect-[4/3] overflow-hidden bg-muted relative">
         {cover ? (
-          <img src={cover} alt={title} className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-700" />
+          <>
+            <img src={cover} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover blur-xl scale-110 opacity-60" />
+            <img src={cover} alt={title} className="relative w-full h-full object-contain group-hover:scale-[1.04] transition-transform duration-700" />
+          </>
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/12 to-accent/12">
             <Icon className="h-9 w-9 text-primary/25" />

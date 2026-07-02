@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun, ListOrdered, ArrowUp, ArrowDown, Eye, EyeOff, Newspaper, PlayCircle, ShoppingBag, HelpCircle, Quote, Users, Target, Gift, BarChart3, Dna, Maximize2, Minimize2 } from "lucide-react";
+import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun, ListOrdered, ArrowUp, ArrowDown, Eye, EyeOff, Newspaper, PlayCircle, ShoppingBag, HelpCircle, Quote, Users, Target, Gift, BarChart3, Dna, Maximize2, Minimize2, Settings } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
 import { TikTokIcon } from "@/components/icons/TikTokIcon";
@@ -204,6 +204,31 @@ function SectionBlock({
 }
 
 type Section = "dna" | "secoes" | "hero" | "dores" | "vilao" | "solucao" | "sobre" | "oferta" | "depoimentos" | "publico" | "faq" | "produtos" | "cores" | "contatos" | "rastreamento";
+
+// Abas do editor + agrupamento em 2 níveis (evita a barra achatada de 15 abas).
+// O grupo ativo é o que contém a aba ativa.
+const EDITOR_TABS: { id: Section; label: string; icon: React.ElementType }[] = [
+  { id: "dna",          label: "DNA",          icon: Dna           },
+  { id: "cores",        label: "Cores",        icon: Palette       },
+  { id: "secoes",       label: "Ordem",        icon: ListOrdered   },
+  { id: "hero",         label: "Hero",         icon: Layout        },
+  { id: "dores",        label: "Dores",        icon: AlertCircle   },
+  { id: "vilao",        label: "Vilão",        icon: Target        },
+  { id: "solucao",      label: "Solução",      icon: Lightbulb     },
+  { id: "sobre",        label: "Sobre",        icon: BookOpen      },
+  { id: "oferta",       label: "Oferta",       icon: Gift          },
+  { id: "publico",      label: "Para quem é",  icon: Users         },
+  { id: "faq",          label: "FAQ",          icon: HelpCircle    },
+  { id: "depoimentos",  label: "Depoimentos",  icon: Quote         },
+  { id: "produtos",     label: "Serviços",     icon: ShoppingBag   },
+  { id: "contatos",     label: "Contatos",     icon: MessageCircle },
+  { id: "rastreamento", label: "Rastreamento", icon: BarChart3     },
+];
+const EDITOR_TAB_GROUPS: { id: string; label: string; icon: React.ElementType; ids: Section[] }[] = [
+  { id: "marca",   label: "Marca",   icon: Dna,      ids: ["dna", "cores"] },
+  { id: "pagina",  label: "Página",  icon: Layout,   ids: ["secoes", "hero", "dores", "vilao", "solucao", "sobre", "oferta", "publico", "faq", "depoimentos", "produtos"] },
+  { id: "ajustes", label: "Ajustes", icon: Settings, ids: ["contatos", "rastreamento"] },
+];
 
 export default function AdminLandingPage() {
   const { data: professional, isLoading } = useProfessional();
@@ -1071,6 +1096,7 @@ export default function AdminLandingPage() {
     } : {}),
   };
   const previewContentOrder = sectionOrder.filter((k) => k in previewBlocksMeta);
+  const activeTabGroup = EDITOR_TAB_GROUPS.find((g) => (g.ids as string[]).includes(activeSection)) ?? EDITOR_TAB_GROUPS[0];
 
   return (
     <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)] overflow-hidden">
@@ -1233,40 +1259,51 @@ export default function AdminLandingPage() {
           </div>
         )}
 
-        {/* section tabs */}
-        <div className="flex flex-wrap border-b sticky top-0 bg-background z-10">
-
-          {([
-            { id: "dna",      label: "DNA",      icon: Dna           },
-            { id: "secoes",   label: "Seções",   icon: ListOrdered   },
-            { id: "hero",     label: "Hero",     icon: Layout        },
-            { id: "dores",    label: "Dores",    icon: AlertCircle   },
-            { id: "vilao",    label: "Vilão",    icon: Target        },
-            { id: "solucao",  label: "Solução",  icon: Lightbulb     },
-            { id: "sobre",    label: "Sobre",    icon: BookOpen      },
-            { id: "oferta",   label: "Oferta",   icon: Gift          },
-            { id: "depoimentos", label: "Depoimentos", icon: Quote   },
-            { id: "publico",  label: "Para quem é", icon: Users      },
-            { id: "faq",      label: "FAQ",      icon: HelpCircle    },
-            { id: "produtos", label: "Serviços", icon: ShoppingBag   },
-            { id: "cores",    label: "Cores",    icon: Palette       },
-            { id: "contatos", label: "Contatos", icon: MessageCircle },
-            { id: "rastreamento", label: "Rastreamento", icon: BarChart3 },
-          ] as { id: Section; label: string; icon: React.ElementType }[]).map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setActiveSection(id)}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeSection === id
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </button>
-          ))}
+        {/* nav em 2 níveis: grupos (Marca/Página/Ajustes) + abas do grupo ativo */}
+        <div className="sticky top-0 bg-background z-10 border-b">
+          {/* grupos */}
+          <div className="flex">
+            {EDITOR_TAB_GROUPS.map((g) => {
+              const GIcon = g.icon;
+              const active = (g.ids as string[]).includes(activeSection);
+              return (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => { if (!(g.ids as string[]).includes(activeSection)) setActiveSection(g.ids[0]); }}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
+                    active ? "border-primary text-primary bg-primary/5" : "border-transparent text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <GIcon className="h-4 w-4" />
+                  {g.label}
+                </button>
+              );
+            })}
+          </div>
+          {/* abas (pills) do grupo ativo */}
+          <div className="flex flex-wrap gap-1 px-2 py-2 bg-muted/20">
+            {activeTabGroup.ids.map((id) => {
+              const t = EDITOR_TABS.find((x) => x.id === id);
+              if (!t) return null;
+              const Icon = t.icon;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setActiveSection(id)}
+                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                    activeSection === id
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="p-5 space-y-5">

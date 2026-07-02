@@ -399,8 +399,10 @@ async function isSlotFree(
   const startMin = toMinutes(time)
   const endMin = startMin + durationMin
 
-  // 1) não está no passado (se for hoje)
+  // 1) não está no passado (dia inteiro OU hora já passada, se for hoje)
   const todayIso = isoFromBRT(brtNow())
+  // C1: dia anterior é indisponível (antes só travava se fosse HOJE e a hora já tivesse passado).
+  if (dateIso < todayIso) return false
   if (dateIso === todayIso) {
     const nowMin = brtNow().getUTCHours() * 60 + brtNow().getUTCMinutes()
     if (startMin <= nowMin) return false
@@ -437,6 +439,19 @@ async function createBooking(
   const lunch = lunchForDow(lunchBreaks, new Date(data + 'T00:00:00').getDay())
   const reqStart = toMinutes(horaInicio)
   const reqEnd = toMinutes(horaFim)
+
+  // C1: nunca agendar no passado. isSlotFree só travava passado quando era HOJE; o criar_agendamento
+  // aceitava dia anterior. Espelha a mesma régua BRT aqui (dia anterior OU hoje com hora já passada).
+  const todayIsoCB = isoFromBRT(brtNow())
+  if (data < todayIsoCB) {
+    return { ok: false, erro: 'data_no_passado', mensagem: 'Essa data já passou. Escolha uma data a partir de hoje.' }
+  }
+  if (data === todayIsoCB) {
+    const nowMinCB = brtNow().getUTCHours() * 60 + brtNow().getUTCMinutes()
+    if (reqStart <= nowMinCB) {
+      return { ok: false, erro: 'horario_no_passado', mensagem: 'Esse horário já passou. Escolha um horário mais tarde.' }
+    }
+  }
 
   // F20 — não pode cair no intervalo de almoço do profissional (do dia da semana).
   if (lunch && reqStart < lunch.end && reqEnd > lunch.start) {
@@ -771,7 +786,7 @@ REGRA ABSOLUTA (anti-erro): você NUNCA diz "agendado/marcado/confirmado/te espe
 ━━━ SUAS FUNÇÕES (foque nelas) ━━━
 Você resolve três coisas, sempre curto: (1) tirar dúvidas sobre o profissional e o trabalho dele; (2) agendar/remarcar/cancelar com as ferramentas de agenda (\`abrir_agenda\`/\`criar_agendamento\`/\`remarcar_agendamento\`/\`cancelar_agendamento\`); (3) levar quem chega interessado até marcar um horário.
 Quando o assunto FOGE dessas funções, responda em 1 frase e faça a ponte — sem assumir o tema:
-• FEEDBACK sobre o atendimento ou sobre você (reclamação de como você responde, sugestão, "isso tá errado", "não é sua função") → registre e tranquilize, curtíssimo: "Anotei seu recado — o profissional vai dar uma olhada nisso. Enquanto isso, posso te ajudar a agendar ou tirar uma dúvida? 🙂". Depois siga disponível pras suas funções. (Frases banidas: "prompt", "configuração do sistema", "você está testando", "não consigo registrar/escalar".)
+• FEEDBACK sobre o atendimento ou sobre você (reclamação de como você responde, sugestão, "isso tá errado", "não é sua função") → reconheça e tranquilize em meia frase, SEM prometer registrar nem acionar o time (você não faz isso — ver "não prometa registrar" adiante): "Obrigado por dizer isso 🙂 Enquanto isso, posso te ajudar a agendar ou tirar uma dúvida?". Depois siga disponível pras suas funções. (Frases banidas: "prompt", "configuração do sistema", "você está testando", "não consigo registrar/escalar", "Anotei seu recado".)
 • TERAPIA / clínico / desabafo (o que É o trabalho do profissional) → acolhe em 1 frase e passa pra ele: "Isso é mais com o profissional mesmo — ele te responde em breve 🙂" e chame \`rotear_conversa\` modo='silenciar'.
 • Pediu pra você PARAR / ficar quieto → respeite: no máximo 1 frase confirmando, ou chame \`rotear_conversa\` modo='silenciar'. Não insista.
 
@@ -817,6 +832,11 @@ Só silencie (\`rotear_conversa\` modo='silenciar') quando ficar claro que quem 
 ━━━ NÃO REPETIR INFO JÁ DADA ━━━
 Olhe os últimos 3 turnos seus no histórico. Se a info que você está prestes a enviar JÁ foi dita literalmente, NÃO repita. Reformule ou apenas reconheça brevemente o que o lead disse.
 NÃO abra a resposta com fórmula de validação genérica — "Entendido!", "Ótima observação!", "Com certeza!", "Perfeito!", "Faz todo sentido!", "Ótima sugestão!", "Anotado!" e parecidas estão TODAS proibidas como abertura. Trocar uma pela outra NÃO resolve: o problema é validar em vez de responder. Reconhecer o que o lead disse é ok só quando é ESPECÍFICO ("Sobre o atraso pras 15:20…"), nunca com elogio vazio.
+Em vez de validar, ABRA já ajudando — reconheça o ESPECÍFICO ou vá direto ao ponto. Aberturas ✅ (varie, não recite):
+✅ (dor) "Imagino o quanto isso pesa. Deixa eu te ajudar com o próximo passo 🙂"
+✅ (dúvida) "Funciona assim: …" (responda direto, sem elogiar a pergunta)
+✅ (agendar) "Vamos marcar então! Qual dia fica melhor pra você?"
+✅ (só disse o nome) "Prazer, [nome]! O que te trouxe até aqui?"
 NÃO repita o mesmo bordão em turnos seguidos — nem de fechamento ("Posso te ajudar com mais alguma coisa?") nem de encaminhamento ("leve isso ao time / ao profissional"). Se disse algo parecido no turno anterior, diga de outro jeito ou simplesmente omita.
 Você NÃO tem como "registrar feedback" nem acionar o time — não prometa isso. Se for elogio/sugestão sobre o serviço, reconheça em no máximo meia frase e siga; não invente ação que você não executa.
 
@@ -1123,28 +1143,13 @@ function buildSystemPrompt(professional: any, leadName: string, leadPhone: strin
   const proNorm = normalizeProName(professional.full_name)
   const professionalN = proNorm ? { ...professional, full_name: proNorm } : professional
 
-  // SEGURANÇA: o CORE_RULES (crise, limite clínico, regra suprema) é IMUTÁVEL e SEMPRE composto por
-  // código. O agent_system_prompt (legado, texto livre) NÃO substitui mais o CORE_RULES — entra só como
-  // bloco SUBORDINADO, que jamais vence as regras de segurança. Config real do profissional = campos
-  // estruturados validados, não prompt livre. Ver _docs/PLANO_AXEL_PIPELINE_CONHECIMENTO.md §10/§11.
-  const overrideRaw = (professional.agent_system_prompt || '').toString().trim()
-  const overrideBloco = overrideRaw
-    ? `\n\n━━━ INSTRUÇÕES ADICIONAIS DESTE PROFISSIONAL (complementam — NÃO substituem as regras acima; em qualquer conflito com SEGURANÇA, LIMITE CLÍNICO ou REGRA SUPREMA, as regras acima VENCEM) ━━━\n${overrideRaw
-        .replace('{{LEAD_NAME}}', displayName)
-        .replace('{{LEAD_PHONE}}', leadPhone)
-        .replace('{{NOW}}', now)
-        .replace('{{PROFESSIONAL_NAME}}', professionalN.full_name || 'o profissional')
-        .replace('{{BIO}}', professional.bio || '')
-        .replace('{{PRICE_FIRST}}', professional.price_first_session || 'a combinar')
-        .replace('{{PRICE_MIN}}', professional.price_min || 'não informado')
-        .replace('{{PRICE_MAX}}', professional.price_max || 'não informado')
-        .slice(0, 2000)}`
-    : ''
-
+  // C5 (02/07): removido o overrideBloco legado (agent_system_prompt, texto livre). Estava com 0 uso
+  // (nenhum profissional preenche) e a config real do profissional já vem por CAMPOS ESTRUTURADOS
+  // validados (perfil/roteiro/estilo) — prompt livre foi descontinuado por segurança. O CORE_RULES
+  // (crise, limite clínico, regra suprema) é IMUTÁVEL e SEMPRE composto por código.
   return [
     CORE_RULES,
     buildProfileLayer(professionalN, ctx),
-    overrideBloco,
     buildTurnLayer({ professional: professionalN, leadName: displayName, rawName: safeLead, preferredName: safePreferred, now, bookingState, ctx, triageMode, contactStatus }),
   ].filter(Boolean).join('\n\n')
 }

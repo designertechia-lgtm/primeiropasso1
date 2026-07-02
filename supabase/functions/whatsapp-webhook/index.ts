@@ -128,11 +128,31 @@ async function sendOptionsMenu(instanceName: string, remoteJid: string, professi
 serve(async (req) => {
   console.log(`[WEBHOOK] ===== REQUISIÇÃO RECEBIDA =====`)
   console.log(`[WEBHOOK] Method: ${req.method}`)
-  console.log(`[WEBHOOK] URL: ${req.url}`)
-  console.log(`[WEBHOOK] Headers:`, Object.fromEntries(req.headers))
+  // B1: NÃO logar URL crua nem headers — carregam o segredo (?secret= / x-webhook-secret) em claro.
+  console.log(`[WEBHOOK] Path: ${new URL(req.url).pathname}`)
 
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
+  }
+
+  // B1: valida um segredo compartilhado (query ?secret= OU header x-webhook-secret) contra
+  // WHATSAPP_WEBHOOK_SECRET. Sem o secret configurado, o gate fica DESLIGADO (mantém o
+  // comportamento atual até a Evolution ser reconfigurada pra enviar o token). Fecha o buraco de
+  // forjar #ok/fromMe ou mensagens de qualquer lead (a edge tem verify_jwt=false por design da Evolution).
+  const WEBHOOK_SECRET = Deno.env.get('WHATSAPP_WEBHOOK_SECRET') || ''
+  if (WEBHOOK_SECRET) {
+    const provided = new URL(req.url).searchParams.get('secret') || req.headers.get('x-webhook-secret') || ''
+    // comparação de tempo constante (consistente com o X-Hub-Signature do cloud-webhook)
+    let mismatch = provided.length !== WEBHOOK_SECRET.length ? 1 : 0
+    for (let i = 0; i < provided.length && i < WEBHOOK_SECRET.length; i++) {
+      mismatch |= provided.charCodeAt(i) ^ WEBHOOK_SECRET.charCodeAt(i)
+    }
+    if (mismatch !== 0) {
+      console.warn('[WEBHOOK] segredo inválido — requisição rejeitada (B1)')
+      return new Response(JSON.stringify({ error: 'unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
   }
 
   try {
@@ -348,8 +368,25 @@ serve(async (req) => {
       ''
 
     if (!messageText.trim()) {
-      console.log(`[WEBHOOK] ⚠️ Ignorado: sem conteúdo de texto`)
-      return new Response(JSON.stringify({ ignored: true, reason: 'no text content (audio/image/etc not yet supported)' }), {
+      console.log(`[WEBHOOK] ⚠️ Sem conteúdo de texto (áudio/imagem/etc)`)
+      // B4: não fica em silêncio — avisa que por enquanto só lê texto (Evolution best-effort).
+      const evoUrlNT = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
+      const evoKeyNT = Deno.env.get('EVOLUTION_API_KEY')
+      const instNT = body.instance || body.instanceName || ''
+      const numNT = (key?.remoteJid || '').split('@')[0].split(':')[0].replace(/\D/g, '')
+      if (evoUrlNT && evoKeyNT && instNT && numNT) {
+        // timeout 8s: sem isso, um sendText travado pendura o handler → a Evolution re-tenta e duplica.
+        const ctrlNT = new AbortController(); const toNT = setTimeout(() => ctrlNT.abort(), 8000)
+        try {
+          await fetch(`${evoUrlNT}/message/sendText/${instNT}`, {
+            method: 'POST', headers: { 'apikey': evoKeyNT, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ number: numNT, text: 'Por enquanto eu só consigo ler mensagens de texto por aqui 🙂 Pode me escrever o que você precisa?' }),
+            signal: ctrlNT.signal,
+          })
+        } catch (e) { console.error('[WEBHOOK] B4 aviso não-texto falhou:', (e as any)?.message) }
+        finally { clearTimeout(toNT) }
+      }
+      return new Response(JSON.stringify({ ignored: true, reason: 'no_text_replied', type: Object.keys(message || {})[0] || 'unknown' }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -390,6 +427,26 @@ serve(async (req) => {
     }
 
     console.log(`[DEBUG] ✅ Profissional encontrado: ${professional.id}`)
+
+    // B5: dedup ANTES do upsert do lead. Uma reentrega da Evolution (mesmo key.id) NÃO pode bumpar
+    // leads.last_message_at, senão a task original acorda do debounce, vê o timestamp novo e ABANDONA
+    // por 'newer_message_arrived' esperando a duplicata drenar — mas a duplicata já retornou seca → a
+    // mensagem fica órfã (processed=false) e o lead fica SEM resposta. key.id é único por mensagem.
+    const providerMsgId = (key?.id || '').toString() || null
+    if (providerMsgId) {
+      const { data: jaVisto } = await supabaseAdmin
+        .from('chat_messages')
+        .select('id')
+        .eq('provider_message_id', providerMsgId)
+        .limit(1)
+        .maybeSingle()
+      if (jaVisto) {
+        console.log(`[WEBHOOK] mensagem duplicada (key.id=${providerMsgId}) — ignorada antes do upsert (B5)`)
+        return new Response(JSON.stringify({ ignored: true, reason: 'duplicate_message' }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+    }
 
     // 1.5. Master switch do agente (Configurações → Agente de Atendimento).
     //      Off = o agente não responde. Lembrete e pós-atendimento
@@ -511,15 +568,31 @@ serve(async (req) => {
 
     // 3. Salvar mensagem do usuário na memória (processed=false: vai ser
     //    processada pelo debounce no passo 4)
+    // B5: dedup por id do provedor (Evolution key.id). A Evolution reentrega o mesmo webhook em
+    // retry; sem isso a mesma mensagem é processada 2x (LLM roda 2x, dupla resposta/gravação). A
+    // UNIQUE(lead_id, provider_message_id) faz o 2º insert falhar (23505) → tratamos como já visto.
     console.log(`[DEBUG] Salvando mensagem do usuário...`)
-    await supabaseAdmin
+    // providerMsgId já foi computado acima (dedup pré-upsert). Aqui a UNIQUE(lead_id,provider_message_id)
+    // é só backstop pra corrida quase-simultânea (<janela do SELECT); nesse caso a task original ainda
+    // drena (o bump ~= agora não dispara 'newer_message_arrived'), então o early-return é seguro.
+    const { error: msgInsErr } = await supabaseAdmin
       .from('chat_messages')
       .insert({
         lead_id: leadId,
         role: 'user',
         content: messageText,
         processed: false,
+        provider_message_id: providerMsgId,
       })
+    if (msgInsErr) {
+      if ((msgInsErr as any).code === '23505') {
+        console.log(`[WEBHOOK] mensagem duplicada na corrida (key.id=${providerMsgId}) — ignorada (B5 backstop)`)
+        return new Response(JSON.stringify({ ignored: true, reason: 'duplicate_message' }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      console.error('[WEBHOOK] insert mensagem erro:', (msgInsErr as any).message)
+    }
     console.log(`[DEBUG] ✅ Mensagem salva (processed=false)`)
 
     // 3.1b. Atribuição de campanha: se a mensagem trouxe "(ref:)", copia utm/gclid do

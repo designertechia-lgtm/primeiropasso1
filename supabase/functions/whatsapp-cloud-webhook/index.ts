@@ -15,9 +15,28 @@
 
 const VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") ?? "";
 const FALLBACK_TOKEN = Deno.env.get("WHATSAPP_CLOUD_TOKEN") ?? ""; // token do número de teste (Fase 1)
+const APP_SECRET = Deno.env.get("WHATSAPP_APP_SECRET") ?? ""; // B1: valida X-Hub-Signature-256 da Meta
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GRAPH = "https://graph.facebook.com/v21.0";
+
+// B1: confirma que o POST veio MESMO da Meta (corpo assinado com o App Secret via HMAC-SHA256).
+// Sem WHATSAPP_APP_SECRET configurado, o gate fica DESLIGADO (apenas loga) pra não quebrar o eco
+// da Fase 1 — ao setar o secret no painel da Meta + no Supabase, a validação passa a valer.
+async function assinaturaValida(rawBody: string, header: string | null): Promise<boolean> {
+  if (!APP_SECRET) return true; // gate desligado até setar o secret
+  if (!header || !header.startsWith("sha256=")) return false;
+  const key = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(APP_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody));
+  const hex = [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const expected = header.slice("sha256=".length).trim().toLowerCase();
+  if (hex.length !== expected.length) return false;
+  let diff = 0; // comparação de tempo constante
+  for (let i = 0; i < hex.length; i++) diff |= hex.charCodeAt(i) ^ expected.charCodeAt(i);
+  return diff === 0;
+}
 
 function jsonOk(o: unknown) {
   return new Response(JSON.stringify(o), {
@@ -76,7 +95,13 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("ok");
 
   try {
-    const body = await req.json();
+    // B1: lê o corpo CRU e valida a assinatura da Meta ANTES de processar.
+    const raw = await req.text();
+    if (!(await assinaturaValida(raw, req.headers.get("x-hub-signature-256")))) {
+      console.warn("[whatsapp-cloud-webhook] X-Hub-Signature-256 inválida — requisição rejeitada");
+      return new Response("invalid signature", { status: 401 });
+    }
+    const body = JSON.parse(raw);
     // Estrutura: entry[].changes[].value.{ metadata.phone_number_id, messages[], contacts[], statuses[] }
     const value = body?.entry?.[0]?.changes?.[0]?.value;
     const phoneNumberId: string | undefined = value?.metadata?.phone_number_id;
@@ -93,7 +118,14 @@ Deno.serve(async (req) => {
       msg.interactive?.list_reply?.title ??
       "";
 
-    if (!from || !text) return jsonOk({ ignored: true, reason: "no_text", type: msg.type });
+    if (!from) return jsonOk({ ignored: true, reason: "no_from" });
+    // B4: mensagem NÃO-texto (áudio/imagem/figurinha/documento) → responde educado em vez de silêncio.
+    if (!text) {
+      const acc = await findAccount(phoneNumberId);
+      const tk = acc?.access_token || FALLBACK_TOKEN;
+      if (tk) await sendText(phoneNumberId, tk, from, "Por enquanto eu só consigo ler mensagens de texto por aqui 🙂 Pode me escrever?");
+      return jsonOk({ ignored: true, reason: "no_text", type: msg.type });
+    }
 
     // Identifica o profissional dono deste número (Fase 2 usa isso pra rotear ao Axel).
     const account = await findAccount(phoneNumberId);

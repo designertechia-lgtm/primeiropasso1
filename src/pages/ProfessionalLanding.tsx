@@ -226,6 +226,20 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
   }), [professional]);
   const hasTrackers = !!(trackingIds.metaPixelId || trackingIds.ga4MeasurementId || trackingIds.googleAdsConversionId);
 
+  // Teste A/B (título/subtítulo/CTA). A variante é sorteada uma vez por visitante e fixada
+  // em localStorage (o mesmo visitante sempre vê a mesma versão). Só vale quando ativado + há B.
+  const abEnabled = !!(professional as any)?.ab_enabled &&
+    !!((professional as any)?.hero_title_b || (professional as any)?.hero_subtitle_b || (professional as any)?.contact_cta_message_b);
+  const variant = useMemo(() => {
+    if (!abEnabled || !slug) return "a";
+    try {
+      const key = `pp_ab_${slug}`;
+      let v = localStorage.getItem(key);
+      if (v !== "a" && v !== "b") { v = Math.random() < 0.5 ? "a" : "b"; localStorage.setItem(key, v); }
+      return v;
+    } catch { return "a"; }
+  }, [abEnabled, slug]);
+
   // Consentimento LGPD (por slug). Enquanto null, mostra o banner e NÃO carrega pixels.
   const [consent, setConsentState] = useState<ConsentValue | null>(() => getConsent(slug));
   const trackersLoaded = useRef(false);
@@ -241,14 +255,26 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
   const handleCtaClick = useCallback(() => {
     if (!professional?.id) return;
     // Evento de conversão (Lead) nos pixels — no-op se não houve consentimento/pixel.
-    trackLead(trackingIds);
-    if (!Object.keys(utmParams).length && !gclid) return;
-    // Fire-and-forget: registra a visita com atribuição UTM + ref_code p/ casar no fluxo
+    trackLead(trackingIds, abEnabled ? variant : undefined);
+    // Registra o lead quando há atribuição de campanha OU teste A/B ativo (p/ medir a variante).
+    if (!Object.keys(utmParams).length && !gclid && !abEnabled) return;
     supabase
       .from("landing_visits")
-      .insert({ professional_id: professional.id, utm: utmParams, gclid: gclid ?? null, ref_code: campaignRef ?? null })
+      .insert({ professional_id: professional.id, utm: utmParams, gclid: gclid ?? null, ref_code: campaignRef ?? null, variant: abEnabled ? variant : null, kind: "lead" })
       .then(({ error }) => { if (error) console.warn("[landing_visits]", error.message); });
-  }, [professional?.id, utmParams, gclid, campaignRef, trackingIds]);
+  }, [professional?.id, utmParams, gclid, campaignRef, trackingIds, abEnabled, variant]);
+
+  // Loga 1 "view" por sessão quando o A/B está ativo, para calcular a taxa por variante.
+  const abViewLogged = useRef(false);
+  useEffect(() => {
+    if (!abEnabled || !professional?.id || abViewLogged.current) return;
+    let already = false;
+    try { const k = `pp_abview_${slug}`; already = !!sessionStorage.getItem(k); if (!already) sessionStorage.setItem(k, "1"); } catch { /* modo privado */ }
+    abViewLogged.current = true;
+    if (already) return;
+    supabase.from("landing_visits").insert({ professional_id: professional.id, variant, kind: "view" })
+      .then(({ error }) => { if (error) console.warn("[ab view]", error.message); });
+  }, [abEnabled, professional?.id, variant, slug]);
 
   if (isLoading) {
     return (
@@ -280,6 +306,10 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
   // Seções novas (modelo Daiane): só entram quando o profissional preencheu / ativou —
   // assim ninguém em produção vê seção nova com texto padrão sem ter editado.
   const p = professional as any;
+  // Valores exibidos considerando o teste A/B (variante B só quando ativa + preenchida).
+  const heroTitle = abEnabled && variant === "b" && p.hero_title_b ? p.hero_title_b : p.hero_title;
+  const heroSubtitle = abEnabled && variant === "b" && p.hero_subtitle_b ? p.hero_subtitle_b : p.hero_subtitle;
+  const ctaMessage = abEnabled && variant === "b" && p.contact_cta_message_b ? p.contact_cta_message_b : p.contact_cta_message;
   const hasVillain = !!(p.villain_body || p.villain_title);
   const hasOffer = !!(p.offer_description || p.offer_title || (Array.isArray(p.offer_steps) && p.offer_steps.length > 0));
   const hasAudience = Array.isArray(p.audience_for) && p.audience_for.length > 0;
@@ -303,10 +333,10 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
   const sectionNodes: Record<string, React.ReactNode> = {
     hero: (
       <HeroSection
-        title={professional.hero_title ?? undefined}
-        subtitle={professional.hero_subtitle ?? undefined}
+        title={heroTitle ?? undefined}
+        subtitle={heroSubtitle ?? undefined}
         whatsapp={professional.whatsapp ?? undefined}
-        ctaMessage={p.contact_cta_message ?? undefined}
+        ctaMessage={ctaMessage ?? undefined}
         campaignRef={campaignRef}
         onWhatsAppClick={handleCtaClick}
         photoUrl={professional.photo_url ?? undefined}
@@ -367,7 +397,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
               steps={p.offer_steps ?? undefined}
               priceNote={p.offer_price_note ?? undefined}
               whatsapp={professional.whatsapp ?? undefined}
-              ctaMessage={p.contact_cta_message ?? undefined}
+              ctaMessage={ctaMessage ?? undefined}
               campaignRef={campaignRef}
               onWhatsAppClick={handleCtaClick}
             />
@@ -444,7 +474,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
       <LandingHeader
         professionalName={name}
         whatsapp={professional.whatsapp ?? undefined}
-        ctaMessage={(professional as any).contact_cta_message ?? undefined}
+        ctaMessage={ctaMessage ?? undefined}
         campaignRef={campaignRef}
         onWhatsAppClick={handleCtaClick}
         logoUrl={professional.logo_url ?? undefined}
@@ -470,7 +500,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
           title={(professional as any).contact_title ?? undefined}
           subtitle={(professional as any).contact_subtitle ?? undefined}
           whatsapp={professional.whatsapp ?? undefined}
-          ctaMessage={(professional as any).contact_cta_message ?? undefined}
+          ctaMessage={ctaMessage ?? undefined}
           campaignRef={campaignRef}
           phone={(professional as any).phone ?? undefined}
           email={(professional as any).email ?? undefined}
@@ -484,14 +514,14 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
       <LandingFooter
         professionalName={name}
         whatsapp={professional.whatsapp ?? undefined}
-        ctaMessage={(professional as any).contact_cta_message ?? undefined}
+        ctaMessage={ctaMessage ?? undefined}
         campaignRef={campaignRef}
         onWhatsAppClick={handleCtaClick}
       />
       {consent !== null && (
         <StickyMobileCta
           whatsapp={professional.whatsapp ?? undefined}
-          ctaMessage={(professional as any).contact_cta_message ?? undefined}
+          ctaMessage={ctaMessage ?? undefined}
           campaignRef={campaignRef}
           onWhatsAppClick={handleCtaClick}
         />

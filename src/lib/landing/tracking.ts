@@ -58,14 +58,16 @@ export function loadTrackers(ids: TrackingIds): void {
 }
 
 /** Dispara o evento de conversão (Lead) nos pixels carregados. No-op se nada carregou. */
-export function trackLead(ids?: TrackingIds): void {
+export function trackLead(ids?: TrackingIds, variant?: string): void {
   if (typeof window === "undefined") return;
-  if (w().fbq) w().fbq("track", "Lead");
+  const meta = variant ? { variant } : {};
+  if (w().fbq) w().fbq("track", "Lead", meta);
   if (w().gtag) {
-    w().gtag("event", "generate_lead");
+    w().gtag("event", "generate_lead", meta);
     if (ids?.googleAdsConversionId && ids?.googleAdsConversionLabel) {
       w().gtag("event", "conversion", {
         send_to: `${ids.googleAdsConversionId}/${ids.googleAdsConversionLabel}`,
+        ...meta,
       });
     }
   }

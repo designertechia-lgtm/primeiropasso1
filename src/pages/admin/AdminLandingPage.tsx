@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun, ListOrdered, ArrowUp, ArrowDown, Eye, EyeOff, Newspaper, PlayCircle, ShoppingBag, HelpCircle, Quote, Users, Target, Gift, BarChart3, Dna, Maximize2, Minimize2, Settings } from "lucide-react";
+import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun, ListOrdered, ArrowUp, ArrowDown, Eye, EyeOff, Newspaper, PlayCircle, ShoppingBag, HelpCircle, Quote, Users, Target, Gift, BarChart3, Dna, Maximize2, Minimize2, Settings, FlaskConical } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
 import { TikTokIcon } from "@/components/icons/TikTokIcon";
@@ -41,6 +41,7 @@ import ProductsEditorTab from "@/components/admin/landing/ProductsEditorTab";
 import TestimonialsEditorTab from "@/components/admin/landing/TestimonialsEditorTab";
 import TrackingEditorTab from "@/components/admin/landing/TrackingEditorTab";
 import BrandDnaEditorTab from "@/components/admin/landing/BrandDnaEditorTab";
+import AbTestEditorTab from "@/components/admin/landing/AbTestEditorTab";
 
 // ── Vídeo: detecção de arquivo direto vs embed (YouTube/Vimeo) ────────────
 // Espelha a lógica do AboutSection da landing pública, pro preview do editor
@@ -203,7 +204,7 @@ function SectionBlock({
   );
 }
 
-type Section = "dna" | "secoes" | "hero" | "dores" | "vilao" | "solucao" | "sobre" | "oferta" | "depoimentos" | "publico" | "faq" | "produtos" | "cores" | "contatos" | "rastreamento";
+type Section = "dna" | "secoes" | "hero" | "dores" | "vilao" | "solucao" | "sobre" | "oferta" | "depoimentos" | "publico" | "faq" | "produtos" | "cores" | "contatos" | "rastreamento" | "ab";
 
 // Abas do editor + agrupamento em 2 níveis (evita a barra achatada de 15 abas).
 // O grupo ativo é o que contém a aba ativa.
@@ -223,11 +224,12 @@ const EDITOR_TABS: { id: Section; label: string; icon: React.ElementType }[] = [
   { id: "produtos",     label: "Serviços",     icon: ShoppingBag   },
   { id: "contatos",     label: "Contatos",     icon: MessageCircle },
   { id: "rastreamento", label: "Rastreamento", icon: BarChart3     },
+  { id: "ab",           label: "Teste A/B",    icon: FlaskConical  },
 ];
 const EDITOR_TAB_GROUPS: { id: string; label: string; icon: React.ElementType; ids: Section[] }[] = [
   { id: "marca",   label: "Marca",   icon: Dna,      ids: ["dna", "cores"] },
   { id: "pagina",  label: "Página",  icon: Layout,   ids: ["secoes", "hero", "dores", "vilao", "solucao", "sobre", "oferta", "publico", "faq", "depoimentos", "produtos"] },
-  { id: "ajustes", label: "Ajustes", icon: Settings, ids: ["contatos", "rastreamento"] },
+  { id: "ajustes", label: "Ajustes", icon: Settings, ids: ["contatos", "rastreamento", "ab"] },
 ];
 
 export default function AdminLandingPage() {
@@ -428,7 +430,7 @@ export default function AdminLandingPage() {
   // Deep-link da aba (ex.: /admin/landing?tab=produtos, usado pelo atalho do menu lateral).
   useEffect(() => {
     const tab = searchParams.get("tab");
-    const valid = ["dna", "secoes", "hero", "dores", "vilao", "solucao", "sobre", "oferta", "depoimentos", "publico", "faq", "produtos", "cores", "contatos", "rastreamento"];
+    const valid = ["dna", "secoes", "hero", "dores", "vilao", "solucao", "sobre", "oferta", "depoimentos", "publico", "faq", "produtos", "cores", "contatos", "rastreamento", "ab"];
     if (tab && valid.includes(tab)) setActiveSection(tab as Section);
   }, [searchParams]);
   const [saving, setSaving] = useState(false);
@@ -1319,6 +1321,9 @@ export default function AdminLandingPage() {
 
           {/* ── RASTREAMENTO (Meta Pixel / Google Tag / Google Ads) ── */}
           {activeSection === "rastreamento" && <TrackingEditorTab />}
+
+          {/* ── TESTE A/B (variante B de título/CTA + resultados) ── */}
+          {activeSection === "ab" && <AbTestEditorTab />}
 
           {/* ── SEÇÕES (ordem + ocultar) ── */}
           {activeSection === "secoes" && (

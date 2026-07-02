@@ -70,6 +70,7 @@ export default function ApproachesEditor({
           value={draft}
           onChange={(e) => handleChange(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), commit())}
+          onBlur={commit}
         />
         <Button type="button" variant="outline" onClick={commit}>Adicionar</Button>
       </div>

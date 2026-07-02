@@ -138,12 +138,15 @@ export function unformatPhone(formatted: string): string {
  *
  * Sem o "55" o WhatsApp interpreta o DDD como código de país
  * (ex.: DDD 49 vira +49 Alemanha → "número não está no WhatsApp").
- * É idempotente: se já tiver o 55, mantém; nunca duplica.
  *
- * - 12 díg. (55 + DDD + fixo) ou 13 díg. (55 + DDD + 9 + celular) iniciando em 55 → já tem país
- * - 10/11 díg. (DDD + número) ou qualquer outro tamanho → prefixa 55
- *   (cobre o caso-armadilha do DDD 55 de Santa Maria, que só é "país" com 12/13 díg.)
- * - vazio → retorna "" (chamadores devem checar antes de montar link)
+ * Idempotente para números BR VÁLIDOS (10–13 dígitos): reaplicar não duplica o 55.
+ *   - 12 díg. (55 + DDD + fixo) ou 13 díg. (55 + DDD + 9 + celular) iniciando em 55 → já tem país
+ *   - 10/11 díg. (DDD + número) → prefixa 55 (vira 12/13 díg. → estável no próximo save;
+ *     cobre o caso-armadilha do DDD 55 de Santa Maria, que só é "país" com 12/13 díg.)
+ * ATENÇÃO: para entrada INCOMPLETA (< 10 díg., ex. sem DDD) NÃO é idempotente — o 2º save
+ * prefixaria outro 55. Por isso os formulários validam o comprimento antes de salvar
+ * (ver isWhatsappInputValid). Aqui mantemos a normalização tolerante de propósito.
+ *   - vazio → retorna "" (chamadores devem checar antes de montar link)
  */
 export function toWhatsAppNumber(raw: string | null | undefined): string {
   const digits = (raw ?? "").replace(/\D/g, "");
@@ -152,6 +155,32 @@ export function toWhatsAppNumber(raw: string | null | undefined): string {
     return digits;
   }
   return `55${digits}`;
+}
+
+/**
+ * Valida se um telefone digitado tem dígitos suficientes para ser discável no Brasil
+ * (DDD + número = 10 díg. fixo / 11 díg. celular; com país 55 → 12/13 díg.). Usado nos
+ * FORMULÁRIOS antes de salvar, para impedir que toWhatsAppNumber prefixe "55" num número
+ * incompleto (que no save seguinte ganharia outro "55"). Vazio conta como válido (campo opcional).
+ */
+export function isWhatsappInputValid(raw: string | null | undefined): boolean {
+  const digits = (raw ?? "").replace(/\D/g, "");
+  if (!digits) return true; // opcional: quem exige preenchimento valida à parte
+  return digits.length >= 10 && digits.length <= 13;
+}
+
+/**
+ * Normaliza um slug de URL: minúsculas, sem acentos, espaços/símbolos viram hífen e sem hífens
+ * duplicados nem no início. Não remove o hífen FINAL de propósito (deixa digitar "meu-" e continuar);
+ * o save/onBlur fazem o trim final. Impede que o campo grave espaço/acento e quebre a URL (auditoria B3).
+ */
+export function normalizeSlug(raw: string): string {
+  return (raw ?? "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+/, "");
 }
 
 /**

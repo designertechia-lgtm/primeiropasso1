@@ -5,6 +5,11 @@
 // Elas divergiram e o que o profissional via no preview não batia com a página real.
 // Este helper centraliza tudo: o editor e a `ProfessionalLanding` consomem o MESMO código.
 
+// Dark mode da landing pública: DESATIVADO. Enquanto for false, a página renderiza SEMPRE claro,
+// o botão de tema não aparece e o EDITOR esconde os controles de tema/cores escuras (senão o editor
+// prometeria algo que o visitante nunca vê — auditoria C3). Para reativar, basta voltar a true.
+export const DARK_MODE_ENABLED = false;
+
 export const FONTS = [
   { value: "inter",        label: "Inter",            desc: "Moderno e neutro",      style: { fontFamily: "'Inter', system-ui, sans-serif" } },
   { value: "poppins",      label: "Poppins",          desc: "Geométrico e amigável", style: { fontFamily: "'Poppins', sans-serif" } },

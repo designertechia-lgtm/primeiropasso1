@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
-import { formatPhone, toWhatsAppNumber } from "@/lib/utils";
+import { formatPhone, toWhatsAppNumber, isWhatsappInputValid, normalizeSlug } from "@/lib/utils";
 import ApproachesEditor from "@/components/admin/ApproachesEditor";
 
 export default function AdminPerfil() {
@@ -45,6 +45,9 @@ export default function AdminPerfil() {
   // setado por efeito), não depende de ordem de efeitos nem dá falso positivo em
   // refetch do react-query que traga os mesmos dados.
   const baselineRef = useRef<string | null>(null);
+  // Espelha o `isDirty` do render atual para a reidratação poder consultá-lo sem virar
+  // dependência do efeito (que só deve rodar por `professional`/`profile`).
+  const isDirtyRef = useRef(false);
   const buildSnapshot = (v: {
     fullName: string; slug: string; crp: string; phone: string; email: string;
     address: string; attendanceMode: string; photoUrl: string; logoUrl: string; priceMin: string;
@@ -61,6 +64,11 @@ export default function AdminPerfil() {
 
   useEffect(() => {
     if (!professional) return;
+    // Guarda de dirty: se o usuário tem edições locais não salvas, NÃO repõe os campos
+    // quando a linha muda no servidor (outra aba salvando, Axel via atualizar_meu_cadastro).
+    // Sem isso, as edições seriam apagadas da tela sem aviso (auditoria B7). No caso comum
+    // "refetch com dados iguais", o structural sharing do react-query já evita rodar o efeito.
+    if (isDirtyRef.current) return;
     const fullNameV = professional.full_name || profile?.full_name || "";
     // Migra categorias legadas (psicologia/odontologia/nutricao/etc) para "outro"
     // preservando o rótulo original no texto livre.
@@ -85,7 +93,10 @@ export default function AdminPerfil() {
     }
     const slugV = professional.slug || "";
     const crpV = professional.crp || "";
-    const phoneV = professional.phone || (professional as any).whatsapp || "";
+    // Prioriza o WhatsApp (canal canônico usado pelo Axel/webhook) sobre `phone`, já que
+    // ambos são espelhados no save. Evita reidratar com um telefone fixo que outra tela
+    // possa ter gravado em `phone` e, ao salvar, sobrescrever o WhatsApp (auditoria B2).
+    const phoneV = (professional as any).whatsapp || professional.phone || "";
     const emailV = professional.email || profile?.email || "";
     const addressV = professional.address || "";
     const attendanceModeV = (professional as any).attendance_mode || "online";
@@ -135,6 +146,7 @@ export default function AdminPerfil() {
     priceMin, priceMax, priceFirstSession, promoPackages, category, categoryCustom, approaches,
   });
   const isDirty = baselineRef.current !== null && snapshot !== baselineRef.current;
+  isDirtyRef.current = isDirty;
 
   const addPromoPackage = () =>
     setPromoPackages((prev) => [...prev, { id: crypto.randomUUID(), descricao: "", link: "" }]);
@@ -145,13 +157,47 @@ export default function AdminPerfil() {
 
   const handleSave = async (): Promise<boolean> => {
     if (!professional || !user) return false;
+    // Impede salvar um telefone incompleto (< 10 dígitos): sem isso o toWhatsAppNumber
+    // prefixaria "55" e o próximo save prefixaria outro (auditoria B6).
+    if (phone && !isWhatsappInputValid(phone)) {
+      toast.error("Telefone incompleto", {
+        description: "Informe o DDD + número (ex.: 11 99999-9999) ou deixe o campo vazio.",
+      });
+      return false;
+    }
+    // Slug é NOT NULL UNIQUE: se vazio, o banco rejeitaria TODO o save (23502) e prendia o usuário
+    // na página com um toast genérico (auditoria B3). Bloqueia antes com mensagem clara.
+    const cleanSlug = normalizeSlug(slug).replace(/-+$/, "");
+    if (!cleanSlug) {
+      toast.error("Endereço da página vazio", {
+        description: "Defina o endereço (slug) da sua página. Ex.: seu-nome.",
+      });
+      return false;
+    }
+    // Pacote com link mas sem descrição seria DESCARTADO em silêncio no save (o filtro exige descrição);
+    // link inválido chegaria cru ao lead pelo Axel (auditoria B5). Bloqueia e aponta o campo.
+    const isValidUrl = (s: string) => { try { const u = new URL(s); return u.protocol === "http:" || u.protocol === "https:"; } catch { return false; } };
+    const pkgSemDesc = promoPackages.find((p) => p.link.trim() && !p.descricao.trim());
+    if (pkgSemDesc) {
+      toast.error("Pacote sem descrição", {
+        description: "Um pacote tem link mas está sem descrição. Preencha a descrição ou remova o pacote.",
+      });
+      return false;
+    }
+    const pkgLinkRuim = promoPackages.find((p) => p.link.trim() && !isValidUrl(p.link.trim()));
+    if (pkgLinkRuim) {
+      toast.error("Link inválido em um pacote", {
+        description: "Use um endereço completo começando com https:// (ex.: https://wa.me/...).",
+      });
+      return false;
+    }
     setSaving(true);
 
     const [profileRes, profRes] = await Promise.all([
       supabase.from("profiles").update({ full_name: fullName }).eq("user_id", user.id),
       supabase.from("professionals").update({
         full_name: fullName,
-        slug: slug || null,
+        slug: cleanSlug,
         crp,
         phone: phone ? toWhatsAppNumber(phone) : null,
         whatsapp: phone ? toWhatsAppNumber(phone) : null,
@@ -174,7 +220,13 @@ export default function AdminPerfil() {
 
     setSaving(false);
     if (profileRes.error || profRes.error) {
-      toast.error("Erro ao salvar");
+      const err = (profRes.error || profileRes.error) as any;
+      const code = err?.code;
+      const description =
+        code === "23505" ? "Este endereço (slug) já está em uso. Escolha outro."
+        : code === "23502" ? "O endereço da página (slug) não pode ficar vazio."
+        : err?.message || "Tente novamente em instantes.";
+      toast.error("Erro ao salvar", { description });
       return false;
     }
     toast.success("Perfil atualizado!");
@@ -219,7 +271,13 @@ export default function AdminPerfil() {
             <Label htmlFor="slug">Slug (URL personalizada) <FieldHint text="Endereço único da sua página. Ex: 'daia-silva' → primeiropasso.online/daia-silva. Use apenas letras minúsculas, números e hífens." /></Label>
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground whitespace-nowrap">primeiropasso.online/</span>
-              <Input id="slug" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="seu-nome" />
+              <Input
+                id="slug"
+                value={slug}
+                onChange={(e) => setSlug(normalizeSlug(e.target.value))}
+                onBlur={() => setSlug((s) => normalizeSlug(s).replace(/-+$/, ""))}
+                placeholder="seu-nome"
+              />
             </div>
           </div>
           <div className="space-y-2">

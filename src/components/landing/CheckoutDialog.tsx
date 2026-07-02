@@ -9,6 +9,18 @@ import { ShoppingCart, Calendar, ExternalLink, MessageCircle, Lock, Loader2, QrC
 import { buildWhatsAppLink } from "@/lib/utils";
 import { formatPrice, type LandingProduct } from "@/components/landing/ProductsSection";
 
+// Só aceita links http(s) como href clicável. Bloqueia esquemas perigosos (javascript:, data:)
+// que o profissional poderia colar no external_url do produto e virariam XSS no visitante (auditoria §5).
+function safeExternalHref(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url.trim());
+    return u.protocol === "http:" || u.protocol === "https:" ? u.href : null;
+  } catch {
+    return null;
+  }
+}
+
 // Item normalizado que o CTA precisa conhecer (vale p/ produto ou sessão).
 export interface CTAItem {
   isProduct: boolean;
@@ -268,11 +280,12 @@ export function ItemCTA({
     );
   }
 
-  // Produto sem preço -> link externo ou WhatsApp
-  if (item.externalUrl) {
+  // Produto sem preço -> link externo (só http/https) ou WhatsApp
+  const externalHref = safeExternalHref(item.externalUrl);
+  if (externalHref) {
     return (
       <Button asChild className="w-full gap-2" size={size}>
-        <a href={item.externalUrl} target="_blank" rel="noopener noreferrer">
+        <a href={externalHref} target="_blank" rel="noopener noreferrer">
           <ExternalLink className="h-4 w-4" /> Comprar
         </a>
       </Button>

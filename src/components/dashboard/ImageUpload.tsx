@@ -20,37 +20,40 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<string | null>(currentUrl);
+  // Falha ao CARREGAR a imagem (404/503 transitório). Só mostra aviso — NUNCA
+  // zera o campo (onUploaded("")), senão um piscar da rede apagaria a foto do form.
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     setPreview(currentUrl);
+    setLoadError(false);
   }, [currentUrl]);
 
-  const deleteFromStorage = async (url: string) => {
-    try {
-      const withoutQuery = url.split("?")[0];
-      const match = withoutQuery.split("/object/public/images/")[1];
-      if (match) await supabase.storage.from("images").remove([decodeURIComponent(match)]);
-    } catch {
-      // silently ignore delete errors
-    }
-  };
-
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const input = e.target;
+    const file = input.files?.[0];
     if (!file || !user) return;
 
     const isVideo = file.type.startsWith("video/");
+    const isImage = file.type.startsWith("image/");
+    // Bucket público: aceita só mídia (imagem/vídeo). Bloqueia HTML/SVG/etc. que poderiam
+    // ser servidos e explorados a partir do domínio do storage (auditoria §5).
+    if (!isVideo && !isImage) {
+      toast.error("Formato não suportado", { description: "Envie um arquivo de imagem ou vídeo." });
+      input.value = "";
+      return;
+    }
     const maxSize = isVideo ? 20 * 1024 * 1024 : 5 * 1024 * 1024; // 20MB para vídeo, 5MB para imagem
-    
+
     if (file.size > maxSize) {
-      toast.error("Arquivo muito grande", { 
-        description: isVideo ? "Máximo de 20MB para vídeos." : "Máximo de 5MB para imagens." 
+      toast.error("Arquivo muito grande", {
+        description: isVideo ? "Máximo de 20MB para vídeos." : "Máximo de 5MB para imagens."
       });
+      input.value = ""; // libera reescolher o mesmo arquivo depois de trocá-lo
       return;
     }
 
     setUploading(true);
-    const oldUrl = preview;
     const ext = file.name.split(".").pop();
     const path = `${user.id}/${folder}/${Date.now()}.${ext}`;
 
@@ -59,17 +62,23 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
     if (error) {
       toast.error("Erro no upload", { description: error.message });
       setUploading(false);
+      input.value = "";
       return;
     }
 
-    // só deleta a antiga após o novo upload ter sucesso
-    if (oldUrl) await deleteFromStorage(oldUrl);
-
+    // NÃO deletamos o arquivo antigo aqui. O banco (photo_url etc.) só muda quando o
+    // FORMULÁRIO salva; deletar no upload/troca deixaria a URL antiga apontando para um
+    // arquivo inexistente se o usuário descartar as alterações → avatar 404 na landing e
+    // nas telas do paciente (auditoria B1). O antigo vira órfão no bucket — trade-off aceito.
     const { data: urlData } = supabase.storage.from("images").getPublicUrl(path);
     const publicUrl = urlData.publicUrl;
+    setLoadError(false);
     setPreview(publicUrl);
     onUploaded(publicUrl);
     setUploading(false);
+    // Reset do input: sem isso, reescolher o MESMO arquivo (após X ou falha) não dispara
+    // onChange e nada acontece (padrão de PublishPanel).
+    input.value = "";
     toast.success(isVideo ? "Vídeo enviado!" : "Imagem enviada!");
   };
 
@@ -95,11 +104,30 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
                   : "h-16 max-w-[200px] rounded-md"
               )}
             />
+          ) : loadError ? (
+            // Falha ao carregar (rede/storage). Mostra aviso + tentar de novo, SEM apagar o campo.
+            <div
+              className={cn(
+                "flex flex-col items-center justify-center gap-1 border border-dashed border-destructive/40 bg-destructive/5 text-center text-[10px] text-muted-foreground p-2",
+                isAvatar ? "h-[116px] w-[116px] rounded-full"
+                  : isWide ? "h-40 w-full rounded-xl"
+                  : "h-16 max-w-[200px] rounded-md"
+              )}
+            >
+              <span>Não foi possível carregar a imagem.</span>
+              <button
+                type="button"
+                onClick={() => setLoadError(false)}
+                className="font-medium text-primary hover:underline"
+              >
+                Tentar de novo
+              </button>
+            </div>
           ) : (
             <img
               src={preview}
               alt="Preview"
-              onError={() => { setPreview(null); onUploaded(""); }}
+              onError={() => setLoadError(true)}
               className={cn(
                 "object-cover object-center border",
                 isAvatar ? "h-[116px] w-[116px] rounded-full"
@@ -110,7 +138,7 @@ export default function ImageUpload({ currentUrl, onUploaded, folder, variant = 
           )}
           <button
             type="button"
-            onClick={async () => { if (preview) await deleteFromStorage(preview); setPreview(null); onUploaded(""); }}
+            onClick={() => { setLoadError(false); setPreview(null); onUploaded(""); }}
             className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1 hover:opacity-80"
           >
             <X className="h-3 w-3" />

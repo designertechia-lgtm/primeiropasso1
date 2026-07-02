@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfessional } from "@/hooks/useProfessional";
-import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
+import { useUnsavedChanges, useUnsavedChangesGuard } from "@/hooks/useUnsavedChanges";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { toWhatsAppNumber, isWhatsappInputValid } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,7 +33,8 @@ import FaqSection from "@/components/landing/FaqSection";
 import LandingFooter from "@/components/landing/LandingFooter";
 import Section from "@/components/landing/Section";
 import { REORDERABLE_SECTION_KEYS, normalizeEditableOrder, zebraTone } from "@/lib/landing/sections";
-import { buildLandingVars, getFontScale, FONTS, FONT_SIZES, GOOGLE_FONTS_URL } from "@/lib/landing/buildLandingVars";
+import { buildLandingVars, getFontScale, FONTS, FONT_SIZES, GOOGLE_FONTS_URL, DARK_MODE_ENABLED } from "@/lib/landing/buildLandingVars";
+import { toVideoEmbedUrl, isYouTubeOrVimeo } from "@/lib/landing/videoEmbed";
 import GenerateAboutVideoDialog from "@/components/admin/landing/GenerateAboutVideoDialog";
 import ApproachesEditor from "@/components/admin/ApproachesEditor";
 import ProductsEditorTab from "@/components/admin/landing/ProductsEditorTab";
@@ -49,20 +51,7 @@ function isDirectVideoUrl(url: string): boolean {
   return /\.(mp4|webm|mov)(\?|$)/.test(u) || u.includes("/storage/v1/object/public/");
 }
 
-function toVideoEmbedUrl(url: string): string {
-  if (!url) return "";
-  if (url.includes("youtube.com") || url.includes("youtu.be")) {
-    const videoId = url.includes("youtu.be")
-      ? url.split("youtu.be/")[1]?.split(/[?&]/)[0]
-      : url.split("v=")[1]?.split("&")[0];
-    return `https://www.youtube.com/embed/${videoId}`;
-  }
-  if (url.includes("vimeo.com")) {
-    const videoId = url.split("vimeo.com/")[1]?.split(/[?&]/)[0];
-    return `https://player.vimeo.com/video/${videoId}`;
-  }
-  return url;
-}
+// toVideoEmbedUrl agora vive em @/lib/landing/videoEmbed (compartilhado com a página pública).
 
 // ── AI helper ─────────────────────────────────────────────
 async function callGenerateText(field: string, context: { name: string; crp?: string; specialty?: string }) {
@@ -130,8 +119,15 @@ function hslToHex(h: number, s: number, l: number) {
   return `#${f(0)}${f(8)}${f(4)}`;
 }
 
+// Mesma regra de aceitação do buildLandingVars (público): só #rrggbb. Evita gravar lixo/#NaN (C6).
+function isValidHex(hex: string): boolean {
+  return /^#[0-9a-f]{6}$/i.test((hex ?? "").trim());
+}
+
 function deriveColors(hex: string) {
-  const { h, s } = hexToHsl(hex);
+  // Se o hex for inválido (ex.: "#abc" digitado à mão), cai no padrão em vez de gerar "#NaNNaNNaN".
+  const safe = isValidHex(hex) ? hex : "#87A96B";
+  const { h, s } = hexToHsl(safe);
   return {
     secondary: hslToHex((h + 30) % 360, Math.round(s * 0.6), 65),
     background: hslToHex(h, Math.round(s * 0.15), 94),
@@ -292,6 +288,22 @@ export default function AdminLandingPage() {
   });
   const hasPreviewProducts = previewProducts.length > 0 || previewServices.length > 0;
 
+  // Depoimentos APROVADOS para o preview baterem com a pública (antes o preview mandava [] fixo — C4).
+  const { data: previewTestimonials = [] } = useQuery({
+    queryKey: ["landing-preview-testimonials", professional?.id],
+    queryFn: async () => {
+      const { data } = await (supabase as any)
+        .from("testimonials")
+        .select("id, author_name, author_context, text, rating")
+        .eq("professional_id", professional!.id)
+        .eq("status", "approved")
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: false });
+      return data ?? [];
+    },
+    enabled: !!professional?.id,
+  });
+
   // hero
   const [heroTitle, setHeroTitle] = useState("");
   const [heroSubtitle, setHeroSubtitle] = useState("");
@@ -403,7 +415,11 @@ export default function AdminLandingPage() {
   // Detecção de alterações não salvas POR CONTEÚDO (ver AdminPerfil): isDirty é
   // derivado da comparação com um retrato dos dados carregados — sem falso
   // positivo em refetch nem dependência de ordem de efeitos.
-  const baselineRef = useRef<string | null>(null);
+  // Baseline como OBJETO de valores (não string): permite selar apenas as chaves da seção
+  // salva (ver sealSection), sem marcar como "salvas" as edições pendentes de outras abas.
+  const baselineRef = useRef<Record<string, unknown> | null>(null);
+  // Espelha o isDirty do render atual para a reidratação consultá-lo sem virar dependência do efeito.
+  const isDirtyRef = useRef(false);
   const buildSnapshot = (v: {
     heroTitle: string; heroSubtitle: string; heroImageUrl: string; heroBgUrl: string;
     heroBgOpacity: number; heroBgOverlay: string; photoUrl: string; photoStyle: string; photoFit: string;
@@ -441,6 +457,10 @@ export default function AdminLandingPage() {
     ]);
 
   const navigate = useNavigate();
+  // Guarda global de "não salvo": envolve as navegações que saem da página (preview Conteúdos,
+  // action do toast da IA) para que edições pendentes disparem o aviso antes de ejetar (auditoria C2).
+  const { confirmNavigation } = useUnsavedChangesGuard();
+  const guardedNavigate = (to: string) => confirmNavigation(() => navigate(to));
 
 
   // 6 itens/cards: fecham 2 linhas cheias na grade de 3 colunas (mesmos defaults dos componentes públicos).
@@ -473,7 +493,7 @@ export default function AdminLandingPage() {
     if (!aiContext.name || aiContext.name === "o profissional") {
       toast.error("Nome não cadastrado", {
         description: "Preencha seu nome completo antes de gerar com IA.",
-        action: { label: "Ir para Meu Perfil", onClick: () => navigate("/admin/perfil") },
+        action: { label: "Ir para Meu Perfil", onClick: () => guardedNavigate("/admin/perfil") },
         duration: 6000,
       });
       return;
@@ -509,6 +529,10 @@ export default function AdminLandingPage() {
 
   useEffect(() => {
     if (!professional) return;
+    // Guarda de dirty: se há edições locais não salvas, NÃO repõe os campos quando a linha muda
+    // no servidor. É o outro lado do fix do C1: após salvar uma seção, o invalidate/refetch traz
+    // um objeto novo; sem esta guarda o efeito apagaria as edições pendentes das demais abas.
+    if (isDirtyRef.current) return;
     const p = professional as any;
     const pc = professional.primary_color || "#87A96B";
     const dv = deriveColors(pc);
@@ -628,10 +652,11 @@ export default function AdminLandingPage() {
     setContactTiktok(v.contactTiktok);
     setContactFacebook(v.contactFacebook);
 
-    baselineRef.current = buildSnapshot(v);
+    baselineRef.current = v;
   }, [professional]);
 
-  const snapshot = buildSnapshot({
+  // Retrato dos valores atuais de TODAS as seções (mesmo formato do baseline).
+  const currentValues = {
     heroTitle, heroSubtitle, heroImageUrl, heroBgUrl, heroBgOpacity, heroBgOverlay, photoUrl, photoStyle, photoFit,
     aboutTitle, bio, aboutImageUrl, aboutVideoUrl, approaches, primaryColor, secondaryColor, bgColor,
     darkPrimaryColor, darkSecondaryColor, darkBgColor, darkModeEnabled,
@@ -643,8 +668,32 @@ export default function AdminLandingPage() {
     sectionOrder, sectionHidden,
     fontFamily, headingFontFamily, fontSizeScale, contactTitle, contactSubtitle, contactWhatsapp, contactCtaMessage,
     contactPhone, contactEmail, contactInstagram, contactLinkedin, contactTiktok, contactFacebook,
-  });
-  const isDirty = baselineRef.current !== null && snapshot !== baselineRef.current;
+  };
+  const snapshot = buildSnapshot(currentValues);
+  const isDirty = baselineRef.current !== null && snapshot !== buildSnapshot(baselineRef.current as any);
+  isDirtyRef.current = isDirty;
+
+  // Quais chaves do snapshot cada seção grava. Ao salvar uma seção, selamos SÓ essas chaves no
+  // baseline (sealSection) — as edições pendentes das outras abas continuam contando como "não
+  // salvas" (isDirty permanece true), então a guarda de reidratação as preserva (auditoria C1).
+  const SECTION_KEYS: Record<string, string[]> = {
+    hero:     ["heroTitle", "heroSubtitle", "heroImageUrl", "heroBgUrl", "heroBgOpacity", "heroBgOverlay", "photoUrl", "photoStyle", "photoFit"],
+    sobre:    ["aboutTitle", "bio", "aboutImageUrl", "aboutVideoUrl", "approaches"],
+    dores:    ["painTitle", "painSubtitle", "painItems"],
+    solucao:  ["solutionTitle", "solutionSubtitle", "solutionItems"],
+    vilao:    ["villainTitle", "villainBody", "villainImageUrl"],
+    oferta:   ["offerTitle", "offerDescription", "offerSteps", "offerPriceNote"],
+    publico:  ["audienceTitle", "audienceFor", "audienceNotFor"],
+    faq:      ["faqTitle", "faqItems"],
+    cores:    ["primaryColor", "secondaryColor", "bgColor", "darkPrimaryColor", "darkSecondaryColor", "darkBgColor", "darkModeEnabled", "fontFamily", "headingFontFamily", "fontSizeScale"],
+    contatos: ["contactTitle", "contactSubtitle", "contactCtaMessage", "contactWhatsapp", "contactPhone", "contactEmail", "contactInstagram", "contactLinkedin", "contactTiktok", "contactFacebook"],
+    secoes:   ["sectionOrder", "sectionHidden"],
+  };
+  const sealSection = (keys: string[]) => {
+    const base: Record<string, unknown> = { ...(baselineRef.current ?? currentValues) };
+    for (const k of keys) base[k] = (currentValues as Record<string, unknown>)[k];
+    baselineRef.current = base;
+  };
 
   // O aviso de fechar/recarregar a aba agora é centralizado no UnsavedChangesProvider
   // (ver useUnsavedChanges abaixo), evitando dois listeners de beforeunload.
@@ -663,8 +712,8 @@ export default function AdminLandingPage() {
       photo_fit: photoFit,
     } as any).eq("id", professional.id);
     setSaving(false);
-    if (error) toast.error("Erro ao salvar");
-    else { toast.success("Hero salvo!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+    if (error) toast.error("Erro ao salvar", { description: error?.message });
+    else { toast.success("Hero salvo!"); sealSection(SECTION_KEYS.hero); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
   };
 
   const saveSobre = async () => {
@@ -678,8 +727,8 @@ export default function AdminLandingPage() {
       approaches,
     } as any).eq("id", professional.id);
     setSaving(false);
-    if (error) toast.error("Erro ao salvar");
-    else { toast.success("Sobre salvo!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+    if (error) toast.error("Erro ao salvar", { description: error?.message });
+    else { toast.success("Sobre salvo!"); sealSection(SECTION_KEYS.sobre); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
   };
 
   const savePain = async () => {
@@ -691,8 +740,8 @@ export default function AdminLandingPage() {
       pain_items: painItems.length > 0 ? painItems : null,
     } as any).eq("id", professional.id);
     setSaving(false);
-    if (error) toast.error("Erro ao salvar");
-    else { toast.success("Seção Dores salva!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+    if (error) toast.error("Erro ao salvar", { description: error?.message });
+    else { toast.success("Seção Dores salva!"); sealSection(SECTION_KEYS.dores); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
   };
 
   const saveSolution = async () => {
@@ -704,8 +753,8 @@ export default function AdminLandingPage() {
       solution_items: solutionItems.length > 0 ? solutionItems : null,
     } as any).eq("id", professional.id);
     setSaving(false);
-    if (error) toast.error("Erro ao salvar");
-    else { toast.success("Seção Solução salva!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+    if (error) toast.error("Erro ao salvar", { description: error?.message });
+    else { toast.success("Seção Solução salva!"); sealSection(SECTION_KEYS.solucao); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
   };
 
   const saveVilao = async () => {
@@ -717,8 +766,8 @@ export default function AdminLandingPage() {
       villain_image_url: villainImageUrl || null,
     } as any).eq("id", professional.id);
     setSaving(false);
-    if (error) toast.error("Erro ao salvar");
-    else { toast.success("Seção Vilão salva!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+    if (error) toast.error("Erro ao salvar", { description: error?.message });
+    else { toast.success("Seção Vilão salva!"); sealSection(SECTION_KEYS.vilao); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
   };
 
   const saveOferta = async () => {
@@ -731,8 +780,8 @@ export default function AdminLandingPage() {
       offer_price_note: offerPriceNote || null,
     } as any).eq("id", professional.id);
     setSaving(false);
-    if (error) toast.error("Erro ao salvar");
-    else { toast.success("Seção Oferta salva!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+    if (error) toast.error("Erro ao salvar", { description: error?.message });
+    else { toast.success("Seção Oferta salva!"); sealSection(SECTION_KEYS.oferta); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
   };
 
   const savePublico = async () => {
@@ -744,8 +793,8 @@ export default function AdminLandingPage() {
       audience_not_for: audienceNotFor.length > 0 ? audienceNotFor : null,
     } as any).eq("id", professional.id);
     setSaving(false);
-    if (error) toast.error("Erro ao salvar");
-    else { toast.success("Seção Para quem é salva!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+    if (error) toast.error("Erro ao salvar", { description: error?.message });
+    else { toast.success("Seção Para quem é salva!"); sealSection(SECTION_KEYS.publico); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
   };
 
   const saveFaq = async () => {
@@ -756,12 +805,19 @@ export default function AdminLandingPage() {
       faq_items: faqItems.length > 0 ? faqItems : null,
     } as any).eq("id", professional.id);
     setSaving(false);
-    if (error) toast.error("Erro ao salvar");
-    else { toast.success("Seção FAQ salva!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+    if (error) toast.error("Erro ao salvar", { description: error?.message });
+    else { toast.success("Seção FAQ salva!"); sealSection(SECTION_KEYS.faq); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
   };
 
   const saveCores = async () => {
     if (!professional) return;
+    // Rejeita cores em formato inválido (senão a pública as descarta e a marca some — auditoria C6).
+    const invalidColor = [primaryColor, secondaryColor, bgColor, darkPrimaryColor, darkSecondaryColor, darkBgColor]
+      .filter(Boolean).find((c) => !isValidHex(c));
+    if (invalidColor) {
+      toast.error("Cor inválida", { description: `Use o formato #rrggbb (ex.: #87A96B). Valor recebido: ${invalidColor}` });
+      return;
+    }
     setSaving(true);
     const { error } = await supabase.from("professionals").update({
       primary_color: primaryColor,
@@ -776,18 +832,25 @@ export default function AdminLandingPage() {
       font_size_scale: fontSizeScale,
     } as any).eq("id", professional.id);
     setSaving(false);
-    if (error) toast.error("Erro ao salvar");
-    else { toast.success("Cores & tipografia salvas!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+    if (error) toast.error("Erro ao salvar", { description: error?.message });
+    else { toast.success("Cores & tipografia salvas!"); sealSection(SECTION_KEYS.cores); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
   };
 
   const saveContatos = async () => {
     if (!professional) return;
+    // WhatsApp é o canal canônico (Axel/webhook): valida o comprimento e grava SEMPRE
+    // normalizado com 55 — sem isso o self-chat do webhook e o lembrete de renovação
+    // não reconhecem o número (auditoria B2/B6).
+    if (contactWhatsapp && !isWhatsappInputValid(contactWhatsapp)) {
+      toast.error("WhatsApp incompleto", { description: "Informe o DDD + número (ex.: 11 99999-9999)." });
+      return;
+    }
     setSaving(true);
     const { error } = await supabase.from("professionals").update({
       contact_title: contactTitle || null,
       contact_subtitle: contactSubtitle || null,
       contact_cta_message: contactCtaMessage || null,
-      whatsapp: contactWhatsapp || null,
+      whatsapp: contactWhatsapp ? toWhatsAppNumber(contactWhatsapp) : null,
       phone: contactPhone || null,
       email: contactEmail || null,
       instagram: contactInstagram || null,
@@ -796,8 +859,8 @@ export default function AdminLandingPage() {
       facebook: contactFacebook || null,
     } as any).eq("id", professional.id);
     setSaving(false);
-    if (error) toast.error("Erro ao salvar");
-    else { toast.success("Contatos salvos!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+    if (error) toast.error("Erro ao salvar", { description: error?.message });
+    else { toast.success("Contatos salvos!"); sealSection(SECTION_KEYS.contatos); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
   };
 
   const saveSecoes = async () => {
@@ -808,13 +871,23 @@ export default function AdminLandingPage() {
       section_hidden: sectionHidden,
     } as any).eq("id", professional.id);
     setSaving(false);
-    if (error) toast.error("Erro ao salvar");
-    else { toast.success("Seções salvas!"); baselineRef.current = snapshot; queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
+    if (error) toast.error("Erro ao salvar", { description: error?.message });
+    else { toast.success("Seções salvas!"); sealSection(SECTION_KEYS.secoes); queryClient.invalidateQueries({ queryKey: ["my-professional"] }); }
   };
 
   // Salva TODAS as seções de uma vez — usado pelo "Salvar e sair" do aviso de alterações não salvas.
   const saveAll = async (): Promise<boolean> => {
     if (!professional) return false;
+    if (contactWhatsapp && !isWhatsappInputValid(contactWhatsapp)) {
+      toast.error("WhatsApp incompleto", { description: "Corrija o número na aba Contatos (DDD + número) antes de sair." });
+      return false;
+    }
+    const invalidColor = [primaryColor, secondaryColor, bgColor, darkPrimaryColor, darkSecondaryColor, darkBgColor]
+      .filter(Boolean).find((c) => !isValidHex(c));
+    if (invalidColor) {
+      toast.error("Cor inválida", { description: `Corrija a cor ${invalidColor} na aba Cores (formato #rrggbb) antes de sair.` });
+      return false;
+    }
     setSaving(true);
     const { error } = await supabase.from("professionals").update({
       // Hero
@@ -871,7 +944,7 @@ export default function AdminLandingPage() {
       contact_title: contactTitle || null,
       contact_subtitle: contactSubtitle || null,
       contact_cta_message: contactCtaMessage || null,
-      whatsapp: contactWhatsapp || null,
+      whatsapp: contactWhatsapp ? toWhatsAppNumber(contactWhatsapp) : null,
       phone: contactPhone || null,
       email: contactEmail || null,
       instagram: contactInstagram || null,
@@ -883,9 +956,9 @@ export default function AdminLandingPage() {
       section_hidden: sectionHidden,
     } as any).eq("id", professional.id);
     setSaving(false);
-    if (error) { toast.error("Erro ao salvar"); return false; }
+    if (error) { toast.error("Erro ao salvar", { description: error?.message }); return false; }
     toast.success("Tudo salvo!");
-    baselineRef.current = snapshot;
+    baselineRef.current = currentValues;
     queryClient.invalidateQueries({ queryKey: ["my-professional"] });
     return true;
   };
@@ -940,7 +1013,7 @@ export default function AdminLandingPage() {
   const previewBlocksMeta: Record<string, { label: string; icon: React.ElementType; active: boolean; clip?: boolean; bare?: boolean; onClick: () => void; node: React.ReactNode }> = {
     hero: {
       label: "Hero", icon: Layout, active: activeSection === "hero", bare: true, onClick: () => selectSection("hero"),
-      node: <HeroSection title={heroTitle} subtitle={heroSubtitle} photoUrl={photoUrl} heroImageUrl={heroImageUrl} heroBgUrl={heroBgUrl} heroBgOpacity={heroBgOpacity} heroBgOverlay={heroBgOverlay} professionalName={name} crp={crp} photoStyle={photoStyle} photoFit={photoFit} />,
+      node: <HeroSection title={heroTitle} subtitle={heroSubtitle} whatsapp={contactWhatsapp || undefined} ctaMessage={contactCtaMessage || undefined} photoUrl={photoUrl} heroImageUrl={heroImageUrl} heroBgUrl={heroBgUrl} heroBgOpacity={heroBgOpacity} heroBgOverlay={heroBgOverlay} professionalName={name} crp={crp} photoStyle={photoStyle} photoFit={photoFit} />,
     },
     pain: {
       label: "Dores", icon: AlertCircle, active: activeSection === "dores", onClick: () => selectSection("dores"),
@@ -969,7 +1042,7 @@ export default function AdminLandingPage() {
     ...((professional as any)?.testimonials_enabled ? {
       testimonials: {
         label: "Depoimentos", icon: Quote, active: activeSection === "depoimentos", onClick: () => selectSection("depoimentos"),
-        node: <TestimonialsSection title={(professional as any)?.testimonials_title || undefined} subtitle={(professional as any)?.testimonials_subtitle || undefined} testimonials={[]} professionalId={(professional as any)?.id ?? ""} professionalName={name} interactive={false} />,
+        node: <TestimonialsSection title={(professional as any)?.testimonials_title || undefined} subtitle={(professional as any)?.testimonials_subtitle || undefined} testimonials={previewTestimonials as any} professionalId={(professional as any)?.id ?? ""} professionalName={name} interactive={false} />,
       },
     } : {}),
     ...(audienceFor.length > 0 ? {
@@ -986,7 +1059,7 @@ export default function AdminLandingPage() {
     } : {}),
     ...(hasPreviewContent ? {
       content: {
-        label: "Conteúdos", icon: Newspaper, active: false, onClick: () => navigate("/admin/artigos"),
+        label: "Conteúdos", icon: Newspaper, active: false, onClick: () => guardedNavigate("/admin/artigos"),
         node: <ContentSection articles={previewArticles as any} videos={previewVideos as any} slug={professional?.slug} whatsapp={contactWhatsapp || undefined} />,
       },
     } : {}),
@@ -1817,7 +1890,7 @@ export default function AdminLandingPage() {
                         playsInline
                         className="mx-auto max-h-72 rounded-lg border bg-black"
                       />
-                    ) : (
+                    ) : isYouTubeOrVimeo(aboutVideoUrl) ? (
                       <div className="aspect-video rounded-lg overflow-hidden border bg-black">
                         <iframe
                           key={aboutVideoUrl}
@@ -1828,6 +1901,10 @@ export default function AdminLandingPage() {
                           title="Pré-visualização do vídeo institucional"
                         />
                       </div>
+                    ) : (
+                      <p className="rounded-lg border border-dashed bg-muted/30 p-3 text-xs text-muted-foreground">
+                        Link não reconhecido. Cole um link do YouTube ou Vimeo, ou envie um arquivo de vídeo.
+                      </p>
                     )}
                     <p className="text-xs text-muted-foreground">
                       É assim que o vídeo aparece na seção Sobre. Gerar com IA ou trocar o link atualiza aqui.
@@ -1861,12 +1938,14 @@ export default function AdminLandingPage() {
           {/* ── CORES ── */}
           {activeSection === "cores" && (
             <>
-              <div className="flex justify-center mb-2">
-                <div className="bg-muted/50 p-1 rounded-xl flex gap-1 border">
-                  <button type="button" onClick={() => setPreviewMode("light")} className={`px-5 py-2 text-sm font-medium rounded-lg transition-all ${previewMode === "light" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>☀️ Modo Claro</button>
-                  <button type="button" onClick={() => setPreviewMode("dark")} className={`px-5 py-2 text-sm font-medium rounded-lg transition-all ${previewMode === "dark" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>🌙 Modo Escuro</button>
+              {DARK_MODE_ENABLED && (
+                <div className="flex justify-center mb-2">
+                  <div className="bg-muted/50 p-1 rounded-xl flex gap-1 border">
+                    <button type="button" onClick={() => setPreviewMode("light")} className={`px-5 py-2 text-sm font-medium rounded-lg transition-all ${previewMode === "light" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>☀️ Modo Claro</button>
+                    <button type="button" onClick={() => setPreviewMode("dark")} className={`px-5 py-2 text-sm font-medium rounded-lg transition-all ${previewMode === "dark" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>🌙 Modo Escuro</button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {previewMode === "light" && (
                 <div className="space-y-3">
@@ -1954,26 +2033,28 @@ export default function AdminLandingPage() {
                 ))}
               </div>
 
-              <div className="space-y-3 pt-6 border-t">
-                <Label className="flex items-center gap-2">Tema padrão da página</Label>
-                <div className="inline-flex rounded-lg border border-border p-1 bg-muted/40">
-                  <button
-                    type="button"
-                    onClick={() => setDarkModeEnabled(false)}
-                    className={`flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-md transition-all ${!darkModeEnabled ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                  >
-                    <Sun className="h-4 w-4" /> Claro
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDarkModeEnabled(true)}
-                    className={`flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-md transition-all ${darkModeEnabled ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                  >
-                    <Moon className="h-4 w-4" /> Escuro
-                  </button>
+              {DARK_MODE_ENABLED && (
+                <div className="space-y-3 pt-6 border-t">
+                  <Label className="flex items-center gap-2">Tema padrão da página</Label>
+                  <div className="inline-flex rounded-lg border border-border p-1 bg-muted/40">
+                    <button
+                      type="button"
+                      onClick={() => setDarkModeEnabled(false)}
+                      className={`flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-md transition-all ${!darkModeEnabled ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                    >
+                      <Sun className="h-4 w-4" /> Claro
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDarkModeEnabled(true)}
+                      className={`flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-md transition-all ${darkModeEnabled ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                    >
+                      <Moon className="h-4 w-4" /> Escuro
+                    </button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Define o tema em que sua página abre para os visitantes. Eles sempre podem alternar pelo botão no cabeçalho do site.</p>
                 </div>
-                <p className="text-xs text-muted-foreground">Define o tema em que sua página abre para os visitantes. Eles sempre podem alternar pelo botão no cabeçalho do site.</p>
-              </div>
+              )}
 
               <div className="space-y-3 pt-2 border-t">
                 <div className="flex items-center justify-between">

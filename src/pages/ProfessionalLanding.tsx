@@ -16,7 +16,7 @@ import AudienceSection from "@/components/landing/AudienceSection";
 import FaqSection from "@/components/landing/FaqSection";
 import ContactSection from "@/components/landing/ContactSection";
 import LandingFooter from "@/components/landing/LandingFooter";
-import { buildLandingVars, getFontScale, GOOGLE_FONTS_URL } from "@/lib/landing/buildLandingVars";
+import { buildLandingVars, getFontScale, GOOGLE_FONTS_URL, DARK_MODE_ENABLED } from "@/lib/landing/buildLandingVars";
 import Section from "@/components/landing/Section";
 import { zebraTone, orderContentSections } from "@/lib/landing/sections";
 import CookieConsent from "@/components/landing/CookieConsent";
@@ -138,11 +138,8 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
     enabled: !!professional?.id,
   });
 
-  // Dark mode da landing pública: DESATIVADO. O estado/toggle abaixo e o helper de cores
-  // escuras ficam preservados; enquanto esta flag for false a landing renderiza SEMPRE em
-  // modo Claro e o botão de tema não aparece no header. Para reativar, basta voltar a true.
-  const DARK_MODE_ENABLED = false;
-
+  // Dark mode da landing pública: controlado pela flag compartilhada DARK_MODE_ENABLED
+  // (@/lib/landing/buildLandingVars) — a mesma que o editor lê para esconder os controles de tema.
   const darkKey = `dark_${slug}`;
   const [dark, setDark] = useState(() => localStorage.getItem(`dark_${slug}`) === "1");
   const toggleDark = useCallback(() => {

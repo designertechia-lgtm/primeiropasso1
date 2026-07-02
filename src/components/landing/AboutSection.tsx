@@ -1,5 +1,6 @@
 import { Play, Award, Heart } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
+import { toVideoEmbedUrl, isYouTubeOrVimeo } from "@/lib/landing/videoEmbed";
 
 interface AboutSectionProps {
   title?: string;
@@ -77,21 +78,13 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
     return () => window.clearTimeout(id);
   }, [autoplay, autoplayArmed, autoplayStopped, isVideoPlaying, activeCard, paragraphs.length, aboutVideoUrl]);
 
-  // Helper to get embed url if it's youtube or vimeo
-  const getEmbedUrl = (url: string) => {
-    if (!url) return "";
-    if (url.includes('youtube.com') || url.includes('youtu.be')) {
-      const videoId = url.includes('youtu.be') ? url.split('youtu.be/')[1] : url.split('v=')[1]?.split('&')[0];
-      return `https://www.youtube.com/embed/${videoId}?autoplay=1`;
-    }
-    if (url.includes('vimeo.com')) {
-      const videoId = url.split('vimeo.com/')[1];
-      return `https://player.vimeo.com/video/${videoId}?autoplay=1`;
-    }
-    return url;
-  };
+  // Embed via helper compartilhado (limpa "?si=", trata shorts/live) — mesma lógica do editor.
+  const getEmbedUrl = (url: string) => toVideoEmbedUrl(url, { autoplay: true });
 
-  const isMp4 = aboutVideoUrl?.toLowerCase().endsWith('.mp4');
+  // Arquivo de vídeo direto (usa <video>) vs embed YouTube/Vimeo (usa <iframe>). Qualquer outra URL
+  // NÃO é embutida — evita iframe de host arbitrário na landing (auditoria §5).
+  const isDirectFile = !!aboutVideoUrl && (/\.(mp4|webm|ogg|mov|m4v)(\?|$)/i.test(aboutVideoUrl) || aboutVideoUrl.includes("/storage/v1/object/public/"));
+  const canEmbed = isDirectFile || isYouTubeOrVimeo(aboutVideoUrl);
 
   // Helper para destacar palavras-chave automaticamente ou usando **negrito**
   const renderWithHighlights = (text: string) => {
@@ -154,8 +147,8 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
             {/* Moldura: o padding (p-3) cria a borda visivel ao redor da imagem,
                 como um porta-retrato. A imagem (h-auto) define a proporcao. */}
             <div className="relative rounded-2xl shadow-2xl shadow-foreground/15 bg-card mx-auto w-full max-w-md p-3">
-              {isVideoPlaying && aboutVideoUrl ? (
-                isMp4 ? (
+              {isVideoPlaying && canEmbed ? (
+                isDirectFile ? (
                   <video
                     src={aboutVideoUrl}
                     autoPlay
@@ -193,7 +186,7 @@ export default function AboutSection({ title, name, bio, crp, photoUrl, aboutIma
                   )}
 
                   {/* Video Play Button Overlay — dentro do wrapper, herda o recorte */}
-                  {aboutVideoUrl && (
+                  {canEmbed && (
                     <div className="absolute inset-0 bg-black/10 transition-all duration-300 group-hover:bg-black/30 pointer-events-none">
                       <button
                         onClick={() => { stopAutoplay(); setIsVideoPlaying(true); }}

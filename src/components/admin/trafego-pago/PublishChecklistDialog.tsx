@@ -50,14 +50,24 @@ export default function PublishChecklistDialog({
 
   const publishMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase
+      // Só promove de draft/approved. Nunca rebaixa uma campanha já 'active'/'published'/'paused'
+      // no Google (a autodeclaração do checklist não pode sobrescrever o estado real da API).
+      const { data, error } = await supabase
         .from("ads_campaigns" as any)
         .update({ status: "published" })
-        .eq("id", campaign.id);
+        .eq("id", campaign.id)
+        .in("status", ["draft", "approved"])
+        .select("id");
       if (error) throw error;
+      return (data ?? []).length as number;
     },
-    onSuccess: () => {
+    onSuccess: (changed: number) => {
       qc.invalidateQueries({ queryKey: ["ads_campaigns"] });
+      if (changed === 0) {
+        toast.info("A campanha já constava como publicada/ativa — status mantido.");
+        onOpenChange(false);
+        return;
+      }
       toast.success("Campanha marcada como publicada! 🎉", {
         description: "Lembre de ATIVAR a campanha no Google Ads quando quiser começar a veicular.",
       });

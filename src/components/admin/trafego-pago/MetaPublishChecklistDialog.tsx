@@ -177,7 +177,7 @@ export default function MetaPublishChecklistDialog({
           </Button>
           <p className="flex items-start gap-1.5">
             <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-yellow-600 dark:text-yellow-400" />
-            <span>O Meta também pode gastar até ~2× o diário num dia (compensa na média da semana).</span>
+            <span>O Meta pode gastar até ~25% acima do diário num dia, mas respeita o teto de 7× o diário na semana (compensa na média).</span>
           </p>
         </div>
       ),

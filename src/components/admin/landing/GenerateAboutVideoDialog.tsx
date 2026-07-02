@@ -23,6 +23,8 @@ import {
 import { toast } from "sonner";
 import { Sparkles, Loader2, Clapperboard, Crown, RefreshCw, Mic, Square, CheckCircle2, RotateCcw, Upload, Video, Music, Captions, Image as ImageIcon, Link as LinkIcon, PlayCircle, Type, TriangleAlert } from "lucide-react";
 
+import { videoApiAuthHeaders } from "@/lib/videoApi";
+
 const VIDEO_API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
 
 const EDGE_VOICES = [
@@ -347,7 +349,7 @@ export default function GenerateAboutVideoDialog({
       };
       const res = await fetch(`${VIDEO_API}/estudio-viral/gerar-video`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await videoApiAuthHeaders()) },
         body: JSON.stringify({
           professional_slug: professionalSlug,
           script: finalScript,
@@ -383,7 +385,7 @@ export default function GenerateAboutVideoDialog({
       const finalScript = { ...script, narracao: narracao.trim() };
       const res = await fetch(`${VIDEO_API}/criar-institucional`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await videoApiAuthHeaders()) },
         body: JSON.stringify({
           professional_slug: professionalSlug,
           script: finalScript,
@@ -467,7 +469,7 @@ export default function GenerateAboutVideoDialog({
 
       const res = await fetch(`${VIDEO_API}/editar-institucional`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await videoApiAuthHeaders()) },
         body: JSON.stringify(body),
       });
       if (!res.ok) {

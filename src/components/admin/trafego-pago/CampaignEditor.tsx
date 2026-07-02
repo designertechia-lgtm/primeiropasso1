@@ -52,6 +52,8 @@ async function callAdsProxy(action: string, extra: Record<string, unknown> = {})
     throw new Error(detail?.mensagem ?? detail?.error ?? error.message);
   }
   if (data?.error) throw new Error(data.mensagem ?? data.error);
+  // A ação valeu no Google mas o registro local divergiu — avisar em vez de mostrar sucesso limpo.
+  if (data?.aviso_local) toast.warning("Confira no Google Ads", { description: data.aviso_local });
   return data;
 }
 
@@ -107,6 +109,7 @@ export default function CampaignEditor({ campaign }: { campaign: Campaign }) {
   const [editing, setEditing] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [apiPublishSummary, setApiPublishSummary] = useState<{ nome: string; orcamento_diario: string; aviso: string } | null>(null);
+  const [confirmAtivar, setConfirmAtivar] = useState(false);
   const [apiBusy, setApiBusy] = useState(false);
   const { data: adsStatus } = useAdsAccountStatus();
   const accountActive = adsStatus?.conta?.status === "active";
@@ -731,7 +734,7 @@ export default function CampaignEditor({ campaign }: { campaign: Campaign }) {
                 </Button>
               ) : (
                 <Button size="sm" className="gap-1.5 h-7 text-xs" disabled={apiBusy}
-                  onClick={() => toggleVeiculacao("ativar_campanha")}>
+                  onClick={() => setConfirmAtivar(true)}>
                   {apiBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <PlayCircle className="h-3 w-3" />}
                   Ativar veiculação
                 </Button>
@@ -765,6 +768,27 @@ export default function CampaignEditor({ campaign }: { campaign: Campaign }) {
             <AlertDialogCancel disabled={apiBusy}>Cancelar</AlertDialogCancel>
             <AlertDialogAction disabled={apiBusy} onClick={(e) => { e.preventDefault(); confirmApiPublish(); }}>
               {apiBusy ? "Publicando…" : "Confirmar publicação"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Dupla confirmação da ATIVAÇÃO — é o passo que liga o gasto real no cartão do profissional */}
+      <AlertDialog open={confirmAtivar} onOpenChange={setConfirmAtivar}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Ativar a veiculação?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                <p>A partir de agora a campanha <span className="font-medium text-foreground">{campaign.name}</span> passa a veicular e a gastar no seu cartão do Google Ads.</p>
+                <p>Orçamento: <span className="font-medium text-foreground">R$ {Number(campaign.daily_budget_brl).toFixed(2)}/dia</span> — o Google pode gastar até 2× num dia (compensa na média do mês).</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={apiBusy}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction disabled={apiBusy} onClick={(e) => { e.preventDefault(); setConfirmAtivar(false); toggleVeiculacao("ativar_campanha"); }}>
+              {apiBusy ? "Ativando…" : "Sim, ativar e começar a gastar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

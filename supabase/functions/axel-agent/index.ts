@@ -1830,18 +1830,36 @@ async function handleToolCall(
     if (!campaignId) return { erro: "campaign_id obrigatório" }
 
     const updates: Record<string, any> = {}
-    if (args.daily_budget_brl != null)     updates.daily_budget_brl     = Number(args.daily_budget_brl)
-    if (args.max_daily_budget_brl != null) updates.max_daily_budget_brl = Number(args.max_daily_budget_brl)
-    if (args.status)                        updates.status               = args.status
+    if (args.daily_budget_brl != null) {
+      const d = Number(args.daily_budget_brl)
+      if (!Number.isFinite(d) || d <= 0) return { erro: "daily_budget_brl inválido", instrucao: "Peça um orçamento diário válido (número maior que zero)." }
+      updates.daily_budget_brl = d
+    }
+    if (args.max_daily_budget_brl != null) {
+      const m = Number(args.max_daily_budget_brl)
+      if (!Number.isFinite(m) || m <= 0) return { erro: "max_daily_budget_brl inválido", instrucao: "Peça um teto diário válido (número maior que zero)." }
+      updates.max_daily_budget_brl = m
+    }
+    // Só status internos podem mudar por aqui. Publicar/ativar é gasto real — vive na tela de publicação.
+    if (args.status) {
+      if (!["approved", "paused", "archived"].includes(args.status)) {
+        return { erro: "status_invalido", instrucao: "Só dá pra mudar o status para aprovada, pausada ou arquivada por aqui. Publicar ou ativar acontece pela tela de publicação, não pelo chat." }
+      }
+      updates.status = args.status
+    }
 
     if (Object.keys(updates).length === 0) return { erro: "nenhum campo pra atualizar" }
 
-    const { error: updErr } = await (supabaseAdmin as any)
+    const { data: upRows, error: updErr } = await (supabaseAdmin as any)
       .from("ads_campaigns")
       .update(updates)
       .eq("id", campaignId)
       .eq("professional_id", professionalId)
+      .select("id")
     if (updErr) return { erro: updErr.message, instrucao: "Avise que houve erro ao atualizar a campanha." }
+    if (!upRows || upRows.length === 0) {
+      return { erro: "campanha_nao_encontrada", instrucao: "Não achei essa campanha na conta do profissional (id errado ou de outra conta). Liste com consultar_campanhas_ads e confirme qual é antes de atualizar — NÃO diga que atualizou." }
+    }
 
     return {
       sucesso: true,
@@ -1885,6 +1903,10 @@ async function handleToolCall(
     const diferencial: string = (args.diferencial || "").toString()
     const publico:  string  = (args.publico   || "pacientes adultos e/ou responsáveis").toString()
     const objective: string = (args.objective || "leads").toString()
+    // A9: valida o orçamento ANTES da geração paga — evita NaN/valor absurdo virar daily gigante.
+    if (!Number.isFinite(mensal) || mensal < 30 || mensal > 50000) {
+      return { erro: "orcamento_invalido", instrucao: "Confirme com o profissional um orçamento mensal entre R$ 30 e R$ 50.000 e chame de novo com o valor certo (não invente o número)." }
+    }
     const dailyBudget = +(mensal / 30.4).toFixed(2)
     const maxDaily    = +(dailyBudget * 1.25).toFixed(2)
     // Período opcional (YYYY-MM-DD); sem datas = campanha contínua
@@ -2056,7 +2078,8 @@ REGRAS:
     }
 
     // Débito por último, idempotente pela chave ESTÁVEL do brief (não pelo id novo).
-    const { error: creditErr } = await supabaseAdmin.rpc("consume_credits", {
+    // Saldo insuficiente volta como DADO {allowed:false}, não como erro — checar AMBOS.
+    const { data: creditData, error: creditErr } = await supabaseAdmin.rpc("consume_credits", {
       p_professional_id: professionalId,
       p_service_key:     "campanha_ads",
       p_units:           1,
@@ -2064,8 +2087,8 @@ REGRAS:
       p_reference_id:    campaignId,
       p_idempotency_key: idemKey,
     })
-    if (creditErr) {
-      console.error("[criar_campanha_ads] consume_credits:", creditErr.message)
+    if (creditErr || !(creditData as any)?.allowed) {
+      console.error("[criar_campanha_ads] débito recusado:", creditErr?.message ?? JSON.stringify(creditData))
       // Reverte campanha + assets pra não deixar campanha GRÁTIS (não cobrada) no ar.
       await (supabaseAdmin as any).from("ads_campaign_assets").delete().eq("campaign_id", campaignId)
       await supabaseAdmin.from("ads_campaigns").delete().eq("id", campaignId)

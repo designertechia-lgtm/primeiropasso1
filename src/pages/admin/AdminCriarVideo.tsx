@@ -33,6 +33,8 @@ function TikTokIcon({ className }: { className?: string }) {
   );
 }
 
+import { videoApiAuthHeaders } from "@/lib/videoApi";
+
 const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
 const STORAGE_KEY = "pp-criar-video";
 
@@ -748,7 +750,7 @@ export default function AdminCriarVideo() {
 
       const res = await fetch(`${API}/gerar-video`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await videoApiAuthHeaders()) },
         body: JSON.stringify({
           professional_slug: professional.slug,
           video_type: "objetivo_livre",

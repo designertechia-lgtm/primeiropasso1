@@ -231,7 +231,7 @@ function MetaCampaignCard({
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["ads_campaigns"] });
-      toast.success("Campanha aprovada! O guia de publicação no Gerenciador de Anúncios chega em breve.");
+      toast.success("Campanha aprovada!", { description: "Abra a campanha para ver o guia de publicação no Gerenciador de Anúncios." });
     },
     onError: (e: any) => toast.error(`Erro ao aprovar: ${e.message}`),
   });

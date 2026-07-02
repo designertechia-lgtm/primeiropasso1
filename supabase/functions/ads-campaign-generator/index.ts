@@ -407,8 +407,11 @@ serve(async (req) => {
     // ── 4. Monta landing_url com UTMs (campaign_id gerado aqui, usado depois no INSERT) ──
     const campaignId: string = crypto.randomUUID()
     const siteUrl = Deno.env.get("SITE_URL") ?? "https://primeiropasso.com.br"
+    // UTM por plataforma: Meta como paid_social (antes gravava utm_source=google fixo até em Meta).
+    const utmSrc = platform === "meta_ads" ? "meta" : "google"
+    const utmMed = platform === "meta_ads" ? "paid_social" : "cpc"
     const landingUrl = slug
-      ? `${siteUrl}/p/${slug}?utm_source=google&utm_medium=cpc&utm_campaign=${campaignId}`
+      ? `${siteUrl}/p/${slug}?utm_source=${utmSrc}&utm_medium=${utmMed}&utm_campaign=${campaignId}`
       : (body.landing_url ?? `${siteUrl}`)
 
     // ── 5. Gera campanha com Anthropic (1 chamada, structured output via tool forced) ──
@@ -451,6 +454,17 @@ serve(async (req) => {
     const raw = isMeta
       ? sanitizeMetaCampaign(toolBlock.input)
       : sanitizeCampaign(toolBlock.input, landingUrl)
+
+    // Google exige RSA com ≥3 títulos e ≥2 descrições e ≥1 grupo. Se o LLM truncou a resposta,
+    // rejeita ANTES de inserir/cobrar — senão salva campanha impublicável e já debitada.
+    if (!isMeta) {
+      const grupos = raw.ad_groups ?? []
+      const incompleta = grupos.length === 0 || grupos.some((g: any) =>
+        (g.rsa?.headlines?.length ?? 0) < 3 || (g.rsa?.descriptions?.length ?? 0) < 2)
+      if (incompleta) {
+        return json({ error: "campanha_incompleta", mensagem: "A IA devolveu a campanha incompleta (faltam títulos ou descrições mínimos do Google). Nada foi cobrado — tente gerar de novo." }, 422)
+      }
+    }
 
     // ── 6. Persiste no banco ──────────────────────────────────────────────────
     const { error: campaignErr } = await supabaseAdmin
@@ -590,16 +604,21 @@ serve(async (req) => {
     }
     } // fim do branch Google
 
+    // Dinheiro só é seguro se assets E débito derem certo. Edge não é transação de banco:
+    // em falha, REVERTE (apaga a campanha; a FK on delete cascade limpa os assets) e devolve
+    // ERRO real — nunca sucesso "mentindo" (campanha vazia cobrada ou campanha grátis não cobrada).
     if (assets.length > 0) {
       const { error: assetsErr } = await supabaseAdmin.from("ads_campaign_assets").insert(assets)
       if (assetsErr) {
         console.error("[ads-campaign-generator] INSERT assets:", assetsErr.message)
-        // Campanha já foi salva; não retorna erro fatal — assets podem ser re-inseridos.
+        await supabaseAdmin.from("ads_campaigns").delete().eq("id", campaignId)
+        return json({ error: "falha_ao_salvar_assets", mensagem: "Erro ao salvar os itens da campanha; nada foi cobrado. Tente de novo." }, 500)
       }
     }
 
-    // ── 7. Debita créditos (após persistência bem-sucedida) ───────────────────
-    const { error: creditErr } = await supabaseAdmin.rpc("consume_credits", {
+    // ── 7. Debita créditos (após persistência). Saldo insuficiente vem como DADO
+    //       {allowed:false}, não como erro — checar AMBOS e reverter tudo se recusado. ──
+    const { data: creditData, error: creditErr } = await supabaseAdmin.rpc("consume_credits", {
       p_professional_id: professionalId,
       p_service_key:     SERVICE_KEY,
       p_units:           UNITS,
@@ -607,10 +626,16 @@ serve(async (req) => {
       p_reference_id:    campaignId,
       p_idempotency_key: `${professionalId}|${SERVICE_KEY}|${campaignId}`,
     })
-    if (creditErr) {
-      // Log mas não bloqueia (campanha já foi gerada; crédito pode ser cobrado em retry).
-      console.error("[ads-campaign-generator] consume_credits:", creditErr.message)
+    if (creditErr || !(creditData as any)?.allowed) {
+      console.error("[ads-campaign-generator] débito recusado:", creditErr?.message ?? JSON.stringify(creditData))
+      await supabaseAdmin.from("ads_campaigns").delete().eq("id", campaignId)
+      return json({
+        error: "falha_no_debito",
+        mensagem: "Não consegui debitar os créditos, então cancelei a criação (nada foi cobrado nem salvo). Confira o saldo e tente de novo.",
+        saldo_atual: (creditData as any)?.balance ?? currentBalance,
+      }, 402)
     }
+    const creditosDebitados = (creditData as any)?.credits_charged ?? expectedCost
 
     console.log(`[ads-campaign-generator] Campanha ${campaignId} gerada para ${professionalId}`)
 
@@ -624,7 +649,7 @@ serve(async (req) => {
       daily_budget_brl: dailyBudget,
       ad_groups_count: isMeta ? (raw.ad_sets ?? []).length : raw.ad_groups.length,
       assets_count: assets.length,
-      creditos_debitados: expectedCost,
+      creditos_debitados: creditosDebitados,
     })
 
   } catch (err: any) {

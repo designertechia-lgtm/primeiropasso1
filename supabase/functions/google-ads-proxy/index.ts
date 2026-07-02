@@ -24,6 +24,18 @@ const CORS = {
 const ADS_API_VERSION = "v21"
 const ADS_API_BASE = `https://googleads.googleapis.com/${ADS_API_VERSION}`
 
+// fetch com timeout — I/O externo sem AbortController já travou edge no projeto (regra fetchT 45s).
+const FETCH_TIMEOUT_MS = 45_000
+async function fetchT(url: string, init: RequestInit = {}): Promise<Response> {
+  const ctrl = new AbortController()
+  const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS)
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal })
+  } finally {
+    clearTimeout(t)
+  }
+}
+
 // ── Credenciais ──────────────────────────────────────────────────────────────
 function getCreds() {
   const creds = {
@@ -50,7 +62,7 @@ let cachedToken: { value: string; expiresAt: number } | null = null
 
 async function getAccessToken(creds: Creds): Promise<string> {
   if (cachedToken && Date.now() < cachedToken.expiresAt - 60_000) return cachedToken.value
-  const res = await fetch("https://oauth2.googleapis.com/token", {
+  const res = await fetchT("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -72,7 +84,7 @@ async function adsApiFetch(
   init: { method?: string; body?: unknown } = {},
 ): Promise<{ ok: boolean; status: number; data: any }> {
   const accessToken = await getAccessToken(creds)
-  const res = await fetch(`${ADS_API_BASE}/${path}`, {
+  const res = await fetchT(`${ADS_API_BASE}/${path}`, {
     method: init.method ?? "GET",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -93,6 +105,14 @@ function nivelInsuficiente(data: any): boolean {
   return JSON.stringify(data).includes("DEVELOPER_TOKEN_NOT_APPROVED")
 }
 const MSG_NIVEL = "O Google ainda não aprovou o acesso Básico da API (pedido em análise, 1-5 dias úteis). Essa operação fica disponível assim que a aprovação chegar por e-mail."
+
+// Extrai só a mensagem amigável do erro do Google — evita devolver o payload cru (customer_id do
+// MCC da agência, request-ids, resource names internos) ao cliente. O cru fica no console.
+function msgErroGoogle(data: any): string {
+  return data?.error?.message
+    ?? data?.error?.details?.[0]?.errors?.[0]?.message
+    ?? "O Google Ads recusou a operação. Tente de novo em instantes."
+}
 
 const MATCH_TYPE_ENUM: Record<string, string> = { broad: "BROAD", phrase: "PHRASE", exact: "EXACT" }
 
@@ -155,7 +175,7 @@ serve(async (req) => {
     // ── ping ────────────────────────────────────────────────────────────────
     if (action === "ping") {
       const res = await adsApiFetch(creds, "customers:listAccessibleCustomers")
-      if (!res.ok) return json({ error: "ping_falhou", status: res.status, detalhe: res.data }, 502)
+      if (!res.ok) return json({ error: "ping_falhou", status: res.status, detalhe: msgErroGoogle(res.data) }, 502)
       return json({ sucesso: true, api_version: ADS_API_VERSION, contas_acessiveis: res.data.resourceNames ?? [] })
     }
 
@@ -174,17 +194,27 @@ serve(async (req) => {
       if (!res.ok) {
         if (nivelInsuficiente(res.data)) return json({ error: "aguardando_aprovacao_google", mensagem: MSG_NIVEL }, 503)
         console.error("[google-ads-proxy] criar_subconta:", JSON.stringify(res.data).slice(0, 800))
-        return json({ error: "criar_subconta_falhou", detalhe: res.data }, 502)
+        return json({ error: "criar_subconta_falhou", detalhe: msgErroGoogle(res.data) }, 502)
       }
 
       const customerId = (res.data.resourceName ?? "").split("/")[1] ?? null
-      await supabaseAdmin.from("ads_accounts").upsert({
+      const { error: upErr } = await supabaseAdmin.from("ads_accounts").upsert({
         professional_id: professionalId,
         platform: "google_ads",
         external_customer_id: customerId,
         status: "pending_billing",
         billing_configured: false,
       }, { onConflict: "professional_id,platform" })
+      if (upErr) {
+        // Sub-conta REAL criada no Google mas o registro local falhou → não deixar recriar às cegas.
+        console.error("[google-ads-proxy] criar_subconta upsert local:", upErr.message, "customer_id:", customerId)
+        return json({
+          sucesso: true,
+          customer_id: customerId,
+          status: "pending_billing",
+          aviso_local: "Sua conta foi criada no Google, mas o registro local não salvou. NÃO clique em criar de novo — recarregue a página; se persistir, avise o suporte com este customer_id.",
+        })
+      }
 
       console.log(`[google-ads-proxy] sub-conta ${customerId} criada para ${professionalId}`)
       return json({ sucesso: true, customer_id: customerId, status: "pending_billing" })
@@ -206,7 +236,7 @@ serve(async (req) => {
       if (!res.ok) {
         if (nivelInsuficiente(res.data)) return json({ error: "aguardando_aprovacao_google", mensagem: MSG_NIVEL }, 503)
         console.error("[google-ads-proxy] convidar_usuario:", JSON.stringify(res.data).slice(0, 800))
-        return json({ error: "convite_falhou", detalhe: res.data }, 502)
+        return json({ error: "convite_falhou", detalhe: msgErroGoogle(res.data) }, 502)
       }
 
       await supabaseAdmin.from("ads_accounts")
@@ -248,8 +278,10 @@ serve(async (req) => {
       if ((campaign as any).external_id) {
         return json({ sucesso: true, ja_publicada: true, external_id: (campaign as any).external_id })
       }
-      if (!["approved", "published"].includes((campaign as any).status)) {
-        return json({ error: "campanha_nao_aprovada", mensagem: "Aprove a campanha antes de publicar." }, 400)
+      // Só 'approved' publica via API. 'published' aqui = já publicada manualmente pelo CSV
+      // (external_id fica NULL) — republicar criaria uma SEGUNDA campanha no Google (gasto dobrado).
+      if ((campaign as any).status !== "approved") {
+        return json({ error: "campanha_nao_publicavel_via_api", mensagem: "Só dá pra publicar pela plataforma uma campanha aprovada. Se você já publicou pelo CSV no Ads Editor, não republique aqui." }, 400)
       }
 
       // Dupla confirmação: 1ª chamada retorna o resumo; só executa com confirmar=true
@@ -393,14 +425,25 @@ serve(async (req) => {
       if (!res.ok) {
         if (nivelInsuficiente(res.data)) return json({ error: "aguardando_aprovacao_google", mensagem: MSG_NIVEL }, 503)
         console.error("[google-ads-proxy] publicar_campanha:", JSON.stringify(res.data).slice(0, 1500))
-        return json({ error: "publicacao_falhou", detalhe: res.data }, 502)
+        return json({ error: "publicacao_falhou", detalhe: msgErroGoogle(res.data) }, 502)
       }
 
       // resourceName da campanha criada (2ª operação do batch)
       const campResource = res.data.mutateOperationResponses?.[1]?.campaignResult?.resourceName ?? null
-      await supabaseAdmin.from("ads_campaigns")
+      const { error: updErr } = await supabaseAdmin.from("ads_campaigns")
         .update({ external_id: campResource, status: "published" })
         .eq("id", campaignId)
+      if (updErr) {
+        // A campanha REAL existe no Google mas o external_id não gravou → órfã. Não deixar a UI
+        // achar que nada aconteceu (re-publicar duplicaria o gasto): devolver o ID pra vínculo.
+        console.error("[google-ads-proxy] publicar_campanha update local:", updErr.message, "external_id:", campResource)
+        return json({
+          sucesso: true,
+          external_id: campResource,
+          aviso_local: "Campanha criada no Google (PAUSADA), mas o registro local não atualizou. NÃO publique de novo — recarregue a página; se o botão de publicar reaparecer, avise o suporte com este ID.",
+          operacoes: ops.length,
+        })
+      }
 
       console.log(`[google-ads-proxy] campanha ${campaignId} publicada: ${campResource}`)
       return json({
@@ -437,12 +480,18 @@ serve(async (req) => {
       })
       if (!res.ok) {
         if (nivelInsuficiente(res.data)) return json({ error: "aguardando_aprovacao_google", mensagem: MSG_NIVEL }, 503)
-        return json({ error: "mutacao_falhou", detalhe: res.data }, 502)
+        return json({ error: "mutacao_falhou", detalhe: msgErroGoogle(res.data) }, 502)
       }
 
-      await supabaseAdmin.from("ads_campaigns")
+      const { error: updErr } = await supabaseAdmin.from("ads_campaigns")
         .update({ status: action === "pausar_campanha" ? "paused" : "active" })
         .eq("id", campaignId)
+      if (updErr) {
+        // Ex.: ativar aceito no Google (campanha JÁ gasta) mas o status local não salvou — a UI
+        // mostraria "pausada". Sinalizar em vez de responder sucesso limpo enganoso.
+        console.error("[google-ads-proxy] toggle status update local:", updErr.message)
+        return json({ sucesso: true, status_google: novoStatus, aviso_local: `A campanha ficou ${novoStatus} no Google, mas o registro local não atualizou — recarregue a página para ver o estado real.` })
+      }
       return json({ sucesso: true, status_google: novoStatus })
     }
 
@@ -450,15 +499,39 @@ serve(async (req) => {
     if (action === "atualizar_budget") {
       const campaignId = (body.campaign_id ?? "").toString()
       const novoDiario = Number(body.daily_budget_brl)
-      if (!novoDiario || novoDiario <= 0) return json({ error: "daily_budget_brl_invalido" }, 400)
+      if (!Number.isFinite(novoDiario) || novoDiario <= 0) return json({ error: "daily_budget_brl_invalido" }, 400)
 
       const { data: campaign } = await supabaseAdmin
         .from("ads_campaigns")
-        .select("id, external_id")
+        .select("id, external_id, name, daily_budget_brl, max_daily_budget_brl")
         .eq("id", campaignId)
         .eq("professional_id", professionalId)
         .maybeSingle()
       if (!campaign?.external_id) return json({ error: "campanha_nao_publicada" }, 400)
+
+      // GATE do plano: o novo diário NÃO pode passar do teto que o profissional definiu.
+      // (Antes, o teto era reescrito como 2× o novo valor — a trava não existia de fato.)
+      const teto = Number((campaign as any).max_daily_budget_brl ?? 0)
+      if (teto > 0 && novoDiario > teto) {
+        return json({
+          error: "acima_do_teto",
+          mensagem: `O novo diário (R$ ${novoDiario.toFixed(2)}) passa do seu teto de R$ ${teto.toFixed(2)}/dia. Reduza o valor ou aumente o teto da campanha antes.`,
+          teto_diario: teto,
+        }, 400)
+      }
+
+      // Dupla confirmação (igual publicar): 1ª chamada devolve o resumo; só muta com confirmar=true.
+      if (body.confirmar !== true) {
+        return json({
+          requer_confirmacao: true,
+          resumo: {
+            nome: (campaign as any).name,
+            de: `R$ ${Number((campaign as any).daily_budget_brl).toFixed(2)}/dia`,
+            para: `R$ ${novoDiario.toFixed(2)}/dia`,
+            aviso: "O Google pode gastar até ~2× o diário num dia (compensa na média do mês).",
+          },
+        })
+      }
 
       const account = await getAccount()
       const cid = account?.external_customer_id
@@ -472,7 +545,7 @@ serve(async (req) => {
       const budgetResource = search.data?.results?.[0]?.campaign?.campaignBudget
       if (!search.ok || !budgetResource) {
         if (nivelInsuficiente(search.data)) return json({ error: "aguardando_aprovacao_google", mensagem: MSG_NIVEL }, 503)
-        return json({ error: "budget_nao_encontrado", detalhe: search.data }, 502)
+        return json({ error: "budget_nao_encontrado", detalhe: msgErroGoogle(search.data) }, 502)
       }
 
       const res = await adsApiFetch(creds, `customers/${cid}/campaignBudgets:mutate`, {
@@ -484,11 +557,16 @@ serve(async (req) => {
           }],
         },
       })
-      if (!res.ok) return json({ error: "mutacao_falhou", detalhe: res.data }, 502)
+      if (!res.ok) return json({ error: "mutacao_falhou", detalhe: msgErroGoogle(res.data) }, 502)
 
-      await supabaseAdmin.from("ads_campaigns")
-        .update({ daily_budget_brl: novoDiario, max_daily_budget_brl: +(novoDiario * 2).toFixed(2) })
+      // Só o diário muda; o teto NUNCA é reescrito como efeito colateral.
+      const { error: updErr } = await supabaseAdmin.from("ads_campaigns")
+        .update({ daily_budget_brl: novoDiario })
         .eq("id", campaignId)
+      if (updErr) {
+        console.error("[google-ads-proxy] atualizar_budget update local:", updErr.message)
+        return json({ sucesso: true, novo_diario: novoDiario, aviso_local: "Orçamento alterado no Google, mas o registro local não atualizou — recarregue a página." })
+      }
       return json({ sucesso: true, novo_diario: novoDiario })
     }
 

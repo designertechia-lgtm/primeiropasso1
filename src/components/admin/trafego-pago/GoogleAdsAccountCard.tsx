@@ -46,6 +46,8 @@ async function callProxy(action: string, extra: Record<string, unknown> = {}) {
     throw new Error(detail?.mensagem ?? detail?.error ?? error.message);
   }
   if (data?.error) throw new Error(data.mensagem ?? data.error);
+  // Ação valeu no Google mas o registro local divergiu — avisar em vez de mostrar sucesso limpo.
+  if (data?.aviso_local) toast.warning("Confira no Google Ads", { description: data.aviso_local });
   return data;
 }
 

@@ -31,6 +31,8 @@ function TikTokIcon({ className }: { className?: string }) {
   );
 }
 
+import { videoApiAuthHeaders } from "@/lib/videoApi";
+
 const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
 const STORAGE_KEY = "pp-estudio-viral";
 
@@ -606,7 +608,7 @@ export default function AdminEstudioViral() {
 
       const res = await fetch(`${API}/estudio-viral/gerar-video`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await videoApiAuthHeaders()) },
         body: JSON.stringify({
           professional_slug: professional.slug,
           script,

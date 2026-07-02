@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Sparkles, Loader2, ImageIcon, Crown, Gift } from "lucide-react";
+import { videoApiAuthHeaders } from "@/lib/videoApi";
 import type { Asset, Campaign } from "./types";
 
 const VIDEO_API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
@@ -83,7 +84,7 @@ export default function GenerateCreativeDialog({
     try {
       const res = await fetch(`${VIDEO_API}/gerar-imagens-ad`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await videoApiAuthHeaders()) },
         body: JSON.stringify({
           professional_slug: professional.slug,
           prompts,

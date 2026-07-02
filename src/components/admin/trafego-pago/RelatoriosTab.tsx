@@ -88,7 +88,7 @@ export default function RelatoriosTab() {
     <div className="space-y-4">
       <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
         <Zap className="h-3 w-3 text-yellow-500 shrink-0" />
-        O Google só mostra até o clique. Aqui você vê até o agendamento — visitas, leads e conversas vêm da sua landing e do seu WhatsApp.
+        O Google só mostra até o clique. Aqui você vê até o agendamento — cliques no WhatsApp, leads e conversas vêm da sua landing e do seu WhatsApp.
       </div>
 
       <ProjecaoCard rows={rows} />
@@ -119,6 +119,8 @@ function ProjecaoCard({ rows }: { rows: FunnelRow[] }) {
   const visitaPorClique = totals.clicks > 0 && totals.visitas > 0 ? totals.visitas / totals.clicks : BENCH.visitaPorClique;
   const leadPorVisita = totals.visitas > 0 && totals.leads > 0 ? totals.leads / totals.visitas : BENCH.leadPorVisita;
   const agendPorLead = totals.leads > 0 && totals.agendamentos > 0 ? totals.agendamentos / totals.leads : BENCH.agendPorLead;
+  // Só afirma "taxas 100% suas" quando TODAS as 4 etapas têm dado real; senão é uma mistura.
+  const todasTaxasReais = temDadosReais && totals.visitas > 0 && totals.leads > 0 && totals.agendamentos > 0;
 
   const orcamentoPadrao = Math.round(
     rows.reduce((acc, r) => acc + Number(r.daily_budget_brl) * 30.4, 0),
@@ -143,7 +145,11 @@ function ProjecaoCard({ rows }: { rows: FunnelRow[] }) {
             Possibilidade × Realidade
           </h3>
           <Badge variant="outline" className="text-xs font-normal">
-            {temDadosReais ? "usando as SUAS taxas reais" : "médias estimadas — suas taxas reais assumem quando a campanha veicular"}
+            {todasTaxasReais
+              ? "usando as SUAS taxas reais"
+              : temDadosReais
+              ? "seus números reais onde já há dados + médias do nicho no resto"
+              : "médias estimadas — suas taxas reais assumem quando a campanha veicular"}
           </Badge>
         </div>
       </CardHeader>
@@ -163,7 +169,7 @@ function ProjecaoCard({ rows }: { rows: FunnelRow[] }) {
           {valor > 0 && (
             <p className="text-sm text-muted-foreground pb-1.5">
               ≈ <span className="font-medium text-foreground">{fmt(cliques)} cliques</span>
-              {" → "}<span className="font-medium text-foreground">{fmt(visitas)} visitas</span>
+              {" → "}<span className="font-medium text-foreground">{fmt(visitas)} cliques no WhatsApp</span>
               {" → "}<span className="font-medium text-foreground">{fmt(leads)} leads</span>
               {" → "}<span className="font-semibold text-primary">{fmt(agendamentos)} agendamento{Math.round(agendamentos) !== 1 ? "s" : ""}</span>
               {custoPorAgendamento > 0 && (
@@ -194,8 +200,8 @@ function FunnelCard({ row }: { row: FunnelRow }) {
 
   const stages = [
     { label: "Impressões",  value: row.impressions,  icon: Eye,               google: true },
-    { label: "Cliques",     value: row.clicks,       icon: MousePointerClick, google: true },
-    { label: "Visitas",     value: row.visitas,      icon: Globe,             google: false },
+    { label: "Cliques no anúncio", value: row.clicks, icon: MousePointerClick, google: true },
+    { label: "Cliques no WhatsApp", value: row.visitas, icon: Globe,           google: false },
     { label: "Leads",       value: row.leads,        icon: Users,             google: false },
     { label: "Conversas",   value: row.conversas,    icon: MessageCircle,     google: false },
     { label: "Agendamentos", value: row.agendamentos, icon: CalendarCheck,    google: false },

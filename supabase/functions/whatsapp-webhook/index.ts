@@ -6,8 +6,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Mensagem programada que o site envia automaticamente quando o usuário clica em "Agendar consulta"
+// Mensagens padrão que os botões da landing pré-preenchem. Aceitar TODAS as variantes conhecidas:
+// a antiga ("agendar um horário"), a neutra atual (default do buildLandingCtaMessage, fix 17/06) e,
+// além delas, o texto que o próprio profissional configurou (contact_cta_message) — comparado em runtime.
 const SITE_GREETING = "Olá! Gostaria de agendar um horário."
+const DEFAULT_CTA_MESSAGE = "Olá, gostaria de mais informações!"
+const SITE_GREETINGS = [SITE_GREETING, DEFAULT_CTA_MESSAGE]
 
 // (parseUserIntent + tipo ParsedIntent removidos em 17/06 — eram usados só pelo
 //  roteamento determinístico, descontinuado. Agendamento agora é todo no agente.)
@@ -412,7 +416,7 @@ serve(async (req) => {
     console.log(`[DEBUG] Buscando profissional com instanceName="${instanceName}"...`)
     const { data: professional, error: proError } = await supabaseAdmin
       .from('professionals')
-      .select('id, full_name, bio, approaches, whatsapp, price_first_session, price_min, price_max, agent_system_prompt, evolution_instance_name, agent_preferences')
+      .select('id, full_name, bio, approaches, whatsapp, price_first_session, price_min, price_max, agent_system_prompt, evolution_instance_name, agent_preferences, contact_cta_message, contact_cta_message_b')
       .eq('evolution_instance_name', instanceName)
       .maybeSingle()
 
@@ -499,7 +503,11 @@ serve(async (req) => {
     // "Veio do botão da landing": texto padrão (=== SITE_GREETING) OU mensagem com
     // marcador de campanha (campaignRef). Cobre o caso do profissional ter editado o
     // texto do botão — aí o ref é o que preserva a detecção de origem de campanha.
-    const fromSiteButton = messageText.trim() === SITE_GREETING || !!campaignRef
+    // Aceita os dois textos custom possíveis: variante A (contact_cta_message) e B do teste A/B.
+    const proCtas = [(professional as any).contact_cta_message, (professional as any).contact_cta_message_b]
+      .map((s) => (s ?? '').trim()).filter(Boolean)
+    const msgTrim = messageText.trim()
+    const fromSiteButton = SITE_GREETINGS.includes(msgTrim) || proCtas.includes(msgTrim) || !!campaignRef
     const isFromCampaign = fromSiteButton || !!adReply
 
     // 2. Upsert do lead (criar se não existe, atualizar se existe)
@@ -602,6 +610,7 @@ serve(async (req) => {
         .from('landing_visits')
         .select('utm, gclid')
         .eq('ref_code', campaignRef)
+        .eq('professional_id', professional.id) // escopa ao profissional: ref é público (INSERT aberto)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()

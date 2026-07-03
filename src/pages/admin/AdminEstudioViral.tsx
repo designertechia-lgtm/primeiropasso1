@@ -337,6 +337,9 @@ export default function AdminEstudioViral() {
   const [refAnalyzing, setRefAnalyzing] = useState(false);
   // Cenas do vídeo: clipe real sugerido/escolhido por slide (preview + troca)
   const [previewClips, setPreviewClips] = useState<(ClipInfo | null)[]>([]);
+  // Aba Cenas (Premium/PRO): tipo escolhido POR CENA — ausente = "auto" (clipe
+  // real/estilo). "video"/"personagens" são cobrados por cena (custo visível).
+  const [sceneTypes, setSceneTypes] = useState<Record<number, { tipo: "imagem" | "video" | "personagens"; dur: number }>>({});
   const [clipsLoading, setClipsLoading] = useState(false);
   const [swapClipSlide, setSwapClipSlide] = useState<number | null>(null);
   const [swapClipQuery, setSwapClipQuery] = useState("");
@@ -390,6 +393,12 @@ export default function AdminEstudioViral() {
     const saved = (professional as any)?.elevenlabs_voice_id || null;
     if (saved) setCloneVoiceId(saved);
   }, [professional]);
+
+  // Roteiro novo → zera os tipos de cena (evita cobrança fantasma de um
+  // "vídeo IA" marcado num roteiro anterior com outros slides).
+  useEffect(() => {
+    setSceneTypes({});
+  }, [script?.titulo, script?.slides?.length]);
 
   // Avatares do profissional (aba Personagens) — cena de abertura nos tiers pagos.
   useEffect(() => {
@@ -820,9 +829,10 @@ export default function AdminEstudioViral() {
           formato,
           model: videoModel,
           visual_style: visualStyle,
-          // estilo_visual: TODOS os tiers — stock tempera a busca de clipes;
-          // estilos IA ilustram as cenas (FLUX + movimento). Kling fallback também usa.
-          estilo_visual: estiloIA,
+          // estilo_visual: Premium/PRO — stock tempera a busca; estilos IA ilustram
+          // as cenas. Grátis vai fixo no cinemático (seletor oculto; evita estilo
+          // residual de sessão paga anterior disparar geração IA no free).
+          estilo_visual: videoModel === "gratuito" ? "cinematico" : estiloIA,
           image_style: videoModel === "gratuito" ? (imageStyle || "realistic") : undefined,
           // Personagem em TODOS os tiers: pagos = animado (Kling); grátis = foto com movimento
           avatar_id: selectedAvatarId || undefined,
@@ -831,6 +841,11 @@ export default function AdminEstudioViral() {
           // clipes reais venceriam as cenas geradas no estilo.
           selected_clip_urls: !ESTILOS_IA.has(estiloIA) && previewClips.length
             ? previewClips.map((c) => c?.url ?? null)
+            : undefined,
+          // Aba Cenas (Premium/PRO): tipo por slide; cenas em vídeo IA são
+          // debitadas por cena no backend (custo já exibido acima dos slides)
+          scene_plan: videoModel !== "gratuito" && script.slides?.length && Object.keys(sceneTypes).length
+            ? script.slides.map((_, i) => (sceneTypes[i] ? { tipo: sceneTypes[i].tipo, dur: sceneTypes[i].dur } : { tipo: "auto" }))
             : undefined,
           // Voz clonada no Gratuito após a cota: gastar créditos ou cair pra voz Edge
           cloned_voice_over_quota: overQuotaChoice,
@@ -1539,9 +1554,62 @@ export default function AdminEstudioViral() {
                     />
                   </CollapsibleContent>
                 </Collapsible>
+
+                {/* Tipo da cena (Premium/PRO): Real | Imagem IA | Vídeo IA | Personagens (PRO) */}
+                {videoModel !== "gratuito" && (
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-border/50 mt-1">
+                    <span className="text-[11px] text-muted-foreground shrink-0">Cena:</span>
+                    {([
+                      { key: null,          label: "Real",           dur: 0 },
+                      { key: "imagem",      label: "Imagem IA",      dur: 0 },
+                      { key: "video",       label: "Vídeo IA 5s",    dur: 5 },
+                      { key: "video10",     label: "Vídeo IA 10s",   dur: 10 },
+                      ...(videoModel === "pro" ? [{ key: "personagens", label: "🎭 Personagens 10s", dur: 10 }] : []),
+                    ] as { key: string | null; label: string; dur: number }[]).map(({ key, label, dur }) => {
+                      const tipo = key === "video10" ? "video" : key;
+                      const cur = sceneTypes[i];
+                      const active = key === null
+                        ? !cur
+                        : cur?.tipo === tipo && (tipo !== "video" || cur.dur === dur);
+                      return (
+                        <button key={label} type="button"
+                          onClick={() => setSceneTypes((prev) => {
+                            const next = { ...prev };
+                            if (key === null) delete next[i];
+                            else next[i] = { tipo: tipo as "imagem" | "video" | "personagens", dur: dur || 5 };
+                            return next;
+                          })}
+                          className={`px-2 py-0.5 rounded-full text-[11px] border transition-colors ${
+                            active ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:border-primary/50"
+                          }`}>
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             ))}
           </div>
+
+          {/* Custo das cenas em vídeo IA — visível ANTES de gerar */}
+          {videoModel !== "gratuito" && (() => {
+            const pagas = Object.values(sceneTypes).filter((s) => s.tipo === "video" || s.tipo === "personagens");
+            if (!pagas.length) return null;
+            const totalS = pagas.reduce((a, s) => a + s.dur, 0);
+            const base30 = (CUSTO_KLING_BRL as Record<string, Record<string, number>>)[videoModel === "pro" ? "pro" : "premium"]?.["30s"] ?? (videoModel === "pro" ? 22 : 8.4);
+            const estimativa = (totalS / 30) * base30;
+            return (
+              <div className="rounded-lg border border-amber-300/50 bg-amber-50/40 dark:bg-amber-950/20 px-3 py-2 text-xs flex items-start gap-2">
+                <AlertCircle className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
+                <p className="text-muted-foreground leading-relaxed">
+                  <strong>{pagas.length} cena(s) em vídeo IA ({totalS}s)</strong> ≈{" "}
+                  <strong>+R$ {estimativa.toFixed(2).replace(".", ",")}</strong> em créditos,
+                  somados ao custo do vídeo e debitados ao clicar em Gerar.
+                </p>
+              </div>
+            );
+          })()}
         </div>
       ) : (
         <div className="space-y-2">
@@ -1636,7 +1704,7 @@ export default function AdminEstudioViral() {
           <Label className="text-base font-semibold flex items-center gap-2">
             <Film className="h-4 w-4" /> Cenas do vídeo
           </Label>
-          {!ESTILOS_IA.has(estiloIA) && (
+          {(videoModel === "gratuito" || !ESTILOS_IA.has(estiloIA)) && (
             <Button variant="outline" size="sm" className="gap-2" onClick={loadPreviewClips} disabled={clipsLoading}>
               {clipsLoading
                 ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Buscando clipes...</>
@@ -1644,7 +1712,7 @@ export default function AdminEstudioViral() {
             </Button>
           )}
         </div>
-        {ESTILOS_IA.has(estiloIA) ? (
+        {videoModel !== "gratuito" && ESTILOS_IA.has(estiloIA) ? (
           <p className="text-xs text-muted-foreground">
             Estilo <strong>{estiloIA === "animacao" ? "Cartoon" : estiloIA.charAt(0).toUpperCase() + estiloIA.slice(1)}</strong> é
             ilustrado: cada cena será <strong>gerada pela IA nesse visual</strong> na hora da criação
@@ -1889,8 +1957,10 @@ export default function AdminEstudioViral() {
 
 
 
-      {/* Estilo Visual — TODOS os tiers. Estilos "IA" ilustram cada cena (FLUX +
-          movimento); os demais temperam a busca dos clipes reais. */}
+      {/* Estilo Visual — Premium/PRO (no Grátis fica oculto: clipes reais
+          cinemáticos automáticos, simplicidade total). Estilos "IA" ilustram
+          cada cena (FLUX + movimento); os demais temperam a busca dos clipes. */}
+      {videoModel !== "gratuito" && (
       <div className="space-y-3">
         <Label className="text-base font-semibold flex items-center gap-2">
           <Sparkles className="h-4 w-4" /> Estilo Visual
@@ -1938,6 +2008,7 @@ export default function AdminEstudioViral() {
             : <>Estilo de <strong>cenas reais</strong>: os clipes de banco são buscados com esse clima.</>}
         </p>
       </div>
+      )}
 
       {/* Formato */}
       <div className="space-y-2">

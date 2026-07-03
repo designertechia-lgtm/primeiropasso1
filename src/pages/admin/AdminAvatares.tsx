@@ -21,7 +21,7 @@ const STYLES = [
   { id: "minimalista",  label: "Minimalista", emoji: "✏️" },
 ] as const;
 type StyleId = typeof STYLES[number]["id"];
-type PhotoMode = "upload" | "generate" | "profile" | "transform" | null;
+type PhotoMode = "upload" | "generate" | "profile" | "transform" | "derive" | null;
 
 interface AvatarForm {
   name: string;
@@ -92,6 +92,8 @@ export default function AdminAvatares() {
   const [form, setForm]                 = useState<AvatarForm>(emptyForm);
   const [saving, setSaving]             = useState(false);
   const [photoMode, setPhotoMode]       = useState<PhotoMode>(null);
+  // Fluxo "Clonar": personagem de origem — a foto DELE é a referência do derive
+  const [cloneSource, setCloneSource]   = useState<Avatar | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl]     = useState<string | null>(null);
   const [generating, setGenerating]         = useState(false);
@@ -126,6 +128,7 @@ export default function AdminAvatares() {
   const resetModal = () => {
     setForm(emptyForm);
     setPhotoMode(null);
+    setCloneSource(null);
     setSelectedFile(null);
     setPreviewUrl(null);
     setEditingAvatar(null);
@@ -151,6 +154,7 @@ export default function AdminAvatares() {
 
   const handleClone = (av: Avatar) => {
     setEditingAvatar(null);
+    setCloneSource(av);
     setForm({
       name: `Cópia de ${av.name}`,
       age: av.age ? String(av.age) : "",
@@ -159,10 +163,50 @@ export default function AdminAvatares() {
       style: (STYLES.find(s => s.id === av.style)?.id ?? "profissional") as StyleId,
       generation_prompt: "",
     });
-    setPhotoMode(null);
+    // Clonar = partir da FOTO do original e descrever o que muda (era o buraco
+    // que fazia "lã preta e terno azul" virar sempre a mesma imagem).
+    setPhotoMode(av.photo_url ? "derive" : null);
     setSelectedFile(null);
     setPreviewUrl(null);
     setOpen(true);
+  };
+
+  // Deriva um novo personagem da FOTO do original aplicando a mudança pedida
+  // (SeedDream edit no backend — /gerar-estilo-avatar com overrides de perfil).
+  const handleDerive = async () => {
+    if (!cloneSource || !slug) return;
+    if (!form.name.trim()) { toast.error("Nome do personagem é obrigatório"); return; }
+    setSaving(true);
+    setRetryAttempt(0);
+    let lastRes: Response | undefined;
+    try {
+      const fd = new FormData();
+      fd.append("professional_slug", slug);
+      fd.append("style", form.style);
+      fd.append("instruction", form.generation_prompt.trim());
+      fd.append("name", form.name.trim());
+      fd.append("personality", form.personality);
+      fd.append("backstory", form.backstory);
+      lastRes = await fetchWithRetry(
+        `${API}/gerar-estilo-avatar/${cloneSource.id}`,
+        { method: "POST", body: fd },
+        (attempt, max) => {
+          setRetryAttempt(attempt);
+          toast.info(`Servidor ocupado, tentando novamente... (${attempt}/${max})`, { duration: 4000 });
+        },
+      );
+      const data = await lastRes.json();
+      if (!lastRes.ok) throw new Error(data.detail ?? `HTTP ${lastRes.status}`);
+      toast.success("Personagem clonado com as mudanças!");
+      setOpen(false);
+      resetModal();
+      await refetch();
+    } catch (e: unknown) {
+      toast.error(await parseError(e, lastRes?.ok === false ? lastRes : undefined), { duration: 6000 });
+    } finally {
+      setSaving(false);
+      setRetryAttempt(0);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -353,7 +397,7 @@ export default function AdminAvatares() {
 
   const currentPhoto = editingAvatar
     ? (photoMode === "profile" ? professional?.photo_url : (photoMode === "upload" || photoMode === "transform") ? previewUrl : editingAvatar.photo_url)
-    : (photoMode === "profile" ? professional?.photo_url : previewUrl);
+    : (photoMode === "profile" ? professional?.photo_url : photoMode === "derive" ? cloneSource?.photo_url : previewUrl);
 
   if (isLoading) return <div className="animate-pulse text-muted-foreground p-6">Carregando personagens...</div>;
 
@@ -377,6 +421,26 @@ export default function AdminAvatares() {
         <div className="flex-1">
           <Label className="font-medium text-sm mb-2 block">Como gerar a imagem?</Label>
           <div className="flex flex-col gap-1.5">
+            {/* Opção 0: Clonar a partir da foto do ORIGINAL (só no fluxo Clonar) */}
+            {!editingAvatar && cloneSource?.photo_url && (
+              <button
+                type="button"
+                onClick={() => setPhotoMode(photoMode === "derive" ? null : "derive")}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs border transition-colors text-left ${
+                  photoMode === "derive"
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "border-primary/40 text-foreground bg-primary/5 hover:bg-primary/10"
+                }`}
+              >
+                <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                <span>
+                  <strong>Foto de {cloneSource.name} + mudanças</strong>
+                  <span className={`block ${photoMode === "derive" ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                    A IA parte da foto do original e aplica o que você pedir
+                  </span>
+                </span>
+              </button>
+            )}
             {/* Opção 1: Transformar foto com IA — destaque (só aparece em criação) */}
             {!editingAvatar && (
               <button
@@ -450,6 +514,26 @@ export default function AdminAvatares() {
 
       {photoMode === "profile" && professional?.photo_url && (
         <p className="text-xs text-primary">✓ Usando sua foto do perfil</p>
+      )}
+      {photoMode === "derive" && cloneSource?.photo_url && (
+        <div className="space-y-1.5">
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">
+              O que mudar em relação a {cloneSource.name}? <span className="text-muted-foreground">(opcional)</span>
+            </Label>
+            <Textarea
+              rows={2}
+              placeholder="Ex: lã preta e terno azul, adicionar óculos — vazio clona só aplicando o estilo"
+              value={form.generation_prompt}
+              onChange={(e) => setForm(f => ({ ...f, generation_prompt: e.target.value }))}
+            />
+          </div>
+          <p className="text-xs text-primary bg-primary/5 rounded-lg px-2.5 py-1.5">
+            {form.generation_prompt.trim()
+              ? <>✨ A IA parte da foto de <strong>{cloneSource.name}</strong> e aplica <strong>"{form.generation_prompt.trim()}"</strong> (~30s)</>
+              : <>✨ A IA clona a foto de <strong>{cloneSource.name}</strong> no estilo <strong>{STYLES.find(s => s.id === form.style)?.label}</strong> (~30s)</>}
+          </p>
+        </div>
       )}
       {photoMode === "upload" && selectedFile && (
         <div className="flex items-center gap-2">
@@ -594,6 +678,14 @@ export default function AdminAvatares() {
                   {saving
                     ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{retryAttempt > 0 ? `Servidor ocupado, tentativa ${retryAttempt + 1}/3...` : "Transformando com IA (~30s)..."}</>
                     : <><Sparkles className="h-4 w-4 mr-2" />{selectedFile ? "Transformar foto e criar avatar" : "Selecione uma foto acima"}</>}
+                </Button>
+              ) : photoMode === "derive" ? (
+                <Button onClick={handleDerive}
+                  disabled={saving || !form.name.trim()}
+                  className="w-full">
+                  {saving
+                    ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{retryAttempt > 0 ? `Servidor ocupado, tentativa ${retryAttempt + 1}/3...` : "Clonando com mudanças (~30s)..."}</>
+                    : <><Sparkles className="h-4 w-4 mr-2" />Clonar aplicando as mudanças</>}
                 </Button>
               ) : (
                 <Button onClick={handleSave} disabled={saving || !form.name.trim()} className="w-full">

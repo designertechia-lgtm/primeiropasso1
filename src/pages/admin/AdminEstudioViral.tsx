@@ -22,7 +22,7 @@ import {
   Zap, Crown, Star, Minus, Triangle,
   Heart, BookOpenCheck, Flame, TrendingUp,
   Copy, Scissors, Download, Share2, Search, RefreshCw,
-  Instagram, Youtube, Linkedin, Facebook, Clapperboard,
+  Instagram, Youtube, Linkedin, Facebook, Clapperboard, Drama,
 } from "lucide-react";
 
 function TikTokIcon({ className }: { className?: string }) {
@@ -91,7 +91,10 @@ type Slide     = {
   narracao_slide: string;
   visual_prompt: string;
   duracao_s: number;
+  usar_avatar?: boolean;   // cópia inteligente: momento de pessoa em câmera → entra o personagem
 };
+// Clipe de vídeo real (Pexels/Pixabay) sugerido/escolhido para um slide
+type ClipInfo = { url: string; thumb: string; duration: number; source: string };
 type Script    = {
   titulo: string;
   narracao: string;
@@ -328,6 +331,13 @@ export default function AdminEstudioViral() {
   const [refFile, setRefFile] = useState<File | null>(null);
   const [refTema, setRefTema] = useState("");
   const [refAnalyzing, setRefAnalyzing] = useState(false);
+  // Cenas do vídeo: clipe real sugerido/escolhido por slide (preview + troca)
+  const [previewClips, setPreviewClips] = useState<(ClipInfo | null)[]>([]);
+  const [clipsLoading, setClipsLoading] = useState(false);
+  const [swapClipSlide, setSwapClipSlide] = useState<number | null>(null);
+  const [swapClipQuery, setSwapClipQuery] = useState("");
+  const [swapClipResults, setSwapClipResults] = useState<ClipInfo[]>([]);
+  const [swapClipLoading, setSwapClipLoading] = useState(false);
   const queryClient = useQueryClient();
   const [imageMode, setImageMode]     = useState<"auto" | "custom" | "ia">(saved?.imageMode ?? "auto");
   const [iaTier, setIaTier]           = useState<"premium" | "pro">(saved?.iaTier ?? "premium");
@@ -810,8 +820,10 @@ export default function AdminEstudioViral() {
           // image_style: só Gratuito (filtra busca em Pexels).
           estilo_visual: videoModel === "gratuito" ? undefined : estiloIA,
           image_style: videoModel === "gratuito" ? (imageStyle || "realistic") : undefined,
-          // Avatar como cena de abertura (Premium/Pro; opcional)
-          avatar_id: videoModel !== "gratuito" ? (selectedAvatarId || undefined) : undefined,
+          // Personagem em TODOS os tiers: pagos = animado (Kling); grátis = foto com movimento
+          avatar_id: selectedAvatarId || undefined,
+          // Clipes escolhidos no preview de cenas (null = busca automática naquele slide)
+          selected_clip_urls: previewClips.length ? previewClips.map((c) => c?.url ?? null) : undefined,
           // Voz clonada no Gratuito após a cota: gastar créditos ou cair pra voz Edge
           cloned_voice_over_quota: overQuotaChoice,
         }),
@@ -864,6 +876,64 @@ export default function AdminEstudioViral() {
     } finally {
       setRefAnalyzing(false);
     }
+  };
+
+  // Cenas do vídeo: 1 clipe REAL sugerido por slide (o motor usa exatamente
+  // o que estiver aqui na geração — o que você vê é o que sai).
+  const loadPreviewClips = async () => {
+    if (!script) return;
+    setClipsLoading(true);
+    try {
+      const res = await fetch(`${API}/preview-clipes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ script, format }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Falha ao buscar clipes");
+      setPreviewClips(data.clips || []);
+    } catch (e: any) {
+      toast.error(e.message || "Não consegui buscar os clipes.");
+    } finally {
+      setClipsLoading(false);
+    }
+  };
+
+  const searchSwapClips = async (query: string) => {
+    if (!query.trim()) return;
+    setSwapClipLoading(true);
+    try {
+      const res = await fetch(`${API}/buscar-clipes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: query.trim(), format }),
+      });
+      const data = await res.json();
+      setSwapClipResults(data.results || []);
+    } catch {
+      toast.error("Busca de clipes falhou.");
+    } finally {
+      setSwapClipLoading(false);
+    }
+  };
+
+  const openSwapClip = (slideIndex: number) => {
+    const q = script?.slides?.[slideIndex]?.visual_prompt || imageTheme || objetivo;
+    setSwapClipSlide(slideIndex);
+    setSwapClipQuery(q || "");
+    setSwapClipResults([]);
+    if (q) searchSwapClips(q);
+  };
+
+  const pickSwapClip = (clip: ClipInfo) => {
+    if (swapClipSlide === null) return;
+    setPreviewClips((prev) => {
+      const next = [...prev];
+      next[swapClipSlide] = clip;
+      return next;
+    });
+    setSwapClipSlide(null);
+    toast.success("Clipe trocado!");
   };
 
   const stopPolling = () => {
@@ -1199,10 +1269,10 @@ export default function AdminEstudioViral() {
         )}
       </div>
 
-      {/* Personagem (avatar) — abre o vídeo nos tiers Premium/Pro. Opcional. */}
-      {videoModel !== "gratuito" && (
+      {/* Personagem (avatar) — TODOS os tiers: pagos = animado (Kling); grátis = foto com movimento */}
+      {(
         <div className="space-y-2">
-          <Label className="text-base font-semibold">Personagem do vídeo <span className="text-xs font-normal text-muted-foreground">(opcional — abre o vídeo)</span></Label>
+          <Label className="text-base font-semibold">Personagem do vídeo <span className="text-xs font-normal text-muted-foreground">(opcional — abre e fecha o vídeo)</span></Label>
           {avatars.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               Nenhum personagem ainda — crie um na aba <strong>Personagens</strong> para abrir seus vídeos com ele.
@@ -1239,7 +1309,9 @@ export default function AdminEstudioViral() {
             </div>
           )}
           <p className="text-xs text-muted-foreground">
-            Seu personagem é animado e abre o vídeo (presença, sem lip-sync); a narração entra por cima e os clipes reais contam a história.
+            {videoModel === "gratuito"
+              ? "No plano Gratuito, a foto do personagem ganha movimento suave e abre/fecha o vídeo — os clipes reais contam a história no meio."
+              : "Seu personagem é animado com IA (presença, sem lip-sync) e abre/fecha o vídeo; a narração entra por cima e os clipes reais contam a história."}
           </p>
         </div>
       )}
@@ -1415,6 +1487,11 @@ export default function AdminEstudioViral() {
                     placeholder="Legenda do slide..."
                     className="flex-1 font-medium text-sm"
                   />
+                  {slide.usar_avatar && (
+                    <Badge variant="outline" className="shrink-0 gap-1 text-xs text-primary border-primary/40">
+                      <Drama className="h-3 w-3" /> personagem
+                    </Badge>
+                  )}
                   <span className="text-xs text-muted-foreground shrink-0">{slide.duracao_s}s</span>
                 </div>
                 <Textarea
@@ -1530,6 +1607,110 @@ export default function AdminEstudioViral() {
           </CollapsibleContent>
         </Collapsible>
       )}
+
+      {/* ── Cenas do vídeo (clipes reais por slide) ── */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <Label className="text-base font-semibold flex items-center gap-2">
+            <Film className="h-4 w-4" /> Cenas do vídeo
+          </Label>
+          <Button variant="outline" size="sm" className="gap-2" onClick={loadPreviewClips} disabled={clipsLoading}>
+            {clipsLoading
+              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Buscando clipes...</>
+              : <><Search className="h-3.5 w-3.5" /> {previewClips.length ? "Buscar de novo" : "Ver as cenas"}</>}
+          </Button>
+        </div>
+        {previewClips.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            O vídeo usa <strong>clipes de vídeo reais</strong> (Pexels/Pixabay) escolhidos pela IA.
+            Clique em "Ver as cenas" para revisar e trocar qualquer clipe antes de gerar.
+          </p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {previewClips.map((clip, i) => {
+                const slideAvatar = script.slides?.[i]?.usar_avatar;
+                return (
+                  <div key={i} className="rounded-xl border overflow-hidden bg-card">
+                    <div className="relative aspect-[9/16] max-h-44 w-full bg-muted">
+                      {slideAvatar ? (
+                        <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-center p-2">
+                          <Drama className="h-6 w-6 text-primary" />
+                          <span className="text-[11px] text-muted-foreground leading-tight">Seu personagem entra aqui</span>
+                        </div>
+                      ) : clip ? (
+                        <>
+                          <img src={clip.thumb} alt={`Cena ${i + 1}`} className="w-full h-full object-cover" />
+                          <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white">
+                            {clip.duration}s · {clip.source}
+                          </span>
+                        </>
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-[11px] text-muted-foreground p-2 text-center">
+                          sem clipe — a IA busca na hora
+                        </div>
+                      )}
+                      <span className="absolute top-1 left-1 w-5 h-5 rounded-full bg-black/70 text-white text-[10px] font-bold flex items-center justify-center">
+                        {i + 1}
+                      </span>
+                    </div>
+                    {!slideAvatar && (
+                      <Button variant="ghost" size="sm" className="w-full h-7 text-xs gap-1 rounded-none"
+                        onClick={() => openSwapClip(i)}>
+                        <RefreshCw className="h-3 w-3" /> Trocar
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Estes são os clipes que entram no vídeo, na ordem dos slides. Slides com o personagem usam a cena dele.
+            </p>
+          </>
+        )}
+      </div>
+
+      {/* Dialog de troca de clipe */}
+      <Dialog open={swapClipSlide !== null} onOpenChange={(open) => { if (!open) setSwapClipSlide(null); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Trocar o clipe da cena {swapClipSlide !== null ? swapClipSlide + 1 : ""}</DialogTitle>
+          </DialogHeader>
+          <div className="flex gap-2">
+            <Input
+              value={swapClipQuery}
+              onChange={(e) => setSwapClipQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") searchSwapClips(swapClipQuery); }}
+              placeholder="Buscar clipes (em inglês encontra mais)..."
+              className="text-sm"
+            />
+            <Button size="sm" className="gap-1" disabled={swapClipLoading} onClick={() => searchSwapClips(swapClipQuery)}>
+              {swapClipLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+              Buscar
+            </Button>
+          </div>
+          <div className="grid grid-cols-3 gap-2 max-h-[50vh] overflow-y-auto">
+            {swapClipLoading && swapClipResults.length === 0 && (
+              <p className="col-span-3 text-center text-sm text-muted-foreground py-6">Buscando clipes...</p>
+            )}
+            {!swapClipLoading && swapClipResults.length === 0 && (
+              <p className="col-span-3 text-center text-sm text-muted-foreground py-6">
+                Nenhum clipe ainda — busque um termo acima.
+              </p>
+            )}
+            {swapClipResults.map((clip, idx) => (
+              <button key={idx} type="button" onClick={() => pickSwapClip(clip)}
+                className="relative rounded-lg overflow-hidden border-2 border-transparent hover:border-primary transition-all">
+                <img src={clip.thumb} alt="" className="w-full aspect-[9/16] object-cover" />
+                <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white">
+                  {clip.duration}s · {clip.source}
+                </span>
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Voz ── */}
       <div className="space-y-3">

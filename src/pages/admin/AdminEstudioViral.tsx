@@ -345,6 +345,9 @@ export default function AdminEstudioViral() {
   const [swapClipQuery, setSwapClipQuery] = useState("");
   const [swapClipResults, setSwapClipResults] = useState<ClipInfo[]>([]);
   const [swapClipLoading, setSwapClipLoading] = useState(false);
+  // Personagem escolhido por cena (galeria no "Trocar"): índice do slide -> avatar_id.
+  // A foto do personagem vira a cena com movimento (Ken Burns) no backend.
+  const [sceneAvatarIds, setSceneAvatarIds] = useState<Record<number, string>>({});
   const queryClient = useQueryClient();
   const [imageMode, setImageMode]     = useState<"auto" | "custom" | "ia">(saved?.imageMode ?? "auto");
   const [iaTier, setIaTier]           = useState<"premium" | "pro">(saved?.iaTier ?? "premium");
@@ -856,6 +859,11 @@ export default function AdminEstudioViral() {
           scene_plan: videoModel !== "gratuito" && script.slides?.length && Object.keys(sceneTypes).length
             ? script.slides.map((_, i) => (sceneTypes[i] ? { tipo: sceneTypes[i].tipo, dur: sceneTypes[i].dur } : { tipo: "auto" }))
             : undefined,
+          // Personagem escolhido por cena (galeria do "Trocar"): id do avatar por
+          // slide (null = clipe/auto). A foto vira cena com movimento no backend.
+          scene_avatar_ids: Object.keys(sceneAvatarIds).length && script.slides?.length
+            ? script.slides.map((_, i) => sceneAvatarIds[i] || null)
+            : undefined,
           // Voz clonada no Gratuito após a cota: gastar créditos ou cair pra voz Edge
           cloned_voice_over_quota: overQuotaChoice,
         }),
@@ -959,13 +967,28 @@ export default function AdminEstudioViral() {
 
   const pickSwapClip = (clip: ClipInfo) => {
     if (swapClipSlide === null) return;
+    const slide = swapClipSlide;
     setPreviewClips((prev) => {
       const next = [...prev];
-      next[swapClipSlide] = clip;
+      next[slide] = clip;
       return next;
+    });
+    // Voltar a ser clipe: remove o personagem que porventura estava nesta cena.
+    setSceneAvatarIds((prev) => {
+      if (!(slide in prev)) return prev;
+      const next = { ...prev }; delete next[slide]; return next;
     });
     setSwapClipSlide(null);
     toast.success("Clipe trocado!");
+  };
+
+  // Usar a foto de um personagem NESTA cena (galeria do "Trocar").
+  const pickSceneAvatar = (avatarId: string) => {
+    if (swapClipSlide === null) return;
+    const slide = swapClipSlide;
+    setSceneAvatarIds((prev) => ({ ...prev, [slide]: avatarId }));
+    setSwapClipSlide(null);
+    toast.success("Personagem definido para esta cena!");
   };
 
   const stopPolling = () => {
@@ -1742,10 +1765,25 @@ export default function AdminEstudioViral() {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {previewClips.map((clip, i) => {
                 const slideAvatar = script.slides?.[i]?.usar_avatar;
+                const sceneAv = sceneAvatarIds[i] ? avatars.find((a) => a.id === sceneAvatarIds[i]) : null;
                 return (
                   <div key={i} className="rounded-xl border overflow-hidden bg-card">
                     <div className="relative aspect-[9/16] max-h-44 w-full bg-muted">
-                      {slideAvatar ? (
+                      {sceneAv ? (
+                        sceneAv.photo_url ? (
+                          <>
+                            <img src={sceneAv.photo_url} alt={sceneAv.name} className="w-full h-full object-cover" />
+                            <span className="absolute bottom-1 right-1 rounded bg-primary/90 px-1.5 py-0.5 text-[10px] text-white flex items-center gap-1">
+                              <Drama className="h-3 w-3" /> {sceneAv.name}
+                            </span>
+                          </>
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-center p-2">
+                            <Drama className="h-6 w-6 text-primary" />
+                            <span className="text-[11px] text-muted-foreground leading-tight">{sceneAv.name}</span>
+                          </div>
+                        )
+                      ) : slideAvatar ? (
                         <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-center p-2">
                           <Drama className="h-6 w-6 text-primary" />
                           <span className="text-[11px] text-muted-foreground leading-tight">Seu personagem entra aqui</span>
@@ -1802,6 +1840,31 @@ export default function AdminEstudioViral() {
               Buscar
             </Button>
           </div>
+          {avatars.length > 0 && (
+            <div className="space-y-1.5 border-b pb-3">
+              <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                <Drama className="h-3.5 w-3.5 text-primary" /> Ou use um personagem nesta cena
+                <span className="font-normal">— a foto ganha um leve movimento, sem custo extra</span>
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {avatars.map((av) => {
+                  const active = swapClipSlide !== null && sceneAvatarIds[swapClipSlide] === av.id;
+                  return (
+                    <button key={av.id} type="button" onClick={() => pickSceneAvatar(av.id)}
+                      className={`rounded-lg overflow-hidden border-2 transition-all ${active ? "border-primary ring-2 ring-primary/30" : "border-transparent hover:border-primary/50"}`}
+                      title={av.name}>
+                      <div className="w-16 h-20 bg-muted">
+                        {av.photo_url
+                          ? <img src={av.photo_url} alt={av.name} className="w-full h-full object-cover" />
+                          : <div className="w-full h-full flex items-center justify-center"><Drama className="h-5 w-5 text-muted-foreground" /></div>}
+                      </div>
+                      <span className="block text-[10px] font-medium truncate px-1 py-0.5 w-16">{av.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-3 gap-2 max-h-[50vh] overflow-y-auto">
             {swapClipLoading && swapClipResults.length === 0 && (
               <p className="col-span-3 text-center text-sm text-muted-foreground py-6">Buscando clipes...</p>

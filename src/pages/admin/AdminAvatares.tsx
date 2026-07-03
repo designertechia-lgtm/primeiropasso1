@@ -171,10 +171,12 @@ export default function AdminAvatares() {
     setOpen(true);
   };
 
-  // Deriva um novo personagem da FOTO do original aplicando a mudança pedida
-  // (SeedDream edit no backend — /gerar-estilo-avatar com overrides de perfil).
+  // Aplica estilo/mudanças partindo de uma FOTO EXISTENTE (SeedDream edit):
+  // Clonar → foto do original vira um personagem NOVO; Editar → o resultado
+  // substitui a foto DESTE personagem (update_in_place).
   const handleDerive = async () => {
-    if (!cloneSource || !slug) return;
+    const deriveSource = cloneSource ?? editingAvatar;
+    if (!deriveSource || !slug) return;
     if (!form.name.trim()) { toast.error("Nome do personagem é obrigatório"); return; }
     setSaving(true);
     setRetryAttempt(0);
@@ -187,8 +189,10 @@ export default function AdminAvatares() {
       fd.append("name", form.name.trim());
       fd.append("personality", form.personality);
       fd.append("backstory", form.backstory);
+      if (form.age) fd.append("age", form.age);
+      if (editingAvatar && !cloneSource) fd.append("update_in_place", "true");
       lastRes = await fetchWithRetry(
-        `${API}/gerar-estilo-avatar/${cloneSource.id}`,
+        `${API}/gerar-estilo-avatar/${deriveSource.id}`,
         { method: "POST", body: fd },
         (attempt, max) => {
           setRetryAttempt(attempt);
@@ -197,7 +201,9 @@ export default function AdminAvatares() {
       );
       const data = await lastRes.json();
       if (!lastRes.ok) throw new Error(data.detail ?? `HTTP ${lastRes.status}`);
-      toast.success("Personagem clonado com as mudanças!");
+      toast.success(editingAvatar && !cloneSource
+        ? "Estilo aplicado na foto do personagem!"
+        : "Personagem clonado com as mudanças!");
       setOpen(false);
       resetModal();
       await refetch();
@@ -421,8 +427,10 @@ export default function AdminAvatares() {
         <div className="flex-1">
           <Label className="font-medium text-sm mb-2 block">Como gerar a imagem?</Label>
           <div className="flex flex-col gap-1.5">
-            {/* Opção 0: Clonar a partir da foto do ORIGINAL (só no fluxo Clonar) */}
-            {!editingAvatar && cloneSource?.photo_url && (
+            {/* Opção 0: partir de uma foto EXISTENTE — Clonar usa a foto do original;
+                Editar aplica na própria foto do personagem (era o buraco: trocar o
+                estilo na edição só mudava a etiqueta, a imagem ficava igual). */}
+            {(cloneSource ?? editingAvatar)?.photo_url && (
               <button
                 type="button"
                 onClick={() => setPhotoMode(photoMode === "derive" ? null : "derive")}
@@ -434,9 +442,11 @@ export default function AdminAvatares() {
               >
                 <Sparkles className="h-3.5 w-3.5 shrink-0" />
                 <span>
-                  <strong>Foto de {cloneSource.name} + mudanças</strong>
+                  <strong>{cloneSource ? `Foto de ${cloneSource.name} + mudanças` : "Aplicar estilo/mudanças na foto atual"}</strong>
                   <span className={`block ${photoMode === "derive" ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
-                    A IA parte da foto do original e aplica o que você pedir
+                    {cloneSource
+                      ? "A IA parte da foto do original e aplica o que você pedir"
+                      : "A IA regenera a foto deste personagem no estilo escolhido + o que você pedir"}
                   </span>
                 </span>
               </button>
@@ -515,23 +525,29 @@ export default function AdminAvatares() {
       {photoMode === "profile" && professional?.photo_url && (
         <p className="text-xs text-primary">✓ Usando sua foto do perfil</p>
       )}
-      {photoMode === "derive" && cloneSource?.photo_url && (
+      {photoMode === "derive" && (cloneSource ?? editingAvatar)?.photo_url && (
         <div className="space-y-1.5">
           <div className="space-y-1">
             <Label className="text-xs font-medium">
-              O que mudar em relação a {cloneSource.name}? <span className="text-muted-foreground">(opcional)</span>
+              O que mudar em relação a {cloneSource ? cloneSource.name : "esta foto"}? <span className="text-muted-foreground">(opcional)</span>
             </Label>
             <Textarea
               rows={2}
-              placeholder="Ex: lã preta e terno azul, adicionar óculos — vazio clona só aplicando o estilo"
+              placeholder="Ex: lã preta e terno azul, adicionar óculos — vazio aplica só o estilo escolhido"
               value={form.generation_prompt}
               onChange={(e) => setForm(f => ({ ...f, generation_prompt: e.target.value }))}
             />
           </div>
           <p className="text-xs text-primary bg-primary/5 rounded-lg px-2.5 py-1.5">
-            {form.generation_prompt.trim()
-              ? <>✨ A IA parte da foto de <strong>{cloneSource.name}</strong> e aplica <strong>"{form.generation_prompt.trim()}"</strong> (~30s)</>
-              : <>✨ A IA clona a foto de <strong>{cloneSource.name}</strong> no estilo <strong>{STYLES.find(s => s.id === form.style)?.label}</strong> (~30s)</>}
+            {cloneSource ? (
+              form.generation_prompt.trim()
+                ? <>✨ A IA parte da foto de <strong>{cloneSource.name}</strong> e aplica <strong>"{form.generation_prompt.trim()}"</strong> (~30s)</>
+                : <>✨ A IA clona a foto de <strong>{cloneSource.name}</strong> no estilo <strong>{STYLES.find(s => s.id === form.style)?.label}</strong> (~30s)</>
+            ) : (
+              form.generation_prompt.trim()
+                ? <>✨ A foto <strong>deste personagem</strong> será regenerada aplicando <strong>"{form.generation_prompt.trim()}"</strong> no estilo <strong>{STYLES.find(s => s.id === form.style)?.label}</strong> (~30s)</>
+                : <>✨ A foto <strong>deste personagem</strong> será regenerada no estilo <strong>{STYLES.find(s => s.id === form.style)?.label}</strong> (~30s)</>
+            )}
           </p>
         </div>
       )}
@@ -648,7 +664,15 @@ export default function AdminAvatares() {
                 <div className="flex flex-wrap gap-1.5">
                   {STYLES.map(s => (
                     <button key={s.id} type="button"
-                      onClick={() => setForm(f => ({ ...f, style: s.id }))}
+                      onClick={() => {
+                        setForm(f => ({ ...f, style: s.id }));
+                        // Editando um personagem COM foto: trocar o estilo já arma o
+                        // "aplicar na foto atual" — senão o save mudava só a etiqueta
+                        // e a imagem ficava igual (reclamação do Carlos 03/07).
+                        if (editingAvatar?.photo_url && s.id !== editingAvatar.style && !photoMode) {
+                          setPhotoMode("derive");
+                        }
+                      }}
                       className={`px-3 py-1.5 rounded-full text-xs border transition-colors flex items-center gap-1 ${
                         form.style === s.id
                           ? "bg-primary text-primary-foreground border-primary"
@@ -684,8 +708,8 @@ export default function AdminAvatares() {
                   disabled={saving || !form.name.trim()}
                   className="w-full">
                   {saving
-                    ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{retryAttempt > 0 ? `Servidor ocupado, tentativa ${retryAttempt + 1}/3...` : "Clonando com mudanças (~30s)..."}</>
-                    : <><Sparkles className="h-4 w-4 mr-2" />Clonar aplicando as mudanças</>}
+                    ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{retryAttempt > 0 ? `Servidor ocupado, tentativa ${retryAttempt + 1}/3...` : "Aplicando na foto (~30s)..."}</>
+                    : <><Sparkles className="h-4 w-4 mr-2" />{editingAvatar && !cloneSource ? "Aplicar na foto e salvar" : "Clonar aplicando as mudanças"}</>}
                 </Button>
               ) : (
                 <Button onClick={handleSave} disabled={saving || !form.name.trim()} className="w-full">

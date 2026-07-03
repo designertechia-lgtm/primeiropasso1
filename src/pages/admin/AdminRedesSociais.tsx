@@ -1,6 +1,7 @@
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText, Link2, Video, Drama, Database, FileImage, Flame } from "lucide-react";
+import { ConnectedAccounts } from "@/components/dashboard/ConnectedAccounts";
 import AdminArtigos from "./AdminArtigos";
 import AdminEstudioViral from "./AdminEstudioViral";
 import AdminVideos from "./AdminVideos";

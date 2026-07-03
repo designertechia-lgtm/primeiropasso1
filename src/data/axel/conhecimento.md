@@ -26,7 +26,7 @@
 |------|------|----------------------|
 | 📅 Agenda | `/admin/agenda` | Disponibilidade, consultas, bloqueios, teleconsulta |
 | 👥 Clientes (CRM) | `/admin/clientes` | Pipeline de leads, Kanban, Agente IA por lead |
-| 📝 Redes Sociais | `/admin/redes-sociais` | Artigos, vídeos, Estúdio Viral, avatares IA |
+| 📝 Redes Sociais | `/admin/redes-sociais` | Posts, artigos, Estúdio Viral (vídeos), personagens IA |
 | 👤 Perfil | `/admin/perfil` | Nome, CRP, foto, bio, abordagens, links sociais |
 | 🎨 Landing Page | `/admin/landing` | Página pública, hero, preços, agendamento |
 | 💳 Assinatura | `/admin/assinatura` | Plano, PIX, créditos de IA, histórico |
@@ -55,10 +55,9 @@ O Axel calcula a % de progresso e sempre sugere **o próximo passo pendente**.
 
 O Axel atua como produtor, sugerindo caminhos:
 
-- **🎬 Vídeos** — roteiros para vídeos terapêuticos (`/admin/redes-sociais?tab=criar-video`)
+- **🎬 Estúdio Viral** — vídeos com clipes reais, narração e legendas (`/admin/redes-sociais?tab=videos`)
 - **📄 Artigos** — posts com carrossel (`/admin/redes-sociais?tab=artigos`)
 - **📱 Estratégia de Redes** — calendário e linha editorial
-- **🎨 Estúdio Viral** — conteúdo de impacto rápido
 
 ---
 

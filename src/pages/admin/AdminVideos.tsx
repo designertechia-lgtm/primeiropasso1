@@ -297,11 +297,11 @@ export default function AdminVideos() {
         <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
-            onClick={() => navigate("/admin/criar-video")}
+            onClick={() => navigate("/admin/redes-sociais?tab=videos")}
             className="gap-2"
           >
             <Clapperboard className="h-4 w-4" />
-            Criar Vídeo
+            Estúdio Viral
           </Button>
         </div>
 
@@ -461,7 +461,7 @@ export default function AdminVideos() {
                           variant="ghost"
                           size="icon"
                           title="Reeditar com IA"
-                          onClick={() => navigate(`/admin/criar-video?edit=${v.id}`)}
+                          onClick={() => navigate(`/admin/redes-sociais?tab=videos&edit=${v.id}`)}
                         >
                           <Wand2 className="h-4 w-4 text-primary" />
                         </Button>

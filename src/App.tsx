@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -33,7 +33,6 @@ import AdminDisponibilidade from "./pages/admin/AdminDisponibilidade.tsx";
 import AdminAgendamentos from "./pages/admin/AdminAgendamentos.tsx";
 import AdminAgenda from "./pages/admin/AdminAgenda.tsx";
 import AdminDocumentos from "./pages/admin/AdminDocumentos.tsx";
-import AdminCriarVideo from "./pages/admin/AdminCriarVideo.tsx";
 import AdminLandingPage from "./pages/admin/AdminLandingPage.tsx";
 import AdminRedesSociais from "./pages/admin/AdminRedesSociais.tsx";
 import AdminAvatares from "./pages/admin/AdminAvatares.tsx";
@@ -53,6 +52,14 @@ import AppAnnouncements from "./components/AppAnnouncements.tsx";
 import RouteErrorBoundary from "./components/ErrorBoundary.tsx";
 
 const queryClient = new QueryClient();
+
+// Rota antiga /admin/criar-video → Estúdio Viral (dentro de Vídeos), PRESERVANDO
+// os query params (?edit= da galeria, ?model= dos links do Axel).
+const RedirectCriarVideo = () => {
+  const [sp] = useSearchParams();
+  sp.set("tab", "videos");
+  return <Navigate to={`/admin/redes-sociais?${sp.toString()}`} replace />;
+};
 
 const AdminRoute = ({ children }: { children: React.ReactNode }) => (
   <ProtectedRoute requiredRole="professional">
@@ -108,7 +115,7 @@ const App = () => (
             <Route path="/admin/agendamentos" element={<Navigate to="/admin/agenda?tab=agendamentos" replace />} />
             <Route path="/admin/disponibilidade" element={<Navigate to="/admin/agenda?tab=bloqueios" replace />} />
             <Route path="/admin/documentos" element={<Navigate to="/admin/redes-sociais?tab=rag" replace />} />
-            <Route path="/admin/criar-video" element={<Navigate to="/admin/redes-sociais?tab=criar-video" replace />} />
+            <Route path="/admin/criar-video" element={<RedirectCriarVideo />} />
             <Route path="/admin/landing" element={<AdminRoute><AdminLandingPage /></AdminRoute>} />
             <Route path="/admin/redes-sociais" element={<AdminRoute><AdminRedesSociais /></AdminRoute>} />
             <Route path="/admin/avatares" element={<Navigate to="/admin/redes-sociais?tab=personagens" replace />} />

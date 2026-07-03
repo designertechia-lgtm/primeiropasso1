@@ -294,9 +294,9 @@ export const FALLBACK_ACTIONS: KbAction[] = [
 /** Menu de produção de conteúdo (usado pela intenção dinâmica "content"). */
 export const CONTENT_MENU = {
   content:
-    "Produção de conteúdo. Como posso ajudar?\n\n- Vídeos: roteiros para vídeos terapêuticos\n- Artigos: posts com carrossel de imagens\n- Redes sociais: estratégia e calendário\n- Estúdio Viral: conteúdo de impacto rápido\n\nO que te interessa mais?",
+    "Produção de conteúdo. Como posso ajudar?\n\n- Estúdio Viral: vídeos com clipes reais, narração e legendas\n- Artigos: posts com carrossel de imagens\n- Redes sociais: estratégia e calendário\n\nO que te interessa mais?",
   actions: [
-    { label: "Criar vídeo", href: "/admin/redes-sociais?tab=criar-video" },
+    { label: "Estúdio Viral (criar vídeo)", href: "/admin/redes-sociais?tab=videos" },
     { label: "Escrever artigo", href: "/admin/redes-sociais?tab=artigos" },
     { label: "Redes Sociais", href: "/admin/redes-sociais" },
   ] as KbAction[],

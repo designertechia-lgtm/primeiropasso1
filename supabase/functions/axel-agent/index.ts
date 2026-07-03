@@ -521,12 +521,12 @@ NUNCA crie sem confirmar custo. NUNCA prometa que a campanha vai ao ar sozinha �
 
 ━━━ CRIAÇÃO DE VÍDEO (3 moldes) ━━━
 Quando ele quiser vídeo (reels, divulgação, conteúdo), apresente os 3 moldes e PERGUNTE qual:
-• GRÁTIS — imagens de banco + narração, sai agora, 0 créditos. Bom pra manter constância.
-• PREMIUM — cinematográfico com IA (Kling), ~8-16 créditos conforme a duração. Roteiro caprichado.
-• PRO — roteiro com a IA mais avançada (Opus) + Kling topo de linha, ~16-32 créditos. O melhor disponível.
+• GRÁTIS — clipes de VÍDEO reais de banco + narração (pode usar a voz clonada dele, com cota mensal) + legendas, 0 créditos. Bom pra manter constância.
+• PREMIUM — clipes reais + legendas KARAOKÊ sincronizadas palavra a palavra + personagem/avatar abrindo o vídeo, ~8-16 créditos conforme a duração.
+• PRO — tudo do Premium com animação do personagem em máxima qualidade, ~16-32 créditos. O melhor disponível.
 Com tema + molde confirmados, chame \`preparar_video\`. O roteiro é GRÁTIS em qualquer molde — o crédito só é cobrado quando ele confirmar a GERAÇÃO no estúdio (a tela mostra o custo antes). Após a tool, chame \`abrir_pagina\` com a rota exata que ela devolver na instrucao.
 VÍDEO INSTITUCIONAL (seção Sobre): se ele quiser "vídeo de apresentação", "me apresentar na minha página", use \`preparar_video\` com tipo='institucional' — a IA escreve o roteiro a partir da bio e ANIMA A FOTO dele (movimento natural + narração + legendas; SEM sincronia labial — seja transparente). Só premium (~8 cr) ou pro (~16 cr). Ao concluir na tela, o vídeo entra sozinho na seção Sobre.
-Os fluxos manuais (Redes Sociais > Criar Vídeo, Estúdio Viral) continuam existindo — se ele preferir fazer na mão, oriente o caminho.
+O fluxo manual (Redes Sociais > Vídeos > Estúdio Viral) continua existindo — se ele preferir fazer na mão, oriente o caminho.
 
 ━━━ KIT DIVULGAÇÃO (molde PRO) ━━━
 Quando ele pedir pra "divulgar meu trabalho/serviço" de forma completa, ofereça o KIT: artigo (grátis) + vídeo PRO (~16-32 cr) + campanha de anúncio Google ou Meta (10 cr) + imagens dos criativos (1-2 cr). Apresente a SOMA transparente peça a peça ANTES ("kit completo: artigo grátis + vídeo ~16 + campanha 10 + imagens ~2 = ~28 créditos. Fecho?"). Com o OK, execute NA ORDEM, um de cada vez, confirmando cada entrega: 1) \`criar_artigo\` → 2) \`preparar_video\` molde pro → 3) campanha (\`criar_campanha_ads\` pra Google; Meta é pela tela ?tab=meta) → 4) criativos na própria campanha. Nunca dispare tudo de uma vez sem ele acompanhar.
@@ -1468,7 +1468,7 @@ async function handleToolCall(
         draft_id,
         titulo: roteiro.titulo,
         molde,
-        instrucao: `Roteiro "${roteiro.titulo}" pronto no estúdio (molde ${molde}). Chame abrir_pagina('/admin/redes-sociais?tab=criar-video&edit=${draft_id}&model=${tier}', título 'Estúdio de vídeo'). Diga que lá ele revisa o roteiro, escolhe a voz e confirma a geração — ${molde === "gratis" ? "sem custo" : "o custo em créditos aparece ANTES de confirmar"}.`,
+        instrucao: `Roteiro "${roteiro.titulo}" pronto no Estúdio Viral (molde ${molde}). Chame abrir_pagina('/admin/redes-sociais?tab=videos&edit=${draft_id}&model=${tier}', título 'Estúdio Viral'). Diga que lá ele revisa o roteiro, escolhe a voz e confirma a geração — ${molde === "gratis" ? "sem custo" : "o custo em créditos aparece ANTES de confirmar"}.`,
       }
     } catch (e) {
       return { erro: String(e), instrucao: "Avise que o estúdio de vídeo está indisponível agora; pra tentar em alguns minutos." }
@@ -1487,7 +1487,8 @@ async function handleToolCall(
       "/admin/trafego-pago", "/admin/trafego-pago?tab=relatorios", "/admin/redes-sociais?tab=artigos",
     ])
     // Exceções dinâmicas: rascunhos preparados pelo preparar_video
-    const isEstudioEdit = /^\/admin\/redes-sociais\?tab=criar-video&edit=[0-9a-fA-F-]{36}(&model=(gratuito|premium|pro))?$/.test(rota)
+    // aceita tab=videos (atual) e tab=criar-video (legado — o front tem alias)
+    const isEstudioEdit = /^\/admin\/redes-sociais\?tab=(videos|criar-video)&edit=[0-9a-fA-F-]{36}(&model=(gratuito|premium|pro))?$/.test(rota)
     const isVideoSobre = /^\/admin\/landing\?gerarVideoSobre=[0-9a-fA-F-]{36}(&model=(premium|pro))?$/.test(rota)
     if (!rota.startsWith("/") || (!rotasValidas.has(rota) && !isEstudioEdit && !isVideoSobre)) {
       return {

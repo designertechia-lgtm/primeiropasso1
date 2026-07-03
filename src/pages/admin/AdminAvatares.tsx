@@ -388,6 +388,46 @@ export default function AdminAvatares() {
     }
   };
 
+  // "Minha foto do perfil" + IA: usa a foto do perfil como BASE e aplica o estilo
+  // escolhido + as mudanças pedidas (mesmo motor do "Minha foto + IA", sem upload).
+  const handleProfileTransform = async () => {
+    if (!form.name.trim()) { toast.error("Informe o nome do personagem"); return; }
+    if (!professional?.photo_url) { toast.error("Sua foto de perfil não está disponível"); return; }
+    setSaving(true);
+    setRetryAttempt(0);
+    let lastRes: Response | undefined;
+    try {
+      const fd = new FormData();
+      fd.append("professional_slug", slug);
+      fd.append("name", form.name);
+      fd.append("personality", form.personality);
+      fd.append("backstory", form.backstory);
+      fd.append("style", form.style);
+      fd.append("instruction", form.generation_prompt.trim());
+      if (form.age) fd.append("age", form.age);
+      fd.append("photo_url", professional.photo_url);
+      lastRes = await fetchWithRetry(
+        `${API}/criar-avatar-transformado`,
+        { method: "POST", body: fd },
+        (attempt, max) => {
+          setRetryAttempt(attempt);
+          toast.info(`Servidor ocupado, tentando novamente... (${attempt}/${max})`, { duration: 4000 });
+        },
+      );
+      const data = await lastRes.json();
+      if (!lastRes.ok) throw new Error(data.detail ?? `HTTP ${lastRes.status}`);
+      toast.success(`Personagem "${form.name}" criado a partir da sua foto de perfil!`);
+      setOpen(false);
+      resetModal();
+      await refetch();
+    } catch (e: unknown) {
+      toast.error(await parseError(e, lastRes?.ok === false ? lastRes : undefined), { duration: 6000 });
+    } finally {
+      setSaving(false);
+      setRetryAttempt(0);
+    }
+  };
+
   const handleDelete = async (av: Avatar) => {
     if (!confirm(`Excluir o personagem "${av.name}"?`)) return;
     let res: Response | undefined;
@@ -404,6 +444,11 @@ export default function AdminAvatares() {
   const currentPhoto = editingAvatar
     ? (photoMode === "profile" ? professional?.photo_url : (photoMode === "upload" || photoMode === "transform") ? previewUrl : editingAvatar.photo_url)
     : (photoMode === "profile" ? professional?.photo_url : photoMode === "derive" ? cloneSource?.photo_url : previewUrl);
+
+  // Foto do perfil: transforma via IA quando muda o estilo (≠ Realista) ou quando o
+  // usuário pede alguma mudança; senão apenas usa a foto como está (cópia, sem geração).
+  const profileNeedsTransform =
+    photoMode === "profile" && (form.style !== "profissional" || !!form.generation_prompt.trim());
 
   if (isLoading) return <div className="animate-pulse text-muted-foreground p-6">Carregando personagens...</div>;
 
@@ -494,7 +539,7 @@ export default function AdminAvatares() {
               {professional?.photo_url && (
                 <button
                   type="button"
-                  onClick={() => setPhotoMode(photoMode === "profile" ? null : "profile")}
+                  onClick={() => { setForm(f => ({ ...f, generation_prompt: "" })); setPhotoMode(photoMode === "profile" ? null : "profile"); }}
                   className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
                     photoMode === "profile"
                       ? "bg-primary text-primary-foreground border-primary"
@@ -523,7 +568,28 @@ export default function AdminAvatares() {
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
 
       {photoMode === "profile" && professional?.photo_url && (
-        <p className="text-xs text-primary">✓ Usando sua foto do perfil</p>
+        <div className="space-y-1.5">
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">
+              O que mudar na imagem? <span className="text-muted-foreground">(opcional)</span>
+            </Label>
+            <Textarea
+              rows={2}
+              placeholder="Ex: cabelo ruivo, roupa social azul, de braços cruzados — vazio aplica só o estilo escolhido"
+              value={form.generation_prompt}
+              onChange={(e) => setForm(f => ({ ...f, generation_prompt: e.target.value }))}
+            />
+          </div>
+          <p className="text-xs text-primary bg-primary/5 rounded-lg px-2.5 py-1.5">
+            {profileNeedsTransform ? (
+              form.generation_prompt.trim()
+                ? <>✨ A IA parte da <strong>sua foto de perfil</strong> e aplica <strong>"{form.generation_prompt.trim()}"</strong> no estilo <strong>{STYLES.find(s => s.id === form.style)?.label}</strong> (~30s)</>
+                : <>✨ A IA transforma <strong>sua foto de perfil</strong> no estilo <strong>{STYLES.find(s => s.id === form.style)?.label}</strong> (~30s)</>
+            ) : (
+              <>✓ Vai usar sua foto de perfil como está — escolha outro estilo ou peça uma mudança acima para a IA transformar</>
+            )}
+          </p>
+        </div>
       )}
       {photoMode === "derive" && (cloneSource ?? editingAvatar)?.photo_url && (
         <div className="space-y-1.5">
@@ -710,6 +776,14 @@ export default function AdminAvatares() {
                   {saving
                     ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{retryAttempt > 0 ? `Servidor ocupado, tentativa ${retryAttempt + 1}/3...` : "Aplicando na foto (~30s)..."}</>
                     : <><Sparkles className="h-4 w-4 mr-2" />{editingAvatar && !cloneSource ? "Aplicar na foto e salvar" : "Clonar aplicando as mudanças"}</>}
+                </Button>
+              ) : profileNeedsTransform ? (
+                <Button onClick={handleProfileTransform}
+                  disabled={saving || !form.name.trim()}
+                  className="w-full">
+                  {saving
+                    ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{retryAttempt > 0 ? `Servidor ocupado, tentativa ${retryAttempt + 1}/3...` : "Transformando sua foto (~30s)..."}</>
+                    : <><Sparkles className="h-4 w-4 mr-2" />Criar com minha foto de perfil + IA</>}
                 </Button>
               ) : (
                 <Button onClick={handleSave} disabled={saving || !form.name.trim()} className="w-full">

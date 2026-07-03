@@ -339,7 +339,7 @@ export default function AdminEstudioViral() {
   const [previewClips, setPreviewClips] = useState<(ClipInfo | null)[]>([]);
   // Aba Cenas (Premium/PRO): tipo escolhido POR CENA — ausente = "auto" (clipe
   // real/estilo). "video"/"personagens" são cobrados por cena (custo visível).
-  const [sceneTypes, setSceneTypes] = useState<Record<number, { tipo: "imagem" | "video" | "personagens"; dur: number }>>({});
+  const [sceneTypes, setSceneTypes] = useState<Record<number, { tipo: "imagem" | "video" | "personagens" | "fala"; dur: number }>>({});
   const [clipsLoading, setClipsLoading] = useState(false);
   const [swapClipSlide, setSwapClipSlide] = useState<number | null>(null);
   const [swapClipQuery, setSwapClipQuery] = useState("");
@@ -399,6 +399,15 @@ export default function AdminEstudioViral() {
   useEffect(() => {
     setSceneTypes({});
   }, [script?.titulo, script?.slides?.length]);
+
+  // Saiu do estilo Pixar → remove cenas "fala" órfãs (o backend recusaria com 400).
+  useEffect(() => {
+    if (estiloIA === "pixar") return;
+    setSceneTypes((prev) => {
+      if (!Object.values(prev).some((v) => v.tipo === "fala")) return prev;
+      return Object.fromEntries(Object.entries(prev).filter(([, v]) => v.tipo !== "fala")) as typeof prev;
+    });
+  }, [estiloIA]);
 
   // Avatares do profissional (aba Personagens) — cena de abertura nos tiers pagos.
   useEffect(() => {
@@ -1565,6 +1574,8 @@ export default function AdminEstudioViral() {
                       { key: "video",       label: "Vídeo IA 5s",    dur: 5 },
                       { key: "video10",     label: "Vídeo IA 10s",   dur: 10 },
                       ...(videoModel === "pro" ? [{ key: "personagens", label: "🎭 Personagens 10s", dur: 10 }] : []),
+                      // Personagem FALANDO (lip-sync): decisão do Carlos — só PRO e só Pixar
+                      ...(videoModel === "pro" && estiloIA === "pixar" ? [{ key: "fala", label: "🗣️ Falando 10s", dur: 10 }] : []),
                     ] as { key: string | null; label: string; dur: number }[]).map(({ key, label, dur }) => {
                       const tipo = key === "video10" ? "video" : key;
                       const cur = sceneTypes[i];
@@ -1576,7 +1587,7 @@ export default function AdminEstudioViral() {
                           onClick={() => setSceneTypes((prev) => {
                             const next = { ...prev };
                             if (key === null) delete next[i];
-                            else next[i] = { tipo: tipo as "imagem" | "video" | "personagens", dur: dur || 5 };
+                            else next[i] = { tipo: tipo as "imagem" | "video" | "personagens" | "fala", dur: dur || 5 };
                             return next;
                           })}
                           className={`px-2 py-0.5 rounded-full text-[11px] border transition-colors ${
@@ -1594,9 +1605,10 @@ export default function AdminEstudioViral() {
 
           {/* Custo das cenas em vídeo IA — visível ANTES de gerar */}
           {videoModel !== "gratuito" && (() => {
-            const pagas = Object.values(sceneTypes).filter((s) => s.tipo === "video" || s.tipo === "personagens");
+            const pagas = Object.values(sceneTypes).filter((s) => s.tipo === "video" || s.tipo === "personagens" || s.tipo === "fala");
             if (!pagas.length) return null;
             const totalS = pagas.reduce((a, s) => a + s.dur, 0);
+            const temFala = pagas.some((s) => s.tipo === "fala");
             const base30 = (CUSTO_KLING_BRL as Record<string, Record<string, number>>)[videoModel === "pro" ? "pro" : "premium"]?.["30s"] ?? (videoModel === "pro" ? 22 : 8.4);
             const estimativa = (totalS / 30) * base30;
             return (
@@ -1606,6 +1618,8 @@ export default function AdminEstudioViral() {
                   <strong>{pagas.length} cena(s) em vídeo IA ({totalS}s)</strong> ≈{" "}
                   <strong>+R$ {estimativa.toFixed(2).replace(".", ",")}</strong> em créditos,
                   somados ao custo do vídeo e debitados ao clicar em Gerar.
+                  {temFala && <> Nas cenas <strong>🗣️ Falando</strong>, o personagem diz a narração
+                  do slide com sincronia labial — funciona melhor com até <strong>~20 palavras</strong> no slide.</>}
                 </p>
               </div>
             );

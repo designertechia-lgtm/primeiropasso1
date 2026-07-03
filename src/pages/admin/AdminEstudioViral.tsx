@@ -79,7 +79,11 @@ const EDGE_VOICES = [
 
 type VoiceMode    = "edge" | "gravacao" | "elevenlabs";
 type VideoModel   = "gratuito" | "premium" | "pro";
-type EstiloIA     = "cinematico" | "realista" | "animacao" | "pixar" | "paisagem" | "neon" | "minimalista" | "vintage" | "motion_graphics" | "dramatico" | "aquarela" | "espaco";
+type EstiloIA     = "cinematico" | "realista" | "animacao" | "pixar" | "paisagem" | "neon" | "minimalista" | "vintage" | "motion_graphics" | "dramatico" | "aquarela" | "espaco" | "psicodelico";
+// Estilos ILUSTRADOS: não existem em banco de clipes — a IA gera a imagem de
+// cada cena no estilo (FLUX) e o motor dá movimento. Os demais temperam a
+// busca dos clipes reais. (Espelho do VIDEO_STYLES do backend.)
+const ESTILOS_IA = new Set<EstiloIA>(["pixar", "animacao", "aquarela", "psicodelico", "neon", "minimalista", "espaco", "motion_graphics"]);
 type VisualStyle  = "images";  // backgrounds animados (Remotion) removidos — só imagens reais
 type Tom          = "acolhedor" | "educativo" | "provocador" | "motivacional";
 type DuracaoAlvo  = "10s" | "15s" | "30s" | "45s" | "60s";
@@ -816,14 +820,18 @@ export default function AdminEstudioViral() {
           formato,
           model: videoModel,
           visual_style: visualStyle,
-          // estilo_visual: Premium e Pro (motor Kling).
-          // image_style: só Gratuito (filtra busca em Pexels).
-          estilo_visual: videoModel === "gratuito" ? undefined : estiloIA,
+          // estilo_visual: TODOS os tiers — stock tempera a busca de clipes;
+          // estilos IA ilustram as cenas (FLUX + movimento). Kling fallback também usa.
+          estilo_visual: estiloIA,
           image_style: videoModel === "gratuito" ? (imageStyle || "realistic") : undefined,
           // Personagem em TODOS os tiers: pagos = animado (Kling); grátis = foto com movimento
           avatar_id: selectedAvatarId || undefined,
-          // Clipes escolhidos no preview de cenas (null = busca automática naquele slide)
-          selected_clip_urls: previewClips.length ? previewClips.map((c) => c?.url ?? null) : undefined,
+          // Clipes escolhidos no preview de cenas (null = busca automática naquele
+          // slide). Estilos ILUSTRADOS ignoram o preview — não enviar, senão os
+          // clipes reais venceriam as cenas geradas no estilo.
+          selected_clip_urls: !ESTILOS_IA.has(estiloIA) && previewClips.length
+            ? previewClips.map((c) => c?.url ?? null)
+            : undefined,
           // Voz clonada no Gratuito após a cota: gastar créditos ou cair pra voz Edge
           cloned_voice_over_quota: overQuotaChoice,
         }),
@@ -1628,13 +1636,21 @@ export default function AdminEstudioViral() {
           <Label className="text-base font-semibold flex items-center gap-2">
             <Film className="h-4 w-4" /> Cenas do vídeo
           </Label>
-          <Button variant="outline" size="sm" className="gap-2" onClick={loadPreviewClips} disabled={clipsLoading}>
-            {clipsLoading
-              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Buscando clipes...</>
-              : <><Search className="h-3.5 w-3.5" /> {previewClips.length ? "Buscar de novo" : "Ver as cenas"}</>}
-          </Button>
+          {!ESTILOS_IA.has(estiloIA) && (
+            <Button variant="outline" size="sm" className="gap-2" onClick={loadPreviewClips} disabled={clipsLoading}>
+              {clipsLoading
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Buscando clipes...</>
+                : <><Search className="h-3.5 w-3.5" /> {previewClips.length ? "Buscar de novo" : "Ver as cenas"}</>}
+            </Button>
+          )}
         </div>
-        {previewClips.length === 0 ? (
+        {ESTILOS_IA.has(estiloIA) ? (
+          <p className="text-xs text-muted-foreground">
+            Estilo <strong>{estiloIA === "animacao" ? "Cartoon" : estiloIA.charAt(0).toUpperCase() + estiloIA.slice(1)}</strong> é
+            ilustrado: cada cena será <strong>gerada pela IA nesse visual</strong> na hora da criação
+            (o preview de clipes reais vale só para os estilos de cenas reais).
+          </p>
+        ) : previewClips.length === 0 ? (
           <p className="text-xs text-muted-foreground">
             O vídeo usa <strong>clipes de vídeo reais</strong> (Pexels/Pixabay) escolhidos pela IA.
             Clique em "Ver as cenas" para revisar e trocar qualquer clipe antes de gerar.
@@ -1873,48 +1889,55 @@ export default function AdminEstudioViral() {
 
 
 
-      {/* Estilo Visual — Premium e Pro (ambos usam o motor Kling) */}
-      {videoModel !== "gratuito" && (
-        <div className="space-y-3">
-          <Label className="text-base font-semibold flex items-center gap-2">
-            <Sparkles className="h-4 w-4" /> Estilo Visual
-          </Label>
-          <div className="grid grid-cols-3 gap-2">
-            {([
-              { value: "cinematico",      icon: "🎬", label: "Cinemático",      desc: "Luz dramática, bokeh" },
-              { value: "realista",        icon: "📸", label: "Realista",         desc: "8K, natural" },
-              { value: "animacao",        icon: "🎨", label: "Animação",         desc: "Cartoon 2D" },
-              { value: "pixar",           icon: "✨", label: "Pixar",            desc: "3D animado" },
-              { value: "paisagem",        icon: "🌿", label: "Paisagens",        desc: "Natureza, épico" },
-              { value: "neon",            icon: "🌃", label: "Neon",             desc: "Cyberpunk, néon" },
-              { value: "minimalista",     icon: "⬜", label: "Minimalista",      desc: "Limpo, espaço branco" },
-              { value: "vintage",         icon: "📼", label: "Vintage",          desc: "Filme, retrô, sépia" },
-              { value: "motion_graphics", icon: "📊", label: "Motion Graphics",  desc: "Geométrico, infográfico" },
-              { value: "dramatico",       icon: "🎭", label: "Dramático",        desc: "Alto contraste, noir" },
-              { value: "aquarela",        icon: "🖌️", label: "Aquarela",         desc: "Pintura, suave, art" },
-              { value: "espaco",          icon: "🌌", label: "Espaço",           desc: "Cosmos, sci-fi" },
-            ] as const).map(({ value, icon, label, desc }) => {
-              const selectedRing = videoModel === "pro"
-                ? "border-purple-500 bg-purple-50/50 dark:bg-purple-950/20"
-                : "border-amber-500 bg-amber-50/50 dark:bg-amber-950/20";
-              const hoverRing = videoModel === "pro"
-                ? "hover:border-purple-400/50"
-                : "hover:border-amber-400/50";
-              return (
-                <Card key={value}
-                  className={`cursor-pointer border-2 transition-all ${estiloIA === value ? selectedRing : `border-border ${hoverRing}`}`}
-                  onClick={() => setEstiloIA(value)}>
-                  <CardContent className="p-2.5 text-center space-y-0.5">
-                    <p className="text-lg leading-none">{icon}</p>
-                    <p className="font-medium text-xs">{label}</p>
-                    <p className="text-[10px] text-muted-foreground leading-tight">{desc}</p>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+      {/* Estilo Visual — TODOS os tiers. Estilos "IA" ilustram cada cena (FLUX +
+          movimento); os demais temperam a busca dos clipes reais. */}
+      <div className="space-y-3">
+        <Label className="text-base font-semibold flex items-center gap-2">
+          <Sparkles className="h-4 w-4" /> Estilo Visual
+        </Label>
+        <div className="grid grid-cols-3 gap-2">
+          {([
+            { value: "cinematico",      icon: "🎬", label: "Cinemático",      desc: "Clipes reais, luz de cinema" },
+            { value: "realista",        icon: "📸", label: "Realista",         desc: "Clipes reais, natural" },
+            { value: "paisagem",        icon: "🌿", label: "Paisagens",        desc: "Clipes reais, natureza" },
+            { value: "vintage",         icon: "📼", label: "Vintage",          desc: "Clipes reais, retrô" },
+            { value: "dramatico",       icon: "🎭", label: "Dramático",        desc: "Clipes reais, contraste" },
+            { value: "pixar",           icon: "✨", label: "Pixar",            desc: "3D animado" },
+            { value: "animacao",        icon: "🎨", label: "Cartoon",          desc: "Ilustração 2D" },
+            { value: "aquarela",        icon: "🖌️", label: "Aquarela",         desc: "Pintura suave" },
+            { value: "psicodelico",     icon: "🌀", label: "Psicodélico",      desc: "Cores vivas, surreal" },
+            { value: "neon",            icon: "🌃", label: "Neon",             desc: "Cyberpunk, néon" },
+            { value: "minimalista",     icon: "⬜", label: "Minimalista",      desc: "Limpo, gráfico" },
+            { value: "espaco",          icon: "🌌", label: "Espaço",           desc: "Cosmos, sci-fi" },
+            { value: "motion_graphics", icon: "📊", label: "Motion Graphics",  desc: "Geométrico, infográfico" },
+          ] as const).map(({ value, icon, label, desc }) => {
+            const selectedRing = videoModel === "pro"
+              ? "border-purple-500 bg-purple-50/50 dark:bg-purple-950/20"
+              : videoModel === "premium"
+                ? "border-amber-500 bg-amber-50/50 dark:bg-amber-950/20"
+                : "border-primary bg-primary/5";
+            return (
+              <Card key={value}
+                className={`cursor-pointer border-2 transition-all relative ${estiloIA === value ? selectedRing : "border-border hover:border-primary/40"}`}
+                onClick={() => setEstiloIA(value)}>
+                {ESTILOS_IA.has(value) && (
+                  <Badge variant="secondary" className="absolute top-1 right-1 text-[9px] px-1 py-0 h-4">IA</Badge>
+                )}
+                <CardContent className="p-2.5 text-center space-y-0.5">
+                  <p className="text-lg leading-none">{icon}</p>
+                  <p className="font-medium text-xs">{label}</p>
+                  <p className="text-[10px] text-muted-foreground leading-tight">{desc}</p>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
-      )}
+        <p className="text-xs text-muted-foreground">
+          {ESTILOS_IA.has(estiloIA)
+            ? <>Estilo <strong>ilustrado</strong>: a IA gera a imagem de cada cena nesse visual e o motor dá movimento.</>
+            : <>Estilo de <strong>cenas reais</strong>: os clipes de banco são buscados com esse clima.</>}
+        </p>
+      </div>
 
       {/* Formato */}
       <div className="space-y-2">

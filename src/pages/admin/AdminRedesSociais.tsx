@@ -1,6 +1,6 @@
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Link2, Video, Drama, Database, FileImage, Flame } from "lucide-react";
+import { FileText, Link2, Video, Drama, Database, FileImage, Flame, Clapperboard } from "lucide-react";
 import { ConnectedAccounts } from "@/components/dashboard/ConnectedAccounts";
 import AdminArtigos from "./AdminArtigos";
 import AdminEstudioViral from "./AdminEstudioViral";
@@ -9,20 +9,27 @@ import AdminAvatares from "./AdminAvatares";
 import AdminDocumentos from "./AdminDocumentos";
 import PostsTab from "@/components/admin/redes-sociais/PostsTab";
 
-const VALID_TABS = ["posts", "artigos", "videos", "personagens", "contas", "rag"] as const;
+const VALID_TABS = ["posts", "videos", "contas", "rag"] as const;
 type TabValue = (typeof VALID_TABS)[number];
 
-// Abas antigas que foram unificadas dentro de "Vídeos" (Estúdio Viral) —
-// links salvos/atalhos continuam funcionando.
-const LEGACY_TAB_ALIASES: Record<string, TabValue> = {
-  "criar-video": "videos",
-  "conteudo-viral": "videos",
+// Sub-abas do guarda-chuva "Estúdio Viral": criação, personagens, artigos/carrosséis, galeria.
+const SUB_TABS = ["criar", "personagens", "artigos", "meus-videos"] as const;
+type SubValue = (typeof SUB_TABS)[number];
+
+// Abas/atalhos antigos que foram consolidados dentro de "Estúdio Viral" — links salvos
+// continuam funcionando e caem na sub-aba certa.
+const LEGACY_TAB_ALIASES: Record<string, { tab: TabValue; sub?: SubValue }> = {
+  "criar-video": { tab: "videos", sub: "criar" },
+  "conteudo-viral": { tab: "videos", sub: "criar" },
+  "artigos": { tab: "videos", sub: "artigos" },
+  "personagens": { tab: "videos", sub: "personagens" },
 };
 
 export default function AdminRedesSociais() {
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get("tab") ?? "";
-  const tabParam = LEGACY_TAB_ALIASES[rawTab] ?? rawTab;
+  const alias = LEGACY_TAB_ALIASES[rawTab];
+  const tabParam = alias?.tab ?? rawTab;
   const isValidTab = (VALID_TABS as readonly string[]).includes(tabParam);
   const activeTab: TabValue = isValidTab ? (tabParam as TabValue) : "posts";
 
@@ -32,14 +39,18 @@ export default function AdminRedesSociais() {
     } else {
       searchParams.set("tab", value);
     }
+    // ao trocar de aba de topo, zera a sub-aba herdada de um alias antigo
+    searchParams.delete("sub");
     setSearchParams(searchParams, { replace: true });
   };
 
-  // Sub-aba de Vídeos controlada pela URL (?sub=) — assim "Reeditar com IA"
-  // (?tab=videos&edit=X) cai direto no Estúdio Viral, que é o default.
-  const videosSub = searchParams.get("sub") === "meus-videos" ? "meus-videos" : "estudio";
+  // Sub-aba de "Estúdio Viral" controlada pela URL (?sub=). Default = "criar", para que
+  // "Reeditar com IA" (?tab=videos&edit=X) caia direto na tela de criação. Aliases antigos
+  // (?tab=artigos, ?tab=personagens) trazem sua sub-aba embutida.
+  const rawSub = searchParams.get("sub") || alias?.sub || "";
+  const videosSub: SubValue = (SUB_TABS as readonly string[]).includes(rawSub) ? (rawSub as SubValue) : "criar";
   const handleVideosSubChange = (value: string) => {
-    if (value === "estudio") searchParams.delete("sub");
+    if (value === "criar") searchParams.delete("sub");
     else searchParams.set("sub", value);
     setSearchParams(searchParams, { replace: true });
   };
@@ -52,17 +63,9 @@ export default function AdminRedesSociais() {
             <FileImage className="h-4 w-4" />
             <span className="hidden sm:inline">Posts</span>
           </TabsTrigger>
-          <TabsTrigger value="artigos" className="gap-2">
-            <FileText className="h-4 w-4" />
-            <span className="hidden sm:inline">Artigos</span>
-          </TabsTrigger>
           <TabsTrigger value="videos" className="gap-2">
-            <Video className="h-4 w-4" />
-            <span className="hidden sm:inline">Vídeos</span>
-          </TabsTrigger>
-          <TabsTrigger value="personagens" className="gap-2">
-            <Drama className="h-4 w-4" />
-            <span className="hidden sm:inline">Personagens</span>
+            <Flame className="h-4 w-4 text-orange-500" />
+            <span className="hidden sm:inline">Estúdio Viral</span>
           </TabsTrigger>
           <TabsTrigger value="contas" className="gap-2">
             <Link2 className="h-4 w-4" />
@@ -77,30 +80,36 @@ export default function AdminRedesSociais() {
         <TabsContent value="posts" className="mt-4">
           <PostsTab />
         </TabsContent>
-        <TabsContent value="artigos" className="mt-4">
-          <AdminArtigos />
-        </TabsContent>
         <TabsContent value="videos" className="mt-4">
-          {/* Vídeos: Estúdio Viral (criação — nome oficial) + Meus Vídeos (galeria) */}
+          {/* Estúdio Viral: tudo de conteúdo junto — criação, personagens, artigos/carrosséis e galeria. */}
           <Tabs value={videosSub} onValueChange={handleVideosSubChange} className="w-full">
-            <TabsList className="bg-muted/40">
-              <TabsTrigger value="estudio" className="gap-2">
-                <Flame className="h-4 w-4 text-orange-500" /> Estúdio Viral
+            <TabsList className="flex w-full flex-wrap h-auto justify-start gap-1 bg-muted/40">
+              <TabsTrigger value="criar" className="gap-2">
+                <Clapperboard className="h-4 w-4 text-orange-500" /> Criar Vídeos
+              </TabsTrigger>
+              <TabsTrigger value="personagens" className="gap-2">
+                <Drama className="h-4 w-4" /> Personagens
+              </TabsTrigger>
+              <TabsTrigger value="artigos" className="gap-2">
+                <FileText className="h-4 w-4" /> Artigos e Carrosséis
               </TabsTrigger>
               <TabsTrigger value="meus-videos" className="gap-2">
                 <Video className="h-4 w-4" /> Meus Vídeos
               </TabsTrigger>
             </TabsList>
-            <TabsContent value="estudio" className="mt-4">
+            <TabsContent value="criar" className="mt-4">
               <AdminEstudioViral />
+            </TabsContent>
+            <TabsContent value="personagens" className="mt-4">
+              <AdminAvatares />
+            </TabsContent>
+            <TabsContent value="artigos" className="mt-4">
+              <AdminArtigos />
             </TabsContent>
             <TabsContent value="meus-videos" className="mt-4">
               <AdminVideos />
             </TabsContent>
           </Tabs>
-        </TabsContent>
-        <TabsContent value="personagens" className="mt-4">
-          <AdminAvatares />
         </TabsContent>
         <TabsContent value="contas" className="mt-4">
           <ConnectedAccounts />

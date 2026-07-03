@@ -1089,7 +1089,7 @@ export default function AdminEstudioViral() {
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Flame className="h-6 w-6 text-orange-500" /> Estúdio Viral
+          <Flame className="h-6 w-6 text-orange-500" /> Criar Vídeo
         </h1>
         <p className="text-muted-foreground mt-1">Descreva o objetivo e geramos roteiro, narração e clipes de vídeo reais automaticamente.</p>
       </div>
@@ -1269,10 +1269,24 @@ export default function AdminEstudioViral() {
         )}
       </div>
 
-      {/* Personagem (avatar) — TODOS os tiers: pagos = animado (Kling); grátis = foto com movimento */}
-      {(
-        <div className="space-y-2">
-          <Label className="text-base font-semibold">Personagem do vídeo <span className="text-xs font-normal text-muted-foreground">(opcional — abre e fecha o vídeo)</span></Label>
+      {/* Personagem (avatar) — TODOS os tiers: pagos = animado (Kling); grátis = foto com movimento.
+         Em accordeon (Collapsible) para não ocupar espaço: a seleção continua acessível a um clique. */}
+      <Collapsible>
+        <CollapsibleTrigger asChild>
+          <Button variant="outline" className="w-full justify-between h-auto py-2.5" size="sm">
+            <span className="flex items-center gap-2 font-medium">
+              <Drama className="h-4 w-4 text-primary" />
+              Personagem do vídeo
+              <span className="text-xs font-normal text-muted-foreground">
+                {selectedAvatarId
+                  ? avatars.find((a) => a.id === selectedAvatarId)?.name ?? "selecionado"
+                  : "(opcional — abre e fecha o vídeo)"}
+              </span>
+            </span>
+            <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform [[data-state=open]_&]:rotate-180" />
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="space-y-2 pt-3">
           {avatars.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               Nenhum personagem ainda — crie um na aba <strong>Personagens</strong> para abrir seus vídeos com ele.
@@ -1313,8 +1327,8 @@ export default function AdminEstudioViral() {
               ? "No plano Gratuito, a foto do personagem ganha movimento suave e abre/fecha o vídeo — os clipes reais contam a história no meio."
               : "Seu personagem é animado com IA (presença, sem lip-sync) e abre/fecha o vídeo; a narração entra por cima e os clipes reais contam a história."}
           </p>
-        </div>
-      )}
+        </CollapsibleContent>
+      </Collapsible>
 
       {/* Duração e Plataforma alvo (orientam o agente de roteiro — depois do modelo
          pra que opções de teste 10s/15s apareçam só quando Premium/Pro estiver ativo) */}

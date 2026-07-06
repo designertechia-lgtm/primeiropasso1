@@ -85,14 +85,17 @@ export default function AdminRedesSociais() {
           {/* Estúdio Viral: tudo de conteúdo junto — criação, personagens, artigos/carrosséis e galeria. */}
           <Tabs value={videosSub} onValueChange={handleVideosSubChange} className="w-full">
             <TabsList className="flex w-full flex-wrap h-auto justify-start gap-1 bg-muted/40">
-              <TabsTrigger value="criar" className="gap-2">
-                <Clapperboard className="h-4 w-4 text-orange-500" /> Criar Vídeos
-              </TabsTrigger>
+              {/* Ordem definida pelo Carlos (06/07): Personagens → Artigos →
+                  Criar Vídeos → Editor → Meus Vídeos. O default de conteúdo
+                  continua "criar" (links e Axel caem na criação). */}
               <TabsTrigger value="personagens" className="gap-2">
                 <Drama className="h-4 w-4" /> Personagens
               </TabsTrigger>
               <TabsTrigger value="artigos" className="gap-2">
                 <FileText className="h-4 w-4" /> Artigos e Carrosséis
+              </TabsTrigger>
+              <TabsTrigger value="criar" className="gap-2">
+                <Clapperboard className="h-4 w-4 text-orange-500" /> Criar Vídeos
               </TabsTrigger>
               <TabsTrigger value="editor" className="gap-2">
                 <Scissors className="h-4 w-4" /> Editor

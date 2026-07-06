@@ -93,6 +93,8 @@ export default function AdminEditorVideo() {
   const [playhead, setPlayhead] = useState(0);
   const [startField, setStartField] = useState("");
   const [endField, setEndField] = useState("");
+  const [cutStart, setCutStart] = useState("");   // caixinha FIXA de corte por tempo
+  const [cutEnd, setCutEnd] = useState("");
   const [previewEdit, setPreviewEdit] = useState(true);   // play pula trechos removidos
 
   const [musicas, setMusicas] = useState<{ id: string; label: string }[]>([]);
@@ -421,6 +423,34 @@ export default function AdminEditorVideo() {
   const toggleSegment = (id: number) => {
     pushHistory();
     setSegments((prev) => prev.map((s) => (s.id === id ? { ...s, keep: !s.keep } : s)));
+  };
+
+  // Caixinha FIXA (Carlos 06/07): remove o intervalo [a,b] digitado, dividindo
+  // os trechos que ele atravessa — não depende de onde o cursor está.
+  const cortarIntervalo = () => {
+    if (!meta) return;
+    const a = parseTime(cutStart);
+    const b = parseTime(cutEnd);
+    if (a === null || b === null || b <= a) {
+      toast.error("Tempos inválidos — use mm:ss (ex.: 1:56 a 1:59).");
+      return;
+    }
+    const ca = Math.max(0, a), cb = Math.min(meta.duration, b);
+    if (cb - ca < 0.15) { toast.error("Intervalo pequeno demais."); return; }
+    pushHistory();
+    setSegments((prev) => {
+      const next: Segment[] = [];
+      let nid = Math.max(0, ...prev.map((p) => p.id)) + 1;
+      for (const s of prev) {
+        if (s.end <= ca || s.start >= cb) { next.push(s); continue; }
+        if (s.start < ca) next.push({ id: nid++, start: s.start, end: ca, keep: s.keep });
+        next.push({ id: nid++, start: Math.max(s.start, ca), end: Math.min(s.end, cb), keep: false });
+        if (s.end > cb) next.push({ id: nid++, start: cb, end: s.end, keep: s.keep });
+      }
+      return next.filter((s) => s.end - s.start >= 0.15);
+    });
+    setCutStart(""); setCutEnd("");
+    toast.success(`Trecho ${fmt(ca)}–${fmt(cb)} removido — veja na timeline (dá pra restaurar).`);
   };
 
   const activeSeg = useMemo(
@@ -770,6 +800,34 @@ export default function AdminEditorVideo() {
                   <span className="text-xs text-muted-foreground ml-auto">
                     duração final: <b>{fmt(finalDuration)}</b>
                   </span>
+                </div>
+
+                {/* Caixinha FIXA de corte por tempo (sempre visível) */}
+                <div className="flex items-center gap-2 flex-wrap rounded-lg border px-3 py-2 text-xs">
+                  <Scissors className="h-3.5 w-3.5 text-destructive shrink-0" />
+                  <span className="font-medium">Remover trecho:</span>
+                  <label className="flex items-center gap-1">de
+                    <Input value={cutStart} onChange={(e) => setCutStart(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && cortarIntervalo()}
+                      placeholder="1:56" className="h-7 w-20 text-xs tabular-nums" />
+                  </label>
+                  <label className="flex items-center gap-1">até
+                    <Input value={cutEnd} onChange={(e) => setCutEnd(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && cortarIntervalo()}
+                      placeholder="1:59" className="h-7 w-20 text-xs tabular-nums" />
+                  </label>
+                  <Button size="sm" variant="destructive" className="h-7"
+                    disabled={!cutStart.trim() || !cutEnd.trim()} onClick={cortarIntervalo}>
+                    Cortar
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 text-muted-foreground"
+                    onClick={() => setCutStart(fmt(playhead))} title="Preenche o início com o cursor">
+                    início = cursor
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 text-muted-foreground"
+                    onClick={() => setCutEnd(fmt(playhead))} title="Preenche o fim com o cursor">
+                    fim = cursor
+                  </Button>
                 </div>
 
                 {/* Cortar com IA */}

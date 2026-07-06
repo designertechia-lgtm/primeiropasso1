@@ -15,6 +15,7 @@ import { Plus, Pencil, Trash2, Sparkles, X, ExternalLink, Eye, Type, MessageCirc
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
 import PublishArticleCarousel from "@/components/dashboard/PublishArticleCarousel";
+import { publicArticleUrl } from "@/lib/publicSite";
 
 const FONT_SIZES = [
   { value: "sm", label: "Pequeno", class: "text-2xl md:text-3xl",  preview: "Aa" },
@@ -680,11 +681,11 @@ export default function AdminArtigos() {
                   <p className="text-sm font-medium">Link do artigo</p>
                   <div className="flex gap-2">
                     <div className="flex-1 bg-muted/50 rounded-lg px-3 py-2 text-xs text-muted-foreground truncate">
-                      {window.location.origin}/{professional.slug}/artigo/{shareArticle.slug}
+                      {publicArticleUrl(professional.slug, shareArticle.slug)}
                     </div>
                     <Button size="sm" variant="outline"
                       onClick={() => {
-                        navigator.clipboard.writeText(`${window.location.origin}/${professional.slug}/artigo/${shareArticle.slug}`);
+                        navigator.clipboard.writeText(publicArticleUrl(professional.slug, shareArticle.slug));
                         toast.success("Link copiado!");
                       }}>
                       <Copy className="h-3.5 w-3.5" />

@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { publicVideoUrl } from "@/lib/publicSite";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
@@ -602,11 +603,11 @@ export default function AdminVideos() {
                   <p className="text-sm font-medium">Link público do vídeo</p>
                   <div className="flex gap-2">
                     <div className="flex-1 bg-muted/50 rounded-lg px-3 py-2 text-xs text-muted-foreground truncate">
-                      {window.location.origin}/{professional.slug}/video/{shareVideo.id}
+                      {publicVideoUrl(professional.slug, shareVideo.id)}
                     </div>
                     <Button size="sm" variant="outline"
                       onClick={() => {
-                        navigator.clipboard.writeText(`${window.location.origin}/${professional.slug}/video/${shareVideo.id}`);
+                        navigator.clipboard.writeText(publicVideoUrl(professional.slug, shareVideo.id));
                         toast.success("Link copiado!");
                       }}>
                       <Copy className="h-3.5 w-3.5" />

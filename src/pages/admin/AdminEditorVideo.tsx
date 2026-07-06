@@ -129,6 +129,7 @@ export default function AdminEditorVideo() {
 
   const [titulo, setTitulo] = useState("");
   const [rendering, setRendering] = useState(false);
+  const [renderJobId, setRenderJobId] = useState("");   // persiste: retoma o acompanhamento ao voltar
   const [renderStep, setRenderStep] = useState("");
   const [renderProgress, setRenderProgress] = useState(0);
   const [resultUrl, setResultUrl] = useState("");
@@ -161,6 +162,37 @@ export default function AdminEditorVideo() {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
+  // Acompanhamento do render (extraído para o restore poder RETOMAR o polling)
+  const pollRender = (jobId: string) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      try {
+        const resp = await fetch(`${API}/status/${jobId}`);
+        if (resp.status === 404) {
+          // o servidor reiniciou e perdeu o registro do job — o vídeo PODE já
+          // ter sido salvo antes; nunca deixar o usuário girando pra sempre
+          if (pollRef.current) clearInterval(pollRef.current);
+          setRendering(false); setRenderJobId("");
+          queryClient.invalidateQueries({ queryKey: ["admin-videos"] });
+          toast.info("O servidor reiniciou durante o processamento — confira Meus Vídeos: o vídeo pode já estar lá. Se não estiver, renderize de novo (suas edições estão guardadas).", { duration: 12000 });
+          return;
+        }
+        const st = await resp.json();
+        setRenderProgress(st.progress ?? 0); setRenderStep(st.step ?? "");
+        if (st.status === "done") {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setRendering(false); setRenderJobId(""); setResultUrl(st.video_url);
+          toast.success("Edição pronta! O vídeo já está em Meus Vídeos.");
+          queryClient.invalidateQueries({ queryKey: ["admin-videos"] });
+        } else if (st.status === "error") {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setRendering(false); setRenderJobId("");
+          toast.error(st.message || "A edição falhou", { duration: 9000 });
+        }
+      } catch { /* transitório */ }
+    }, 3000);
+  };
+
   // ── PERSISTÊNCIA: restaura ao entrar; salva a cada mudança ────────────────
   useEffect(() => {
     (async () => {
@@ -169,12 +201,17 @@ export default function AdminEditorVideo() {
         if (!raw) { restoredRef.current = true; return; }
         const s = JSON.parse(raw);
         if (!s?.meta?.edit_id) { restoredRef.current = true; return; }
-        const head = await fetch(`${API}/editor/video/${s.meta.edit_id}`, { method: "HEAD" });
-        if (!head.ok) {
+        // Ping NÃO-destrutivo: só descarta com 404 EXPLÍCITO (arquivo realmente
+        // morto). Servidor ocupado/rede instável → restaura mesmo assim.
+        const head = await fetch(`${API}/editor/video/${s.meta.edit_id}`, { method: "HEAD" }).catch(() => null);
+        if (head && head.status === 404) {
           localStorage.removeItem(EDITOR_STORAGE_KEY);
-          toast.info("A edição anterior expirou no servidor — carregue o vídeo de novo.", { duration: 7000 });
+          toast.info("A edição anterior expirou no servidor — carregue o vídeo de novo.", { duration: 8000 });
           restoredRef.current = true;
           return;
+        }
+        if (!head || !head.ok) {
+          toast.info("O servidor está ocupado — restaurei suas edições; o vídeo pode demorar um pouco pra carregar.", { duration: 8000 });
         }
         setMeta(s.meta);
         setPreviewSrc(`${API}/editor/video/${s.meta.edit_id}`);
@@ -188,7 +225,16 @@ export default function AdminEditorVideo() {
         setTitles(s.titles || []); setTransition(s.transition || "none");
         setDucking(s.ducking ?? true); setPunchIn(!!s.punchIn); setTitulo(s.titulo || "");
         setResultUrl(s.resultUrl || "");
-        toast.success("Edição anterior restaurada — continue de onde parou.");
+        if (s.renderJobId) {
+          // havia uma renderização em andamento — RETOMA o acompanhamento
+          setRenderJobId(s.renderJobId);
+          setRendering(true);
+          setRenderStep("Retomando o acompanhamento...");
+          pollRender(s.renderJobId);
+          toast.info("Sua renderização continuou no servidor — acompanhando de novo.", { duration: 7000 });
+        } else {
+          toast.success("Edição anterior restaurada — continue de onde parou.");
+        }
       } catch { /* estado corrompido — segue vazio */ }
       restoredRef.current = true;
     })();
@@ -203,13 +249,13 @@ export default function AdminEditorVideo() {
         meta, sourceLabel, segments, musicId, musicUploadId, musicUploadName,
         musicVolume, originalVolume, fadeOut, subsOn, cues, words, cueMode,
         subFont, subSize, subColor, subStyle, subPos, titles, transition,
-        ducking, punchIn, titulo, resultUrl,
+        ducking, punchIn, titulo, resultUrl, renderJobId,
       }));
     } catch { /* localStorage cheio — ignora */ }
   }, [meta, sourceLabel, segments, musicId, musicUploadId, musicUploadName,
       musicVolume, originalVolume, fadeOut, subsOn, cues, words, cueMode,
       subFont, subSize, subColor, subStyle, subPos, titles, transition,
-      ducking, punchIn, titulo, resultUrl]);
+      ducking, punchIn, titulo, resultUrl, renderJobId]);
 
   // Prévia da trilha respeita o slider em tempo real
   useEffect(() => {
@@ -237,14 +283,20 @@ export default function AdminEditorVideo() {
 
   const recomecar = () => {
     if (!confirm("Descartar esta edição e recomeçar?")) return;
+    if (meta?.edit_id) {
+      // limpa o arquivo de trabalho no servidor (tmp + Storage) — best-effort
+      fetch(`${API}/editor/descartar/${meta.edit_id}`, { method: "DELETE" }).catch(() => {});
+    }
     setMeta(null); setPreviewSrc(""); setSourceLabel(""); setSegments([]); setHistory([]);
     setCues([]); setWords([]); setTitles([]); setResultUrl(""); setSubsOn(false);
+    setRenderJobId("");
     localStorage.removeItem(EDITOR_STORAGE_KEY);
   };
 
   const carregar = async (form: FormData, label: string) => {
     setLoadingSource(true);
     try {
+      if (meta?.edit_id) form.append("replace_edit_id", meta.edit_id);   // descarta o draft anterior
       const res = await fetch(`${API}/editor/carregar`, { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Falha ao carregar o vídeo");
@@ -490,23 +542,8 @@ export default function AdminEditorVideo() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Falha ao iniciar a edição");
-      const jobId = data.job_id;
-      pollRef.current = setInterval(async () => {
-        try {
-          const st = await (await fetch(`${API}/status/${jobId}`)).json();
-          setRenderProgress(st.progress ?? 0); setRenderStep(st.step ?? "");
-          if (st.status === "done") {
-            if (pollRef.current) clearInterval(pollRef.current);
-            setRendering(false); setResultUrl(st.video_url);
-            toast.success("Edição pronta! O vídeo já está em Meus Vídeos.");
-            queryClient.invalidateQueries({ queryKey: ["admin-videos"] });
-          } else if (st.status === "error") {
-            if (pollRef.current) clearInterval(pollRef.current);
-            setRendering(false);
-            toast.error(st.message || "A edição falhou", { duration: 9000 });
-          }
-        } catch { /* transitório */ }
-      }, 3000);
+      setRenderJobId(data.job_id);   // persiste → sair e voltar retoma o acompanhamento
+      pollRender(data.job_id);
     } catch (e: any) {
       setRendering(false);
       toast.error(e.message, { duration: 8000 });

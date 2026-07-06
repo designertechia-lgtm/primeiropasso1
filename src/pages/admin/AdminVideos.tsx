@@ -410,7 +410,9 @@ export default function AdminVideos() {
           Nenhum vídeo ainda. Clique em "Novo Vídeo" para começar.
         </p>
       ) : (
-        <div className="grid gap-4">
+        // Grade responsiva (Carlos 06/07: lista de largura total "estourava a
+        // tela" em monitor largo) — 2-3 colunas com cards proporcionais.
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {videos.map((v) => {
             const isYoutube = /youtube|youtu\.be/i.test((v as any).embed_url ?? "");
             const canPublishToIG = !isYoutube && !!(v as any).embed_url;

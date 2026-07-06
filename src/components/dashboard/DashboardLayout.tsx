@@ -150,7 +150,9 @@ function DashboardShell({ children }: DashboardLayoutProps) {
               </button>
             </div>
           </header>
-          <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto">
+          {/* overflow-x-hidden: nenhuma página do admin pode empurrar a tela
+              na horizontal (scroll horizontal quebra a sidebar) */}
+          <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto overflow-x-hidden">
             {children}
           </main>
         </div>

@@ -769,36 +769,6 @@ export default function AdminEditorVideo() {
                   </label>
                 </div>
 
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Input value={titulo} onChange={(e) => setTitulo(e.target.value)}
-                    placeholder="Título do vídeo editado (opcional)" className="text-sm max-w-xs" />
-                  <Button onClick={renderizar} disabled={rendering || !keepSegments.length} className="gap-2">
-                    {rendering ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                    {rendering ? `${renderProgress}% — ${renderStep}` : "Renderizar e salvar"}
-                  </Button>
-                  {rendering && (
-                    <span className="text-xs text-muted-foreground flex items-center gap-1">
-                      <AlertCircle className="h-3.5 w-3.5" /> Pode sair da tela — o vídeo cai em Meus Vídeos.
-                    </span>
-                  )}
-                </div>
-
-                {resultUrl && (
-                  <div className="pt-1 space-y-2">
-                    <Label className="font-semibold text-emerald-600">✓ Edição pronta</Label>
-                    <video src={resultUrl} controls playsInline className="w-full max-h-72 rounded-lg bg-black" />
-                    <div className="flex items-center gap-2 flex-wrap text-xs">
-                      <span className="text-muted-foreground">Exportar para outra plataforma:</span>
-                      {(["9:16", "1:1", "16:9"] as const).map((f) => (
-                        <Button key={f} size="sm" variant="outline" className="h-7"
-                          disabled={!!exporting} onClick={() => exportarFormato(f)}>
-                          {exporting === f ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
-                          {f === "9:16" ? "📱 Reels 9:16" : f === "1:1" ? "◻ Feed 1:1" : "🖥 YouTube 16:9"}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           </CardContent>
@@ -944,6 +914,47 @@ export default function AdminEditorVideo() {
                 </div>
               ))}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Rodapé: renderizar (pedido do Carlos — o fluxo termina aqui) */}
+      {meta && (
+        <Card className="border-primary/40">
+          <CardContent className="pt-4 space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Input value={titulo} onChange={(e) => setTitulo(e.target.value)}
+                placeholder="Título do vídeo editado (opcional)" className="text-sm max-w-xs" />
+              <Button size="lg" onClick={renderizar} disabled={rendering || !keepSegments.length} className="gap-2">
+                {rendering ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                {rendering ? `${renderProgress}% — ${renderStep}` : "Renderizar e salvar"}
+              </Button>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                duração final: <b>{fmt(finalDuration)}</b>
+              </span>
+              {rendering && (
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <AlertCircle className="h-3.5 w-3.5" /> Pode sair da tela — o vídeo cai em Meus Vídeos.
+                </span>
+              )}
+            </div>
+
+            {resultUrl && (
+              <div className="pt-1 space-y-2">
+                <Label className="font-semibold text-emerald-600">✓ Edição pronta</Label>
+                <video src={resultUrl} controls playsInline className="w-full max-h-72 rounded-lg bg-black" />
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                  <span className="text-muted-foreground">Exportar para outra plataforma:</span>
+                  {(["9:16", "1:1", "16:9"] as const).map((f) => (
+                    <Button key={f} size="sm" variant="outline" className="h-7"
+                      disabled={!!exporting} onClick={() => exportarFormato(f)}>
+                      {exporting === f ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+                      {f === "9:16" ? "📱 Reels 9:16" : f === "1:1" ? "◻ Feed 1:1" : "🖥 YouTube 16:9"}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

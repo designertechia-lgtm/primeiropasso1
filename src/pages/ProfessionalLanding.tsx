@@ -82,14 +82,11 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
   });
 
   const videos = useMemo(() => {
-    const pub = rawVideos
+    // SÓ publicados (Carlos 06/07): o fallback antigo exibia vídeos
+    // não-publicados quando nenhum estava ligado — despublicar não escondia.
+    return rawVideos
       .filter((v) => v.published)
       .sort((a, b) => new Date(b.published_at ?? b.created_at ?? 0).getTime() - new Date(a.published_at ?? a.created_at ?? 0).getTime())
-      .slice(0, 3);
-    if (pub.length > 0) return pub;
-    return rawVideos
-      .filter((v) => !v.published)
-      .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())
       .slice(0, 3);
   }, [rawVideos]);
 

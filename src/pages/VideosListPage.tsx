@@ -191,6 +191,7 @@ export default function VideosListPage() {
         .from("videos")
         .select("id, title, description, embed_url, thumbnail_url, published_at, published, created_at")
         .eq("professional_id", professional!.id)
+        .eq("published", true)   // página PÚBLICA: só o que o dono publicou (Carlos 06/07)
         .order("created_at", { ascending: false });
       return data ?? [];
     },

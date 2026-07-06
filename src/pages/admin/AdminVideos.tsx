@@ -261,6 +261,21 @@ export default function AdminVideos() {
     }
   };
 
+  // Toggle direto no card (Carlos 06/07): publicado = aparece na landing e na
+  // página pública /:slug/videos; desligado = invisível nas duas.
+  const togglePublish = async (v: any) => {
+    const next = !v.published;
+    const { error } = await supabase.from("videos").update({
+      published: next,
+      published_at: next ? new Date().toISOString() : null,
+    }).eq("id", v.id);
+    if (error) { toast.error("Erro ao atualizar a publicação"); return; }
+    toast.success(next
+      ? "Publicado — visível na sua página."
+      : "Despublicado — não aparece mais na sua página.");
+    queryClient.invalidateQueries({ queryKey: ["admin-videos"] });
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm("Excluir este vídeo? (arquivos e cenas do Estúdio saem junto)")) return;
     // Exclusão COMPLETA via video-api: mp4 + thumbnail + cenas do Estúdio de
@@ -455,13 +470,13 @@ export default function AdminVideos() {
                           <span className="ml-2 text-muted-foreground/60">· Roteiro salvo</span>
                         )}
                       </p>
-                      <span
-                        className={`inline-block mt-2 text-xs px-2 py-1 rounded-full ${
-                          v.published ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-                        }`}
-                      >
-                        {v.published ? "Publicado" : "Rascunho"}
-                      </span>
+                      <label className="flex items-center gap-2 mt-2 cursor-pointer w-fit"
+                        title="Ligado: aparece na sua página pública. Desligado: só você vê.">
+                        <Switch checked={!!v.published} onCheckedChange={() => togglePublish(v)} />
+                        <span className={`text-xs ${v.published ? "text-primary font-medium" : "text-muted-foreground"}`}>
+                          {v.published ? "Publicado na sua página" : "Não publicado"}
+                        </span>
+                      </label>
                     </div>
                     {/* Ações HORIZONTAIS no rodapé (Carlos 06/07: a coluna
                         vertical criava espaço morto com a thumb grande) */}

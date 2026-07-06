@@ -48,13 +48,13 @@ const PLATAFORMA_FORMATO_PADRAO: Record<"geral" | "instagram" | "tiktok" | "link
   linkedin:  "square",
 };
 
-// Custo estimado em R$ por tier × duração — calibrado com:
-//   Premium (kling-v1-6 std):     ~$0.025/seg × 5.5 (BRL/USD)
-//   Pro     (kling-v2-1-master pro): ~$0.10/seg  × 5.5 (BRL/USD)
+// Custo estimado em R$ por tier × duração — Kling VIA FAL.AI (06/07):
+//   Premium (Kling 1.6 standard): ~$0.028/seg × 5.5 (BRL/USD)
+//   Pro     (Kling 3.0 pro):      ~$0.20/seg  × 5.5 (BRL/USD) — o topo atual
 // Fonte do nº de slides × duração de clipe: roteiro_agent.py duracao_override.
 const CUSTO_KLING_BRL: Record<"premium" | "pro", Record<"10s" | "15s" | "30s" | "45s" | "60s", number>> = {
-  premium: { "10s": 1.4, "15s": 2.1, "30s": 4.2, "45s": 6.3, "60s": 8.4 },
-  pro:     { "10s": 5.5, "15s": 8.3, "30s": 16.5, "45s": 24.8, "60s": 33.0 },
+  premium: { "10s": 1.5, "15s": 2.3, "30s": 4.6, "45s": 6.9, "60s": 9.2 },
+  pro:     { "10s": 11.0, "15s": 16.5, "30s": 33.0, "45s": 49.5, "60s": 66.0 },
 };
 
 function loadSaved() {
@@ -1373,7 +1373,7 @@ export default function AdminEstudioViral() {
             <Zap className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
             <p className="text-muted-foreground leading-relaxed">
               <strong>Modo teste ativo</strong> — vídeo curto pra economizar nos clipes pagos.
-              Custo estimado: <strong>~R$ {videoModel === "premium" ? (duracaoAlvo === "10s" ? "2-3" : "3-5") : (duracaoAlvo === "10s" ? "4-6" : "6-9")}</strong> em vez do valor cheio.
+              Custo estimado: <strong>~R$ {CUSTO_KLING_BRL[videoModel === "pro" ? "pro" : "premium"][duracaoAlvo]?.toFixed(2).replace(".", ",")}</strong> em vez do valor cheio.
             </p>
           </div>
         )}

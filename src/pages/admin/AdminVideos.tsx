@@ -419,8 +419,10 @@ export default function AdminVideos() {
             return (
               <div key={v.id} className="space-y-3">
                 <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2 gap-3">
-                    <div className="flex items-center gap-4 min-w-0">
+                  {/* Ações em COLUNA à direita (Carlos 06/07): libera a largura
+                      do card estreito da grade pro título */}
+                  <CardHeader className="flex flex-row items-start justify-between pb-2 gap-2">
+                    <div className="flex items-center gap-4 min-w-0 pt-1">
                       <button
                         className="shrink-0 relative group rounded-lg overflow-hidden h-12 w-12"
                         onClick={() => setPlayerVideo(v)}
@@ -455,7 +457,7 @@ export default function AdminVideos() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex gap-1 shrink-0">
+                    <div className="flex flex-col gap-0.5 shrink-0 -mr-2 -mt-1 border-l pl-1">
                       {(v as any).script_json && (
                         <Button
                           variant="ghost"

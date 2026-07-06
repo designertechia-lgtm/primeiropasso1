@@ -1130,6 +1130,25 @@ export default function AdminEditorVideo() {
       {meta && (
         <Card className="border-primary/40">
           <CardContent className="pt-4 space-y-3">
+            {!keepSegments.length && (
+              <div className="flex items-center gap-2 flex-wrap rounded-lg border border-amber-400/60 bg-amber-50/60 dark:bg-amber-950/20 px-3 py-2 text-xs">
+                <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
+                <span>
+                  Todos os trechos do vídeo estão <b>removidos</b> na timeline — por isso o salvar
+                  está travado (duração 0:00). Restaure o que quer manter:
+                </span>
+                <Button size="sm" className="h-7"
+                  onClick={() => {
+                    pushHistory();
+                    setSegments((prev) => prev.length
+                      ? prev.map((s) => ({ ...s, keep: true }))
+                      : [{ id: 1, start: 0, end: meta.duration, keep: true }]);
+                    toast.success("Vídeo inteiro restaurado — remova só o que não quiser.");
+                  }}>
+                  Restaurar o vídeo inteiro
+                </Button>
+              </div>
+            )}
             <div className="flex items-center gap-2 flex-wrap">
               <Input value={titulo} onChange={(e) => setTitulo(e.target.value)}
                 placeholder="Título do vídeo editado (opcional)" className="text-sm max-w-xs" />

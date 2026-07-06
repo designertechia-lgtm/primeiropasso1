@@ -442,8 +442,8 @@ export default function AdminVideos() {
                       <PlayCircle className="h-12 w-12 text-white drop-shadow-lg" />
                     </div>
                   </button>
-                  <CardContent className="p-3 flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
+                  <CardContent className="p-3">
+                    <div className="min-w-0">
                       <CardTitle className="text-base leading-snug line-clamp-2">{v.title}</CardTitle>
                       <p className="text-xs text-muted-foreground mt-1">
                         {(v as any).created_at &&
@@ -463,7 +463,9 @@ export default function AdminVideos() {
                         {v.published ? "Publicado" : "Rascunho"}
                       </span>
                     </div>
-                    <div className="flex flex-col gap-0.5 shrink-0 -mr-2 -mt-1 border-l pl-1">
+                    {/* Ações HORIZONTAIS no rodapé (Carlos 06/07: a coluna
+                        vertical criava espaço morto com a thumb grande) */}
+                    <div className="flex gap-1 mt-2.5 pt-2 border-t">
                       {(v as any).script_json && (
                         <Button
                           variant="ghost"

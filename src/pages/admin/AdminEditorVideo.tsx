@@ -35,6 +35,35 @@ type Cue = { start: number; end: number; text: string };
 type SubSize = "p" | "m" | "g" | "xg";
 type SubStyle = "outline" | "box";
 type SubPos = "bottom" | "center" | "top";
+type Title = { start: number; end: number; text: string; font_id: string; size: SubSize; color: string; style: SubStyle; position: SubPos };
+
+// Presets de legenda de UM clique (o motor suporta qualquer combinação;
+// isto são os visuais que funcionam em Reels/TikTok)
+const SUB_PRESETS = [
+  { label: "🔥 Viral amarelo", font: "anton", size: "g" as SubSize, color: "#FFE14D", style: "box" as SubStyle, pos: "bottom" as SubPos },
+  { label: "✨ Clean branco", font: "poppins", size: "m" as SubSize, color: "#FFFFFF", style: "outline" as SubStyle, pos: "bottom" as SubPos },
+  { label: "📱 TikTok caixa", font: "bevietnam", size: "g" as SubSize, color: "#FFFFFF", style: "box" as SubStyle, pos: "bottom" as SubPos },
+  { label: "🎬 Cinema", font: "bebas", size: "m" as SubSize, color: "#F5F5F5", style: "outline" as SubStyle, pos: "bottom" as SubPos },
+];
+
+// Espelho do agrupamento do backend — reagrupa words em cues SEM nova transcrição
+const groupWords = (ws: Cue[], mode: "frases" | "karaoke"): Cue[] => {
+  const maxW = mode === "karaoke" ? 3 : 6;
+  const maxC = mode === "karaoke" ? 22 : 42;
+  const cues: Cue[] = [];
+  let cur: Cue[] = [];
+  const flush = () => {
+    if (cur.length) cues.push({ start: cur[0].start, end: cur[cur.length - 1].end, text: cur.map((x) => x.text).join(" ") });
+    cur = [];
+  };
+  for (const w of ws) {
+    if (cur.length && (cur.length >= maxW || w.start - cur[cur.length - 1].end > 0.6 ||
+        cur.reduce((a, x) => a + x.text.length + 1, 0) + w.text.length > maxC)) flush();
+    cur.push(w);
+  }
+  flush();
+  return cues;
+};
 
 const fmt = (s: number) => {
   const m = Math.floor(s / 60);
@@ -77,6 +106,8 @@ export default function AdminEditorVideo() {
   const [fontes, setFontes] = useState<{ id: string; label: string }[]>([]);
   const [subsOn, setSubsOn] = useState(false);
   const [cues, setCues] = useState<Cue[]>([]);
+  const [words, setWords] = useState<Cue[]>([]);          // words crus (karaokê local)
+  const [cueMode, setCueMode] = useState<"frases" | "karaoke">("frases");
   const [transcribing, setTranscribing] = useState(false);
   const [subFont, setSubFont] = useState("bevietnam");
   const [subSize, setSubSize] = useState<SubSize>("m");
@@ -84,6 +115,21 @@ export default function AdminEditorVideo() {
   const [subStyle, setSubStyle] = useState<SubStyle>("outline");
   const [subPos, setSubPos] = useState<SubPos>("bottom");
   const [loadedFonts, setLoadedFonts] = useState<Set<string>>(new Set());
+
+  // textos/títulos manuais
+  const [titles, setTitles] = useState<Title[]>([]);
+  const [newTitle, setNewTitle] = useState("");
+  const [newTitleDur, setNewTitleDur] = useState(3);
+
+  // acabamento
+  const [transition, setTransition] = useState<"none" | "fade">("none");
+  const [ducking, setDucking] = useState(true);
+  const [punchIn, setPunchIn] = useState(false);
+
+  // cortar com IA / exportar
+  const [aiCutText, setAiCutText] = useState("");
+  const [aiCutting, setAiCutting] = useState(false);
+  const [exporting, setExporting] = useState("");
 
   const [titulo, setTitulo] = useState("");
   const [rendering, setRendering] = useState(false);
@@ -137,7 +183,84 @@ export default function AdminEditorVideo() {
   const resetEditor = (m: EditMeta, src: string, label: string) => {
     setMeta(m); setPreviewSrc(src); setSourceLabel(label);
     setSegments([{ id: 1, start: 0, end: m.duration, keep: true }]);
-    setHistory([]); setPlayhead(0); setResultUrl(""); setCues([]); setSubsOn(false);
+    setHistory([]); setPlayhead(0); setResultUrl(""); setCues([]); setWords([]);
+    setSubsOn(false); setTitles([]);
+  };
+
+  // Cortar com IA: os trechos escolhidos entram na TIMELINE para revisão
+  const applyAiSegments = (keeps: { start: number; end: number }[]) => {
+    if (!meta || !keeps.length) return;
+    pushHistory();
+    const segs: Segment[] = [];
+    let id = 1, cursor = 0;
+    for (const k of keeps) {
+      const s = Math.max(0, k.start), e = Math.min(meta.duration, k.end);
+      if (s > cursor + 0.05) segs.push({ id: id++, start: cursor, end: s, keep: false });
+      segs.push({ id: id++, start: s, end: e, keep: true });
+      cursor = e;
+    }
+    if (cursor < meta.duration - 0.05) segs.push({ id: id++, start: cursor, end: meta.duration, keep: false });
+    setSegments(segs);
+  };
+
+  const cortarComIA = async () => {
+    if (!meta || !professional?.slug) return;
+    setAiCutting(true);
+    try {
+      const res = await fetch(`${API}/editor/cortar-ia`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await videoApiAuthHeaders()) },
+        body: JSON.stringify({ professional_slug: professional.slug, edit_id: meta.edit_id, instrucoes: aiCutText.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Falha no corte por IA");
+      const timer = setInterval(async () => {
+        try {
+          const st = await (await fetch(`${API}/status/${data.job_id}`)).json();
+          if (st.status === "done") {
+            clearInterval(timer); setAiCutting(false);
+            applyAiSegments(st.keep_segments || []);
+            toast.success(`A IA marcou ${(st.keep_segments || []).length} trechos para manter — revise na timeline e ajuste o que quiser.`, { duration: 8000 });
+          } else if (st.status === "error") {
+            clearInterval(timer); setAiCutting(false);
+            toast.error(st.message || "O corte por IA falhou", { duration: 8000 });
+          }
+        } catch { /* transitório */ }
+      }, 3000);
+    } catch (e: any) {
+      setAiCutting(false);
+      toast.error(e.message, { duration: 8000 });
+    }
+  };
+
+  const exportarFormato = async (format: "9:16" | "1:1" | "16:9") => {
+    if (!resultUrl || !professional?.slug) return;
+    setExporting(format);
+    try {
+      const res = await fetch(`${API}/editor/exportar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await videoApiAuthHeaders()) },
+        body: JSON.stringify({ professional_slug: professional.slug, video_url: resultUrl, format, titulo: titulo.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Falha ao exportar");
+      const timer = setInterval(async () => {
+        try {
+          const st = await (await fetch(`${API}/status/${data.job_id}`)).json();
+          if (st.status === "done") {
+            clearInterval(timer); setExporting("");
+            toast.success(`Versão ${format} pronta — está em Meus Vídeos!`);
+            queryClient.invalidateQueries({ queryKey: ["admin-videos"] });
+          } else if (st.status === "error") {
+            clearInterval(timer); setExporting("");
+            toast.error(st.message || "A exportação falhou", { duration: 8000 });
+          }
+        } catch { /* transitório */ }
+      }, 3000);
+    } catch (e: any) {
+      setExporting("");
+      toast.error(e.message);
+    }
   };
 
   const carregar = async (form: FormData, src: string, label: string) => {
@@ -271,7 +394,9 @@ export default function AdminEditorVideo() {
           const st = await (await fetch(`${API}/status/${jobId}`)).json();
           if (st.status === "done") {
             clearInterval(timer); setTranscribing(false);
-            setCues(st.cues || []); setSubsOn(true);
+            setWords(st.words || []);
+            setCues(cueMode === "karaoke" && st.words?.length ? groupWords(st.words, "karaoke") : (st.cues || []));
+            setSubsOn(true);
             toast.success(`${(st.cues || []).length} legendas geradas — revise o texto se quiser.`);
           } else if (st.status === "error") {
             clearInterval(timer); setTranscribing(false);
@@ -317,6 +442,10 @@ export default function AdminEditorVideo() {
           subtitles: subsOn && cues.length
             ? { cues, font_id: subFont, size: subSize, color: subColor, style: subStyle, position: subPos }
             : undefined,
+          titles: titles.length ? titles : undefined,
+          transition,
+          ducking,
+          punch_in: punchIn,
         }),
       });
       const data = await res.json();
@@ -480,6 +609,27 @@ export default function AdminEditorVideo() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                 {/* estilo */}
                 <div className="space-y-2 text-xs">
+                  {/* presets de 1 clique */}
+                  <div className="flex gap-1.5 flex-wrap">
+                    {SUB_PRESETS.map((p) => (
+                      <Button key={p.label} size="sm" variant="secondary" className="h-7 text-xs"
+                        onClick={() => { setSubFont(p.font); setSubSize(p.size); setSubColor(p.color); setSubStyle(p.style); setSubPos(p.pos); }}>
+                        {p.label}
+                      </Button>
+                    ))}
+                  </div>
+                  {/* frases × karaokê (reagrupa localmente, sem nova transcrição) */}
+                  {words.length > 0 && (
+                    <div className="flex gap-1.5">
+                      {(["frases", "karaoke"] as const).map((m) => (
+                        <button key={m} type="button"
+                          onClick={() => { setCueMode(m); setCues(groupWords(words, m)); }}
+                          className={`rounded-full border px-2.5 py-0.5 transition ${cueMode === m ? "border-primary ring-1 ring-primary font-medium" : "hover:border-primary/50"}`}>
+                          {m === "frases" ? "Frases (~6 palavras)" : "⚡ Karaokê (2-3 palavras)"}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex gap-2 flex-wrap">
                     <select className="h-8 rounded border bg-background px-2" value={subFont} onChange={(e) => setSubFont(e.target.value)}>
                       {fontes.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
@@ -526,6 +676,62 @@ export default function AdminEditorVideo() {
                 escolhe fonte, tamanho, cor, estilo (contorno ou caixa) e posição antes de queimar no vídeo.
               </p>
             )}
+
+            {/* Textos/títulos manuais sobre o vídeo */}
+            <div className="border-t pt-3 space-y-2">
+              <Label className="font-semibold text-sm">Textos no vídeo</Label>
+              <div className="flex gap-1.5 flex-wrap items-center text-xs">
+                <Input value={newTitle} onChange={(e) => setNewTitle(e.target.value)}
+                  placeholder='Ex.: "Agende sua sessão 💛"' className="h-8 text-xs max-w-56" />
+                <label className="flex items-center gap-1">por
+                  <Input type="number" min={1} max={30} value={newTitleDur}
+                    onChange={(e) => setNewTitleDur(Math.max(1, Math.min(30, Number(e.target.value) || 3)))}
+                    className="h-8 w-14 text-xs" />s
+                </label>
+                <Button size="sm" variant="outline" className="h-8" disabled={!newTitle.trim()}
+                  onClick={() => {
+                    if (!meta) return;
+                    setTitles((prev) => [...prev, {
+                      start: playhead, end: Math.min(meta.duration, playhead + newTitleDur),
+                      text: newTitle.trim(), font_id: subFont, size: subSize,
+                      color: subColor, style: subStyle, position: "center",
+                    }]);
+                    setNewTitle("");
+                    toast.success("Texto adicionado a partir do cursor — ajuste o estilo na lista.");
+                  }}>
+                  + Adicionar no cursor ({fmt(playhead)})
+                </Button>
+              </div>
+              {titles.map((t, i) => (
+                <div key={i} className="flex items-center gap-1.5 text-xs flex-wrap rounded border px-2 py-1">
+                  <span className="tabular-nums text-muted-foreground">{fmt(t.start)}–{fmt(t.end)}</span>
+                  <Input value={t.text} className="h-7 text-xs flex-1 min-w-32"
+                    onChange={(e) => setTitles((prev) => prev.map((p, j) => (j === i ? { ...p, text: e.target.value } : p)))} />
+                  <select className="h-7 rounded border bg-background px-1" value={t.font_id}
+                    onChange={(e) => setTitles((prev) => prev.map((p, j) => (j === i ? { ...p, font_id: e.target.value } : p)))}>
+                    {fontes.map((f) => <option key={f.id} value={f.id}>{f.label.split(" (")[0]}</option>)}
+                  </select>
+                  <select className="h-7 rounded border bg-background px-1" value={t.size}
+                    onChange={(e) => setTitles((prev) => prev.map((p, j) => (j === i ? { ...p, size: e.target.value as SubSize } : p)))}>
+                    <option value="p">P</option><option value="m">M</option><option value="g">G</option><option value="xg">XG</option>
+                  </select>
+                  <select className="h-7 rounded border bg-background px-1" value={t.position}
+                    onChange={(e) => setTitles((prev) => prev.map((p, j) => (j === i ? { ...p, position: e.target.value as SubPos } : p)))}>
+                    <option value="top">Topo</option><option value="center">Centro</option><option value="bottom">Embaixo</option>
+                  </select>
+                  <input type="color" value={t.color} className="h-7 w-8 rounded border cursor-pointer"
+                    onChange={(e) => setTitles((prev) => prev.map((p, j) => (j === i ? { ...p, color: e.target.value } : p)))} />
+                  <select className="h-7 rounded border bg-background px-1" value={t.style}
+                    onChange={(e) => setTitles((prev) => prev.map((p, j) => (j === i ? { ...p, style: e.target.value as SubStyle } : p)))}>
+                    <option value="outline">Contorno</option><option value="box">Caixa</option>
+                  </select>
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive"
+                    onClick={() => setTitles((prev) => prev.filter((_, j) => j !== i))}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -545,6 +751,17 @@ export default function AdminEditorVideo() {
               <span className="text-xs text-muted-foreground ml-auto">
                 Clique/arraste na faixa para posicionar o cursor · duração final: <b>{fmt(finalDuration)}</b>
               </span>
+            </div>
+
+            {/* Cortar com IA: a IA marca os trechos, VOCÊ revisa na timeline */}
+            <div className="flex items-center gap-2 flex-wrap rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+              <Wand2 className="h-4 w-4 text-primary shrink-0" />
+              <Input value={aiCutText} onChange={(e) => setAiCutText(e.target.value)}
+                placeholder='Cortar com IA — ex.: "tire as pausas e os erros, deixe com uns 40 segundos"'
+                className="h-8 text-xs flex-1 min-w-52" />
+              <Button size="sm" className="h-8" disabled={aiCutting} onClick={cortarComIA}>
+                {aiCutting ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />Assistindo o vídeo…</> : "Sugerir cortes"}
+              </Button>
             </div>
 
             <div ref={timelineRef} className="relative select-none cursor-col-resize" onMouseDown={onTimelineDown}>
@@ -607,6 +824,26 @@ export default function AdminEditorVideo() {
               </div>
             )}
 
+            {/* Acabamento */}
+            <div className="flex items-center gap-3 flex-wrap text-xs rounded-lg border px-3 py-2">
+              <span className="font-medium">Acabamento:</span>
+              <label className="flex items-center gap-1.5">Emendas
+                <select className="h-7 rounded border bg-background px-1" value={transition}
+                  onChange={(e) => setTransition(e.target.value as "none" | "fade")}>
+                  <option value="none">Corte seco</option>
+                  <option value="fade">Suave (crossfade)</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer" title="A música abaixa sozinha quando você fala e volta nas pausas">
+                <input type="checkbox" checked={ducking} onChange={(e) => setDucking(e.target.checked)} />
+                Música abaixa na fala
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer" title="Leve zoom alternado a cada trecho — disfarça as emendas (estilo talking-head)">
+                <input type="checkbox" checked={punchIn} onChange={(e) => setPunchIn(e.target.checked)} />
+                Zoom alternado nos cortes
+              </label>
+            </div>
+
             {/* Render */}
             <div className="flex items-center gap-2 flex-wrap pt-1">
               <Input value={titulo} onChange={(e) => setTitulo(e.target.value)}
@@ -626,6 +863,16 @@ export default function AdminEditorVideo() {
               <div className="pt-2 space-y-2">
                 <Label className="font-semibold text-emerald-600">✓ Edição pronta</Label>
                 <video src={resultUrl} controls playsInline className="w-full max-h-72 rounded-lg bg-black" />
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                  <span className="text-muted-foreground">Exportar para outra plataforma:</span>
+                  {(["9:16", "1:1", "16:9"] as const).map((f) => (
+                    <Button key={f} size="sm" variant="outline" className="h-7"
+                      disabled={!!exporting} onClick={() => exportarFormato(f)}>
+                      {exporting === f ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+                      {f === "9:16" ? "📱 Reels 9:16" : f === "1:1" ? "◻ Feed 1:1" : "🖥 YouTube 16:9"}
+                    </Button>
+                  ))}
+                </div>
               </div>
             )}
           </CardContent>

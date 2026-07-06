@@ -484,33 +484,14 @@ export default function AdminVideos() {
                           <Instagram className="h-4 w-4 text-pink-500" />
                         </Button>
                       )}
-                      <Dialog
-                        open={editPanelVideo?.id === v.id}
-                        onOpenChange={(o) => !o && setEditPanelVideo(null)}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Abrir no Editor (corte, música, legendas)"
+                        onClick={() => navigate(`/admin/redes-sociais?tab=videos&sub=editor&load=${v.id}`)}
                       >
-                        <DialogTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Editar trim/thumbnail"
-                            onClick={() => setEditPanelVideo(v)}
-                          >
-                            <Scissors className="h-4 w-4" />
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent className="max-w-lg">
-                          <DialogHeader>
-                            <DialogTitle>Editar — {v.title}</DialogTitle>
-                          </DialogHeader>
-                          {editPanelVideo?.id === v.id && professional?.slug && (
-                            <EditPanel
-                              video={v as any}
-                              professionalSlug={professional.slug}
-                              onClose={() => setEditPanelVideo(null)}
-                            />
-                          )}
-                        </DialogContent>
-                      </Dialog>
+                        <Scissors className="h-4 w-4" />
+                      </Button>
                       <Button variant="ghost" size="icon" title="Compartilhar" onClick={() => setShareVideo(v)}>
                         <Share2 className="h-4 w-4 text-muted-foreground" />
                       </Button>

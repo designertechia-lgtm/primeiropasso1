@@ -12,6 +12,7 @@
  *     inclusive uploads. Se o arquivo expirar no servidor, aviso claro.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useProfessional } from "@/hooks/useProfessional";
 import { supabase } from "@/integrations/supabase/client";
@@ -80,6 +81,7 @@ const parseTime = (v: string): number | null => {
 export default function AdminEditorVideo() {
   const { data: professional } = useProfessional();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [meta, setMeta] = useState<EditMeta | null>(null);
   const [previewSrc, setPreviewSrc] = useState("");
@@ -193,10 +195,37 @@ export default function AdminEditorVideo() {
     }, 3000);
   };
 
+  // Tesoura de "Meus Vídeos" (?load={video_id}): carrega o vídeo direto no
+  // editor — tem prioridade sobre a restauração da edição anterior.
+  useEffect(() => {
+    const loadId = searchParams.get("load");
+    if (!loadId) return;
+    (async () => {
+      restoredRef.current = true;   // pula o restore — o load substitui a edição
+      const { data } = await (supabase as any)
+        .from("videos").select("embed_url,title").eq("id", loadId).single();
+      searchParams.delete("load");
+      setSearchParams(searchParams, { replace: true });
+      if (!data?.embed_url || /youtube|youtu\.be/i.test(data.embed_url)) {
+        toast.error("Não encontrei o arquivo desse vídeo para editar.");
+        return;
+      }
+      const fd = new FormData();
+      fd.append("video_url", data.embed_url);
+      try {
+        const saved = JSON.parse(localStorage.getItem(EDITOR_STORAGE_KEY) || "null");
+        if (saved?.meta?.edit_id) fd.append("replace_edit_id", saved.meta.edit_id);
+      } catch { /* sem draft anterior */ }
+      await carregar(fd, data.title || "Vídeo da galeria");
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── PERSISTÊNCIA: restaura ao entrar; salva a cada mudança ────────────────
   useEffect(() => {
     (async () => {
       try {
+        if (searchParams.get("load")) return;   // o efeito do load assume
         const raw = localStorage.getItem(EDITOR_STORAGE_KEY);
         if (!raw) { restoredRef.current = true; return; }
         const s = JSON.parse(raw);

@@ -1,19 +1,20 @@
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Link2, Video, Drama, Database, FileImage, Flame, Clapperboard } from "lucide-react";
+import { FileText, Link2, Video, Drama, Database, FileImage, Flame, Clapperboard, Scissors } from "lucide-react";
 import { ConnectedAccounts } from "@/components/dashboard/ConnectedAccounts";
 import AdminArtigos from "./AdminArtigos";
 import AdminEstudioViral from "./AdminEstudioViral";
 import AdminVideos from "./AdminVideos";
 import AdminAvatares from "./AdminAvatares";
+import AdminEditorVideo from "./AdminEditorVideo";
 import AdminDocumentos from "./AdminDocumentos";
 import PostsTab from "@/components/admin/redes-sociais/PostsTab";
 
 const VALID_TABS = ["posts", "videos", "contas", "rag"] as const;
 type TabValue = (typeof VALID_TABS)[number];
 
-// Sub-abas do guarda-chuva "Estúdio Viral": criação, personagens, artigos/carrosséis, galeria.
-const SUB_TABS = ["criar", "personagens", "artigos", "meus-videos"] as const;
+// Sub-abas do guarda-chuva "Estúdio Viral": criação, personagens, artigos/carrosséis, editor, galeria.
+const SUB_TABS = ["criar", "personagens", "artigos", "editor", "meus-videos"] as const;
 type SubValue = (typeof SUB_TABS)[number];
 
 // Abas/atalhos antigos que foram consolidados dentro de "Estúdio Viral" — links salvos
@@ -93,6 +94,9 @@ export default function AdminRedesSociais() {
               <TabsTrigger value="artigos" className="gap-2">
                 <FileText className="h-4 w-4" /> Artigos e Carrosséis
               </TabsTrigger>
+              <TabsTrigger value="editor" className="gap-2">
+                <Scissors className="h-4 w-4" /> Editor
+              </TabsTrigger>
               <TabsTrigger value="meus-videos" className="gap-2">
                 <Video className="h-4 w-4" /> Meus Vídeos
               </TabsTrigger>
@@ -105,6 +109,9 @@ export default function AdminRedesSociais() {
             </TabsContent>
             <TabsContent value="artigos" className="mt-4">
               <AdminArtigos />
+            </TabsContent>
+            <TabsContent value="editor" className="mt-4">
+              <AdminEditorVideo />
             </TabsContent>
             <TabsContent value="meus-videos" className="mt-4">
               <AdminVideos />

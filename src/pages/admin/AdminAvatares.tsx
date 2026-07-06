@@ -432,7 +432,12 @@ export default function AdminAvatares() {
     if (!confirm(`Excluir o personagem "${av.name}"?`)) return;
     let res: Response | undefined;
     try {
-      res = await fetch(`${API}/avatar/${av.id}?professional_slug=${slug}`, { method: "DELETE" });
+      // Rota destrutiva agora exige o JWT do dono (e o backend apaga a foto do Storage junto)
+      const { videoApiAuthHeaders } = await import("@/lib/videoApi");
+      res = await fetch(`${API}/avatar/${av.id}?professional_slug=${slug}`, {
+        method: "DELETE",
+        headers: await videoApiAuthHeaders(),
+      });
       if (!res.ok) throw new Error(await parseError(null, res));
       toast.success("Personagem excluído");
       await refetch();

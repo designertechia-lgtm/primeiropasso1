@@ -261,29 +261,27 @@ export default function AdminVideos() {
     }
   };
 
-  const deleteStorageFile = async (url: string) => {
-    try {
-      const withoutQuery = url.split("?")[0];
-      const match = withoutQuery.split("/object/public/images/")[1];
-      if (match) await supabase.storage.from("images").remove([decodeURIComponent(match)]);
-    } catch {}
-  };
-
   const handleDelete = async (id: string) => {
-    if (!confirm("Excluir este vídeo?")) return;
-    // Busca embed_url e thumbnail antes de deletar o registro
-    const video = videos.find((v: any) => v.id === id);
-    const { error } = await supabase.from("videos").delete().eq("id", id);
-    if (error) { toast.error("Erro ao excluir"); return; }
-    // Deleta arquivos do storage (só se forem URLs do Supabase)
-    if (video?.embed_url && (video.embed_url.includes("supabase") || /\.(mp4|webm|mov)$/i.test(video.embed_url))) {
-      await deleteStorageFile(video.embed_url);
+    if (!confirm("Excluir este vídeo? (arquivos e cenas do Estúdio saem junto)")) return;
+    // Exclusão COMPLETA via video-api: mp4 + thumbnail + cenas do Estúdio de
+    // Cenas (tabela em cascade + arquivos do Storage). O caminho antigo via
+    // supabase-js deixava os arquivos das cenas órfãos.
+    try {
+      const { videoApiAuthHeaders } = await import("@/lib/videoApi");
+      const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
+      const res = await fetch(
+        `${API}/video/${id}?professional_slug=${encodeURIComponent(professional?.slug || "")}`,
+        { method: "DELETE", headers: await videoApiAuthHeaders() },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || "Erro ao excluir");
+      }
+      toast.success("Vídeo excluído");
+      queryClient.invalidateQueries({ queryKey: ["admin-videos"] });
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao excluir", { duration: 6000 });
     }
-    if (video?.thumbnail_url && video.thumbnail_url.includes("supabase")) {
-      await deleteStorageFile(video.thumbnail_url);
-    }
-    toast.success("Vídeo excluído");
-    queryClient.invalidateQueries({ queryKey: ["admin-videos"] });
   };
 
   if (isLoading) return <div className="animate-pulse text-muted-foreground">Carregando...</div>;

@@ -34,6 +34,7 @@ function TikTokIcon({ className }: { className?: string }) {
 }
 
 import { videoApiAuthHeaders } from "@/lib/videoApi";
+import EstudioCenas from "@/components/admin/EstudioCenas";
 
 const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
 const STORAGE_KEY = "pp-criar-video";
@@ -333,6 +334,7 @@ export default function AdminEstudioViral() {
   const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(null);
   // Vídeo de referência: replica a ESTRUTURA de um viral com o conteúdo do profissional
   const [refFile, setRefFile] = useState<File | null>(null);
+  const [refUrl, setRefUrl] = useState("");   // link YouTube/TikTok/Instagram (alternativa ao upload)
   const [refTema, setRefTema] = useState("");
   const [refAnalyzing, setRefAnalyzing] = useState(false);
   // Cenas do vídeo: clipe real sugerido/escolhido por slide (preview + troca)
@@ -918,6 +920,35 @@ export default function AdminEstudioViral() {
     }
   };
 
+  // Cópia de referência por LINK (YouTube/TikTok/Instagram). Se a plataforma
+  // não permitir baixar, o backend devolve o MOTIVO claro em `detail`.
+  const handleAnalisarReferenciaUrl = async () => {
+    if (!refUrl.trim() || !professional?.slug) return;
+    setRefAnalyzing(true);
+    try {
+      const res = await fetch(`${API}/analisar-video-referencia-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await videoApiAuthHeaders()) },
+        body: JSON.stringify({
+          professional_slug: professional.slug,
+          url: refUrl.trim(),
+          tema: refTema.trim(),
+          tom,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Falha ao analisar o vídeo do link");
+      setScript(data.script);
+      setObjetivo((o) => o || `Estrutura replicada de vídeo de referência${refTema.trim() ? ` — ${refTema.trim()}` : ""}`);
+      setStep(2);
+      toast.success("Estrutura replicada! Revise o roteiro antes de gerar.", { duration: 6000 });
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao analisar o vídeo do link", { duration: 8000 });
+    } finally {
+      setRefAnalyzing(false);
+    }
+  };
+
   // Cenas do vídeo: 1 clipe REAL sugerido por slide (o motor usa exatamente
   // o que estiver aqui na geração — o que você vê é o que sai).
   const loadPreviewClips = async () => {
@@ -1025,6 +1056,16 @@ export default function AdminEstudioViral() {
         setJobStatus({ status: "error", message: "Erro de conexão" });
       }
     }, 3000);
+  };
+
+  // Montagem final disparada pelo Estúdio de Cenas → o wizard assume o job
+  // (mesmo polling/Step 3 do fluxo normal).
+  const startCenasJob = (jobId: string) => {
+    setActiveJobId(jobId);
+    setJobStatus({ status: "processing", progress: 5, step: "Montando o vídeo..." });
+    startStopwatch(0);
+    pollStatus(jobId);
+    setStep(3);
   };
 
   const handleCancel = async () => {
@@ -1212,29 +1253,43 @@ export default function AdminEstudioViral() {
           </p>
           <div className="flex flex-col sm:flex-row gap-2">
             <Input
+              value={refUrl}
+              onChange={(e) => setRefUrl(e.target.value)}
+              placeholder="Cole o link (YouTube, TikTok ou Instagram)…"
+              className="text-sm"
+              disabled={!!refFile}
+            />
+            <Input
               type="file"
               accept="video/mp4,video/quicktime,video/webm,video/x-matroska"
               className="text-xs file:text-xs"
               onChange={(e) => setRefFile(e.target.files?.[0] ?? null)}
             />
-            <Input
-              value={refTema}
-              onChange={(e) => setRefTema(e.target.value)}
-              placeholder="Sobre o que será o SEU vídeo? (opcional)"
-              className="text-sm"
-            />
           </div>
-          <Button
-            type="button"
-            size="sm"
-            className="gap-2"
-            disabled={!refFile || refAnalyzing}
-            onClick={handleAnalisarReferencia}
-          >
-            {refAnalyzing
-              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Analisando a estrutura do vídeo...</>
-              : <><Wand2 className="h-3.5 w-3.5" /> Replicar estrutura</>}
-          </Button>
+          <Input
+            value={refTema}
+            onChange={(e) => setRefTema(e.target.value)}
+            placeholder="Sobre o que será o SEU vídeo? (opcional)"
+            className="text-sm"
+          />
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              type="button"
+              size="sm"
+              className="gap-2"
+              disabled={(!refFile && !refUrl.trim()) || refAnalyzing}
+              onClick={refFile ? handleAnalisarReferencia : handleAnalisarReferenciaUrl}
+            >
+              {refAnalyzing
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Analisando a estrutura do vídeo...</>
+                : <><Wand2 className="h-3.5 w-3.5" /> Replicar estrutura</>}
+            </Button>
+            {!refFile && !!refUrl.trim() && (
+              <span className="text-[11px] text-muted-foreground">
+                Instagram às vezes bloqueia o acesso — se falhar, baixe o vídeo e envie o arquivo.
+              </span>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -1733,6 +1788,28 @@ export default function AdminEstudioViral() {
 
           </CollapsibleContent>
         </Collapsible>
+      )}
+
+      {/* ── Estúdio de Cenas (Premium/PRO): história com personagem consistente ── */}
+      {videoModel !== "gratuito" && !!script.slides?.length && (
+        <EstudioCenas
+          api={API}
+          professionalSlug={professional?.slug || ""}
+          script={script}
+          videoModel={videoModel === "pro" ? "pro" : "premium"}
+          estilo={estiloIA}
+          format={format}
+          avatars={avatars}
+          draftId={draftId}
+          onDraftId={setDraftId}
+          custoBase30={CUSTO_KLING_BRL[videoModel === "pro" ? "pro" : "premium"]["30s"]}
+          voice={{
+            voice: edgeVoice,
+            provider: voiceMode === "elevenlabs" && cloneVoiceId ? "elevenlabs" : "edge",
+            elevenlabsVoiceId: cloneVoiceId,
+          }}
+          onMontarJob={startCenasJob}
+        />
       )}
 
       {/* ── Cenas do vídeo (clipes reais por slide) ── */}

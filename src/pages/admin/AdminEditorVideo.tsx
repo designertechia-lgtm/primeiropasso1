@@ -125,6 +125,15 @@ export default function AdminEditorVideo() {
   const [ducking, setDucking] = useState(true);
   const [punchIn, setPunchIn] = useState(false);
 
+  // capa de entrada (logo)
+  const [introOn, setIntroOn] = useState(false);
+  const [introSource, setIntroSource] = useState<"perfil" | "upload">("perfil");
+  const [introUploadId, setIntroUploadId] = useState("");
+  const [introUploadName, setIntroUploadName] = useState("");
+  const [introDur, setIntroDur] = useState(2);
+  const [introBg, setIntroBg] = useState("#FFFFFF");
+  const perfilLogo = ((professional as any)?.logo_url as string) || "";
+
   const [aiCutText, setAiCutText] = useState("");
   const [aiCutting, setAiCutting] = useState(false);
   const [exporting, setExporting] = useState("");
@@ -253,6 +262,9 @@ export default function AdminEditorVideo() {
         setSubStyle(s.subStyle || "outline"); setSubPos(s.subPos || "bottom");
         setTitles(s.titles || []); setTransition(s.transition || "none");
         setDucking(s.ducking ?? true); setPunchIn(!!s.punchIn); setTitulo(s.titulo || "");
+        setIntroOn(!!s.introOn); setIntroSource(s.introSource || "perfil");
+        setIntroUploadId(s.introUploadId || ""); setIntroUploadName(s.introUploadName || "");
+        setIntroDur(s.introDur ?? 2); setIntroBg(s.introBg || "#FFFFFF");
         setResultUrl(s.resultUrl || "");
         if (s.renderJobId) {
           // havia uma renderização em andamento — RETOMA o acompanhamento
@@ -279,12 +291,14 @@ export default function AdminEditorVideo() {
         musicVolume, originalVolume, fadeOut, subsOn, cues, words, cueMode,
         subFont, subSize, subColor, subStyle, subPos, titles, transition,
         ducking, punchIn, titulo, resultUrl, renderJobId,
+        introOn, introSource, introUploadId, introUploadName, introDur, introBg,
       }));
     } catch { /* localStorage cheio — ignora */ }
   }, [meta, sourceLabel, segments, musicId, musicUploadId, musicUploadName,
       musicVolume, originalVolume, fadeOut, subsOn, cues, words, cueMode,
       subFont, subSize, subColor, subStyle, subPos, titles, transition,
-      ducking, punchIn, titulo, resultUrl, renderJobId]);
+      ducking, punchIn, titulo, resultUrl, renderJobId,
+      introOn, introSource, introUploadId, introUploadName, introDur, introBg]);
 
   // Prévia da trilha respeita o slider em tempo real
   useEffect(() => {
@@ -567,6 +581,15 @@ export default function AdminEditorVideo() {
           transition,
           ducking,
           punch_in: punchIn,
+          intro: introOn && (introSource === "upload" ? introUploadId : perfilLogo)
+            ? {
+                ...(introSource === "upload"
+                  ? { logo_upload_id: introUploadId }
+                  : { image_url: perfilLogo }),
+                duration: introDur,
+                bg: introBg,
+              }
+            : undefined,
         }),
       });
       const data = await res.json();
@@ -818,6 +841,67 @@ export default function AdminEditorVideo() {
                     </Button>
                   </div>
                 )}
+
+                {/* Capa de entrada (logo) */}
+                <div className="flex items-center gap-3 flex-wrap text-xs rounded-lg border px-3 py-2">
+                  <label className="flex items-center gap-1.5 cursor-pointer font-medium">
+                    <input type="checkbox" checked={introOn} onChange={(e) => setIntroOn(e.target.checked)} />
+                    🎬 Capa de entrada com a logo
+                  </label>
+                  {introOn && (
+                    <>
+                      <div className="flex gap-1">
+                        {perfilLogo && (
+                          <button type="button" onClick={() => setIntroSource("perfil")}
+                            className={`rounded-full border px-2 py-0.5 transition ${introSource === "perfil" ? "border-primary ring-1 ring-primary font-medium" : "hover:border-primary/50"}`}>
+                            Logo do perfil
+                          </button>
+                        )}
+                        <label className={`rounded-full border px-2 py-0.5 cursor-pointer transition ${introSource === "upload" ? "border-primary ring-1 ring-primary font-medium" : "hover:border-primary/50"}`}>
+                          {introUploadName ? `🖼 ${introUploadName.slice(0, 18)}` : "Enviar imagem"}
+                          <input type="file" className="hidden" accept="image/png,image/jpeg,image/webp"
+                            onChange={async (e) => {
+                              const f = e.target.files?.[0];
+                              e.target.value = "";
+                              if (!f) return;
+                              try {
+                                const fd = new FormData();
+                                fd.append("file", f);
+                                const res = await fetch(`${API}/editor/carregar-logo`, { method: "POST", body: fd });
+                                const data = await res.json();
+                                if (!res.ok) throw new Error(data.detail || "Falha ao enviar a imagem");
+                                setIntroUploadId(data.logo_upload_id);
+                                setIntroUploadName(f.name);
+                                setIntroSource("upload");
+                              } catch (err: any) { toast.error(err.message); }
+                            }} />
+                        </label>
+                      </div>
+                      <label className="flex items-center gap-1">por
+                        <select className="h-7 rounded border bg-background px-1" value={introDur}
+                          onChange={(e) => setIntroDur(Number(e.target.value))}>
+                          <option value={1.5}>1,5s</option><option value={2}>2s</option>
+                          <option value={3}>3s</option><option value={4}>4s</option>
+                        </select>
+                      </label>
+                      <label className="flex items-center gap-1.5">fundo
+                        <input type="color" value={introBg} onChange={(e) => setIntroBg(e.target.value)}
+                          className="h-7 w-9 rounded border cursor-pointer" />
+                      </label>
+                      {/* mini prévia da capa */}
+                      <span className="inline-flex items-center justify-center rounded border h-9 w-16 overflow-hidden"
+                        style={{ background: introBg }}>
+                        {(introSource === "perfil" ? perfilLogo : "") && (
+                          <img src={perfilLogo} alt="" className="max-h-6 max-w-12 object-contain" />
+                        )}
+                        {introSource === "upload" && introUploadName && <span className="text-[9px]">🖼</span>}
+                      </span>
+                      {!perfilLogo && introSource === "perfil" && (
+                        <span className="text-muted-foreground">Sem logo no perfil — envie uma imagem.</span>
+                      )}
+                    </>
+                  )}
+                </div>
 
                 {/* Acabamento + Render */}
                 <div className="flex items-center gap-3 flex-wrap text-xs rounded-lg border px-3 py-2">

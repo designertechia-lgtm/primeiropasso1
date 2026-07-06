@@ -410,52 +410,58 @@ export default function AdminVideos() {
           Nenhum vídeo ainda. Clique em "Novo Vídeo" para começar.
         </p>
       ) : (
-        // Grade responsiva (Carlos 06/07: lista de largura total "estourava a
-        // tela" em monitor largo) — 2-3 colunas com cards proporcionais.
+        // Grade responsiva (Carlos 06/07) com thumb GRANDE; rascunhos de
+        // roteiro (sem vídeo ainda) ficam numa seção própria mais abaixo —
+        // eles não são "vídeos incompletos", são roteiros salvos.
+        <>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {videos.map((v) => {
+          {(videos as any[]).filter((v) => ((v.embed_url ?? "") as string).trim()).map((v) => {
             const isYoutube = /youtube|youtu\.be/i.test((v as any).embed_url ?? "");
             const canPublishToIG = !isYoutube && !!(v as any).embed_url;
             return (
               <div key={v.id} className="space-y-3">
-                <Card>
-                  {/* Ações em COLUNA à direita (Carlos 06/07): libera a largura
-                      do card estreito da grade pro título */}
-                  <CardHeader className="flex flex-row items-start justify-between pb-2 gap-2">
-                    <div className="flex items-center gap-4 min-w-0 pt-1">
-                      <button
-                        className="shrink-0 relative group rounded-lg overflow-hidden h-12 w-12"
-                        onClick={() => setPlayerVideo(v)}
-                        title="Assistir vídeo"
-                      >
-                        {(v as any).thumbnail_url ? (
-                          <img
-                            src={(v as any).thumbnail_url}
-                            alt=""
-                            className="h-12 w-12 object-cover transition-opacity group-hover:opacity-70"
-                          />
-                        ) : (
-                          <div className="h-12 w-12 bg-muted flex items-center justify-center">
-                            <Film className="h-5 w-5 text-muted-foreground" />
-                          </div>
-                        )}
-                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                          <PlayCircle className="h-5 w-5 text-white drop-shadow-lg" />
-                        </div>
-                      </button>
-                      <div className="min-w-0">
-                        <CardTitle className="text-lg truncate">{v.title}</CardTitle>
-                        <p className="text-xs text-muted-foreground">
-                          {(v as any).created_at &&
-                            `Criado em ${new Date((v as any).created_at).toLocaleString("pt-BR", {
-                              day: "2-digit", month: "2-digit", year: "numeric",
-                              hour: "2-digit", minute: "2-digit",
-                            })}`}
-                          {(v as any).script_json && (
-                            <span className="ml-2 text-muted-foreground/60">· Roteiro salvo</span>
-                          )}
-                        </p>
+                <Card className="overflow-hidden">
+                  {/* Thumb HERO (Carlos 06/07: aproveitar o espaço do card) */}
+                  <button
+                    className="relative block w-full aspect-video bg-muted group"
+                    onClick={() => setPlayerVideo(v)}
+                    title="Assistir vídeo"
+                  >
+                    {(v as any).thumbnail_url ? (
+                      <img
+                        src={(v as any).thumbnail_url}
+                        alt=""
+                        className="absolute inset-0 h-full w-full object-cover transition-opacity group-hover:opacity-80"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Film className="h-10 w-10 text-muted-foreground/50" />
                       </div>
+                    )}
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20">
+                      <PlayCircle className="h-12 w-12 text-white drop-shadow-lg" />
+                    </div>
+                  </button>
+                  <CardContent className="p-3 flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <CardTitle className="text-base leading-snug line-clamp-2">{v.title}</CardTitle>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {(v as any).created_at &&
+                          `Criado em ${new Date((v as any).created_at).toLocaleString("pt-BR", {
+                            day: "2-digit", month: "2-digit", year: "numeric",
+                            hour: "2-digit", minute: "2-digit",
+                          })}`}
+                        {(v as any).script_json && (
+                          <span className="ml-2 text-muted-foreground/60">· Roteiro salvo</span>
+                        )}
+                      </p>
+                      <span
+                        className={`inline-block mt-2 text-xs px-2 py-1 rounded-full ${
+                          v.published ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {v.published ? "Publicado" : "Rascunho"}
+                      </span>
                     </div>
                     <div className="flex flex-col gap-0.5 shrink-0 -mr-2 -mt-1 border-l pl-1">
                       {(v as any).script_json && (
@@ -515,15 +521,6 @@ export default function AdminVideos() {
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
-                  </CardHeader>
-                  <CardContent>
-                    <span
-                      className={`text-xs px-2 py-1 rounded-full ${
-                        v.published ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      {v.published ? "Publicado" : "Rascunho"}
-                    </span>
                   </CardContent>
                 </Card>
 
@@ -540,6 +537,42 @@ export default function AdminVideos() {
             );
           })}
         </div>
+
+        {/* Rascunhos de roteiro: linhas compactas, sem fingir que são vídeos */}
+        {(videos as any[]).some((v) => !((v.embed_url ?? "") as string).trim()) && (
+          <div className="space-y-2 pt-4">
+            <h2 className="text-sm font-semibold text-muted-foreground">
+              Rascunhos de roteiro (ainda sem vídeo)
+            </h2>
+            {(videos as any[]).filter((v) => !((v.embed_url ?? "") as string).trim()).map((v) => (
+              <Card key={v.id}>
+                <CardContent className="p-2.5 flex items-center gap-3">
+                  <Film className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{v.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {(v as any).created_at &&
+                        new Date((v as any).created_at).toLocaleString("pt-BR", {
+                          day: "2-digit", month: "2-digit", year: "numeric",
+                          hour: "2-digit", minute: "2-digit",
+                        })}
+                    </p>
+                  </div>
+                  {(v as any).script_json && (
+                    <Button variant="outline" size="sm" className="h-8 gap-1.5 shrink-0"
+                      onClick={() => navigate(`/admin/redes-sociais?tab=videos&edit=${v.id}`)}>
+                      <Wand2 className="h-3.5 w-3.5 text-primary" /> Continuar edição
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="icon" title="Excluir rascunho" onClick={() => handleDelete(v.id)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+        </>
       )}
 
       {/* Player modal — carrega vídeo só ao abrir */}

@@ -32,7 +32,7 @@ const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropas
 const EDITOR_STORAGE_KEY = "pp-editor-video";
 
 type Segment = { id: number; start: number; end: number; keep: boolean };
-type EditMeta = { edit_id: string; duration: number; width: number; height: number; has_audio: boolean; thumbs: string[] };
+type EditMeta = { edit_id: string; duration: number; width: number; height: number; has_audio: boolean; thumbs: string[]; preview_url?: string };
 type Cue = { start: number; end: number; text: string };
 type SubSize = "p" | "m" | "g" | "xg";
 type SubStyle = "outline" | "box";
@@ -257,7 +257,7 @@ export default function AdminEditorVideo() {
           toast.info("O servidor está ocupado — restaurei suas edições; o vídeo pode demorar um pouco pra carregar.", { duration: 8000 });
         }
         setMeta(s.meta);
-        setPreviewSrc(`${API}/editor/video/${s.meta.edit_id}`);
+        setPreviewSrc(s.meta.preview_url || `${API}/editor/video/${s.meta.edit_id}`);
         setSourceLabel(s.sourceLabel || "");
         setSegments(s.segments?.length ? s.segments : [{ id: 1, start: 0, end: s.meta.duration, keep: true }]);
         setMusicId(s.musicId || ""); setMusicUploadId(s.musicUploadId || ""); setMusicUploadName(s.musicUploadName || "");
@@ -323,7 +323,8 @@ export default function AdminEditorVideo() {
 
   const resetEditor = (m: EditMeta, label: string) => {
     setMeta(m);
-    setPreviewSrc(`${API}/editor/video/${m.edit_id}`);   // servido pelo backend → sobrevive a F5
+    // preview pela CDN do Storage (inicia mais rápido); fallback = worker
+    setPreviewSrc(m.preview_url || `${API}/editor/video/${m.edit_id}`);
     setSourceLabel(label);
     setSegments([{ id: 1, start: 0, end: m.duration, keep: true }]);
     setHistory([]); setPlayhead(0); setResultUrl(""); setCues([]); setWords([]);
@@ -469,11 +470,26 @@ export default function AdminEditorVideo() {
     if (!activeSeg || !meta || value === null) { toast.error("Tempo inválido — use mm:ss (ex.: 1:23.5)"); return; }
     const v = Math.max(0, Math.min(meta.duration, value));
     pushHistory();
-    setSegments((prev) => prev.map((s) => {
-      if (s.id !== activeSeg.id) return s;
-      if (which === "start") return { ...s, start: Math.min(v, s.end - 0.2) };
-      return { ...s, end: Math.max(v, s.start + 0.2) };
-    }));
+    // Encolher um trecho NÃO apaga a região: a sobra vira trecho REMOVIDO
+    // (restaurável na timeline) — antes ela sumia sem volta (bug do Carlos:
+    // "reverto e só volta o último corte").
+    setSegments((prev) => {
+      const next: Segment[] = [];
+      let nid = Math.max(0, ...prev.map((p) => p.id)) + 1;
+      for (const s of prev) {
+        if (s.id !== activeSeg.id) { next.push(s); continue; }
+        if (which === "start") {
+          const ns = Math.min(v, s.end - 0.2);
+          if (ns > s.start + 0.15) next.push({ id: nid++, start: s.start, end: ns, keep: false });
+          next.push({ ...s, start: ns });
+        } else {
+          const ne = Math.max(v, s.start + 0.2);
+          next.push({ ...s, end: ne });
+          if (ne < s.end - 0.15) next.push({ id: nid++, start: ne, end: s.end, keep: false });
+        }
+      }
+      return next;
+    });
   };
 
   const keepSegments = segments.filter((s) => s.keep);
@@ -799,8 +815,9 @@ export default function AdminEditorVideo() {
                   <Button size="sm" variant="outline" className="h-7 gap-1" onClick={splitAtPlayhead}>
                     <Scissors className="h-3.5 w-3.5" /> Dividir no cursor
                   </Button>
-                  <Button size="sm" variant="ghost" className="h-7 gap-1" disabled={!history.length} onClick={undo}>
-                    <Undo2 className="h-3.5 w-3.5" /> Desfazer
+                  <Button size="sm" variant="ghost" className="h-7 gap-1" disabled={!history.length} onClick={undo}
+                    title="Cada clique volta UM passo de edição">
+                    <Undo2 className="h-3.5 w-3.5" /> Desfazer{history.length ? ` (${history.length})` : ""}
                   </Button>
                   <span className="text-xs text-muted-foreground ml-auto">
                     duração final: <b>{fmt(finalDuration)}</b>
@@ -1159,9 +1176,9 @@ export default function AdminEditorVideo() {
                 <Button size="sm" className="h-7"
                   onClick={() => {
                     pushHistory();
-                    setSegments((prev) => prev.length
-                      ? prev.map((s) => ({ ...s, keep: true }))
-                      : [{ id: 1, start: 0, end: meta.duration, keep: true }]);
+                    // 1 trecho [0..duração]: cobre inclusive regiões que algum
+                    // ajuste antigo tenha deixado órfãs
+                    setSegments([{ id: 1, start: 0, end: meta.duration, keep: true }]);
                     toast.success("Vídeo inteiro restaurado — remova só o que não quiser.");
                   }}>
                   Restaurar o vídeo inteiro

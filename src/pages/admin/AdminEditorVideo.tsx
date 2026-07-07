@@ -136,6 +136,7 @@ export default function AdminEditorVideo() {
   const [introUploadName, setIntroUploadName] = useState("");
   const [introDur, setIntroDur] = useState(2);
   const [introBg, setIntroBg] = useState("#FFFFFF");
+  const [introEffect, setIntroEffect] = useState<"zoom" | "slide" | "fade">("zoom");
   const perfilLogo = ((professional as any)?.logo_url as string) || "";
 
   const [aiCutText, setAiCutText] = useState("");
@@ -269,6 +270,7 @@ export default function AdminEditorVideo() {
         setIntroOn(!!s.introOn); setIntroSource(s.introSource || "perfil");
         setIntroUploadId(s.introUploadId || ""); setIntroUploadName(s.introUploadName || "");
         setIntroDur(s.introDur ?? 2); setIntroBg(s.introBg || "#FFFFFF");
+        setIntroEffect(s.introEffect || "zoom");
         setResultUrl(s.resultUrl || "");
         if (s.renderJobId) {
           // havia uma renderização em andamento — RETOMA o acompanhamento
@@ -295,14 +297,14 @@ export default function AdminEditorVideo() {
         musicVolume, originalVolume, fadeOut, subsOn, cues, words, cueMode,
         subFont, subSize, subColor, subStyle, subPos, titles, transition,
         ducking, punchIn, titulo, resultUrl, renderJobId,
-        introOn, introSource, introUploadId, introUploadName, introDur, introBg,
+        introOn, introSource, introUploadId, introUploadName, introDur, introBg, introEffect,
       }));
     } catch { /* localStorage cheio — ignora */ }
   }, [meta, sourceLabel, segments, musicId, musicUploadId, musicUploadName,
       musicVolume, originalVolume, fadeOut, subsOn, cues, words, cueMode,
       subFont, subSize, subColor, subStyle, subPos, titles, transition,
       ducking, punchIn, titulo, resultUrl, renderJobId,
-      introOn, introSource, introUploadId, introUploadName, introDur, introBg]);
+      introOn, introSource, introUploadId, introUploadName, introDur, introBg, introEffect]);
 
   // Prévia da trilha respeita o slider em tempo real
   useEffect(() => {
@@ -620,6 +622,7 @@ export default function AdminEditorVideo() {
                   : { image_url: perfilLogo }),
                 duration: introDur,
                 bg: introBg,
+                effect: introEffect,
               }
             : undefined,
         }),
@@ -942,6 +945,14 @@ export default function AdminEditorVideo() {
                           onChange={(e) => setIntroDur(Number(e.target.value))}>
                           <option value={1.5}>1,5s</option><option value={2}>2s</option>
                           <option value={3}>3s</option><option value={4}>4s</option>
+                        </select>
+                      </label>
+                      <label className="flex items-center gap-1">efeito
+                        <select className="h-7 rounded border bg-background px-1" value={introEffect}
+                          onChange={(e) => setIntroEffect(e.target.value as "zoom" | "slide" | "fade")}>
+                          <option value="zoom">Zoom suave</option>
+                          <option value="slide">Deslizar</option>
+                          <option value="fade">Estático</option>
                         </select>
                       </label>
                       <label className="flex items-center gap-1.5">fundo

@@ -349,6 +349,10 @@ export default function AdminEstudioViral() {
   const [swapClipLoading, setSwapClipLoading] = useState(false);
   // Personagem escolhido por cena (galeria no "Trocar"): índice do slide -> avatar_id.
   // A foto do personagem vira a cena com movimento (Ken Burns) no backend.
+  // Caminho de criação nos tiers pagos (Carlos 07/07: "2 botões de criar"
+  // confundia): "rapido" = fluxo automático (Gerar Vídeo) | "estudio" =
+  // Estúdio de Cenas (cena a cena; o botão de criar é o Montar de lá).
+  const [creationPath, setCreationPath] = useState<"rapido" | "estudio">("rapido");
   const [sceneAvatarIds, setSceneAvatarIds] = useState<Record<number, string>>({});
   const queryClient = useQueryClient();
   const [imageMode, setImageMode]     = useState<"auto" | "custom" | "ia">(saved?.imageMode ?? "auto");
@@ -1380,7 +1384,9 @@ export default function AdminEstudioViral() {
       </div>
 
       {/* Personagem (avatar) — TODOS os tiers: pagos = animado (Kling); grátis = foto com movimento.
-         Em accordeon (Collapsible) para não ocupar espaço: a seleção continua acessível a um clique. */}
+         Em accordeon (Collapsible) para não ocupar espaço. No caminho Estúdio de
+         Cenas fica OCULTO: lá o personagem é escolhido dentro do próprio Estúdio. */}
+      {!(videoModel !== "gratuito" && creationPath === "estudio") && (
       <Collapsible>
         <CollapsibleTrigger asChild>
           <Button variant="outline" className="w-full justify-between h-auto py-2.5" size="sm">
@@ -1439,6 +1445,7 @@ export default function AdminEstudioViral() {
           </p>
         </CollapsibleContent>
       </Collapsible>
+      )}
 
       {/* Duração e Plataforma alvo (orientam o agente de roteiro — depois do modelo
          pra que opções de teste 10s/15s apareçam só quando Premium/Pro estiver ativo) */}
@@ -1643,7 +1650,7 @@ export default function AdminEstudioViral() {
                 </Collapsible>
 
                 {/* Tipo da cena (Premium/PRO): Real | Imagem IA | Vídeo IA | Personagens (PRO) */}
-                {videoModel !== "gratuito" && (
+                {videoModel !== "gratuito" && creationPath === "rapido" && (
                   <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-border/50 mt-1">
                     <span className="text-[11px] text-muted-foreground shrink-0">Cena:</span>
                     {([
@@ -1682,7 +1689,7 @@ export default function AdminEstudioViral() {
           </div>
 
           {/* Custo das cenas em vídeo IA — visível ANTES de gerar */}
-          {videoModel !== "gratuito" && (() => {
+          {videoModel !== "gratuito" && creationPath === "rapido" && (() => {
             const pagas = Object.values(sceneTypes).filter((s) => s.tipo === "video" || s.tipo === "personagens" || s.tipo === "fala");
             if (!pagas.length) return null;
             const totalS = pagas.reduce((a, s) => a + s.dur, 0);
@@ -1790,8 +1797,30 @@ export default function AdminEstudioViral() {
         </Collapsible>
       )}
 
+      {/* ── Caminho de criação (Premium/PRO): UM botão de criar por modo ── */}
+      {videoModel !== "gratuito" && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button type="button" onClick={() => setCreationPath("rapido")}
+            className={`rounded-xl border-2 p-3 text-left transition ${creationPath === "rapido" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}>
+            <p className="font-semibold text-sm flex items-center gap-2">⚡ Criação Rápida</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              A IA monta o vídeo inteiro de uma vez: clipes reais ou estilo ilustrado,
+              personagem nos momentos-chave. Um clique em "Gerar Vídeo".
+            </p>
+          </button>
+          <button type="button" onClick={() => setCreationPath("estudio")}
+            className={`rounded-xl border-2 p-3 text-left transition ${creationPath === "estudio" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}>
+            <p className="font-semibold text-sm flex items-center gap-2">🎬 Estúdio de Cenas</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Cena a cena com o MESMO personagem: você aprova cada imagem, anima só o
+              que gostar (custo por cena) e monta no final.
+            </p>
+          </button>
+        </div>
+      )}
+
       {/* ── Estúdio de Cenas (Premium/PRO): história com personagem consistente ── */}
-      {videoModel !== "gratuito" && !!script.slides?.length && (
+      {videoModel !== "gratuito" && creationPath === "estudio" && !!script.slides?.length && (
         <EstudioCenas
           api={API}
           professionalSlug={professional?.slug || ""}
@@ -1812,7 +1841,8 @@ export default function AdminEstudioViral() {
         />
       )}
 
-      {/* ── Cenas do vídeo (clipes reais por slide) ── */}
+      {/* ── Cenas do vídeo (clipes reais por slide) — só no caminho rápido ── */}
+      {(videoModel === "gratuito" || creationPath === "rapido") && (
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <Label className="text-base font-semibold flex items-center gap-2">
@@ -1897,6 +1927,7 @@ export default function AdminEstudioViral() {
           </>
         )}
       </div>
+      )}
 
       {/* Dialog de troca de clipe */}
       <Dialog open={swapClipSlide !== null} onOpenChange={(open) => { if (!open) setSwapClipSlide(null); }}>
@@ -2222,9 +2253,16 @@ export default function AdminEstudioViral() {
         <Button variant="outline" onClick={() => setStep(1)}>
           <ChevronLeft className="mr-2 h-4 w-4" /> Voltar
         </Button>
-        <Button className="flex-1" size="lg" onClick={handleGenerate}>
-          <Film className="mr-2 h-5 w-5" /> Gerar Vídeo
-        </Button>
+        {videoModel !== "gratuito" && creationPath === "estudio" ? (
+          <div className="flex-1 rounded-lg border bg-muted/30 px-4 py-3 text-sm text-muted-foreground flex items-center gap-2">
+            🎬 No Estúdio de Cenas o vídeo é montado lá em cima: aprove as imagens,
+            anime as cenas e clique em <b>Montar vídeo final</b>.
+          </div>
+        ) : (
+          <Button className="flex-1" size="lg" onClick={handleGenerate}>
+            <Film className="mr-2 h-5 w-5" /> Gerar Vídeo
+          </Button>
+        )}
       </div>
     </div>
   );

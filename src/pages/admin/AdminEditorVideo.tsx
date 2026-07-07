@@ -38,7 +38,7 @@ type SubSize = "p" | "m" | "g" | "xg";
 type SubStyle = "outline" | "box";
 type SubPos = "bottom" | "center" | "top";
 // Textos aceitam também o canto esquerdo (estilo selo/lower-third — Carlos 06/07)
-type TitlePos = SubPos | "left-bottom" | "left-top";
+type TitlePos = SubPos | "left-bottom" | "left-center" | "left-top";
 type Title = { start: number; end: number; text: string; font_id: string; size: SubSize; color: string; style: SubStyle; position: TitlePos };
 
 const SUB_PRESETS = [
@@ -1143,8 +1143,9 @@ export default function AdminEditorVideo() {
                   <select className="h-7 rounded border bg-background px-1" value={t.position}
                     onChange={(e) => setTitles((prev) => prev.map((p, j) => (j === i ? { ...p, position: e.target.value as TitlePos } : p)))}>
                     <option value="top">Topo</option><option value="center">Centro</option><option value="bottom">Embaixo</option>
-                    <option value="left-bottom">◧ Canto esq. (selo)</option>
-                    <option value="left-top">◩ Canto esq. topo</option>
+                    <option value="left-bottom">◧ Esq. baixo (selo)</option>
+                    <option value="left-center">◧ Esq. centro</option>
+                    <option value="left-top">◩ Esq. topo</option>
                   </select>
                   <input type="color" value={t.color} className="h-7 w-8 rounded border cursor-pointer"
                     onChange={(e) => setTitles((prev) => prev.map((p, j) => (j === i ? { ...p, color: e.target.value } : p)))} />

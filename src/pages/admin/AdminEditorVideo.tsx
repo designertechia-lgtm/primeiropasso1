@@ -37,7 +37,9 @@ type Cue = { start: number; end: number; text: string };
 type SubSize = "p" | "m" | "g" | "xg";
 type SubStyle = "outline" | "box";
 type SubPos = "bottom" | "center" | "top";
-type Title = { start: number; end: number; text: string; font_id: string; size: SubSize; color: string; style: SubStyle; position: SubPos };
+// Textos aceitam também o canto esquerdo (estilo selo/lower-third — Carlos 06/07)
+type TitlePos = SubPos | "left-bottom" | "left-top";
+type Title = { start: number; end: number; text: string; font_id: string; size: SubSize; color: string; style: SubStyle; position: TitlePos };
 
 const SUB_PRESETS = [
   { label: "🔥 Viral amarelo", font: "anton", size: "g" as SubSize, color: "#FFE14D", style: "box" as SubStyle, pos: "bottom" as SubPos },
@@ -1070,9 +1072,13 @@ export default function AdminEditorVideo() {
             {/* Textos/títulos manuais */}
             <div className="border-t pt-3 space-y-2">
               <Label className="font-semibold text-sm">Textos no vídeo</Label>
+              <p className="text-[11px] text-muted-foreground">
+                Dica: use <b>|</b> para quebrar linha e a posição <b>Canto esq. (selo)</b> com
+                estilo Caixa — ex.: <code>Daiane Cenci|Naturóloga</code> vira um selo profissional.
+              </p>
               <div className="flex gap-1.5 flex-wrap items-center text-xs">
                 <Input value={newTitle} onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder='Ex.: "Agende sua sessão 💛"' className="h-8 text-xs max-w-56" />
+                  placeholder='Ex.: "Daiane Cenci|Naturóloga"' className="h-8 text-xs max-w-56" />
                 <label className="flex items-center gap-1">por
                   <Input type="number" min={1} max={30} value={newTitleDur}
                     onChange={(e) => setNewTitleDur(Math.max(1, Math.min(30, Number(e.target.value) || 3)))}
@@ -1106,8 +1112,10 @@ export default function AdminEditorVideo() {
                     <option value="p">P</option><option value="m">M</option><option value="g">G</option><option value="xg">XG</option>
                   </select>
                   <select className="h-7 rounded border bg-background px-1" value={t.position}
-                    onChange={(e) => setTitles((prev) => prev.map((p, j) => (j === i ? { ...p, position: e.target.value as SubPos } : p)))}>
+                    onChange={(e) => setTitles((prev) => prev.map((p, j) => (j === i ? { ...p, position: e.target.value as TitlePos } : p)))}>
                     <option value="top">Topo</option><option value="center">Centro</option><option value="bottom">Embaixo</option>
+                    <option value="left-bottom">◧ Canto esq. (selo)</option>
+                    <option value="left-top">◩ Canto esq. topo</option>
                   </select>
                   <input type="color" value={t.color} className="h-7 w-8 rounded border cursor-pointer"
                     onChange={(e) => setTitles((prev) => prev.map((p, j) => (j === i ? { ...p, color: e.target.value } : p)))} />

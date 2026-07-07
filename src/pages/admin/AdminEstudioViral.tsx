@@ -914,9 +914,13 @@ export default function AdminEstudioViral() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Falha ao analisar o vídeo de referência");
       setScript(data.script);
-      setObjetivo((o) => o || `Estrutura replicada de vídeo de referência${refTema.trim() ? ` — ${refTema.trim()}` : ""}`);
+      setObjetivo((o) => o || `Clone de vídeo de referência${refTema.trim() ? ` — ${refTema.trim()}` : ""}`);
+      // Clonar É uma recriação por IA → vai direto pro PRO + Estúdio de Cenas
+      // (cenas geradas parecidas com o original), não pro fluxo de clipes de banco.
+      setVideoModel("pro");
+      setCreationPath("estudio");
       setStep(2);
-      toast.success("Estrutura replicada! Revise o roteiro antes de gerar.", { duration: 6000 });
+      toast.success("Clone analisado! Abra o Estúdio de Cenas: cada cena será recriada por IA parecida com o original.", { duration: 9000 });
     } catch (e: any) {
       toast.error(e.message || "Erro ao analisar o vídeo de referência");
     } finally {
@@ -943,9 +947,11 @@ export default function AdminEstudioViral() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Falha ao analisar o vídeo do link");
       setScript(data.script);
-      setObjetivo((o) => o || `Estrutura replicada de vídeo de referência${refTema.trim() ? ` — ${refTema.trim()}` : ""}`);
+      setObjetivo((o) => o || `Clone de vídeo de referência${refTema.trim() ? ` — ${refTema.trim()}` : ""}`);
+      setVideoModel("pro");
+      setCreationPath("estudio");
       setStep(2);
-      toast.success("Estrutura replicada! Revise o roteiro antes de gerar.", { duration: 6000 });
+      toast.success("Clone analisado! Abra o Estúdio de Cenas: cada cena será recriada por IA parecida com o original.", { duration: 9000 });
     } catch (e: any) {
       toast.error(e.message || "Erro ao analisar o vídeo do link", { duration: 8000 });
     } finally {
@@ -1247,13 +1253,14 @@ export default function AdminEstudioViral() {
       <Card className="border-dashed border-2 border-orange-300/50 bg-orange-50/30 dark:bg-orange-950/10">
         <CardContent className="p-4 space-y-3">
           <Label className="text-base font-semibold flex items-center gap-2">
-            <Clapperboard className="h-4 w-4 text-orange-500" /> Reproduzir um vídeo que viralizou
-            <Badge variant="outline" className="text-xs font-normal">opcional</Badge>
+            <Clapperboard className="h-4 w-4 text-orange-500" /> Clonar um vídeo que viralizou
+            <Badge variant="outline" className="text-xs font-normal border-purple-400 text-purple-600">com IA · PRO</Badge>
           </Label>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Envie um vídeo de referência e a IA replica a <strong>estrutura</strong> dele — gancho,
-            ritmo, viradas e CTA nos mesmos momentos — com o <strong>seu</strong> conteúdo.
-            As cenas e o áudio do original nunca são copiados (protege você de direitos autorais).
+            Cole o link (ou envie o arquivo) e a IA <strong>recria o vídeo</strong>: mesma estrutura
+            — gancho, ritmo, viradas e CTA — e <strong>cenas gerada por IA parecidas com as
+            originais</strong>, adaptadas ao seu conteúdo no Estúdio de Cenas. Os ativos do original
+            (imagens, áudio, rostos, marcas) nunca são copiados.
           </p>
           <div className="flex flex-col sm:flex-row gap-2">
             <Input

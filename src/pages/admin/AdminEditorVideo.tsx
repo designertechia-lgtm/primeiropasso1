@@ -1101,8 +1101,9 @@ export default function AdminEditorVideo() {
             <div className="border-t pt-3 space-y-2">
               <Label className="font-semibold text-sm">Textos no vídeo</Label>
               <p className="text-[11px] text-muted-foreground">
-                Dica: use <b>|</b> para quebrar linha e a posição <b>Canto esq. (selo)</b> com
-                estilo Caixa — ex.: <code>Daiane Cenci|Naturóloga</code> vira um selo profissional.
+                Dica: <b>|</b> separa título e subtítulo — a 1ª linha sai grande e o resto menor,
+                automático. Com posição <b>Canto esq. (selo)</b> + estilo <b>Caixa</b>:
+                {" "}<code>Daiane Cenci|Ayurveda · Alimentação Integrativa</code> = selo profissional.
               </p>
               <div className="flex gap-1.5 flex-wrap items-center text-xs">
                 <Input value={newTitle} onChange={(e) => setNewTitle(e.target.value)}

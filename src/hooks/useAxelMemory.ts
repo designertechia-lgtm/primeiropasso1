@@ -52,9 +52,15 @@ export interface AxelAction {
 }
 
 export interface OnboardingStatus {
+  // Jornada de ambientação (5 etapas — mesma ordem e critérios do agente/edge):
+  // perfil → DNA da marca → landing no ar → campanha → vídeo.
   profileComplete: boolean;
-  agendaConfigured: boolean;
+  dnaCreated: boolean;
   landingPublished: boolean;
+  campaignCreated: boolean;
+  videoCreated: boolean;
+  // Extras (fora da jornada, mas úteis pro copiloto):
+  agendaConfigured: boolean;
   whatsappConnected: boolean;
   firstContentCreated: boolean;
   subscriptionActive: boolean;
@@ -113,7 +119,7 @@ export function useAxelMemory() {
   });
 
   // ===== Histórico de conversas (axel_conversations → Supabase) =====
-  const { data: dbMessages = [] } = useQuery({
+  const { data: dbMessages = [], isPending: pendingMessages } = useQuery({
     queryKey: ["axel-conversations", user?.id],
     queryFn: async (): Promise<AxelMessage[]> => {
       // Pega as 100 mensagens MAIS RECENTES (desc) e reordena cronologicamente pra render.
@@ -160,12 +166,14 @@ export function useAxelMemory() {
   });
 
   // ===== Dados do profissional =====
+  // brand_bible é um jsonb grande — só o markdown interessa (existe DNA?); o alias
+  // com operador JSON não está nos tipos gerados, daí o (supabase as any).
   const { data: professional, isLoading: loadingProfessional } = useQuery({
     queryKey: ["axel-professional", user?.id],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await (supabase as any)
         .from("professionals")
-        .select("id, full_name, email, crp, slug, bio, hero_title, pain_title, landing_published, category")
+        .select("id, full_name, email, crp, slug, bio, photo_url, hero_title, pain_title, landing_published, category, dna_markdown:brand_bible->>markdown")
         .eq("user_id", user!.id)
         .maybeSingle();
       return data;
@@ -190,8 +198,8 @@ export function useAxelMemory() {
     },
   });
 
-  // Primeiro conteúdo criado?
-  const { data: hasContent } = useQuery({
+  // Conteúdo criado? (vídeo conta como etapa própria da jornada; artigo é extra)
+  const { data: contentCounts } = useQuery({
     queryKey: ["axel-content", professionalId],
     enabled: !!professionalId,
     staleTime: 1000 * 60 * 5,
@@ -206,7 +214,22 @@ export function useAxelMemory() {
           .select("id", { count: "exact", head: true })
           .eq("professional_id", professionalId!),
       ]);
-      return (articles ?? 0) + (videos ?? 0) > 0;
+      return { articles: articles ?? 0, videos: videos ?? 0 };
+    },
+  });
+
+  // Primeira campanha criada? (tabela fora dos tipos gerados — padrão do projeto)
+  const { data: hasCampaign } = useQuery({
+    queryKey: ["axel-campaigns", professionalId],
+    enabled: !!professionalId,
+    staleTime: 1000 * 60 * 5,
+    queryFn: async () => {
+      const { count } = await (supabase as any)
+        .from("ads_campaigns")
+        .select("id", { count: "exact", head: true })
+        .eq("professional_id", professionalId!)
+        .neq("status", "archived");
+      return (count ?? 0) > 0;
     },
   });
 
@@ -306,35 +329,36 @@ export function useAxelMemory() {
   }, [memory.interactionCount, user?.id, professionalId, queryClient]);
 
   // ===== Onboarding status =====
+  // Jornada de ambientação: MESMOS critérios da edge axel-agent (computeJornada) —
+  // perfil = nome + bio + foto (CRP é opcional: plataforma multi-área);
+  // DNA = brand_bible gerado; landing = coluna GENERATED landing_published;
+  // campanha = 1+ não-arquivada; vídeo = 1+ gerado.
   const onboarding: OnboardingStatus = (() => {
-    const profileComplete = !!((professional as any)?.full_name && (professional as any)?.crp && (professional as any)?.bio);
-    const agendaConfigured = !!hasAvailability;
+    const p = professional as any;
+    const profileComplete = !!(p?.full_name && p?.bio && p?.photo_url);
+    const dnaCreated = !!(p?.dna_markdown && String(p.dna_markdown).trim());
     // landing_published é coluna GENERATED no banco (ignora hero_title, que tem DEFAULT).
     // Ver migration 20260609_axel_landing_published.sql.
-    const landingPublished = !!((professional as any)?.landing_published);
-    const firstContentCreated = !!hasContent;
-    const subActive = !!subscriptionActive;
+    const landingPublished = !!p?.landing_published;
+    const campaignCreated = !!hasCampaign;
+    const videoCreated = (contentCounts?.videos ?? 0) > 0;
 
-    const items = [
-      profileComplete,
-      agendaConfigured,
-      landingPublished,
-      memory.whatsappConnected,
-      firstContentCreated,
-      subActive,
-    ];
-    const doneCount = items.filter(Boolean).length;
+    const jornada = [profileComplete, dnaCreated, landingPublished, campaignCreated, videoCreated];
+    const doneCount = jornada.filter(Boolean).length;
 
     return {
       profileComplete,
-      agendaConfigured,
+      dnaCreated,
       landingPublished,
+      campaignCreated,
+      videoCreated,
+      agendaConfigured: !!hasAvailability,
       whatsappConnected: memory.whatsappConnected,
-      firstContentCreated,
-      subscriptionActive: subActive,
+      firstContentCreated: (contentCounts?.articles ?? 0) + (contentCounts?.videos ?? 0) > 0,
+      subscriptionActive: !!subscriptionActive,
       doneCount,
-      totalCount: items.length,
-      progress: Math.round((doneCount / items.length) * 100),
+      totalCount: jornada.length,
+      progress: Math.round((doneCount / jornada.length) * 100),
       loaded: !loadingProfessional && !!professionalId,
     };
   })();
@@ -355,9 +379,24 @@ export function useAxelMemory() {
     const firstName = memory.name ? memory.name.split(" ")[0] : "";
 
     if (greetingType === "first") {
-      return firstName
-        ? `Olá, ${firstName}! 👋 Eu sou o Axel, seu copiloto aqui na PrimeiroPasso. Estou aqui pra te ajudar a configurar a plataforma, criar conteúdo e crescer sua presença digital. Por onde quer começar?`
-        : "Olá! 👋 Eu sou o Axel, seu copiloto aqui na PrimeiroPasso. Estou aqui pra te ajudar a configurar a plataforma, criar conteúdo e crescer sua presença digital. Por onde quer começar?";
+      const oi = firstName ? `Olá, ${firstName}!` : "Olá!";
+      // Propõe a PRIMEIRA etapa realmente pendente (quem já preencheu o perfil no
+      // cadastro não pode ouvir "quer começar pelo perfil?").
+      const proxima = !onboarding.loaded
+        ? "pelo seu perfil"
+        : !onboarding.profileComplete
+          ? "pelo seu perfil"
+          : !onboarding.dnaCreated
+            ? "pelo DNA da sua marca"
+            : !onboarding.landingPublished
+              ? "pela sua página"
+              : !onboarding.campaignCreated
+                ? "pela sua primeira campanha"
+                : !onboarding.videoCreated
+                  ? "pelo seu primeiro vídeo"
+                  : "";
+      const convite = proxima ? ` Quer começar ${proxima}? É rapidinho.` : " Por onde quer começar?";
+      return `${oi} 👋 Eu sou o Axel, seu copiloto aqui na PrimeiroPasso. Vou te guiar nos primeiros passos: completar seu perfil, criar o DNA da sua marca, colocar sua página no ar e lançar suas primeiras campanhas e vídeos.${convite}`;
     }
 
     if (greetingType === "inactive") {
@@ -380,12 +419,18 @@ export function useAxelMemory() {
       return `${base}\n\nDa última vez estávamos falando sobre: *${ultimoTopico}*. Quer continuar ou prefere outro assunto?`;
     }
     return `${base} Como posso te ajudar hoje?`;
-  }, [greetingType, memory.name, memoryFactsMap]);
+  }, [greetingType, memory.name, memoryFactsMap, onboarding]);
 
   return {
     memory,
     memoryFacts,
     messages,
+    // O histórico já foi carregado? (distingue "conversa vazia de verdade" de
+    // "ainda buscando" — a saudação local só entra no primeiro caso).
+    // isPending sozinho não basta: query DISABLED (user ainda não resolvido pelo
+    // auth) tem isFetching=false — sem o gate !!user?.id a saudação de "primeira
+    // vez" piscaria pra usuário antigo a cada abertura do chat.
+    messagesLoaded: !!user?.id && !pendingMessages,
     onboarding,
     greetingType,
     addMessage,

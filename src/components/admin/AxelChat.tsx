@@ -23,7 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useNavigate } from "react-router-dom";
-import { useAxelMemory } from "@/hooks/useAxelMemory";
+import { useAxelMemory, type AxelMessage } from "@/hooks/useAxelMemory";
 import { useAuth } from "@/hooks/useAuth";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -88,6 +88,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
   const {
     memory,
     messages,
+    messagesLoaded,
     onboarding,
     greetingType,
     addMessage,
@@ -111,6 +112,22 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
   // Mensagem do usuário renderizada NA HORA (otimista), antes dos "..." e do round-trip.
   // O histórico real vem da edge (axel_conversations); ao chegar, limpamos a otimista.
   const [pendingUser, setPendingUser] = useState<string | null>(null);
+  // Mensagens LOCAIS (fallback por regras, menus do grid, agradecimento de feedback):
+  // a edge não as persiste, e o histórico renderizado vem 100% do banco — sem este
+  // estado elas nunca apareceriam na tela (addMessage só invalida o cache).
+  const [localMessages, setLocalMessages] = useState<AxelMessage[]>([]);
+  const pushLocal = (msg: Omit<AxelMessage, "id" | "created_at">) => {
+    // Timestamp clampado: nunca antes da última msg do banco conhecida no momento
+    // do push (relógio do cliente atrasado reordenaria a local pro meio do histórico).
+    const lastBank = messages.length
+      ? new Date(messages[messages.length - 1].created_at).getTime()
+      : 0;
+    const ts = Math.max(Date.now(), lastBank + 1);
+    setLocalMessages((prev) => [
+      ...prev,
+      { ...msg, id: `local-${ts}-${prev.length}`, created_at: new Date(ts).toISOString() },
+    ]);
+  };
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -132,7 +149,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
       ) as HTMLElement | null;
       if (viewport) viewport.scrollTop = viewport.scrollHeight;
     }
-  }, [messages, isProcessing, pendingUser]);
+  }, [messages, localMessages, isProcessing, pendingUser]);
 
   // Quando a mensagem otimista aparece de verdade no histórico (refetch da edge),
   // limpa a versão otimista pra não duplicar.
@@ -142,33 +159,65 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
     }
   }, [messages, pendingUser]);
 
-  // Mensagem de boas-vindas contextual com memória (Fase 2)
-  useEffect(() => {
-    if (messages.length > 0) return;
-
-    const content = getMemoryGreeting();
-    addMessage({ role: "axel", content, actions: GREETING_INTENT.actions });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [greetingType]);
-
   /** Sugere o próximo passo pendente de onboarding (para saudação de retorno). */
   function onboardingNudge(): string {
     if (!onboarding.loaded || onboarding.progress === 100) return "";
     const next = nextOnboardingStep();
     if (!next) return "";
-    return `\n\nSua ambientação está em ${onboarding.progress}%. Que tal o próximo passo: ${next.label}?`;
+    return `\n\nSua jornada está em ${onboarding.progress}% (${onboarding.doneCount}/${onboarding.totalCount}). Que tal o próximo passo: ${next.label}?`;
   }
 
+  // Junta banco + locais em ordem cronológica. Uma user msg local é descartada
+  // quando a MESMA fala chegou pelo banco há pouco (a edge persiste a msg do
+  // usuário ANTES do LLM — mesmo padrão de dedup do pendingUser). A janela de
+  // 5 min evita engolir a mensagem quando a frase ("ok", "sim") já existia em
+  // conversa antiga.
+  const DEDUP_WINDOW_MS = 5 * 60_000;
+  const mergedMessages = [
+    ...messages,
+    ...localMessages.filter(
+      (lm) =>
+        !(
+          lm.role === "user" &&
+          messages.some(
+            (m) =>
+              m.role === "user" &&
+              m.content === lm.content &&
+              Math.abs(new Date(m.created_at).getTime() - new Date(lm.created_at).getTime()) < DEDUP_WINDOW_MS,
+          )
+        ),
+    ),
+  ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+  // Saudação de boas-vindas LOCAL (não persistida): o histórico renderizado vem
+  // 100% do banco (axel_conversations, preenchida pela edge) e addMessage não
+  // grava nada — antes disso, o chat de um usuário novo abria VAZIO. A saudação
+  // entra como mensagem sintética só quando o histórico carregou e está vazio,
+  // e fica CONGELADA num ref: markFirstContact/incrementInteraction mudam o
+  // greetingType em segundos e o balão visível não pode mutar na frente do usuário.
+  const showGreeting = messagesLoaded && mergedMessages.length === 0;
+  const greetingRef = useRef<AxelMessage | null>(null);
+  if (showGreeting && !greetingRef.current) {
+    greetingRef.current = {
+      id: "greeting-local",
+      role: "axel",
+      content: getMemoryGreeting() + (greetingType === "first" ? "" : onboardingNudge()),
+      actions: GREETING_INTENT.actions,
+      created_at: new Date().toISOString(),
+    };
+  }
+  const displayMessages = showGreeting && greetingRef.current ? [greetingRef.current] : mergedMessages;
 
   // ==================== ONBOARDING ====================
+  // As 5 etapas da JORNADA DE AMBIENTAÇÃO — mesma ordem e critérios do agente
+  // (edge axel-agent, computeJornada). É o fallback por regras quando a IA cai.
   function onboardingChecklist() {
     return [
-      { label: "Perfil completo", done: onboarding.profileComplete, href: "/admin/perfil" },
-      { label: "Agenda configurada", done: onboarding.agendaConfigured, href: "/admin/agenda" },
-      { label: "Landing personalizada", done: onboarding.landingPublished, href: "/admin/landing" },
-      { label: "WhatsApp conectado", done: onboarding.whatsappConnected, href: "/admin/clientes" },
-      { label: "Primeiro conteúdo criado", done: onboarding.firstContentCreated, href: "/admin/redes-sociais" },
-      { label: "Assinatura ativa", done: onboarding.subscriptionActive, href: "/admin/assinatura" },
+      { label: "Perfil preenchido (nome, bio e foto)", done: onboarding.profileComplete, href: "/admin/perfil" },
+      { label: "DNA da Marca criado", done: onboarding.dnaCreated, href: "/admin/landing?tab=dna" },
+      { label: "Landing page no ar", done: onboarding.landingPublished, href: "/admin/landing" },
+      { label: "Primeira campanha de anúncio", done: onboarding.campaignCreated, href: "/admin/trafego-pago" },
+      { label: "Primeiro vídeo criado", done: onboarding.videoCreated, href: "/admin/redes-sociais?tab=videos" },
     ];
   }
 
@@ -276,7 +325,11 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
     if (res.openFeedback) {
       setFeedback((prev) => ({ ...prev, open: true }));
     }
-    addMessage({
+    // A pergunta pode não ter chegado ao banco (edge fora do ar) — vira local
+    // também, pra resposta não aparecer órfã. O merge deduplica se a edge gravou.
+    pushLocal({ role: "user", content: text });
+    setPendingUser(null);
+    pushLocal({
       role: "axel",
       content: res.content,
       actions: res.actions,
@@ -352,11 +405,11 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
         break;
       case "onboarding": {
         const res = getOnboardingResponse();
-        addMessage({ role: "axel", content: res.content, actions: res.actions, followUps: res.followUps });
+        pushLocal({ role: "axel", content: res.content, actions: res.actions, followUps: res.followUps });
         break;
       }
       case "content-creation":
-        addMessage({
+        pushLocal({
           role: "axel",
           content: CONTENT_MENU.content,
           actions: CONTENT_MENU.actions,
@@ -364,7 +417,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
         });
         break;
       case "faq":
-        addMessage({ role: "axel", content: FAQ_MENU_TEXT, followUps: FAQ_MENU_FOLLOWUPS });
+        pushLocal({ role: "axel", content: FAQ_MENU_TEXT, followUps: FAQ_MENU_FOLLOWUPS });
         break;
     }
   };
@@ -389,7 +442,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
       if (error) throw error;
 
       toast.success("Feedback enviado com sucesso. Obrigado! 💜");
-      addMessage({
+      pushLocal({
         role: "axel",
         content:
           "Recebi seu feedback, muito obrigado por compartilhar. Isso me ajuda a melhorar cada vez mais.\n\nTem mais alguma coisa em que posso ajudar?",
@@ -423,9 +476,9 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
           balões da direita. Forçar block faz respeitar 100% da largura. */}
       <ScrollArea className="flex-1 min-w-0 [&_[data-radix-scroll-area-viewport]>div]:!block" ref={scrollRef}>
         <div className="p-3 sm:p-4 space-y-0.5 min-w-0">
-          {messages.map((msg, idx) => {
+          {displayMessages.map((msg, idx) => {
             const isAxel = msg.role === "axel";
-            const prevMsg = idx > 0 ? messages[idx - 1] : null;
+            const prevMsg = idx > 0 ? displayMessages[idx - 1] : null;
             const showAvatar = !prevMsg || prevMsg.role !== msg.role;
 
             return (
@@ -525,8 +578,10 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
             );
           })}
 
-          {/* Quick Actions Grid (shown only when just greeting is present) */}
-          {messages.length === 1 && (
+          {/* Quick Actions Grid (shown only when just greeting is present).
+              Some assim que a primeira mensagem é enviada (pendingUser/processing) —
+              sem isso ele ficava clicável no meio do primeiro round-trip. */}
+          {showGreeting && !pendingUser && !isProcessing && (
             <div className="mt-6">
               <p className="text-[10px] text-muted-foreground/50 text-center mb-3">
                 Ou escolha uma opção rápida:
@@ -577,7 +632,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
           )}
 
           {/* Mensagem otimista do usuário — aparece NA HORA, antes dos "..." */}
-          {pendingUser && !messages.some((m) => m.role === "user" && m.content === pendingUser) && (
+          {pendingUser && !displayMessages.some((m) => m.role === "user" && m.content === pendingUser) && (
             <div className="flex gap-2 sm:gap-2.5 mt-3 sm:mt-4 justify-end">
               <div className="max-w-[85%] sm:max-w-[75%]">
                 <div className="rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 text-sm leading-relaxed bg-gradient-to-r from-purple-500 to-blue-600 text-white rounded-tr-md shadow-lg shadow-purple-500/10">
@@ -654,7 +709,14 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
                   <Settings className="h-3.5 w-3.5 text-muted-foreground" />
                   Preferências do agente
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={clearConversation} className="text-xs gap-2 cursor-pointer">
+                <DropdownMenuItem
+                  onClick={() => {
+                    setLocalMessages([]);
+                    greetingRef.current = null; // saudação recomputa pro novo estado
+                    clearConversation();
+                  }}
+                  className="text-xs gap-2 cursor-pointer"
+                >
                   <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                   Limpar conversa
                 </DropdownMenuItem>

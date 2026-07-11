@@ -1,6 +1,14 @@
 /**
- * Editor de Vídeo — corte + música + legendas + textos (motor próprio no
- * video-api, código SEPARADO do Institucional e do Criar Vídeo).
+ * Editor de Vídeo — corte + música + legendas + textos + stickers + clipes de
+ * áudio posicionados (motor próprio no video-api, código SEPARADO do
+ * Institucional e do Criar Vídeo).
+ *
+ * Novidades (Carlos 10/07):
+ *   - STICKERS/sobreposições: png/gif/webm-alpha sobre o vídeo, com faixa
+ *     própria na timeline (mover/esticar), arrasto no player pra posicionar,
+ *     movimento "atravessa a tela" e geração por IA (fundo verde → chroma).
+ *   - CLIPES DE ÁUDIO posicionados: efeito/narração em ponto exato, faixa
+ *     azul na timeline, volume por clipe, prévia sincronizada no play.
  *
  * Revisões do Carlos (06/07):
  *   - Preview COLADO na timeline (mesmo card) + "prévia da edição": ao dar
@@ -40,6 +48,37 @@ type SubPos = "bottom" | "center" | "top";
 // Textos aceitam também o canto esquerdo (estilo selo/lower-third — Carlos 06/07)
 type TitlePos = SubPos | "left-bottom" | "left-center" | "left-top";
 type Title = { start: number; end: number; text: string; font_id: string; size: SubSize; color: string; style: SubStyle; position: TitlePos };
+
+// Stickers/sobreposições (Carlos 10/07): imagem, GIF ou WebM-alpha sobre o
+// vídeo, com posição (centro em % da tela), tamanho, movimento e loop.
+type StickerMovement = "none" | "walk-right" | "walk-left";
+type Sticker = {
+  id: number; upload_id: string; name: string; animated: boolean;
+  natural_dur: number; start: number; end: number;
+  x_pct: number; y_pct: number; scale_pct: number;
+  movement: StickerMovement; loop: boolean; flip: boolean;
+};
+// Clipes de áudio POSICIONADOS (efeito sonoro/narração em ponto exato) —
+// diferentes da trilha global: cada um tem início/fim/volume próprios.
+type AudioClip = {
+  id: number; upload_id: string; name: string; natural_dur: number;
+  start: number; end: number; volume: number;
+};
+// Job de geração de sticker por IA — persistido pra sobreviver à navegação
+type StickerJob = { job_id: string; at: number; desc: string };
+
+const STICKER_SIZES: { value: number; label: string }[] = [
+  { value: 0.12, label: "P" }, { value: 0.22, label: "M" },
+  { value: 0.32, label: "G" }, { value: 0.45, label: "XG" },
+];
+const STICKER_POSITIONS = [
+  { key: "id", label: "Canto inf. direito", x: 0.84, y: 0.76 },
+  { key: "ie", label: "Canto inf. esquerdo", x: 0.16, y: 0.76 },
+  { key: "sd", label: "Canto sup. direito", x: 0.84, y: 0.18 },
+  { key: "se", label: "Canto sup. esquerdo", x: 0.16, y: 0.18 },
+  { key: "c", label: "Centro", x: 0.5, y: 0.5 },
+  { key: "cb", label: "Centro embaixo", x: 0.5, y: 0.78 },
+];
 
 const SUB_PRESETS = [
   { label: "🔥 Viral amarelo", font: "anton", size: "g" as SubSize, color: "#FFE14D", style: "box" as SubStyle, pos: "bottom" as SubPos },
@@ -125,6 +164,16 @@ export default function AdminEditorVideo() {
   const [newTitle, setNewTitle] = useState("");
   const [newTitleDur, setNewTitleDur] = useState(3);
 
+  const [stickers, setStickers] = useState<Sticker[]>([]);
+  const [audioClips, setAudioClips] = useState<AudioClip[]>([]);
+  const [uploadingSticker, setUploadingSticker] = useState(false);
+  const [uploadingClip, setUploadingClip] = useState(false);
+  const [iaDesc, setIaDesc] = useState("");
+  const [iaDur, setIaDur] = useState(5);
+  const [iaStep, setIaStep] = useState("");
+  const [stickerJob, setStickerJob] = useState<StickerJob | null>(null);
+  const [videoBox, setVideoBox] = useState({ w: 0, h: 0 });
+
   const [transition, setTransition] = useState<"none" | "fade">("none");
   const [ducking, setDucking] = useState(true);
   const [punchIn, setPunchIn] = useState(false);
@@ -156,6 +205,12 @@ export default function AdminEditorVideo() {
   const draggingRef = useRef(false);
   const restoredRef = useRef(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const videoWrapRef = useRef<HTMLDivElement>(null);
+  const metaRef = useRef<EditMeta | null>(null);
+  const clipAudiosRef = useRef<Map<number, HTMLAudioElement>>(new Map());
+  const trackDragRef = useRef<{ kind: "sticker" | "audio"; id: number; mode: "move" | "resize"; grab: number } | null>(null);
+  const stickerDragRef = useRef<number | null>(null);
+  const stickerPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { data: videos = [] } = useQuery({
     queryKey: ["admin-videos", professional?.id],
@@ -175,7 +230,12 @@ export default function AdminEditorVideo() {
   useEffect(() => {
     fetch(`${API}/editor/musicas`).then((r) => r.json()).then((d) => setMusicas(d.musicas || [])).catch(() => {});
     fetch(`${API}/editor/fontes`).then((r) => r.json()).then((d) => setFontes(d.fontes || [])).catch(() => {});
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    const clipEls = clipAudiosRef.current;
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      if (stickerPollRef.current) clearInterval(stickerPollRef.current);
+      clipEls.forEach((el) => el.pause());
+    };
   }, []);
 
   // Acompanhamento do render (extraído para o restore poder RETOMAR o polling)
@@ -209,28 +269,81 @@ export default function AdminEditorVideo() {
     }, 3000);
   };
 
-  // Tesoura de "Meus Vídeos" (?load={video_id}): carrega o vídeo direto no
-  // editor — tem prioridade sobre a restauração da edição anterior.
+  // Acompanhamento da geração de sticker por IA (extraído para o restore
+  // poder RETOMAR — regra do projeto: jobs >5s sobrevivem à navegação)
+  const pollStickerJob = (job: StickerJob) => {
+    if (stickerPollRef.current) clearInterval(stickerPollRef.current);
+    stickerPollRef.current = setInterval(async () => {
+      try {
+        const resp = await fetch(`${API}/status/${job.job_id}`);
+        if (resp.status === 404) {
+          if (stickerPollRef.current) clearInterval(stickerPollRef.current);
+          setStickerJob(null); setIaStep("");
+          toast.info("O servidor reiniciou durante a geração do sticker — tente gerar de novo.", { duration: 9000 });
+          return;
+        }
+        const st = await resp.json();
+        setIaStep(st.step || "Gerando o sticker...");
+        if (st.status === "done") {
+          if (stickerPollRef.current) clearInterval(stickerPollRef.current);
+          setStickerJob(null); setIaStep(""); setIaDesc("");
+          const walk = /andando|caminhando|correndo|passeando|voando|nadando/i.test(job.desc);
+          const m = metaRef.current;
+          if (m) {
+            const dur = Math.max(4, Number(st.duration) || 5);
+            setStickers((prev) => [...prev, {
+              id: Date.now(), upload_id: st.sticker_upload_id,
+              name: `✨ ${job.desc.slice(0, 24)}`, animated: true,
+              natural_dur: Number(st.duration) || 5,
+              start: job.at, end: Math.min(m.duration, job.at + dur),
+              x_pct: 0.84, y_pct: 0.76, scale_pct: 0.26,
+              movement: walk ? "walk-right" : "none", loop: true, flip: false,
+            }]);
+          }
+          toast.success("Sticker gerado com fundo transparente! Já está na timeline — arraste no player para posicionar.", { duration: 9000 });
+        } else if (st.status === "error") {
+          if (stickerPollRef.current) clearInterval(stickerPollRef.current);
+          setStickerJob(null); setIaStep("");
+          toast.error(st.message || "A geração do sticker falhou", { duration: 9000 });
+        }
+      } catch { /* transitório */ }
+    }, 3000);
+  };
+
+  // Carregar um vídeo direto no editor — tem prioridade sobre a restauração da
+  // edição anterior. Duas entradas:
+  //   • ?load={video_id} — tesoura de "Meus Vídeos" (busca embed_url na tabela)
+  //   • ?loadurl={url}   — vídeo institucional vindo do dialog "Gerar com IA" da landing
   useEffect(() => {
     const loadId = searchParams.get("load");
-    if (!loadId) return;
+    const loadUrl = searchParams.get("loadurl");
+    if (!loadId && !loadUrl) return;
     (async () => {
       restoredRef.current = true;   // pula o restore — o load substitui a edição
-      const { data } = await (supabase as any)
-        .from("videos").select("embed_url,title").eq("id", loadId).single();
+      let embedUrl: string | null = null;
+      let title = "Vídeo institucional";
+      if (loadId) {
+        const { data } = await (supabase as any)
+          .from("videos").select("embed_url,title").eq("id", loadId).single();
+        embedUrl = data?.embed_url ?? null;
+        title = data?.title || "Vídeo da galeria";
+      } else if (loadUrl) {
+        try { embedUrl = decodeURIComponent(loadUrl); } catch { embedUrl = loadUrl; }
+      }
       searchParams.delete("load");
+      searchParams.delete("loadurl");
       setSearchParams(searchParams, { replace: true });
-      if (!data?.embed_url || /youtube|youtu\.be/i.test(data.embed_url)) {
-        toast.error("Não encontrei o arquivo desse vídeo para editar.");
+      if (!embedUrl || /youtube|youtu\.be|vimeo/i.test(embedUrl)) {
+        toast.error("Não encontrei um arquivo de vídeo editável (links do YouTube/Vimeo não dá pra editar).");
         return;
       }
       const fd = new FormData();
-      fd.append("video_url", data.embed_url);
+      fd.append("video_url", embedUrl);
       try {
         const saved = JSON.parse(localStorage.getItem(EDITOR_STORAGE_KEY) || "null");
         if (saved?.meta?.edit_id) fd.append("replace_edit_id", saved.meta.edit_id);
       } catch { /* sem draft anterior */ }
-      await carregar(fd, data.title || "Vídeo da galeria");
+      await carregar(fd, title);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -239,7 +352,7 @@ export default function AdminEditorVideo() {
   useEffect(() => {
     (async () => {
       try {
-        if (searchParams.get("load")) return;   // o efeito do load assume
+        if (searchParams.get("load") || searchParams.get("loadurl")) return;   // o efeito do load assume
         const raw = localStorage.getItem(EDITOR_STORAGE_KEY);
         if (!raw) { restoredRef.current = true; return; }
         const s = JSON.parse(raw);
@@ -266,12 +379,19 @@ export default function AdminEditorVideo() {
         setSubFont(s.subFont || "bevietnam"); setSubSize(s.subSize || "m"); setSubColor(s.subColor || "#FFFFFF");
         setSubStyle(s.subStyle || "outline"); setSubPos(s.subPos || "bottom");
         setTitles(s.titles || []); setTransition(s.transition || "none");
+        setStickers(s.stickers || []); setAudioClips(s.audioClips || []);
         setDucking(s.ducking ?? true); setPunchIn(!!s.punchIn); setTitulo(s.titulo || "");
         setIntroOn(!!s.introOn); setIntroSource(s.introSource || "perfil");
         setIntroUploadId(s.introUploadId || ""); setIntroUploadName(s.introUploadName || "");
         setIntroDur(s.introDur ?? 2); setIntroBg(s.introBg || "#FFFFFF");
         setIntroEffect(s.introEffect || "zoom");
         setResultUrl(s.resultUrl || "");
+        if (s.stickerJob?.job_id) {
+          // geração de sticker em andamento — retoma o acompanhamento
+          setStickerJob(s.stickerJob);
+          setIaStep("Retomando a geração do sticker...");
+          pollStickerJob(s.stickerJob);
+        }
         if (s.renderJobId) {
           // havia uma renderização em andamento — RETOMA o acompanhamento
           setRenderJobId(s.renderJobId);
@@ -298,13 +418,15 @@ export default function AdminEditorVideo() {
         subFont, subSize, subColor, subStyle, subPos, titles, transition,
         ducking, punchIn, titulo, resultUrl, renderJobId,
         introOn, introSource, introUploadId, introUploadName, introDur, introBg, introEffect,
+        stickers, audioClips, stickerJob,
       }));
     } catch { /* localStorage cheio — ignora */ }
   }, [meta, sourceLabel, segments, musicId, musicUploadId, musicUploadName,
       musicVolume, originalVolume, fadeOut, subsOn, cues, words, cueMode,
       subFont, subSize, subColor, subStyle, subPos, titles, transition,
       ducking, punchIn, titulo, resultUrl, renderJobId,
-      introOn, introSource, introUploadId, introUploadName, introDur, introBg, introEffect]);
+      introOn, introSource, introUploadId, introUploadName, introDur, introBg, introEffect,
+      stickers, audioClips, stickerJob]);
 
   // Prévia da trilha respeita o slider em tempo real
   useEffect(() => {
@@ -329,6 +451,9 @@ export default function AdminEditorVideo() {
     setSegments([{ id: 1, start: 0, end: m.duration, keep: true }]);
     setHistory([]); setPlayhead(0); setResultUrl(""); setCues([]); setWords([]);
     setSubsOn(false); setTitles([]);
+    setStickers([]); setAudioClips([]);
+    clipAudiosRef.current.forEach((el) => el.pause());
+    clipAudiosRef.current.clear();
   };
 
   const recomecar = () => {
@@ -340,6 +465,10 @@ export default function AdminEditorVideo() {
     setMeta(null); setPreviewSrc(""); setSourceLabel(""); setSegments([]); setHistory([]);
     setCues([]); setWords([]); setTitles([]); setResultUrl(""); setSubsOn(false);
     setRenderJobId("");
+    setStickers([]); setAudioClips([]); setStickerJob(null); setIaStep("");
+    if (stickerPollRef.current) clearInterval(stickerPollRef.current);
+    clipAudiosRef.current.forEach((el) => el.pause());
+    clipAudiosRef.current.clear();
     localStorage.removeItem(EDITOR_STORAGE_KEY);
   };
 
@@ -562,6 +691,203 @@ export default function AdminEditorVideo() {
     } catch (e: any) { toast.error(e.message); }
   };
 
+  // ── stickers e clipes de áudio ─────────────────────────────────────────────
+  const uploadSticker = async (file: File) => {
+    if (!meta) return;
+    setUploadingSticker(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(`${API}/editor/carregar-sticker`, { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Falha ao enviar o sticker");
+      const start = Math.min(playhead, Math.max(0, meta.duration - 1));
+      const dur = data.animated && data.duration > 0.5 ? Math.max(2, data.duration) : 4;
+      setStickers((prev) => [...prev, {
+        id: Date.now(), upload_id: data.sticker_upload_id, name: file.name,
+        animated: !!data.animated, natural_dur: data.duration || 0,
+        start, end: Math.min(meta.duration, start + dur),
+        x_pct: 0.84, y_pct: 0.76, scale_pct: 0.22,
+        movement: "none", loop: true, flip: false,
+      }]);
+      toast.success("Sticker adicionado a partir do cursor — arraste-o no player para posicionar.");
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setUploadingSticker(false);
+    }
+  };
+
+  const uploadClip = async (file: File) => {
+    if (!meta) return;
+    setUploadingClip(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(`${API}/editor/carregar-musica`, { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Falha ao enviar o áudio");
+      const start = Math.min(playhead, Math.max(0, meta.duration - 1));
+      const nat = Number(data.duration) || 5;
+      setAudioClips((prev) => [...prev, {
+        id: Date.now(), upload_id: data.music_upload_id, name: file.name,
+        natural_dur: nat, start,
+        end: Math.min(meta.duration, start + nat), volume: 1,
+      }]);
+      toast.success("Áudio adicionado a partir do cursor — mova/estique o bloco azul na timeline.");
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setUploadingClip(false);
+    }
+  };
+
+  const gerarStickerIA = async () => {
+    if (!meta || !professional?.slug || !iaDesc.trim() || stickerJob) return;
+    setIaStep("Enviando o pedido...");
+    try {
+      const res = await fetch(`${API}/editor/gerar-sticker`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await videoApiAuthHeaders()) },
+        body: JSON.stringify({
+          professional_slug: professional.slug,
+          descricao: iaDesc.trim(),
+          duracao: iaDur,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Falha ao gerar o sticker");
+      const job: StickerJob = { job_id: data.job_id, at: playhead, desc: iaDesc.trim() };
+      setStickerJob(job);   // persiste → sair e voltar retoma o acompanhamento
+      pollStickerJob(job);
+    } catch (e: any) {
+      setIaStep("");
+      toast.error(e.message, { duration: 8000 });
+    }
+  };
+
+  // Arrasto dos blocos nas FAIXAS da timeline (mover = mudar início;
+  // borda direita = esticar/encurtar). Pointer capture → sem listeners globais.
+  const onTrackDown = (e: React.PointerEvent, kind: "sticker" | "audio", id: number, mode: "move" | "resize") => {
+    e.stopPropagation();
+    e.preventDefault();
+    const item = kind === "sticker"
+      ? stickers.find((s) => s.id === id)
+      : audioClips.find((c) => c.id === id);
+    if (!item || !meta) return;
+    trackDragRef.current = { kind, id, mode, grab: posFromEvent(e.clientX) - item.start };
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+  };
+  const onTrackMove = (e: React.PointerEvent) => {
+    const d = trackDragRef.current;
+    if (!d || !meta) return;
+    const t = posFromEvent(e.clientX);
+    const apply = <T extends { start: number; end: number; natural_dur: number }>(item: T): T => {
+      if (d.mode === "move") {
+        const len = item.end - item.start;
+        const ns = Math.max(0, Math.min(meta.duration - len, t - d.grab));
+        return { ...item, start: ns, end: ns + len };
+      }
+      let ne = Math.max(item.start + 0.3, Math.min(meta.duration, t));
+      // áudio não estica além do arquivo; sticker pode (loop/último frame)
+      if (d.kind === "audio") ne = Math.min(ne, item.start + (item.natural_dur || 9999));
+      return { ...item, end: ne };
+    };
+    if (d.kind === "sticker") setStickers((prev) => prev.map((s) => (s.id === d.id ? apply(s) : s)));
+    else setAudioClips((prev) => prev.map((c) => (c.id === d.id ? apply(c) : c)));
+  };
+  const onTrackUp = () => { trackDragRef.current = null; };
+
+  // Arrasto do sticker DENTRO do player (posicionamento visual)
+  const onStickerPreviewDown = (e: React.PointerEvent, id: number) => {
+    const st = stickers.find((x) => x.id === id);
+    if (!st || st.movement !== "none") return;
+    e.preventDefault();
+    e.stopPropagation();
+    stickerDragRef.current = id;
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+  };
+  const onStickerPreviewMove = (e: React.PointerEvent) => {
+    const id = stickerDragRef.current;
+    if (id === null || !videoWrapRef.current || !contentRect) return;
+    const rect = videoWrapRef.current.getBoundingClientRect();
+    const x = (e.clientX - rect.left - contentRect.left) / contentRect.w;
+    const y = (e.clientY - rect.top - contentRect.top) / contentRect.h;
+    setStickers((prev) => prev.map((s) => (s.id === id
+      ? { ...s, x_pct: Math.max(0, Math.min(1, x)), y_pct: Math.max(0, Math.min(1, y)) }
+      : s)));
+  };
+  const onStickerPreviewUp = () => { stickerDragRef.current = null; };
+
+  // meta acessível em callbacks de polling (não pode ler state velho)
+  useEffect(() => { metaRef.current = meta; }, [meta]);
+
+  // Medida do player → retângulo REAL do vídeo (object-fit: contain) para a
+  // prévia sobreposta cair exatamente onde o ffmpeg vai desenhar
+  useEffect(() => {
+    const el = videoWrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setVideoBox({ w: el.clientWidth, h: el.clientHeight }));
+    ro.observe(el);
+    setVideoBox({ w: el.clientWidth, h: el.clientHeight });
+    return () => ro.disconnect();
+  }, [meta]);
+  const contentRect = useMemo(() => {
+    if (!meta || !videoBox.w || !videoBox.h || !meta.width || !meta.height) return null;
+    const arV = meta.width / meta.height;
+    const arB = videoBox.w / videoBox.h;
+    const w = arB > arV ? videoBox.h * arV : videoBox.w;
+    const h = arB > arV ? videoBox.h : videoBox.w / arV;
+    return { left: (videoBox.w - w) / 2, top: (videoBox.h - h) / 2, w, h };
+  }, [meta, videoBox]);
+
+  // Playhead fluido durante o play (timeupdate nativo é ~4Hz — pouco pra
+  // prévia de sticker andando e sincronização dos clipes de áudio)
+  useEffect(() => {
+    if (!meta) return;
+    const id = setInterval(() => {
+      const v = videoRef.current;
+      if (v && !v.paused && !draggingRef.current) setPlayhead(v.currentTime);
+    }, 120);
+    return () => clearInterval(id);
+  }, [meta]);
+
+  // Prévia dos clipes de áudio: toca cada clipe na janela dele, no ponto certo
+  useEffect(() => {
+    const v = videoRef.current;
+    const playing = !!v && !v.paused;
+    for (const c of audioClips) {
+      let el = clipAudiosRef.current.get(c.id);
+      const active = playing && playhead >= c.start && playhead < c.end;
+      if (active) {
+        if (!el) {
+          el = new Audio(`${API}/editor/audio/${c.upload_id}`);
+          clipAudiosRef.current.set(c.id, el);
+        }
+        el.volume = Math.max(0, Math.min(1, c.volume));
+        const want = playhead - c.start;
+        if (Math.abs((el.currentTime || 0) - want) > 0.4) el.currentTime = want;
+        if (el.paused) el.play().catch(() => {});
+      } else if (el && !el.paused) {
+        el.pause();
+      }
+    }
+    for (const [id, el] of clipAudiosRef.current) {
+      if (!audioClips.some((c) => c.id === id)) {
+        el.pause();
+        clipAudiosRef.current.delete(id);
+      }
+    }
+  }, [playhead, audioClips]);
+
+  const activeStickers = meta
+    ? stickers.filter((s) => playhead >= s.start && playhead <= s.end)
+    : [];
+  const stickerPosKey = (s: Sticker) => {
+    const p = STICKER_POSITIONS.find((p) => Math.abs(p.x - s.x_pct) < 0.03 && Math.abs(p.y - s.y_pct) < 0.03);
+    return p ? p.key : "custom";
+  };
+
   // ── legendas ───────────────────────────────────────────────────────────────
   const gerarLegendas = async () => {
     if (!meta) return;
@@ -628,6 +954,14 @@ export default function AdminEditorVideo() {
             ? { cues, font_id: subFont, size: subSize, color: subColor, style: subStyle, position: subPos }
             : undefined,
           titles: titles.length ? titles : undefined,
+          stickers: stickers.length ? stickers.map((s) => ({
+            sticker_upload_id: s.upload_id, start: s.start, end: s.end,
+            x_pct: s.x_pct, y_pct: s.y_pct, scale_pct: s.scale_pct,
+            movement: s.movement, loop: s.loop, flip: s.flip,
+          })) : undefined,
+          audio_clips: audioClips.length ? audioClips.map((c) => ({
+            upload_id: c.upload_id, start: c.start, end: c.end, volume: c.volume,
+          })) : undefined,
           transition,
           ducking,
           punch_in: punchIn,
@@ -795,9 +1129,44 @@ export default function AdminEditorVideo() {
           <CardContent className="pt-4 space-y-3">
             <div className="grid grid-cols-1 md:grid-cols-[minmax(0,320px)_1fr] gap-4 items-start">
               <div className="space-y-2">
-                <video ref={videoRef} src={previewSrc} controls playsInline
-                  className="w-full max-h-72 rounded-lg bg-black"
-                  onTimeUpdate={onVideoTime} />
+                <div ref={videoWrapRef} className="relative">
+                  <video ref={videoRef} src={previewSrc} controls playsInline
+                    className="w-full max-h-72 rounded-lg bg-black"
+                    onTimeUpdate={onVideoTime}
+                    onPause={() => clipAudiosRef.current.forEach((el) => el.pause())} />
+                  {/* prévia dos stickers EXATAMENTE onde o ffmpeg vai desenhar;
+                      arraste (quando sem movimento) para posicionar */}
+                  {contentRect && activeStickers.map((s) => {
+                    const w = contentRect.w * s.scale_pct;
+                    let cxPct = s.x_pct;
+                    if (s.movement !== "none") {
+                      const p = Math.max(0, Math.min(1, (playhead - s.start) / Math.max(0.1, s.end - s.start)));
+                      const total = contentRect.w + w;
+                      const leftPx = s.movement === "walk-right" ? -w + total * p : contentRect.w - total * p;
+                      cxPct = (leftPx + w / 2) / contentRect.w;
+                    }
+                    const style: React.CSSProperties = {
+                      position: "absolute",
+                      left: contentRect.left + cxPct * contentRect.w,
+                      top: contentRect.top + s.y_pct * contentRect.h,
+                      width: w,
+                      transform: `translate(-50%,-50%)${s.flip ? " scaleX(-1)" : ""}`,
+                      cursor: s.movement === "none" ? "grab" : "default",
+                      pointerEvents: s.movement === "none" ? "auto" : "none",
+                      touchAction: "none",
+                    };
+                    const src = `${API}/editor/sticker/${s.upload_id}`;
+                    return s.upload_id.endsWith(".webm") ? (
+                      <video key={s.id} src={src} muted loop autoPlay playsInline style={style}
+                        onPointerDown={(e) => onStickerPreviewDown(e, s.id)}
+                        onPointerMove={onStickerPreviewMove} onPointerUp={onStickerPreviewUp} />
+                    ) : (
+                      <img key={s.id} src={src} alt="" draggable={false} style={style}
+                        onPointerDown={(e) => onStickerPreviewDown(e, s.id)}
+                        onPointerMove={onStickerPreviewMove} onPointerUp={onStickerPreviewUp} />
+                    );
+                  })}
+                </div>
                 <label className="flex items-center gap-1.5 text-xs cursor-pointer"
                   title="No play, os trechos removidos são pulados — você vê o resultado antes de renderizar">
                   <input type="checkbox" checked={previewEdit} onChange={(e) => setPreviewEdit(e.target.checked)} />
@@ -897,6 +1266,43 @@ export default function AdminEditorVideo() {
                 <div className="flex justify-between text-[10px] text-muted-foreground tabular-nums">
                   <span>0:00</span><span>{fmt(meta.duration / 2)}</span><span>{fmt(meta.duration)}</span>
                 </div>
+
+                {/* Faixas extras (estilo CapCut): stickers e clipes de áudio.
+                    Arraste o bloco pra mover no tempo; borda direita estica. */}
+                {stickers.length > 0 && (
+                  <div className="relative h-7 rounded border bg-violet-500/5 overflow-hidden">
+                    {stickers.map((s) => (
+                      <div key={s.id}
+                        className="absolute top-0.5 bottom-0.5 rounded bg-violet-500/70 border border-violet-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
+                        style={{ left: `${(s.start / meta.duration) * 100}%`, width: `${Math.max(1.2, ((s.end - s.start) / meta.duration) * 100)}%`, touchAction: "none" }}
+                        title={`${s.name} · ${fmt(s.start)}–${fmt(s.end)} — arraste pra mover; borda direita estica`}
+                        onPointerDown={(e) => onTrackDown(e, "sticker", s.id, "move")}
+                        onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
+                        <span className="truncate pointer-events-none">🖼 {s.name}</span>
+                        <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/40"
+                          style={{ touchAction: "none" }}
+                          onPointerDown={(e) => onTrackDown(e, "sticker", s.id, "resize")} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {audioClips.length > 0 && (
+                  <div className="relative h-7 rounded border bg-sky-500/5 overflow-hidden">
+                    {audioClips.map((c) => (
+                      <div key={c.id}
+                        className="absolute top-0.5 bottom-0.5 rounded bg-sky-500/70 border border-sky-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
+                        style={{ left: `${(c.start / meta.duration) * 100}%`, width: `${Math.max(1.2, ((c.end - c.start) / meta.duration) * 100)}%`, touchAction: "none" }}
+                        title={`${c.name} · ${fmt(c.start)}–${fmt(c.end)} — arraste pra mover; borda direita estica`}
+                        onPointerDown={(e) => onTrackDown(e, "audio", c.id, "move")}
+                        onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
+                        <span className="truncate pointer-events-none">🎧 {c.name}</span>
+                        <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/40"
+                          style={{ touchAction: "none" }}
+                          onPointerDown={(e) => onTrackDown(e, "audio", c.id, "resize")} />
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {activeSeg && (
                   <div className="flex items-center gap-2 flex-wrap rounded-lg border bg-muted/30 px-3 py-2 text-xs">
@@ -1007,6 +1413,171 @@ export default function AdminEditorVideo() {
                   </label>
                 </div>
 
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Stickers/sobreposições + clipes de áudio posicionados */}
+      {meta && (
+        <Card>
+          <CardContent className="pt-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Stickers */}
+              <div className="space-y-2">
+                <Label className="font-semibold flex items-center gap-2">🖼 Stickers e sobreposições</Label>
+                <p className="text-[11px] text-muted-foreground">
+                  Imagem, GIF animado ou WebM com fundo transparente sobre o vídeo (ex.: um gatinho
+                  andando enquanto você fala). Entra no cursor; mova/estique na <b>faixa roxa</b> da
+                  timeline e <b>arraste no player</b> para posicionar.
+                </p>
+                <div className="flex gap-2 flex-wrap">
+                  <label className="flex items-center gap-1.5 rounded-lg border-2 border-dashed px-3 py-1.5 text-xs cursor-pointer hover:border-primary/60 transition">
+                    {uploadingSticker ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                    Enviar sticker (png · gif · webm)
+                    <input type="file" className="hidden"
+                      accept="image/png,image/webp,image/jpeg,image/gif,video/webm"
+                      disabled={uploadingSticker}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) uploadSticker(f);
+                        e.target.value = "";
+                      }} />
+                  </label>
+                </div>
+                {/* Gerar com IA (fundo verde → transparência automática) */}
+                <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 space-y-1.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Wand2 className="h-4 w-4 text-primary shrink-0" />
+                    <Input value={iaDesc} onChange={(e) => setIaDesc(e.target.value)}
+                      placeholder='Gerar sticker animado com IA — ex.: "um gatinho laranja fofo andando"'
+                      className="h-8 text-xs flex-1 min-w-48" disabled={!!stickerJob} />
+                    <select className="h-8 rounded border bg-background px-1 text-xs" value={iaDur}
+                      disabled={!!stickerJob}
+                      onChange={(e) => setIaDur(Number(e.target.value))}>
+                      <option value={5}>5s</option><option value={10}>10s</option>
+                    </select>
+                    <Button size="sm" className="h-8" disabled={!!stickerJob || !iaDesc.trim()} onClick={gerarStickerIA}>
+                      {stickerJob ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />Gerando…</> : "✨ Gerar"}
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    A IA cria a animação e remove o fundo sozinha (leva ~2 min). Pode sair da tela —
+                    o sticker entra na timeline quando ficar pronto.
+                    {iaStep && <b> · {iaStep}</b>}
+                  </p>
+                </div>
+                {stickers.map((s) => (
+                  <div key={s.id} className="flex items-center gap-1.5 text-xs flex-wrap rounded border px-2 py-1">
+                    {s.upload_id.endsWith(".webm")
+                      ? <video src={`${API}/editor/sticker/${s.upload_id}`} muted loop autoPlay playsInline className="h-8 w-8 rounded object-contain bg-muted/50 shrink-0" />
+                      : <img src={`${API}/editor/sticker/${s.upload_id}`} alt="" className="h-8 w-8 rounded object-contain bg-muted/50 shrink-0" />}
+                    <span className="truncate max-w-28" title={s.name}>{s.name}</span>
+                    <span className="tabular-nums text-muted-foreground">{fmt(s.start)}–{fmt(s.end)}</span>
+                    <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px] text-muted-foreground"
+                      title="Leva o começo do sticker até o cursor"
+                      onClick={() => setStickers((prev) => prev.map((p) => {
+                        if (p.id !== s.id || !meta) return p;
+                        const len = p.end - p.start;
+                        const ns = Math.max(0, Math.min(meta.duration - len, playhead));
+                        return { ...p, start: ns, end: ns + len };
+                      }))}>
+                      → cursor
+                    </Button>
+                    <select className="h-7 rounded border bg-background px-1" value={s.scale_pct}
+                      title="Tamanho (fração da largura do vídeo)"
+                      onChange={(e) => setStickers((prev) => prev.map((p) => (p.id === s.id ? { ...p, scale_pct: Number(e.target.value) } : p)))}>
+                      {STICKER_SIZES.map((z) => <option key={z.label} value={z.value}>{z.label}</option>)}
+                    </select>
+                    <select className="h-7 rounded border bg-background px-1" value={s.movement}
+                      onChange={(e) => {
+                        const mv = e.target.value as StickerMovement;
+                        setStickers((prev) => prev.map((p) => (p.id === s.id
+                          ? { ...p, movement: mv, flip: mv === "walk-left" ? true : mv === "walk-right" ? false : p.flip }
+                          : p)));
+                      }}>
+                      <option value="none">Parado</option>
+                      <option value="walk-right">🚶 Atravessa →</option>
+                      <option value="walk-left">🚶 Atravessa ←</option>
+                    </select>
+                    {s.movement === "none" && (
+                      <select className="h-7 rounded border bg-background px-1" value={stickerPosKey(s)}
+                        onChange={(e) => {
+                          const p = STICKER_POSITIONS.find((p) => p.key === e.target.value);
+                          if (p) setStickers((prev) => prev.map((x) => (x.id === s.id ? { ...x, x_pct: p.x, y_pct: p.y } : x)));
+                        }}>
+                        {STICKER_POSITIONS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+                        <option value="custom" disabled>Personalizado (arrastado)</option>
+                      </select>
+                    )}
+                    <label className="flex items-center gap-1 cursor-pointer" title="Espelhar horizontalmente">
+                      <input type="checkbox" checked={s.flip}
+                        onChange={(e) => setStickers((prev) => prev.map((p) => (p.id === s.id ? { ...p, flip: e.target.checked } : p)))} />
+                      espelhar
+                    </label>
+                    {s.animated && (
+                      <label className="flex items-center gap-1 cursor-pointer" title="Repete a animação enquanto estiver na tela">
+                        <input type="checkbox" checked={s.loop}
+                          onChange={(e) => setStickers((prev) => prev.map((p) => (p.id === s.id ? { ...p, loop: e.target.checked } : p)))} />
+                        loop
+                      </label>
+                    )}
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive ml-auto"
+                      onClick={() => setStickers((prev) => prev.filter((p) => p.id !== s.id))}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Clipes de áudio posicionados */}
+              <div className="space-y-2">
+                <Label className="font-semibold flex items-center gap-2">🎧 Efeitos sonoros e narrações</Label>
+                <p className="text-[11px] text-muted-foreground">
+                  Áudio que toca num <b>ponto exato</b> do vídeo (efeito, vinheta, narração) — além da
+                  trilha global. Entra no cursor; mova/estique na <b>faixa azul</b> da timeline.
+                </p>
+                <label className="flex items-center gap-1.5 rounded-lg border-2 border-dashed px-3 py-1.5 text-xs cursor-pointer hover:border-primary/60 transition w-fit">
+                  {uploadingClip ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                  Enviar áudio (mp3 · wav · m4a)
+                  <input type="file" className="hidden"
+                    accept="audio/mpeg,audio/wav,audio/mp4,audio/ogg,audio/aac"
+                    disabled={uploadingClip}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) uploadClip(f);
+                      e.target.value = "";
+                    }} />
+                </label>
+                {audioClips.map((c) => (
+                  <div key={c.id} className="flex items-center gap-1.5 text-xs flex-wrap rounded border px-2 py-1">
+                    <Music className="h-3.5 w-3.5 text-sky-500 shrink-0" />
+                    <span className="truncate max-w-32" title={c.name}>{c.name}</span>
+                    <span className="tabular-nums text-muted-foreground">{fmt(c.start)}–{fmt(c.end)}</span>
+                    <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px] text-muted-foreground"
+                      title="Leva o começo do áudio até o cursor"
+                      onClick={() => setAudioClips((prev) => prev.map((p) => {
+                        if (p.id !== c.id || !meta) return p;
+                        const len = p.end - p.start;
+                        const ns = Math.max(0, Math.min(meta.duration - len, playhead));
+                        return { ...p, start: ns, end: ns + len };
+                      }))}>
+                      → cursor
+                    </Button>
+                    <label className="flex items-center gap-1 flex-1 min-w-28" title="Volume do clipe">
+                      🔊
+                      <input type="range" min={0} max={150} value={Math.round(c.volume * 100)}
+                        className="flex-1"
+                        onChange={(e) => setAudioClips((prev) => prev.map((p) => (p.id === c.id ? { ...p, volume: Number(e.target.value) / 100 } : p)))} />
+                      <span className="tabular-nums w-9 text-right">{Math.round(c.volume * 100)}%</span>
+                    </label>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive"
+                      onClick={() => setAudioClips((prev) => prev.filter((p) => p.id !== c.id))}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
               </div>
             </div>
           </CardContent>

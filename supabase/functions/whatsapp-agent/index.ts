@@ -1448,6 +1448,54 @@ async function fetchT(url: string, opts: any, ms = 45000): Promise<Response> {
   finally { clearTimeout(id) }
 }
 
+// ─── Medidor de consumo LLM por turno (admin-gerente → aba usuários) ───
+// Acumula o usage de TODAS as chamadas do turno (loop de 5 + retry) e grava 1 linha
+// em llm_usage. Best-effort: contabilidade NUNCA derruba a resposta ao lead.
+// Modo simulate NÃO grava — devolve o usage no JSON e quem pediu (axel-agent) contabiliza.
+type UsageMeter = { model: string; calls: number; input: number; output: number; cached: number; costUsd: number }
+const newMeter = (model: string): UsageMeter => ({ model, calls: 0, input: 0, output: 0, cached: 0, costUsd: 0 })
+// Fallback de preço DeepSeek v3.2 via OpenRouter (USD/M) — usado só se a resposta não trouxer usage.cost.
+function dsCostUsd(u: any): number {
+  const cached = u?.prompt_tokens_details?.cached_tokens || 0
+  const inTok = Math.max((u?.prompt_tokens || 0) - cached, 0)
+  return (inTok * 0.28 + cached * 0.028 + (u?.completion_tokens || 0) * 0.42) / 1e6
+}
+// Dialeto OpenAI/OpenRouter. Com usage:{include:true} no body, usage.cost traz o USD exato.
+function addUsageOpenAI(m: UsageMeter | undefined, usage: any) {
+  if (!m || !usage) return
+  m.calls++
+  m.input += usage.prompt_tokens || 0
+  m.output += usage.completion_tokens || 0
+  m.cached += usage.prompt_tokens_details?.cached_tokens || 0
+  m.costUsd += typeof usage.cost === 'number' ? usage.cost : dsCostUsd(usage)
+}
+// Dialeto Anthropic (Sonnet 4.6: $3/M in, $15/M out, $3.75/M cache write, $0.30/M cache read).
+function addUsageAnthropic(m: UsageMeter | undefined, usage: any) {
+  if (!m || !usage) return
+  m.calls++
+  const inTok = usage.input_tokens || 0
+  const cacheW = usage.cache_creation_input_tokens || 0
+  const cacheR = usage.cache_read_input_tokens || 0
+  const outTok = usage.output_tokens || 0
+  m.input += inTok + cacheW + cacheR
+  m.output += outTok
+  m.cached += cacheR
+  m.costUsd += (inTok * 3 + cacheW * 3.75 + cacheR * 0.3 + outTok * 15) / 1e6
+}
+// Pede o campo usage.cost ao OpenRouter.
+const OR_USAGE_FIELD = { usage: { include: true } }
+async function flushUsage(supabaseAdmin: any, professionalId: string, source: string, m: UsageMeter | undefined) {
+  if (!m || m.calls === 0 || !professionalId) return
+  try {
+    const { error } = await supabaseAdmin.from('llm_usage').insert({
+      professional_id: professionalId, source, model: m.model, calls: m.calls,
+      input_tokens: m.input, output_tokens: m.output, cached_tokens: m.cached,
+      cost_usd: Number(m.costUsd.toFixed(6)),
+    })
+    if (error) console.warn('[llm_usage] insert falhou:', error.message)
+  } catch (e: any) { console.warn('[llm_usage] insert falhou:', e?.message) }
+}
+
 async function callClaude(
   systemPrompt: string,
   chatHistory: any[],
@@ -1457,6 +1505,7 @@ async function callClaude(
   leadId: string,
   instanceName: string,
   remoteJid: string,
+  meter?: UsageMeter,
 ): Promise<string> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured')
@@ -1527,6 +1576,7 @@ async function callClaude(
       }
 
       const result = await response.json()
+      addUsageAnthropic(meter, result.usage)
       const content = result.content || []
       const stopReason = result.stop_reason
 
@@ -1552,6 +1602,7 @@ async function callClaude(
             })
             if (forced.ok) {
               const fr = await forced.json()
+              addUsageAnthropic(meter, fr.usage)
               const ft = (fr.content || []).find((b: any) => b.type === 'text')
               if (ft?.text && ft.text.trim()) return ft.text
             } else {
@@ -1618,6 +1669,7 @@ async function callDeepSeek(
   leadId: string,
   instanceName: string,
   remoteJid: string,
+  meter?: UsageMeter,
 ): Promise<string> {
   const apiKey = Deno.env.get('OPEN_ROUTER_API_KEY')
   if (!apiKey) throw new Error('OPEN_ROUTER_API_KEY not configured')
@@ -1662,6 +1714,7 @@ async function callDeepSeek(
         max_tokens: DEEPSEEK_MAX_TOKENS,
         temperature: 0.7,
         ...DEEPSEEK_REASONING_FIELD,
+        ...OR_USAGE_FIELD,
         messages,
         tools: openaiTools,
       }
@@ -1686,6 +1739,7 @@ async function callDeepSeek(
       const result = await response.json()
       const u = result.usage || {}
       console.log(`[DeepSeek usage] in=${u.prompt_tokens} out=${u.completion_tokens} cached=${(u.prompt_tokens_details || {}).cached_tokens ?? 0}`)
+      addUsageOpenAI(meter, result.usage)
       const choice = result.choices?.[0]
       const aiMsg = choice?.message || {}
       const toolCalls = Array.isArray(aiMsg.tool_calls) ? aiMsg.tool_calls : []
@@ -1703,10 +1757,11 @@ async function callDeepSeek(
             const forced = await fetchT(OPENROUTER_URL, {
               method: 'POST',
               headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ model: DEEPSEEK_MODEL, max_tokens: DEEPSEEK_MAX_TOKENS, temperature: 0.7, ...DEEPSEEK_REASONING_FIELD, messages }),
+              body: JSON.stringify({ model: DEEPSEEK_MODEL, max_tokens: DEEPSEEK_MAX_TOKENS, temperature: 0.7, ...DEEPSEEK_REASONING_FIELD, ...OR_USAGE_FIELD, messages }),
             })
             if (forced.ok) {
               const fr = await forced.json()
+              addUsageOpenAI(meter, fr.usage)
               const ft = (fr.choices?.[0]?.message?.content || '').toString().trim()
               if (ft) return ft
             } else {
@@ -1990,7 +2045,7 @@ async function simulateDeepSeek(systemPrompt: string, history: any[], userMessag
   if (lastRole === 'user') messages[messages.length - 1].content += `\n${wrap(userMessage || 'Olá')}`
   else messages.push({ role: 'user', content: wrap(userMessage || 'Olá') })
   try {
-    const reqBody: any = { model, max_tokens: DEEPSEEK_MAX_TOKENS, temperature: 0.7, messages }
+    const reqBody: any = { model, max_tokens: DEEPSEEK_MAX_TOKENS, temperature: 0.7, ...OR_USAGE_FIELD, messages }
     // reasoning:{enabled:false} só faz sentido em modelos reasoner (v4-pro, r1) — desliga o "pensar".
     if (/r1|pro/i.test(model)) reqBody.reasoning = DEEPSEEK_REASONING
     if (opts.withTools) reqBody.tools = toolsToOpenAI(tools)
@@ -2115,16 +2170,20 @@ serve(async (req) => {
 
     console.log(`[AI] Calling LLM (${USE_DEEPSEEK ? 'DeepSeek ' + DEEPSEEK_MODEL : 'Claude ' + CLAUDE_MODEL})...`)
     const systemPrompt = buildSystemPrompt(professional, lead_name, lead_phone, bookingState, !!triage, contact_status || '', preferredName)
+    // Medidor do turno: soma TODAS as chamadas LLM (loop de 5 + retry) num só registro.
+    const meter = newMeter(USE_DEEPSEEK ? DEEPSEEK_MODEL : CLAUDE_MODEL)
     let agentReply: string
     try {
       agentReply = USE_DEEPSEEK
-        ? await callDeepSeek(systemPrompt, chatHistory, message, supabaseAdmin, professional_id, lead_id, instance_name, remote_jid)
-        : await callClaude(systemPrompt, chatHistory, message, supabaseAdmin, professional_id, lead_id, instance_name, remote_jid)
+        ? await callDeepSeek(systemPrompt, chatHistory, message, supabaseAdmin, professional_id, lead_id, instance_name, remote_jid, meter)
+        : await callClaude(systemPrompt, chatHistory, message, supabaseAdmin, professional_id, lead_id, instance_name, remote_jid, meter)
       console.log(`[AI] Reply: ${agentReply}`)
     } catch (aiError: any) {
       console.error(`[AI Error]`, aiError.message)
       agentReply = 'Oi! 🙂 me manda sua última mensagem de novo? Quero te responder certinho.'
     }
+    // Consumo de tokens do turno (best-effort; cobre também o que foi gasto antes de um erro).
+    await flushUsage(supabaseAdmin, professional_id, 'axel_whatsapp', meter)
 
     // Sentinel de áudio: o agente prefixa [[audio]] quando a etapa é de voz clonada
     // (regra injetada no roteiroBloco). Detecta e remove ANTES de formatar/salvar/enviar.

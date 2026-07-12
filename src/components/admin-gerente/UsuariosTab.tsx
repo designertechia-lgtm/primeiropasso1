@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   CartesianGrid,
   Cell,
@@ -12,11 +12,15 @@ import {
   YAxis,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { Loader2, Users, UserCheck, UserX, Crown, Download } from "lucide-react";
 import {
   useOwnerUserGrowth,
   useOwnerActivationFunnel,
   useOwnerUserSegments,
+  useOwnerLlmUsage,
+  USD_BRL,
 } from "@/hooks/useOwnerStats";
 import { Button } from "@/components/ui/button";
 import { exportToCsv } from "@/lib/exportUtils";
@@ -37,6 +41,13 @@ const weekLabel = (iso: string) => {
   const d = new Date(iso);
   return d.toLocaleDateString("pt-BR", { month: "short", day: "2-digit" });
 };
+
+// Tokens em formato compacto (12,3 mil) — o número exato fica no title da célula.
+const fmtTokens = new Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 });
+const fmtBrl = (v: number) =>
+  v > 0 && v < 0.01 ? "< R$ 0,01" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const fmtUso = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }) : "—";
 
 function KpiCard({
   title,
@@ -69,6 +80,137 @@ function ChartSkeleton() {
     <div className="flex h-52 items-center justify-center">
       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
     </div>
+  );
+}
+
+// Consumo de IA por usuário (llm_usage): tokens por origem, custo em R$ e % da
+// mensalidade — pra acompanhar quanto cada assinatura consome de LLM.
+function LlmUsageCard() {
+  const [daysBack, setDaysBack] = useState(30);
+  const usage = useOwnerLlmUsage(daysBack);
+
+  const rows = usage.data ?? [];
+  const totalBrl = rows.reduce((acc, r) => acc + Number(r.total_cost_usd) * USD_BRL, 0);
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-base">Consumo de IA por usuário</CardTitle>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">
+              Total: <span className="font-semibold text-foreground">{fmtBrl(totalBrl)}</span>
+            </span>
+            {[7, 30, 90].map((d) => (
+              <Button
+                key={d}
+                variant={daysBack === d ? "default" : "outline"}
+                size="sm"
+                onClick={() => setDaysBack(d)}
+              >
+                {d}d
+              </Button>
+            ))}
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() =>
+                exportToCsv(
+                  rows.map((r) => ({
+                    Nome: r.full_name ?? "",
+                    Email: r.email ?? "",
+                    "Tokens Axel Web": Number(r.web_input_tokens) + Number(r.web_output_tokens),
+                    "Tokens Axel WhatsApp": Number(r.wpp_input_tokens) + Number(r.wpp_output_tokens),
+                    "Tokens Geradores": Number(r.gen_input_tokens) + Number(r.gen_output_tokens),
+                    Chamadas: Number(r.web_calls) + Number(r.wpp_calls) + Number(r.gen_calls),
+                    "Custo USD": Number(r.total_cost_usd),
+                    "Custo BRL": Number(r.total_cost_usd) * USD_BRL,
+                    "Mensalidade BRL": r.monthly_price_brl ?? "",
+                    "Último uso": r.last_used_at ?? "",
+                  })),
+                  `consumo_ia_${daysBack}d`,
+                )
+              }
+            >
+              <Download className="h-4 w-4" />
+              CSV
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {usage.isLoading ? (
+          <ChartSkeleton />
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead className="text-right">Axel Web</TableHead>
+                  <TableHead className="text-right">Axel WhatsApp</TableHead>
+                  <TableHead className="text-right">Geradores</TableHead>
+                  <TableHead className="text-right">Chamadas</TableHead>
+                  <TableHead className="text-right">Custo</TableHead>
+                  <TableHead className="text-right">% da mensalidade</TableHead>
+                  <TableHead className="text-right">Último uso</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((r) => {
+                  const webTok = Number(r.web_input_tokens) + Number(r.web_output_tokens);
+                  const wppTok = Number(r.wpp_input_tokens) + Number(r.wpp_output_tokens);
+                  const genTok = Number(r.gen_input_tokens) + Number(r.gen_output_tokens);
+                  const calls = Number(r.web_calls) + Number(r.wpp_calls) + Number(r.gen_calls);
+                  const custoBrl = Number(r.total_cost_usd) * USD_BRL;
+                  const mensalidade = Number(r.monthly_price_brl ?? 0);
+                  const pct = mensalidade > 0 ? (custoBrl / mensalidade) * 100 : null;
+                  return (
+                    <TableRow key={r.professional_id}>
+                      <TableCell className="font-medium">{r.full_name ?? "—"}</TableCell>
+                      <TableCell className="text-muted-foreground">{r.email ?? "—"}</TableCell>
+                      <TableCell className="text-right tabular-nums" title={`${webTok.toLocaleString("pt-BR")} tokens`}>
+                        {webTok > 0 ? fmtTokens.format(webTok) : "—"}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums" title={`${wppTok.toLocaleString("pt-BR")} tokens`}>
+                        {wppTok > 0 ? fmtTokens.format(wppTok) : "—"}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums" title={`${genTok.toLocaleString("pt-BR")} tokens`}>
+                        {genTok > 0 ? fmtTokens.format(genTok) : "—"}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{calls.toLocaleString("pt-BR")}</TableCell>
+                      <TableCell className="text-right tabular-nums" title={`US$ ${Number(r.total_cost_usd).toFixed(4)}`}>
+                        {fmtBrl(custoBrl)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {pct === null ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : pct >= 20 ? (
+                          <Badge className="bg-amber-500 text-white hover:bg-amber-500">{pct.toFixed(1)}%</Badge>
+                        ) : (
+                          <span className="tabular-nums">{pct < 0.1 ? "< 0,1%" : `${pct.toFixed(1)}%`}</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground">{fmtUso(r.last_used_at)}</TableCell>
+                    </TableRow>
+                  );
+                })}
+                {rows.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={9} className="py-8 text-center text-sm text-muted-foreground">
+                      Sem consumo registrado no período. A medição começou em 11/07/2026 — interações
+                      anteriores não têm como ser contabilizadas.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -266,6 +408,9 @@ export default function UsuariosTab() {
           )}
         </CardContent>
       </Card>
+
+      {/* Consumo de IA por usuário (tokens + custo vs mensalidade) */}
+      <LlmUsageCard />
     </div>
   );
 }

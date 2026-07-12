@@ -165,6 +165,36 @@ async function handleAdminToolCall(
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
 const CLAUDE_URL   = 'https://api.anthropic.com/v1/messages'
 
+// ─── Medidor de consumo LLM por turno (admin-gerente → aba usuários) ───
+// Soma o usage de todas as iterações do turno e grava 1 linha em llm_usage.
+// Best-effort: contabilidade NUNCA derruba a resposta. Só dialeto Anthropic aqui.
+type UsageMeter = { model: string; calls: number; input: number; output: number; cached: number; costUsd: number }
+const newMeter = (model: string): UsageMeter => ({ model, calls: 0, input: 0, output: 0, cached: 0, costUsd: 0 })
+// Preços Sonnet 4.6 (USD/M): $3 in, $15 out, $3.75 cache write, $0.30 cache read.
+function addUsageAnthropic(m: UsageMeter | undefined, usage: any) {
+  if (!m || !usage) return
+  m.calls++
+  const inTok = usage.input_tokens || 0
+  const cacheW = usage.cache_creation_input_tokens || 0
+  const cacheR = usage.cache_read_input_tokens || 0
+  const outTok = usage.output_tokens || 0
+  m.input += inTok + cacheW + cacheR
+  m.output += outTok
+  m.cached += cacheR
+  m.costUsd += (inTok * 3 + cacheW * 3.75 + cacheR * 0.3 + outTok * 15) / 1e6
+}
+async function flushUsage(supabaseAdmin: any, professionalId: string, source: string, m: UsageMeter | undefined) {
+  if (!m || m.calls === 0 || !professionalId) return
+  try {
+    const { error } = await supabaseAdmin.from('llm_usage').insert({
+      professional_id: professionalId, source, model: m.model, calls: m.calls,
+      input_tokens: m.input, output_tokens: m.output, cached_tokens: m.cached,
+      cost_usd: Number(m.costUsd.toFixed(6)),
+    })
+    if (error) console.warn('[llm_usage] insert falhou:', error.message)
+  } catch (e: any) { console.warn('[llm_usage] insert falhou:', e?.message) }
+}
+
 async function callClaudeAdmin(
   systemPrompt: string,
   chatHistory: any[],
@@ -197,6 +227,8 @@ async function callClaudeAdmin(
 
   console.log(`[AdminAgent] Lead message for professional ${professionalId}`)
 
+  // Medidor do turno (flush no finally: grava mesmo quando o turno termina em erro).
+  const meter = newMeter(CLAUDE_MODEL)
   try {
     let maxIterations = 5
     while (maxIterations-- > 0) {
@@ -226,6 +258,7 @@ async function callClaudeAdmin(
       }
 
       const result = await response.json()
+      addUsageAnthropic(meter, result.usage)
       const content = result.content || []
       const stopReason = result.stop_reason
 
@@ -254,6 +287,8 @@ async function callClaudeAdmin(
   } catch (err: any) {
     console.error('[AdminAgent] Erro fatal:', err)
     return `Erro técnico: ${err.message}`
+  } finally {
+    await flushUsage(supabaseAdmin, professionalId, 'axel_whatsapp_admin', meter)
   }
 }
 

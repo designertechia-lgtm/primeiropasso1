@@ -740,19 +740,68 @@ async function fetchT(url: string, opts: any, ms = 25000): Promise<Response> {
   finally { clearTimeout(id) }
 }
 
+// ─── Medidor de consumo LLM por turno (admin-gerente → aba usuários) ───
+// Acumula o usage de TODAS as chamadas do request e grava 1 linha em llm_usage.
+// Best-effort: contabilidade NUNCA derruba o turno. Campanhas de ads ficam FORA
+// (a criação já debita créditos — o call site simplesmente não passa o meter).
+type UsageMeter = { model: string; calls: number; input: number; output: number; cached: number; costUsd: number }
+const newMeter = (model: string): UsageMeter => ({ model, calls: 0, input: 0, output: 0, cached: 0, costUsd: 0 })
+// Fallback de preço DeepSeek v3.2 via OpenRouter (USD/M) — usado só se a resposta não trouxer usage.cost.
+function dsCostUsd(u: any): number {
+  const cached = u?.prompt_tokens_details?.cached_tokens || 0
+  const inTok = Math.max((u?.prompt_tokens || 0) - cached, 0)
+  return (inTok * 0.28 + cached * 0.028 + (u?.completion_tokens || 0) * 0.42) / 1e6
+}
+// Dialeto OpenAI/OpenRouter. Com usage:{include:true} no body, usage.cost traz o USD exato.
+function addUsageOpenAI(m: UsageMeter | undefined, usage: any) {
+  if (!m || !usage) return
+  m.calls++
+  m.input += usage.prompt_tokens || 0
+  m.output += usage.completion_tokens || 0
+  m.cached += usage.prompt_tokens_details?.cached_tokens || 0
+  m.costUsd += typeof usage.cost === "number" ? usage.cost : dsCostUsd(usage)
+}
+// Dialeto Anthropic (Sonnet 4.6: $3/M in, $15/M out, $3.75/M cache write, $0.30/M cache read).
+function addUsageAnthropic(m: UsageMeter | undefined, usage: any) {
+  if (!m || !usage) return
+  m.calls++
+  const inTok = usage.input_tokens || 0
+  const cacheW = usage.cache_creation_input_tokens || 0
+  const cacheR = usage.cache_read_input_tokens || 0
+  const outTok = usage.output_tokens || 0
+  m.input += inTok + cacheW + cacheR
+  m.output += outTok
+  m.cached += cacheR
+  m.costUsd += (inTok * 3 + cacheW * 3.75 + cacheR * 0.3 + outTok * 15) / 1e6
+}
+// Pede o campo usage.cost ao OpenRouter (não muda nada na Anthropic/DeepSeek direto).
+const OR_USAGE_FIELD = { usage: { include: true } }
+async function flushUsage(supabaseAdmin: any, professionalId: string, source: string, m: UsageMeter | undefined) {
+  if (!m || m.calls === 0 || !professionalId) return
+  try {
+    const { error } = await supabaseAdmin.from("llm_usage").insert({
+      professional_id: professionalId, source, model: m.model, calls: m.calls,
+      input_tokens: m.input, output_tokens: m.output, cached_tokens: m.cached,
+      cost_usd: Number(m.costUsd.toFixed(6)),
+    })
+    if (error) console.warn("[llm_usage] insert falhou:", error.message)
+  } catch (e: any) { console.warn("[llm_usage] insert falhou:", e?.message) }
+}
+
 // Geração de TEXTO simples (sem tools) — bio/landing, queries de imagem, resumo de relacionamento.
 // Dispatch por provider. Lança em erro HTTP (o chamador decide o fallback).
-async function llmText(opts: { system?: string; prompt: string; maxTokens?: number; temperature?: number; ms?: number }): Promise<string> {
-  const { system, prompt, maxTokens = 800, temperature, ms = 25000 } = opts
+async function llmText(opts: { system?: string; prompt: string; maxTokens?: number; temperature?: number; ms?: number; meter?: UsageMeter }): Promise<string> {
+  const { system, prompt, maxTokens = 800, temperature, ms = 25000, meter } = opts
   if (USE_DEEPSEEK) {
     const messages: any[] = []
     if (system) messages.push({ role: "system", content: system })
     messages.push({ role: "user", content: prompt })
-    const body: any = { model: DEEPSEEK_MODEL, max_tokens: maxTokens, messages, ...DEEPSEEK_REASONING_FIELD }
+    const body: any = { model: DEEPSEEK_MODEL, max_tokens: maxTokens, messages, ...DEEPSEEK_REASONING_FIELD, ...OR_USAGE_FIELD }
     if (temperature !== undefined) body.temperature = temperature
     const r = await fetchT(OPENROUTER_URL, { method: "POST", headers: orHeaders(), body: JSON.stringify(body) }, ms)
     if (!r.ok) throw new Error(`OpenRouter ${r.status}: ${(await r.text()).slice(0, 150)}`)
     const d = await r.json()
+    addUsageOpenAI(meter, d.usage)
     return (d.choices?.[0]?.message?.content || "").toString().trim()
   }
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY") || ""
@@ -763,18 +812,20 @@ async function llmText(opts: { system?: string; prompt: string; maxTokens?: numb
   const r = await fetchT(CLAUDE_URL, { method: "POST", headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify(body) }, ms)
   if (!r.ok) throw new Error(`Claude ${r.status}: ${(await r.text()).slice(0, 150)}`)
   const d = await r.json()
+  addUsageAnthropic(meter, d.usage)
   return (d.content?.find((b: any) => b.type === "text")?.text || "").trim()
 }
 
 // Geração ESTRUTURADA (JSON via tool/function forçada) — usada pela campanha de ads.
 // Retorna o objeto validado pelo schema ou null (o chamador trata a falha).
-async function llmStructured(opts: { prompt: string; toolName: string; schema: any; maxTokens?: number; ms?: number }): Promise<any | null> {
-  const { prompt, toolName, schema, maxTokens = 4096, ms = 40000 } = opts
+async function llmStructured(opts: { prompt: string; toolName: string; schema: any; maxTokens?: number; ms?: number; meter?: UsageMeter }): Promise<any | null> {
+  const { prompt, toolName, schema, maxTokens = 4096, ms = 40000, meter } = opts
   if (USE_DEEPSEEK) {
     const body: any = {
       model: DEEPSEEK_MODEL,
       max_tokens: maxTokens,
       ...DEEPSEEK_REASONING_FIELD,
+      ...OR_USAGE_FIELD,
       messages: [{ role: "user", content: prompt }],
       tools: [{ type: "function", function: { name: toolName, description: "Retorna o resultado estruturado.", parameters: schema } }],
       tool_choice: { type: "function", function: { name: toolName } },
@@ -782,6 +833,7 @@ async function llmStructured(opts: { prompt: string; toolName: string; schema: a
     const r = await fetchT(OPENROUTER_URL, { method: "POST", headers: orHeaders(), body: JSON.stringify(body) }, ms)
     if (!r.ok) { console.error("[llmStructured] OpenRouter", r.status, (await r.text()).slice(0, 200)); return null }
     const d = await r.json()
+    addUsageOpenAI(meter, d.usage)
     const argsStr = d.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments
     if (!argsStr) return null
     try { return JSON.parse(argsStr) } catch { return null }
@@ -800,6 +852,7 @@ async function llmStructured(opts: { prompt: string; toolName: string; schema: a
   }, ms)
   if (!r.ok) { console.error("[llmStructured] Anthropic", r.status, (await r.text()).slice(0, 200)); return null }
   const d = await r.json()
+  addUsageAnthropic(meter, d.usage)
   return d.content?.find((b: any) => b.type === "tool_use" && b.name === toolName)?.input ?? null
 }
 
@@ -829,7 +882,7 @@ const PERFIL_PROMPTS: Record<string, (c: any) => string> = {
   solution_items: (c) => `Liste 4 formas como um(a) ${c.specialty || "profissional"} ajuda seus clientes a melhorar. Responda APENAS com um array JSON de 4 strings curtas, sem comentários e sem cercas de código.`,
 }
 
-async function gerarTextoIA(campo: string, ctx: any, _apiKey?: string): Promise<string> {
+async function gerarTextoIA(campo: string, ctx: any, _apiKey?: string, meter?: UsageMeter): Promise<string> {
   const promptFn = PERFIL_PROMPTS[campo]
   if (!promptFn) throw new Error(`campo não suportado: ${campo}`)
   // Enriquece o gerador com o que o Axel já sabe do profissional (memória) e com o que
@@ -842,7 +895,7 @@ async function gerarTextoIA(campo: string, ctx: any, _apiKey?: string): Promise<
   const prompt = ctxParts.length
     ? `${ctxParts.join("\n\n")}\n\nTAREFA: ${basePrompt}\n\nBaseie-se no contexto acima: priorize as palavras, o posicionamento e os exemplos REAIS do profissional. NÃO invente técnicas, públicos ou promessas que ele não mencionou.`
     : basePrompt
-  let txt = (await llmText({ prompt, maxTokens: 800 })).trim()
+  let txt = (await llmText({ prompt, maxTokens: 800, meter })).trim()
   // remove cercas de código (relevante para os campos _items em JSON)
   txt = txt.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim()
   return txt
@@ -905,7 +958,7 @@ async function buscarImagemMultiFonte(query: string, keys: ImgKeys, usadas: Set<
 }
 
 // Gera termos de busca (em INGLÊS) por slide, casando o tema que o profissional pediu com o texto do slide.
-async function gerarQueriesImagem(temaVisual: string, captions: string[], _apiKey?: string): Promise<{ cover: string; slides: string[] }> {
+async function gerarQueriesImagem(temaVisual: string, captions: string[], _apiKey?: string, meter?: UsageMeter): Promise<{ cover: string; slides: string[] }> {
   const fallback = { cover: temaVisual, slides: captions.map(() => temaVisual) }
   const prompt = `Tema visual desejado: "${temaVisual}".
 Para uma CAPA e ${captions.length} slides, gere termos de busca de banco de imagens (Pexels/Unsplash), em INGLÊS, curtos (2-4 palavras), concretos e fotografáveis, casando o tema visual com o conteúdo de cada slide. Evite termos abstratos.
@@ -913,7 +966,7 @@ Slides:
 ${captions.map((c, i) => `${i + 1}. ${c}`).join("\n")}
 Responda APENAS um JSON: {"cover":"...","slides":["...", ...]} com exatamente ${captions.length} itens em slides.`
   try {
-    let txt = (await llmText({ prompt, maxTokens: 600, temperature: 0.3 })).trim()
+    let txt = (await llmText({ prompt, maxTokens: 600, temperature: 0.3, meter })).trim()
     txt = txt.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim()
     const parsed = JSON.parse(txt)
     const slides = Array.isArray(parsed.slides) ? parsed.slides.map((s: any) => String(s)) : fallback.slides
@@ -933,6 +986,7 @@ async function handleToolCall(
   professionalId: string,
   kbSections: Array<{ key: string; title: string; route?: string; body: string }>,
   genContext?: { memoria?: string; material?: string },
+  meter?: UsageMeter,
 ): Promise<any> {
   if (toolName === "consultar_secao") {
     const key = (args.key || "").toString().trim()
@@ -1049,7 +1103,7 @@ async function handleToolCall(
       const campos = ["hero_title", "hero_subtitle", "pain_title", "pain_subtitle", "pain_items", "solution_title", "solution_subtitle", "solution_items", "bio"]
       // A2: as 9 gerações em PARALELO (Promise.all) — antes eram sequenciais e podiam estourar o deadline do turno.
       const settled = await Promise.all(campos.map(async (c) => {
-        try { return [c, await gerarTextoIA(c, ctx)] as const }
+        try { return [c, await gerarTextoIA(c, ctx, undefined, meter)] as const }
         catch (e: any) { console.error(`[gerar_landing] campo ${c} erro:`, e?.message); return [c, null] as const }
       }))
       const resultados: Record<string, any> = {}
@@ -1070,7 +1124,7 @@ async function handleToolCall(
 
     if (!campo) return { erro: "campo obrigatório para sugerir_dados_perfil" }
     try {
-      const resultado = await gerarTextoIA(campo, ctx, apiKey)
+      const resultado = await gerarTextoIA(campo, ctx, apiKey, meter)
       return {
         campo,
         resultado,
@@ -1194,6 +1248,9 @@ async function handleToolCall(
         body: JSON.stringify({ simulate: true, professional_id: professionalId, message: msg }),
       }, 30000)
       const data = await res.json().catch(() => ({}))
+      // Tokens da simulação contam no turno do Axel Web que a pediu (o modo simulate
+      // do whatsapp-agent devolve o usage no JSON e não grava nada — sem dupla contagem).
+      addUsageOpenAI(meter, data?.usage)
       const reply = (data?.reply || "").toString().trim()
       if (!reply) return { erro: "sem_resposta", instrucao: "Diga que a prévia não retornou agora; pode tentar outra mensagem." }
       return { reply, instrucao: "Mostre ao profissional ESTA resposta como a do agente REAL dele (não invente nem edite o texto): apresente em bloco/aspas e diga que é assim que o agente dele responde de verdade. Depois pergunte se quer ajustar tom, frases, método ou valores." }
@@ -1399,7 +1456,9 @@ async function handleToolCall(
       const res = await fetchT(`${supabaseUrl}/functions/v1/generate-text`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${anonKey}` },
-        body: JSON.stringify({ field: "article_with_carousel", context: ctx }),
+        // professional_id: o generate-text grava o consumo de tokens no dono certo
+        // (a anon key não identifica ninguém). Os tokens do artigo contam LÁ, não aqui.
+        body: JSON.stringify({ field: "article_with_carousel", context: ctx, professional_id: professionalId }),
       }, 30000)
       if (!res.ok) {
         return { erro: `generate-text retornou ${res.status}`, instrucao: "Avise o profissional que houve erro ao gerar o artigo." }
@@ -1489,7 +1548,7 @@ async function handleToolCall(
 
     // Queries por slide (inglês) casando tema + conteúdo
     const apiKey = Deno.env.get("ANTHROPIC_API_KEY") || ""
-    const queries = await gerarQueriesImagem(temaVisual, captions, apiKey)
+    const queries = await gerarQueriesImagem(temaVisual, captions, apiKey, meter)
 
     const usadas = new Set<string>()
     const capaImg = await buscarImagemMultiFonte(queries.cover, keys, usadas)
@@ -2246,6 +2305,8 @@ REGRAS:
       required: ["campaign_name", "ad_groups"],
     }
 
+    // SEM meter de propósito: campanha já debita créditos na criação — o custo de
+    // tokens é recuperado por lá e não entra no consumo "dentro da assinatura".
     const raw = await llmStructured({ prompt, toolName: "gerar_campanha", schema: outputSchema, maxTokens: 4096 })
     if (!raw) return { erro: "ia_sem_resultado", instrucao: "Avise que a geração da campanha não retornou resultado agora. Peça pra tentar novamente." }
     // Sanitiza chars acima dos limites do Google
@@ -2386,7 +2447,7 @@ REGRAS:
 // escreveu resposta, ou pediram algo que ele ainda não faz), re-pedimos uma resposta
 // textual SEM tools — em vez de devolver um erro genérico que parece culpar o usuário
 // ("não consegui responder, reformule" apareceu 2x na auditoria 13/06).
-async function requestTextOnly(messages: any[], systemPrompt: string, apiKey: string): Promise<string> {
+async function requestTextOnly(messages: any[], systemPrompt: string, apiKey: string, meter?: UsageMeter): Promise<string> {
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), 20000)
@@ -2400,6 +2461,7 @@ async function requestTextOnly(messages: any[], systemPrompt: string, apiKey: st
     }).finally(() => clearTimeout(timer))
     if (!resp.ok) return ""
     const data = await resp.json()
+    addUsageAnthropic(meter, data.usage)
     return (data.content?.find((b: any) => b.type === "text")?.text || "").trim()
   } catch (_) {
     return ""
@@ -2407,15 +2469,16 @@ async function requestTextOnly(messages: any[], systemPrompt: string, apiKey: st
 }
 
 // requestTextOnly no dialeto OpenAI (DeepSeek/OpenRouter): re-pede resposta SÓ TEXTO, sem tools.
-async function requestTextOnlyDS(messages: any[]): Promise<string> {
+async function requestTextOnlyDS(messages: any[], meter?: UsageMeter): Promise<string> {
   try {
     const r = await fetchT(OPENROUTER_URL, {
       method: "POST",
       headers: orHeaders(),
-      body: JSON.stringify({ model: DEEPSEEK_MODEL, max_tokens: 2048, temperature: 0.7, ...DEEPSEEK_REASONING_FIELD, messages }),
+      body: JSON.stringify({ model: DEEPSEEK_MODEL, max_tokens: 2048, temperature: 0.7, ...DEEPSEEK_REASONING_FIELD, ...OR_USAGE_FIELD, messages }),
     }, 20000)
     if (!r.ok) return ""
     const d = await r.json()
+    addUsageOpenAI(meter, d.usage)
     return (d.choices?.[0]?.message?.content || "").toString().trim()
   } catch (_) {
     return ""
@@ -2433,8 +2496,9 @@ async function callClaude(opts: {
   professionalId: string
   kbSections: any[]
   memoryFacts?: Array<{ key: string; value: string }>
+  meter?: UsageMeter
 }): Promise<{ reply: string; toolsUsed: string[]; actions: Array<{ label: string; href: string }>; navigate: string | null }> {
-  const { systemPrompt, history, userMessage, supabaseAdmin, professionalId, kbSections, memoryFacts } = opts
+  const { systemPrompt, history, userMessage, supabaseAdmin, professionalId, kbSections, memoryFacts, meter } = opts
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY")
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured")
 
@@ -2509,6 +2573,7 @@ async function callClaude(opts: {
       break
     }
 
+    addUsageAnthropic(meter, result.usage)
     const content = result.content || []
     const stopReason = result.stop_reason
 
@@ -2518,7 +2583,7 @@ async function callClaude(opts: {
       if (!reply) {
         // Turno encerrou sem texto → re-pede resposta textual sem tools (não culpa o usuário).
         console.warn(`[callClaude] turno sem texto (stop_reason=${stopReason}); re-pedindo resposta sem tools`)
-        reply = await requestTextOnly(messages, systemPrompt, apiKey)
+        reply = await requestTextOnly(messages, systemPrompt, apiKey, meter)
       }
       return {
         reply: reply || "Me embolei aqui ao montar a resposta — me dá um instante e manda de novo?",
@@ -2535,7 +2600,7 @@ async function callClaude(opts: {
       // Cada tool é isolada: um erro/exceção numa tool vira tool_result e segue — nunca derruba o turno.
       let out: any
       try {
-        out = await handleToolCall(tu.name, tu.input, supabaseAdmin, professionalId, kbSections, genContext)
+        out = await handleToolCall(tu.name, tu.input, supabaseAdmin, professionalId, kbSections, genContext, meter)
       } catch (e: any) {
         console.error(`[handleToolCall] ${tu.name} lançou:`, e?.message)
         out = { erro: `falha técnica em ${tu.name}`, instrucao: "Diga em 1 frase que tropeçou nessa ação e ofereça tentar de novo." }
@@ -2552,7 +2617,7 @@ async function callClaude(opts: {
   }
 
   // Estourou as iterações de tool: tenta fechar com uma resposta textual antes de desistir.
-  const closing = await requestTextOnly(messages, systemPrompt, apiKey)
+  const closing = await requestTextOnly(messages, systemPrompt, apiKey, meter)
   return {
     reply: closing || "Me embolei aqui ao montar a resposta — me dá um instante e tenta de novo?",
     toolsUsed,
@@ -2573,8 +2638,9 @@ async function callDeepSeekWeb(opts: {
   professionalId: string
   kbSections: any[]
   memoryFacts?: Array<{ key: string; value: string }>
+  meter?: UsageMeter
 }): Promise<{ reply: string; toolsUsed: string[]; actions: Array<{ label: string; href: string }>; navigate: string | null }> {
-  const { systemPrompt, history, userMessage, supabaseAdmin, professionalId, kbSections, memoryFacts } = opts
+  const { systemPrompt, history, userMessage, supabaseAdmin, professionalId, kbSections, memoryFacts, meter } = opts
   const apiKey = Deno.env.get("OPEN_ROUTER_API_KEY")
   if (!apiKey) throw new Error("OPEN_ROUTER_API_KEY not configured")
 
@@ -2618,7 +2684,7 @@ async function callDeepSeekWeb(opts: {
 
     let result: any
     try {
-      const body: any = { model: DEEPSEEK_MODEL, max_tokens: 4096, temperature: 0.7, ...DEEPSEEK_REASONING_FIELD, messages, tools: openaiTools }
+      const body: any = { model: DEEPSEEK_MODEL, max_tokens: 4096, temperature: 0.7, ...DEEPSEEK_REASONING_FIELD, ...OR_USAGE_FIELD, messages, tools: openaiTools }
       const response = await fetchT(OPENROUTER_URL, { method: "POST", headers: orHeaders(), body: JSON.stringify(body) }, 30000)
       if (!response.ok) {
         console.error(`[DeepSeek Error] ${response.status}`, (await response.text()).slice(0, 300))
@@ -2632,6 +2698,7 @@ async function callDeepSeekWeb(opts: {
 
     const u = result.usage || {}
     console.log(`[DeepSeek usage] in=${u.prompt_tokens} out=${u.completion_tokens} cached=${(u.prompt_tokens_details || {}).cached_tokens ?? 0}`)
+    addUsageOpenAI(meter, result.usage)
     const choice = result.choices?.[0]
     const aiMsg = choice?.message || {}
     const toolCalls = Array.isArray(aiMsg.tool_calls) ? aiMsg.tool_calls : []
@@ -2641,7 +2708,7 @@ async function callDeepSeekWeb(opts: {
       let reply = [prefixoTexto, text].filter(Boolean).join(" ").trim()
       if (!reply) {
         console.warn("[callDeepSeekWeb] turno sem texto; re-pedindo resposta sem tools")
-        reply = await requestTextOnlyDS(messages)
+        reply = await requestTextOnlyDS(messages, meter)
       }
       return {
         reply: reply || "Me embolei aqui ao montar a resposta — me dá um instante e manda de novo?",
@@ -2664,7 +2731,7 @@ async function callDeepSeekWeb(opts: {
       catch { console.error("[callDeepSeekWeb] args inválidos:", tc.function?.arguments) }
       let out: any
       try {
-        out = await handleToolCall(name, input, supabaseAdmin, professionalId, kbSections, genContext)
+        out = await handleToolCall(name, input, supabaseAdmin, professionalId, kbSections, genContext, meter)
       } catch (e: any) {
         console.error(`[handleToolCall] ${name} lançou:`, e?.message)
         out = { erro: `falha técnica em ${name}`, instrucao: "Diga em 1 frase que tropeçou nessa ação e ofereça tentar de novo." }
@@ -2676,7 +2743,7 @@ async function callDeepSeekWeb(opts: {
     }
   }
 
-  const closing = await requestTextOnlyDS(messages)
+  const closing = await requestTextOnlyDS(messages, meter)
   return {
     reply: closing || "Me embolei aqui ao montar a resposta — me dá um instante e tenta de novo?",
     toolsUsed,
@@ -2742,12 +2809,15 @@ ${transcript}
 RESUMO ATUALIZADO:`
 
     let novoResumo = ""
+    // Meter próprio: roda em background (waitUntil) DEPOIS do flush do turno.
+    const summaryMeter = newMeter(USE_DEEPSEEK ? DEEPSEEK_MODEL : CLAUDE_MODEL)
     try {
       novoResumo = (await llmText({
         system: "Você condensa memória de relacionamento de forma fiel e concisa.",
-        prompt, maxTokens: 500, temperature: 0.3,
+        prompt, maxTokens: 500, temperature: 0.3, meter: summaryMeter,
       })).trim()
     } catch (e: any) { console.error("[summary] llm", e?.message); return }
+    await flushUsage(supabaseAdmin, professionalId, "axel_web", summaryMeter)
     if (!novoResumo) return
 
     const novaMarca = novas[novas.length - 1].created_at
@@ -2893,17 +2963,21 @@ serve(async (req) => {
     let toolsUsed: string[] = []
     let actions: Array<{ label: string; href: string }> = []
     let navigate: string | null = null
+    // Medidor do turno: soma TODAS as chamadas LLM (loop, tools, retries) num só registro.
+    const meter = newMeter(USE_DEEPSEEK ? DEEPSEEK_MODEL : CLAUDE_MODEL)
     try {
       console.log(`[axel-agent] LLM = ${USE_DEEPSEEK ? "DeepSeek " + DEEPSEEK_MODEL : "Claude " + CLAUDE_MODEL}`)
       const out = USE_DEEPSEEK
-        ? await callDeepSeekWeb({ systemPrompt, history, userMessage: message, supabaseAdmin, professionalId, kbSections, memoryFacts })
-        : await callClaude({ systemPrompt, history, userMessage: message, supabaseAdmin, professionalId, kbSections, memoryFacts })
+        ? await callDeepSeekWeb({ systemPrompt, history, userMessage: message, supabaseAdmin, professionalId, kbSections, memoryFacts, meter })
+        : await callClaude({ systemPrompt, history, userMessage: message, supabaseAdmin, professionalId, kbSections, memoryFacts, meter })
       reply = out.reply
       toolsUsed = out.toolsUsed
       actions = out.actions
       navigate = out.navigate
     } catch (aiErr: any) {
       console.error("[axel-agent][AI Error]", aiErr.message)
+      // Grava o que já foi consumido antes do erro (o custo aconteceu mesmo sem resposta).
+      await flushUsage(supabaseAdmin, professionalId, "axel_web", meter)
       // Sinaliza erro pro front cair no fallback por regras (não persiste resposta vazia).
       return new Response(JSON.stringify({ error: "ai_error", detail: aiErr.message, fallback: true }), {
         status: 200,
@@ -2919,6 +2993,9 @@ serve(async (req) => {
       tool_calls: toolsUsed.length > 0 ? toolsUsed : null,
       actions: actions.length > 0 ? actions : null,
     })
+
+    // 7b. Consumo de tokens do turno (best-effort; o resumo em background grava o próprio).
+    await flushUsage(supabaseAdmin, professionalId, "axel_web", meter)
 
     // 8. Memória de longo prazo (Fase C): reescreve o resumo do relacionamento.
     // Em background quando o runtime suporta (waitUntil); senão, aguarda (raro: só cruza o

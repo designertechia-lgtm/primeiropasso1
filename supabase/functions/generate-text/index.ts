@@ -1,9 +1,47 @@
 // deno-lint-ignore-file no-explicit-any
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+// ─── Consumo de tokens por profissional (admin-gerente → aba usuários) ───
+// Dono do consumo: JWT de usuário logado (front) OU professional_id do body
+// (chamada interna do axel-agent, que vem com a anon key). Sem dono → não grava.
+// Best-effort: contabilidade NUNCA derruba a geração.
+async function resolveProfessionalId(req: Request, admin: any, bodyProfessionalId?: string): Promise<string | null> {
+  const token = (req.headers.get("Authorization") || "").replace("Bearer ", "").trim();
+  if (token) {
+    try {
+      const { data } = await admin.auth.getUser(token);
+      const uid = data?.user?.id;
+      if (uid) {
+        const { data: prof } = await admin.from("professionals").select("id").eq("user_id", uid).maybeSingle();
+        if (prof?.id) return prof.id;
+      }
+    } catch (_) { /* anon/service key não é JWT de usuário — tenta o body */ }
+  }
+  return bodyProfessionalId || null;
+}
+
+// Preços Sonnet 4.6 (USD/M): $3 in, $15 out, $3.75 cache write, $0.30 cache read.
+async function recordLlmUsage(admin: any, professionalId: string | null, source: string, model: string, usage: any) {
+  if (!professionalId || !usage) return;
+  const inTok = usage.input_tokens || 0;
+  const cacheW = usage.cache_creation_input_tokens || 0;
+  const cacheR = usage.cache_read_input_tokens || 0;
+  const outTok = usage.output_tokens || 0;
+  const costUsd = (inTok * 3 + cacheW * 3.75 + cacheR * 0.3 + outTok * 15) / 1e6;
+  try {
+    const { error } = await admin.from("llm_usage").insert({
+      professional_id: professionalId, source, model, calls: 1,
+      input_tokens: inTok + cacheW + cacheR, output_tokens: outTok, cached_tokens: cacheR,
+      cost_usd: Number(costUsd.toFixed(6)),
+    });
+    if (error) console.warn("[llm_usage] insert falhou:", error.message);
+  } catch (e: any) { console.warn("[llm_usage] insert falhou:", e?.message); }
+}
 
 interface Context {
   name: string;
@@ -180,7 +218,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { field, context } = await req.json() as { field: string; context: Context };
+    const { field, context, professional_id } = await req.json() as { field: string; context: Context; professional_id?: string };
 
     const promptFn = PROMPTS[field];
     if (!promptFn) {
@@ -229,6 +267,15 @@ Deno.serve(async (req) => {
     }
 
     const claudeData = await claudeResp.json();
+
+    // Contabiliza o consumo no dono (o custo aconteceu mesmo se o texto vier vazio).
+    try {
+      const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      const ownerId = await resolveProfessionalId(req, admin, professional_id);
+      if (ownerId) await recordLlmUsage(admin, ownerId, "generate_text", CLAUDE_MODEL, claudeData.usage);
+      else console.warn("[llm_usage] generate-text sem dono identificável — consumo não gravado");
+    } catch (e: any) { console.warn("[llm_usage] contabilização falhou:", e?.message); }
+
     text = (claudeData.content?.find((b: any) => b.type === "text")?.text || "").trim();
 
     // Remover blocos de código se a IA retornar markdown

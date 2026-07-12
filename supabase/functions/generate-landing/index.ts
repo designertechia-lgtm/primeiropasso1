@@ -35,17 +35,42 @@ async function isServiceRole(token: string): Promise<boolean> {
   }
 }
 
-async function requireCaller(req: Request): Promise<Response | null> {
+// Além de validar, devolve o userId quando o caller é um usuário logado — é ele que
+// permite atribuir o consumo de tokens ao profissional dono (aba usuários do admin).
+async function requireCaller(req: Request): Promise<{ unauthorized: Response | null; userId: string | null }> {
   const token = (req.headers.get("Authorization") ?? "").replace("Bearer ", "");
   if (token) {
     const anonClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!);
     const { data: { user }, error } = await anonClient.auth.getUser(token);
-    if (!error && user) return null;
-    if (await isServiceRole(token)) return null;
+    if (!error && user) return { unauthorized: null, userId: user.id };
+    if (await isServiceRole(token)) return { unauthorized: null, userId: null };
   }
-  return new Response(JSON.stringify({ error: "Faça login para gerar a landing." }), {
-    status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+  return {
+    unauthorized: new Response(JSON.stringify({ error: "Faça login para gerar a landing." }), {
+      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    }),
+    userId: null,
+  };
+}
+
+// ─── Consumo de tokens por profissional (admin-gerente → aba usuários) ───
+// Soma o usage das tentativas (1 + retry) e grava 1 linha. Best-effort: NUNCA derruba a geração.
+// Preços Sonnet 4.6 (USD/M): $3 in, $15 out, $3.75 cache write, $0.30 cache read.
+async function recordLlmUsage(admin: any, professionalId: string | null, usages: any[]) {
+  if (!professionalId || usages.length === 0) return;
+  let inTok = 0, outTok = 0, cacheR = 0, costUsd = 0;
+  for (const u of usages) {
+    const i = u.input_tokens || 0, w = u.cache_creation_input_tokens || 0, r = u.cache_read_input_tokens || 0, o = u.output_tokens || 0;
+    inTok += i + w + r; outTok += o; cacheR += r;
+    costUsd += (i * 3 + w * 3.75 + r * 0.3 + o * 15) / 1e6;
+  }
+  try {
+    const { error } = await admin.from("llm_usage").insert({
+      professional_id: professionalId, source: "generate_landing", model: CLAUDE_MODEL, calls: usages.length,
+      input_tokens: inTok, output_tokens: outTok, cached_tokens: cacheR, cost_usd: Number(costUsd.toFixed(6)),
+    });
+    if (error) console.warn("[llm_usage] insert falhou:", error.message);
+  } catch (e: any) { console.warn("[llm_usage] insert falhou:", e?.message); }
 }
 
 // Schema das seções da landing (espelha o template do prompt). Passado em output_config.format,
@@ -103,7 +128,8 @@ Sem comentários, sem cercas de código, apenas o JSON.`;
 }
 
 // Uma chamada ao Claude que já devolve as seções parseadas (lança em falha).
-async function callClaude(prompt: string, apiKey: string): Promise<any> {
+// usages: coletor de consumo — recebe o usage de CADA tentativa (inclusive as que falham depois).
+async function callClaude(prompt: string, apiKey: string, usages: any[]): Promise<any> {
   const resp = await fetch(CLAUDE_URL, {
     method: "POST",
     headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
@@ -120,6 +146,7 @@ async function callClaude(prompt: string, apiKey: string): Promise<any> {
     throw new Error(`Claude ${resp.status}: ${errText.slice(0, 200)}`);
   }
   const data = await resp.json();
+  if (data.usage) usages.push(data.usage);
   if (data.stop_reason === "max_tokens") throw new Error("Resposta truncada (max_tokens) — o JSON veio incompleto.");
   const text = (data.content?.find((b: any) => b.type === "text")?.text || "").trim();
   try {
@@ -133,10 +160,10 @@ async function callClaude(prompt: string, apiKey: string): Promise<any> {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
-    const unauthorized = await requireCaller(req);
-    if (unauthorized) return unauthorized;
+    const caller = await requireCaller(req);
+    if (caller.unauthorized) return caller.unauthorized;
 
-    const { bible, profile } = await req.json() as { bible: any; profile: any };
+    const { bible, profile, professional_id } = await req.json() as { bible: any; profile: any; professional_id?: string };
     const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
     if (!apiKey) {
       return new Response(JSON.stringify({ error: "Configuração incompleta", details: "ANTHROPIC_API_KEY ausente." }), {
@@ -153,14 +180,28 @@ Deno.serve(async (req) => {
     }
 
     const prompt = buildPrompt(bibleMarkdown, profile ?? {});
+    const usages: any[] = [];
     let sections: any;
     try {
-      sections = await callClaude(prompt, apiKey);
+      sections = await callClaude(prompt, apiKey, usages);
     } catch (firstErr) {
       // 1 retry para falha transitória (rede/overload) — evita perder o clique do usuário.
       console.warn("[generate-landing] 1ª tentativa falhou, retentando:", String(firstErr));
-      sections = await callClaude(prompt, apiKey);
+      sections = await callClaude(prompt, apiKey, usages);
     }
+
+    // Contabiliza o consumo no dono: usuário logado (via JWT) ou professional_id do body
+    // (chamada interna com service role). Sem dono → não grava (best-effort).
+    try {
+      const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      let ownerId: string | null = professional_id || null;
+      if (caller.userId) {
+        const { data: prof } = await admin.from("professionals").select("id").eq("user_id", caller.userId).maybeSingle();
+        if (prof?.id) ownerId = prof.id;
+      }
+      if (ownerId) await recordLlmUsage(admin, ownerId, usages);
+      else console.warn("[llm_usage] generate-landing sem dono identificável — consumo não gravado");
+    } catch (e: any) { console.warn("[llm_usage] contabilização falhou:", e?.message); }
 
     return new Response(JSON.stringify({ result: sections }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (err) {

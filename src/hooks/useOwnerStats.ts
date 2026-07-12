@@ -279,6 +279,44 @@ export function useOwnerCreditsByService() {
     },
   });
 }
+
+// ── Consumo de tokens LLM por usuário (tabela llm_usage; migração 20260711) ──
+// Axel Web + Axel WhatsApp (leads e admin) + geradores (generate-text/landing).
+// Campanhas ficam fora: a criação já debita créditos.
+
+export interface LlmUsageByUser {
+  professional_id: string;
+  full_name: string | null;
+  email: string | null;
+  web_calls: number;
+  web_input_tokens: number;
+  web_output_tokens: number;
+  wpp_calls: number;
+  wpp_input_tokens: number;
+  wpp_output_tokens: number;
+  gen_calls: number;
+  gen_input_tokens: number;
+  gen_output_tokens: number;
+  cached_tokens: number;
+  total_cost_usd: number;
+  last_used_at: string | null;
+  monthly_price_brl: number | null;
+}
+
+// Cotação usada SÓ para exibir o custo em R$ no admin — ajustar aqui quando necessário
+// (o banco guarda o custo em USD congelado no momento do uso).
+export const USD_BRL = 5.4;
+
+export function useOwnerLlmUsage(daysBack = 30) {
+  return useQuery({
+    queryKey: ["owner-llm-usage", daysBack],
+    queryFn: async (): Promise<LlmUsageByUser[]> => {
+      const { data, error } = await (supabase as any).rpc("owner_llm_usage_by_user", { days_back: daysBack });
+      if (error) throw error;
+      return (data ?? []) as LlmUsageByUser[];
+    },
+  });
+}
 // ── Fatia 4: Feedback + Acesso + Polish ─────────────────────────────────────
 
 export interface Feedback {

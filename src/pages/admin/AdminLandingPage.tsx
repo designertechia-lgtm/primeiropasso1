@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun, ListOrdered, ArrowUp, ArrowDown, Eye, EyeOff, Newspaper, PlayCircle, ShoppingBag, HelpCircle, Quote, Users, Target, Gift, BarChart3, Dna, Maximize2, Minimize2, Settings, FlaskConical } from "lucide-react";
+import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun, ListOrdered, ArrowUp, ArrowDown, Eye, EyeOff, Newspaper, PlayCircle, ShoppingBag, HelpCircle, Quote, Users, Target, Gift, BarChart3, Dna, Maximize2, Minimize2, Settings, FlaskConical, Briefcase } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
 import { InfoHint } from "@/components/ui/InfoHint";
@@ -43,6 +43,7 @@ import TestimonialsEditorTab from "@/components/admin/landing/TestimonialsEditor
 import TrackingEditorTab from "@/components/admin/landing/TrackingEditorTab";
 import BrandDnaEditorTab from "@/components/admin/landing/BrandDnaEditorTab";
 import AbTestEditorTab from "@/components/admin/landing/AbTestEditorTab";
+import StockGalleryHint from "@/components/admin/landing/StockGalleryHint";
 
 // ── Vídeo: detecção de arquivo direto vs embed (YouTube/Vimeo) ────────────
 // Espelha a lógica do AboutSection da landing pública, pro preview do editor
@@ -162,7 +163,8 @@ const CONTENT_SECTION_LABELS: Record<string, { label: string; icon: React.Elemen
   audience: { label: "Para quem é", icon: Users, hint: "Para quem é / para quem não é. Aparece quando você preenche a lista." },
   faq:      { label: "FAQ",       icon: HelpCircle, hint: "Perguntas frequentes. Aparece quando você adiciona perguntas." },
   content:  { label: "Conteúdos", icon: Newspaper, hint: "Aparece na página quando você publica artigos ou vídeos." },
-  products: { label: "Produtos e Serviços", icon: ShoppingBag, hint: "Aparece na página quando você cadastra produtos ou serviços." },
+  services: { label: "Sessões de terapia", icon: Briefcase, hint: "Seus atendimentos agendáveis. Aparece na página quando você cadastra ao menos uma sessão." },
+  products: { label: "Materiais e e-books", icon: ShoppingBag, hint: "E-books, PDFs e produtos. Aparece na página quando você cadastra ao menos um item." },
 };
 
 // Normaliza listas jsonb (aceita ["texto"] ou [{text}]) para string[] usada nos editores simples.
@@ -314,7 +316,6 @@ export default function AdminLandingPage() {
     },
     enabled: !!professional?.id,
   });
-  const hasPreviewProducts = previewProducts.length > 0 || previewServices.length > 0;
 
   // Depoimentos APROVADOS para o preview baterem com a pública (antes o preview mandava [] fixo — C4).
   const { data: previewTestimonials = [] } = useQuery({
@@ -491,6 +492,18 @@ export default function AdminLandingPage() {
   // action do toast da IA) para que edições pendentes disparem o aviso antes de ejetar (auditoria C2).
   const { confirmNavigation } = useUnsavedChangesGuard();
   const guardedNavigate = (to: string) => confirmNavigation(() => navigate(to));
+
+  // "Editar um vídeo meu" no dialog de vídeo institucional → abre o Editor completo
+  // do Estúdio Viral. Se o vídeo atual for um arquivo editável (não YouTube/Vimeo),
+  // já o carrega lá via ?loadurl. Passa pelo guard de "não salvo".
+  const openStudioEditor = () => {
+    const base = "/admin/redes-sociais?tab=videos&sub=editor";
+    const to = aboutVideoUrl && isDirectVideoUrl(aboutVideoUrl)
+      ? `${base}&loadurl=${encodeURIComponent(aboutVideoUrl)}`
+      : base;
+    setAboutVideoDialogOpen(false);
+    guardedNavigate(to);
+  };
 
 
   // 6 itens/cards: fecham 2 linhas cheias na grade de 3 colunas (mesmos defaults dos componentes públicos).
@@ -1101,10 +1114,16 @@ export default function AdminLandingPage() {
         node: <ContentSection articles={previewArticles as any} videos={previewVideos as any} slug={professional?.slug} whatsapp={contactWhatsapp || undefined} />,
       },
     } : {}),
-    ...(hasPreviewProducts ? {
+    ...(previewServices.length > 0 ? {
+      services: {
+        label: "Sessões de terapia", icon: Briefcase, active: activeSection === "produtos", onClick: () => selectSection("produtos"),
+        node: <ProductsSection products={[]} services={previewServices as any} slug={professional?.slug} whatsapp={contactWhatsapp || undefined} title={(professional as any)?.services_title ?? undefined} subtitle={(professional as any)?.services_subtitle ?? undefined} defaultTitle="Sessões de terapia" defaultSubtitle="Atendimentos para cuidar de você, no seu tempo." />,
+      },
+    } : {}),
+    ...(previewProducts.length > 0 ? {
       products: {
-        label: "Produtos e Serviços", icon: ShoppingBag, active: activeSection === "produtos", onClick: () => selectSection("produtos"),
-        node: <ProductsSection products={previewProducts as any} services={previewServices as any} slug={professional?.slug} whatsapp={contactWhatsapp || undefined} title={(professional as any)?.products_title ?? undefined} subtitle={(professional as any)?.products_subtitle ?? undefined} />,
+        label: "Materiais e e-books", icon: ShoppingBag, active: activeSection === "produtos", onClick: () => selectSection("produtos"),
+        node: <ProductsSection products={previewProducts as any} services={[]} slug={professional?.slug} whatsapp={contactWhatsapp || undefined} title={(professional as any)?.products_title ?? undefined} subtitle={(professional as any)?.products_subtitle ?? undefined} defaultTitle="Materiais e e-books" defaultSubtitle="Guias e materiais para levar o cuidado para casa." />,
       },
     } : {}),
   };
@@ -1275,8 +1294,13 @@ export default function AdminLandingPage() {
               );
             })}
           </div>
-          {/* abas (pills) do grupo ativo */}
-          <div className="flex flex-wrap gap-1 px-2 py-2 bg-muted/20">
+          {/* abas (pills) do grupo ativo — o rótulo do grupo à esquerda deixa claro que
+              estas pills são as seções abertas por Marca/Página/Ajustes (evita a confusão
+              de clicar num grupo e achar que "não abriu nada"). */}
+          <div className="flex flex-wrap items-center gap-1 px-2 py-2 bg-muted/20">
+            <span className="mr-1 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+              {activeTabGroup.label}:
+            </span>
             {activeTabGroup.ids.map((id) => {
               const t = EDITOR_TABS.find((x) => x.id === id);
               if (!t) return null;
@@ -1398,6 +1422,7 @@ export default function AdminLandingPage() {
               <div className="space-y-2">
                 <Label>Imagem do Hero <FieldHint text="Foto de destaque no topo da página. Se não definida, usa a foto de perfil." /></Label>
                 <ImageUpload currentUrl={heroImageUrl || null} onUploaded={setHeroImageUrl} folder="hero" variant="logo" />
+                <StockGalleryHint kind="image" />
               </div>
 
               <div className="space-y-2">
@@ -1716,6 +1741,7 @@ export default function AdminLandingPage() {
               <div className="space-y-2">
                 <Label>Imagem de apoio (opcional)</Label>
                 <ImageUpload currentUrl={villainImageUrl || null} onUploaded={setVillainImageUrl} folder="villain" variant="logo" />
+                <StockGalleryHint kind="image" />
                 {villainImageUrl && (
                   <button type="button" onClick={() => setVillainImageUrl("")} className="text-xs text-destructive hover:underline">Remover imagem</button>
                 )}
@@ -1885,6 +1911,7 @@ export default function AdminLandingPage() {
               <div className="space-y-2">
                 <Label>Imagem da seção Sobre <FieldHint text="Foto exibida na seção 'Sobre'. Se não definida, usa a foto de perfil." /></Label>
                 <ImageUpload currentUrl={aboutImageUrl || null} onUploaded={setAboutImageUrl} folder="about" variant="logo" />
+                <StockGalleryHint kind="image" />
               </div>
 
               <div className="space-y-4 border rounded-xl p-4 bg-muted/20">
@@ -2270,9 +2297,9 @@ export default function AdminLandingPage() {
           professionalId={(professional as any).id}
           professionalName={(professional as any).full_name || "Profissional"}
           photoUrl={aboutImageUrl || (professional as any).photo_url || null}
-          currentVideoUrl={aboutVideoUrl || null}
           savedVoiceId={(professional as any).elevenlabs_voice_id || null}
           onDone={setAboutVideoUrl}
+          onEditInStudio={openStudioEditor}
           initialDraftId={axelDraftId}
           initialTier={axelTier}
         />

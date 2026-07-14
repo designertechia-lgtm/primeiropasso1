@@ -31,7 +31,11 @@ export function zebraTone(index: number): SectionTone {
 
 // Seções de conteúdo entre o Hero (fixo no topo) e o Contato (fixo no fim).
 // Ordem canônica (default quando o profissional nunca reordenou). Tier Grátis (Fase 1).
-export const CONTENT_SECTION_KEYS = ["pain", "villain", "solution", "about", "offer", "testimonials", "audience", "faq", "content", "products"] as const;
+// "services" (sessões de terapia) e "products" (e-books/materiais) são seções SEPARADAS:
+// cada uma com título/subtítulo próprios e aparecendo só quando tem itens. "services" vem
+// antes na ordem canônica (é o principal). Retrocompat: quem já salvou section_order sem
+// "services" recebe a seção no fim (orderContentSections adiciona chaves novas ao final).
+export const CONTENT_SECTION_KEYS = ["pain", "villain", "solution", "about", "offer", "testimonials", "audience", "faq", "content", "services", "products"] as const;
 export type ContentSectionKey = (typeof CONTENT_SECTION_KEYS)[number];
 
 // O Hero passou a ser REORDENÁVEL (pode sair do topo). Continua não-ocultável.

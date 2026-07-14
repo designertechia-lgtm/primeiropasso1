@@ -37,11 +37,15 @@ interface ProductsSectionProps {
   // Textos editáveis da seção (professionals.products_title/subtitle); vazio usa o padrão.
   title?: string;
   subtitle?: string;
+  // Padrões desta instância (a seção é reusada para "Sessões de terapia" e "Materiais",
+  // cada uma com seu próprio texto-padrão). Vazio → cai no default genérico.
+  defaultTitle?: string;
+  defaultSubtitle?: string;
   // Quantos itens aparecem na seção da landing (a vitrine completa fica em /:slug/produtos).
   limit?: number;
 }
 
-// Defaults bem formatados (usados quando o profissional não personaliza os textos).
+// Defaults genéricos (usados quando a instância não passa defaultTitle/Subtitle).
 const DEFAULT_TITLE = "Produtos e Serviços";
 const DEFAULT_SUBTITLE = "Sessões de terapia, e-books e materiais para apoiar a sua jornada.";
 
@@ -148,7 +152,7 @@ function ItemCard({ item, whatsapp, professionalName }: { item: Unified; whatsap
   );
 }
 
-export default function ProductsSection({ products, services, slug, whatsapp, professionalName, title, subtitle, limit = 3 }: ProductsSectionProps) {
+export default function ProductsSection({ products, services, slug, whatsapp, professionalName, title, subtitle, defaultTitle, defaultSubtitle, limit = 3 }: ProductsSectionProps) {
   const items = unify(products, services);
   if (items.length === 0) return null;
 
@@ -159,10 +163,10 @@ export default function ProductsSection({ products, services, slug, whatsapp, pr
     <div className="container mx-auto px-4 md:px-8">
       <div className="max-w-2xl mx-auto text-center mb-12">
         <h2 className="font-heading text-3xl md:text-4xl font-bold text-foreground mb-4">
-          {title?.trim() || DEFAULT_TITLE}
+          {title?.trim() || defaultTitle || DEFAULT_TITLE}
         </h2>
         <p className="text-muted-foreground text-lg">
-          {subtitle?.trim() || DEFAULT_SUBTITLE}
+          {subtitle?.trim() || defaultSubtitle || DEFAULT_SUBTITLE}
         </p>
       </div>
 

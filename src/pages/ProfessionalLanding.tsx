@@ -314,6 +314,9 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
   const hasAudience = Array.isArray(p.audience_for) && p.audience_for.length > 0;
   const hasFaq = Array.isArray(p.faq_items) && p.faq_items.length > 0;
   const showTestimonials = !!p.testimonials_enabled; // liga/desliga explícito na aba Depoimentos
+  // Seções SEPARADAS: sessões de terapia e produtos/materiais aparecem cada uma por conta própria.
+  const hasServices = services.length > 0;
+  const hasProdItems = products.length > 0;
 
   // Seções de conteúdo entre o Hero e o Contato, como DADOS (mapa key → nó). O profissional pode
   // reordenar e ocultar (tier Grátis, Fase 1): section_order define a ordem, section_hidden remove.
@@ -322,6 +325,7 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
   const sectionMeta: Record<string, { id?: string; clip?: boolean }> = {
     about: { id: "about", clip: false },
     content: { id: "content" },
+    services: { id: "servicos" },
     products: { id: "produtos" },
     villain: { id: "villain" },
     offer: { id: "oferta" },
@@ -447,17 +451,36 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
           ),
         }
       : {}),
-    ...(hasProducts
+    ...(hasServices
+      ? {
+          services: (
+            <ProductsSection
+              products={[]}
+              services={services as any}
+              slug={professional.slug}
+              whatsapp={professional.whatsapp}
+              professionalName={name}
+              title={(professional as any).services_title ?? undefined}
+              subtitle={(professional as any).services_subtitle ?? undefined}
+              defaultTitle="Sessões de terapia"
+              defaultSubtitle="Atendimentos para cuidar de você, no seu tempo."
+            />
+          ),
+        }
+      : {}),
+    ...(hasProdItems
       ? {
           products: (
             <ProductsSection
               products={products as any}
-              services={services as any}
+              services={[]}
               slug={professional.slug}
               whatsapp={professional.whatsapp}
               professionalName={name}
               title={(professional as any).products_title ?? undefined}
               subtitle={(professional as any).products_subtitle ?? undefined}
+              defaultTitle="Materiais e e-books"
+              defaultSubtitle="Guias e materiais para levar o cuidado para casa."
             />
           ),
         }

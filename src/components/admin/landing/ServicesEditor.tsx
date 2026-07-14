@@ -14,6 +14,7 @@ import { Plus, Pencil, Trash2, Clock, Briefcase } from "lucide-react";
 import { FieldHint } from "@/components/ui/FieldHint";
 import { formatPrice } from "@/components/landing/ProductsSection";
 import ImageUpload from "@/components/dashboard/ImageUpload";
+import StockGalleryHint from "@/components/admin/landing/StockGalleryHint";
 
 type CheckoutMode = "schedule" | "pay" | "both";
 
@@ -37,6 +38,26 @@ const emptyForm: ServiceForm = {
   active: true,
   checkout_mode: "both",
 };
+
+// duration_minutes é NOT NULL no banco. O campo aceita texto livre, então algo como
+// "50 min" faria Number(...) virar NaN → null → o INSERT falhava com violação de
+// not-null (causa real do "não consegui salvar" da Daia). Extrai só os dígitos e cai
+// no padrão 50 quando o valor não é um número válido.
+function parseDuration(raw: string): number {
+  const n = parseInt(raw.replace(/[^\d]/g, ""), 10);
+  return Number.isFinite(n) && n > 0 ? n : 50;
+}
+
+// Preço é opcional (null = "Sob consulta"). Aceita "150", "150,00" e "1.500,00":
+// quando há vírgula ela é o separador decimal (pt-BR) e os pontos são de milhar.
+function parsePrice(raw: string): number | null {
+  const s = raw.trim();
+  if (!s) return null;
+  let cleaned = s.replace(/[^\d.,]/g, "");
+  if (cleaned.includes(",")) cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
 
 // CRUD das sessões de terapia (tabela professional_services) — o serviço principal da plataforma.
 // São os mesmos serviços usados no agendamento; o RLS "Professionals can manage own services" já permite.
@@ -95,8 +116,8 @@ export default function ServicesEditor() {
       professional_id: professional.id,
       name: form.name.trim(),
       description: form.description.trim() || null,
-      duration_minutes: form.duration_minutes.trim() ? Number(form.duration_minutes) : 50,
-      price: form.price.trim() ? Number(form.price.replace(",", ".")) : null,
+      duration_minutes: parseDuration(form.duration_minutes),
+      price: parsePrice(form.price),
       cover_image_url: form.cover_image_url || null,
       active: form.active,
       checkout_mode: form.checkout_mode,
@@ -187,6 +208,7 @@ export default function ServicesEditor() {
                 folder="services"
                 variant="wide"
               />
+              <StockGalleryHint kind="image" />
             </div>
 
             <div className="space-y-2">

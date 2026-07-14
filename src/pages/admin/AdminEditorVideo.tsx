@@ -3,6 +3,17 @@
  * áudio posicionados (motor próprio no video-api, código SEPARADO do
  * Institucional e do Criar Vídeo).
  *
+ * Fundações (Carlos 14/07 — Fase 0 do plano de evolução):
+ *   - MODELO DE DOCUMENTO: todo o conteúdo da edição vive num EditorDoc único
+ *     (editor/documentReducer.ts). O Desfazer agora cobre a edição INTEIRA
+ *     (antes só os cortes) e o payload do render nasce de editor/serialize.ts
+ *     — persistência, prévia e render leem a mesma fonte.
+ *   - PROJETOS NO BANCO: a edição é salva com debounce na tabela
+ *     editor_projects (além do cache no navegador) — dá pra trocar de máquina
+ *     e manter vários projetos ("Meus projetos" na Biblioteca).
+ *   - CONTRATO VERSIONADO com o worker (/editor/capabilities) e uploads
+ *     autenticados (o worker passou a exigir sessão nos uploads).
+ *
  * Novidades (Carlos 10/07):
  *   - STICKERS/sobreposições: png/gif/webm-alpha sobre o vídeo, com faixa
  *     própria na timeline (mover/esticar), arrasto no player pra posicionar,
@@ -14,12 +25,8 @@
  *   - Preview COLADO na timeline (mesmo card) + "prévia da edição": ao dar
  *     play, os trechos removidos são PULADOS — você vê como fica antes de
  *     renderizar.
- *   - PERSISTÊNCIA: toda a edição (cortes, música, legendas, textos, estilos)
- *     é salva no navegador a cada mudança e restaurada ao voltar; o vídeo é
- *     servido pelo backend (GET /editor/video/{id}), então sobrevive a F5 —
- *     inclusive uploads. Se o arquivo expirar no servidor, aviso claro.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useProfessional } from "@/hooks/useProfessional";
@@ -33,104 +40,64 @@ import { toast } from "sonner";
 import {
   Scissors, Play, Pause, Loader2, Music, Upload, Film, Trash2, Undo2,
   CheckCircle2, AlertCircle, Video as VideoIcon, Captions, Wand2, RotateCcw,
+  FolderOpen,
 } from "lucide-react";
 import { videoApiAuthHeaders } from "@/lib/videoApi";
-
-const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
-const EDITOR_STORAGE_KEY = "pp-editor-video";
-
-type Segment = { id: number; start: number; end: number; keep: boolean };
-type EditMeta = { edit_id: string; duration: number; width: number; height: number; has_audio: boolean; thumbs: string[]; preview_url?: string };
-type Cue = { start: number; end: number; text: string };
-type SubSize = "p" | "m" | "g" | "xg";
-type SubStyle = "outline" | "box";
-type SubPos = "bottom" | "center" | "top";
-// Textos aceitam também o canto esquerdo (estilo selo/lower-third — Carlos 06/07)
-type TitlePos = SubPos | "left-bottom" | "left-center" | "left-top";
-type Title = { start: number; end: number; text: string; font_id: string; size: SubSize; color: string; style: SubStyle; position: TitlePos };
-
-// Stickers/sobreposições (Carlos 10/07): imagem, GIF ou WebM-alpha sobre o
-// vídeo, com posição (centro em % da tela), tamanho, movimento e loop.
-type StickerMovement = "none" | "walk-right" | "walk-left";
-type Sticker = {
-  id: number; upload_id: string; name: string; animated: boolean;
-  natural_dur: number; start: number; end: number;
-  x_pct: number; y_pct: number; scale_pct: number;
-  movement: StickerMovement; loop: boolean; flip: boolean;
-};
-// Clipes de áudio POSICIONADOS (efeito sonoro/narração em ponto exato) —
-// diferentes da trilha global: cada um tem início/fim/volume próprios.
-type AudioClip = {
-  id: number; upload_id: string; name: string; natural_dur: number;
-  start: number; end: number; volume: number;
-};
-// Job de geração de sticker por IA — persistido pra sobreviver à navegação
-type StickerJob = { job_id: string; at: number; desc: string };
-
-const STICKER_SIZES: { value: number; label: string }[] = [
-  { value: 0.12, label: "P" }, { value: 0.22, label: "M" },
-  { value: 0.32, label: "G" }, { value: 0.45, label: "XG" },
-];
-const STICKER_POSITIONS = [
-  { key: "id", label: "Canto inf. direito", x: 0.84, y: 0.76 },
-  { key: "ie", label: "Canto inf. esquerdo", x: 0.16, y: 0.76 },
-  { key: "sd", label: "Canto sup. direito", x: 0.84, y: 0.18 },
-  { key: "se", label: "Canto sup. esquerdo", x: 0.16, y: 0.18 },
-  { key: "c", label: "Centro", x: 0.5, y: 0.5 },
-  { key: "cb", label: "Centro embaixo", x: 0.5, y: 0.78 },
-];
-
-const SUB_PRESETS = [
-  { label: "🔥 Viral amarelo", font: "anton", size: "g" as SubSize, color: "#FFE14D", style: "box" as SubStyle, pos: "bottom" as SubPos },
-  { label: "✨ Clean branco", font: "poppins", size: "m" as SubSize, color: "#FFFFFF", style: "outline" as SubStyle, pos: "bottom" as SubPos },
-  { label: "📱 TikTok caixa", font: "bevietnam", size: "g" as SubSize, color: "#FFFFFF", style: "box" as SubStyle, pos: "bottom" as SubPos },
-  { label: "🎬 Cinema", font: "bebas", size: "m" as SubSize, color: "#F5F5F5", style: "outline" as SubStyle, pos: "bottom" as SubPos },
-];
-
-// Espelho do agrupamento do backend — reagrupa words em cues sem nova transcrição
-const groupWords = (ws: Cue[], mode: "frases" | "karaoke"): Cue[] => {
-  const maxW = mode === "karaoke" ? 3 : 6;
-  const maxC = mode === "karaoke" ? 22 : 42;
-  const cues: Cue[] = [];
-  let cur: Cue[] = [];
-  const flush = () => {
-    if (cur.length) cues.push({ start: cur[0].start, end: cur[cur.length - 1].end, text: cur.map((x) => x.text).join(" ") });
-    cur = [];
-  };
-  for (const w of ws) {
-    if (cur.length && (cur.length >= maxW || w.start - cur[cur.length - 1].end > 0.6 ||
-        cur.reduce((a, x) => a + x.text.length + 1, 0) + w.text.length > maxC)) flush();
-    cur.push(w);
-  }
-  flush();
-  return cues;
-};
-
-const fmt = (s: number) => {
-  const m = Math.floor(s / 60);
-  const ss = s % 60;
-  return `${m}:${ss.toFixed(1).padStart(4, "0")}`;
-};
-const parseTime = (v: string): number | null => {
-  const t = v.trim().replace(",", ".");
-  if (/^\d+(\.\d+)?$/.test(t)) return parseFloat(t);
-  const m = t.match(/^(\d+):(\d{1,2}(\.\d+)?)$/);
-  if (m) return parseInt(m[1]) * 60 + parseFloat(m[2]);
-  return null;
-};
+import {
+  API, EDITOR_STORAGE_KEY, EDITOR_CONTRACT_VERSION,
+  STICKER_SIZES, STICKER_POSITIONS, SUB_PRESETS,
+  groupWords, fmt, parseTime, newId,
+  type Segment, type EditMeta, type SubSize, type SubStyle, type SubPos,
+  type TitlePos, type Sticker, type StickerMovement, type StickerJob,
+} from "./editor/types";
+import {
+  editorReducer, initialEditorState, type EditorDoc,
+} from "./editor/documentReducer";
+import {
+  buildRenderPayload, snapshotFromStored, type ProjectSnapshot,
+} from "./editor/serialize";
+import {
+  listEditorProjects, fetchEditorProject, insertEditorProject,
+  updateEditorProject, deleteEditorProject,
+} from "./editor/projects";
 
 export default function AdminEditorVideo() {
   const { data: professional } = useProfessional();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
+  // ── documento da edição (fonte única de verdade + undo genérico) ──────────
+  const [state, dispatch] = useReducer(editorReducer, initialEditorState);
+  const doc = state.doc;
+  const {
+    segments, musicId, musicUploadId, musicUploadName, musicVolume,
+    originalVolume, fadeOut, subsOn, cues, words, cueMode, subFont, subSize,
+    subColor, subStyle, subPos, titles, stickers, audioClips, transition,
+    ducking, punchIn, introOn, introSource, introUploadId, introUploadName,
+    introDur, introBg, introEffect, titulo,
+  } = doc;
+  const patch = (changes: Partial<EditorDoc>) => dispatch({ type: "patch", changes });
+  const apply = (fn: (d: EditorDoc) => Partial<EditorDoc>) => dispatch({ type: "apply", fn });
+  const update = (changes: Partial<EditorDoc>) => dispatch({ type: "update", changes });
+  const applyLive = (fn: (d: EditorDoc) => Partial<EditorDoc>) => dispatch({ type: "applyLive", fn });
+  const checkpoint = () => dispatch({ type: "checkpoint" });
+  const undo = () => dispatch({ type: "undo" });
+
+  // ── estado de sessão (fonte, projeto, jobs, UI) ────────────────────────────
   const [meta, setMeta] = useState<EditMeta | null>(null);
   const [previewSrc, setPreviewSrc] = useState("");
   const [loadingSource, setLoadingSource] = useState(false);
   const [sourceLabel, setSourceLabel] = useState("");
+  // URL re-carregável da fonte (galeria/draft) — reabre projeto com draft expirado
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [projectId, setProjectId] = useState<number | null>(null);
+  const [projectName, setProjectName] = useState("");
+  const [savedAt, setSavedAt] = useState("");
+  const [saveError, setSaveError] = useState(false);
+  // fonte expirou no servidor e não foi recuperável — o próximo upload REANEXA
+  // a fonte ao projeto preservando as edições (em vez de zerar o doc)
+  const [fonteExpirada, setFonteExpirada] = useState(false);
 
-  const [segments, setSegments] = useState<Segment[]>([]);
-  const [history, setHistory] = useState<Segment[][]>([]);
   const [playhead, setPlayhead] = useState(0);
   const [startField, setStartField] = useState("");
   const [endField, setEndField] = useState("");
@@ -139,33 +106,14 @@ export default function AdminEditorVideo() {
   const [previewEdit, setPreviewEdit] = useState(true);   // play pula trechos removidos
 
   const [musicas, setMusicas] = useState<{ id: string; label: string }[]>([]);
-  const [musicId, setMusicId] = useState("");
-  const [musicUploadId, setMusicUploadId] = useState("");
-  const [musicUploadName, setMusicUploadName] = useState("");
-  const [musicVolume, setMusicVolume] = useState(20);
-  const [originalVolume, setOriginalVolume] = useState(100);
-  const [fadeOut, setFadeOut] = useState(true);
   const [previewingTrack, setPreviewingTrack] = useState("");
-
   const [fontes, setFontes] = useState<{ id: string; label: string }[]>([]);
-  const [subsOn, setSubsOn] = useState(false);
-  const [cues, setCues] = useState<Cue[]>([]);
-  const [words, setWords] = useState<Cue[]>([]);
-  const [cueMode, setCueMode] = useState<"frases" | "karaoke">("frases");
   const [transcribing, setTranscribing] = useState(false);
-  const [subFont, setSubFont] = useState("bevietnam");
-  const [subSize, setSubSize] = useState<SubSize>("m");
-  const [subColor, setSubColor] = useState("#FFFFFF");
-  const [subStyle, setSubStyle] = useState<SubStyle>("outline");
-  const [subPos, setSubPos] = useState<SubPos>("bottom");
   const [loadedFonts, setLoadedFonts] = useState<Set<string>>(new Set());
 
-  const [titles, setTitles] = useState<Title[]>([]);
   const [newTitle, setNewTitle] = useState("");
   const [newTitleDur, setNewTitleDur] = useState(3);
 
-  const [stickers, setStickers] = useState<Sticker[]>([]);
-  const [audioClips, setAudioClips] = useState<AudioClip[]>([]);
   const [uploadingSticker, setUploadingSticker] = useState(false);
   const [uploadingClip, setUploadingClip] = useState(false);
   const [iaDesc, setIaDesc] = useState("");
@@ -174,25 +122,12 @@ export default function AdminEditorVideo() {
   const [stickerJob, setStickerJob] = useState<StickerJob | null>(null);
   const [videoBox, setVideoBox] = useState({ w: 0, h: 0 });
 
-  const [transition, setTransition] = useState<"none" | "fade">("none");
-  const [ducking, setDucking] = useState(true);
-  const [punchIn, setPunchIn] = useState(false);
-
-  // capa de entrada (logo)
-  const [introOn, setIntroOn] = useState(false);
-  const [introSource, setIntroSource] = useState<"perfil" | "upload">("perfil");
-  const [introUploadId, setIntroUploadId] = useState("");
-  const [introUploadName, setIntroUploadName] = useState("");
-  const [introDur, setIntroDur] = useState(2);
-  const [introBg, setIntroBg] = useState("#FFFFFF");
-  const [introEffect, setIntroEffect] = useState<"zoom" | "slide" | "fade">("zoom");
   const perfilLogo = ((professional as any)?.logo_url as string) || "";
 
   const [aiCutText, setAiCutText] = useState("");
   const [aiCutting, setAiCutting] = useState(false);
   const [exporting, setExporting] = useState("");
 
-  const [titulo, setTitulo] = useState("");
   const [rendering, setRendering] = useState(false);
   const [renderJobId, setRenderJobId] = useState("");   // persiste: retoma o acompanhamento ao voltar
   const [renderStep, setRenderStep] = useState("");
@@ -207,10 +142,19 @@ export default function AdminEditorVideo() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const videoWrapRef = useRef<HTMLDivElement>(null);
   const metaRef = useRef<EditMeta | null>(null);
-  const clipAudiosRef = useRef<Map<number, HTMLAudioElement>>(new Map());
-  const trackDragRef = useRef<{ kind: "sticker" | "audio"; id: number; mode: "move" | "resize"; grab: number } | null>(null);
-  const stickerDragRef = useRef<number | null>(null);
+  const clipAudiosRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const trackDragRef = useRef<{ kind: "sticker" | "audio"; id: string; mode: "move" | "resize"; grab: number } | null>(null);
+  const stickerDragRef = useRef<string | null>(null);
   const stickerPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const criandoProjetoRef = useRef(false);
+  // token de geração da sessão de edição: invalida callbacks assíncronos
+  // (insert de projeto em voo) quando o usuário troca de projeto no meio
+  const sessionSeqRef = useRef(0);
+  // há edição ainda não gravada no banco (para o flush em trocas/unmount)
+  const dirtyRef = useRef(false);
+  // componente montado? (o save de unmount não pode fazer setState)
+  const mountedRef = useRef(true);
 
   const { data: videos = [] } = useQuery({
     queryKey: ["admin-videos", professional?.id],
@@ -227,9 +171,26 @@ export default function AdminEditorVideo() {
     (v) => v.embed_url && !/youtube|youtu\.be/i.test(v.embed_url),
   );
 
+  // Projetos salvos no banco (editor_projects — RLS do próprio usuário)
+  const { data: projects = [] } = useQuery({
+    queryKey: ["editor-projects"],
+    queryFn: listEditorProjects,
+    enabled: !!professional?.id,
+  });
+
   useEffect(() => {
     fetch(`${API}/editor/musicas`).then((r) => r.json()).then((d) => setMusicas(d.musicas || [])).catch(() => {});
     fetch(`${API}/editor/fontes`).then((r) => r.json()).then((d) => setFontes(d.fontes || [])).catch(() => {});
+    // Contrato front↔worker: worker mais velho que o front recusa o render com
+    // mensagem clara em vez de ignorar campos em silêncio (incidente Rodada 8)
+    fetch(`${API}/editor/capabilities`)
+      .then((r) => (r.ok ? r.json() : { contract_version: 1 }))
+      .then((d) => {
+        if ((d.contract_version ?? 1) < EDITOR_CONTRACT_VERSION) {
+          console.warn("[editor] worker com contrato antigo:", d.contract_version);
+        }
+      })
+      .catch(() => {});
     const clipEls = clipAudiosRef.current;
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
@@ -291,14 +252,18 @@ export default function AdminEditorVideo() {
           const m = metaRef.current;
           if (m) {
             const dur = Math.max(4, Number(st.duration) || 5);
-            setStickers((prev) => [...prev, {
-              id: Date.now(), upload_id: st.sticker_upload_id,
-              name: `✨ ${job.desc.slice(0, 24)}`, animated: true,
-              natural_dur: Number(st.duration) || 5,
-              start: job.at, end: Math.min(m.duration, job.at + dur),
-              x_pct: 0.84, y_pct: 0.76, scale_pct: 0.26,
-              movement: walk ? "walk-right" : "none", loop: true, flip: false,
-            }]);
+            // id gerado FORA do reducer (função do reducer precisa ser pura)
+            const sid = newId();
+            apply((d) => ({
+              stickers: [...d.stickers, {
+                id: sid, upload_id: st.sticker_upload_id,
+                name: `✨ ${job.desc.slice(0, 24)}`, animated: true,
+                natural_dur: Number(st.duration) || 5,
+                start: job.at, end: Math.min(m.duration, job.at + dur),
+                x_pct: 0.84, y_pct: 0.76, scale_pct: 0.26,
+                movement: walk ? "walk-right" : "none", loop: true, flip: false,
+              }],
+            }));
           }
           toast.success("Sticker gerado com fundo transparente! Já está na timeline — arraste no player para posicionar.", { duration: 9000 });
         } else if (st.status === "error") {
@@ -308,6 +273,45 @@ export default function AdminEditorVideo() {
         }
       } catch { /* transitório */ }
     }, 3000);
+  };
+
+  // Aplica um snapshot completo (restore do navegador OU projeto do banco)
+  const aplicarSnapshot = (s: ProjectSnapshot, extra?: { projectId?: number | null; projectName?: string }) => {
+    // invalida callbacks da sessão anterior e mata os pollings dela — sem isso
+    // o resultado do render do projeto A era gravado dentro do projeto B
+    sessionSeqRef.current++;
+    if (pollRef.current) clearInterval(pollRef.current);
+    if (stickerPollRef.current) clearInterval(stickerPollRef.current);
+    setSavedAt(""); setSaveError(false); setFonteExpirada(false);
+    const m = s.meta!;
+    setMeta(m);
+    setPreviewSrc(m.preview_url || `${API}/editor/video/${m.edit_id}`);
+    setSourceLabel(s.sourceLabel || "");
+    setSourceUrl(s.sourceUrl || m.preview_url || "");
+    setResultUrl(s.resultUrl || "");
+    setPlayhead(0);
+    setProjectId(extra?.projectId !== undefined ? extra.projectId : s.projectId);
+    setProjectName(extra?.projectName !== undefined ? extra.projectName : (s.projectName || ""));
+    const d: EditorDoc = { ...s.doc };
+    if (!d.segments.length) d.segments = [{ id: 1, start: 0, end: m.duration, keep: true }];
+    dispatch({ type: "reset", doc: d });
+    if (s.stickerJob?.job_id) {
+      // geração de sticker em andamento — retoma o acompanhamento
+      setStickerJob(s.stickerJob);
+      setIaStep("Retomando a geração do sticker...");
+      pollStickerJob(s.stickerJob);
+    } else {
+      setStickerJob(null); setIaStep("");
+    }
+    if (s.renderJobId) {
+      // havia uma renderização em andamento — RETOMA o acompanhamento
+      setRenderJobId(s.renderJobId);
+      setRendering(true);
+      setRenderStep("Retomando o acompanhamento...");
+      pollRender(s.renderJobId);
+    } else {
+      setRenderJobId(""); setRendering(false);
+    }
   };
 
   // Carregar um vídeo direto no editor — tem prioridade sobre a restauração da
@@ -340,10 +344,14 @@ export default function AdminEditorVideo() {
       const fd = new FormData();
       fd.append("video_url", embedUrl);
       try {
-        const saved = JSON.parse(localStorage.getItem(EDITOR_STORAGE_KEY) || "null");
-        if (saved?.meta?.edit_id) fd.append("replace_edit_id", saved.meta.edit_id);
+        const saved = snapshotFromStored(JSON.parse(localStorage.getItem(EDITOR_STORAGE_KEY) || "null"));
+        // Só descarta o draft anterior se a edição NÃO era um projeto salvo —
+        // o draft de um projeto pertence a ele (reabre por Meus projetos).
+        if (saved?.meta?.edit_id && saved.projectId == null) {
+          fd.append("replace_edit_id", saved.meta.edit_id);
+        }
       } catch { /* sem draft anterior */ }
-      await carregar(fd, title);
+      await carregar(fd, title, embedUrl);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -355,49 +363,22 @@ export default function AdminEditorVideo() {
         if (searchParams.get("load") || searchParams.get("loadurl")) return;   // o efeito do load assume
         const raw = localStorage.getItem(EDITOR_STORAGE_KEY);
         if (!raw) { restoredRef.current = true; return; }
-        const s = JSON.parse(raw);
-        if (!s?.meta?.edit_id) { restoredRef.current = true; return; }
+        const snap = snapshotFromStored(JSON.parse(raw));
+        if (!snap?.meta?.edit_id) { restoredRef.current = true; return; }
         // Ping NÃO-destrutivo: só descarta com 404 EXPLÍCITO (arquivo realmente
         // morto). Servidor ocupado/rede instável → restaura mesmo assim.
-        const head = await fetch(`${API}/editor/video/${s.meta.edit_id}`, { method: "HEAD" }).catch(() => null);
+        const head = await fetch(`${API}/editor/video/${snap.meta.edit_id}`, { method: "HEAD" }).catch(() => null);
         if (head && head.status === 404) {
           localStorage.removeItem(EDITOR_STORAGE_KEY);
-          toast.info("A edição anterior expirou no servidor — carregue o vídeo de novo.", { duration: 8000 });
+          toast.info("A edição anterior expirou no servidor — reabra pelo card Meus projetos ou carregue o vídeo de novo.", { duration: 8000 });
           restoredRef.current = true;
           return;
         }
         if (!head || !head.ok) {
           toast.info("O servidor está ocupado — restaurei suas edições; o vídeo pode demorar um pouco pra carregar.", { duration: 8000 });
         }
-        setMeta(s.meta);
-        setPreviewSrc(s.meta.preview_url || `${API}/editor/video/${s.meta.edit_id}`);
-        setSourceLabel(s.sourceLabel || "");
-        setSegments(s.segments?.length ? s.segments : [{ id: 1, start: 0, end: s.meta.duration, keep: true }]);
-        setMusicId(s.musicId || ""); setMusicUploadId(s.musicUploadId || ""); setMusicUploadName(s.musicUploadName || "");
-        setMusicVolume(s.musicVolume ?? 20); setOriginalVolume(s.originalVolume ?? 100); setFadeOut(s.fadeOut ?? true);
-        setSubsOn(!!s.subsOn); setCues(s.cues || []); setWords(s.words || []); setCueMode(s.cueMode || "frases");
-        setSubFont(s.subFont || "bevietnam"); setSubSize(s.subSize || "m"); setSubColor(s.subColor || "#FFFFFF");
-        setSubStyle(s.subStyle || "outline"); setSubPos(s.subPos || "bottom");
-        setTitles(s.titles || []); setTransition(s.transition || "none");
-        setStickers(s.stickers || []); setAudioClips(s.audioClips || []);
-        setDucking(s.ducking ?? true); setPunchIn(!!s.punchIn); setTitulo(s.titulo || "");
-        setIntroOn(!!s.introOn); setIntroSource(s.introSource || "perfil");
-        setIntroUploadId(s.introUploadId || ""); setIntroUploadName(s.introUploadName || "");
-        setIntroDur(s.introDur ?? 2); setIntroBg(s.introBg || "#FFFFFF");
-        setIntroEffect(s.introEffect || "zoom");
-        setResultUrl(s.resultUrl || "");
-        if (s.stickerJob?.job_id) {
-          // geração de sticker em andamento — retoma o acompanhamento
-          setStickerJob(s.stickerJob);
-          setIaStep("Retomando a geração do sticker...");
-          pollStickerJob(s.stickerJob);
-        }
-        if (s.renderJobId) {
-          // havia uma renderização em andamento — RETOMA o acompanhamento
-          setRenderJobId(s.renderJobId);
-          setRendering(true);
-          setRenderStep("Retomando o acompanhamento...");
-          pollRender(s.renderJobId);
+        aplicarSnapshot(snap);
+        if (snap.renderJobId) {
           toast.info("Sua renderização continuou no servidor — acompanhando de novo.", { duration: 7000 });
         } else {
           toast.success("Edição anterior restaurada — continue de onde parou.");
@@ -408,25 +389,112 @@ export default function AdminEditorVideo() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Snapshot completo do projeto (o que vai pro navegador E pro banco)
+  const snapshot: ProjectSnapshot = useMemo(() => ({
+    v: 2, meta, sourceLabel, sourceUrl, resultUrl, renderJobId, stickerJob,
+    projectId, projectName, doc,
+  }), [meta, sourceLabel, sourceUrl, resultUrl, renderJobId, stickerJob,
+       projectId, projectName, doc]);
+
+  // Cache local (sobrevive a F5 — comportamento original)
   useEffect(() => {
     if (!restoredRef.current) return;
     if (!meta) { localStorage.removeItem(EDITOR_STORAGE_KEY); return; }
     try {
-      localStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify({
-        meta, sourceLabel, segments, musicId, musicUploadId, musicUploadName,
-        musicVolume, originalVolume, fadeOut, subsOn, cues, words, cueMode,
-        subFont, subSize, subColor, subStyle, subPos, titles, transition,
-        ducking, punchIn, titulo, resultUrl, renderJobId,
-        introOn, introSource, introUploadId, introUploadName, introDur, introBg, introEffect,
-        stickers, audioClips, stickerJob,
-      }));
+      localStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(snapshot));
     } catch { /* localStorage cheio — ignora */ }
-  }, [meta, sourceLabel, segments, musicId, musicUploadId, musicUploadName,
-      musicVolume, originalVolume, fadeOut, subsOn, cues, words, cueMode,
-      subFont, subSize, subColor, subStyle, subPos, titles, transition,
-      ducking, punchIn, titulo, resultUrl, renderJobId,
-      introOn, introSource, introUploadId, introUploadName, introDur, introBg, introEffect,
-      stickers, audioClips, stickerJob]);
+  }, [snapshot, meta]);
+
+  // snapshot mais recente acessível em callbacks (flush/unmount)
+  const snapshotRef = useRef(snapshot);
+  useEffect(() => { snapshotRef.current = snapshot; }, [snapshot]);
+
+  // Grava o snapshot no banco AGORA. Best-effort — falha de rede não trava a
+  // edição (o cache local segura), mas o indicador passa a acusar dessincronia.
+  const salvarAgora = async (snap: ProjectSnapshot) => {
+    if (!snap.meta) return;
+    // insert em voo: NÃO marca como salvo (dirty fica de pé pro próximo ciclo)
+    if (snap.projectId == null && criandoProjetoRef.current) return;
+    dirtyRef.current = false;
+    const name = (snap.projectName || snap.sourceLabel || "Edição").slice(0, 80);
+    try {
+      if (snap.projectId == null) {
+        criandoProjetoRef.current = true;
+        const seq = sessionSeqRef.current;
+        try {
+          const id = await insertEditorProject(name, snap);
+          if (sessionSeqRef.current !== seq) {
+            // o usuário trocou de contexto enquanto o insert corria — a linha
+            // já guarda a edição: vira um projeto na lista (nada se perde),
+            // só não pode roubar o projectId do contexto atual
+            queryClient.invalidateQueries({ queryKey: ["editor-projects"] });
+            return;
+          }
+          if (!mountedRef.current) {
+            // save de unmount: sem setState — grava o id direto no cache local
+            // pra volta ao editor NÃO inserir uma segunda linha do mesmo projeto
+            try {
+              const raw = JSON.parse(localStorage.getItem(EDITOR_STORAGE_KEY) || "null");
+              if (raw?.meta?.edit_id === snap.meta.edit_id) {
+                localStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify({
+                  ...raw, projectId: id, projectName: raw.projectName || name,
+                }));
+              }
+            } catch { /* cache local indisponível — a lista ainda mostra o projeto */ }
+            queryClient.invalidateQueries({ queryKey: ["editor-projects"] });
+            return;
+          }
+          setProjectId(id);
+          if (!snap.projectName) setProjectName(name);
+          queryClient.invalidateQueries({ queryKey: ["editor-projects"] });
+        } finally {
+          criandoProjetoRef.current = false;
+        }
+      } else {
+        await updateEditorProject(snap.projectId, name, snap);
+        queryClient.invalidateQueries({ queryKey: ["editor-projects"] });
+      }
+      if (mountedRef.current) {
+        setSaveError(false);
+        setSavedAt(new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }));
+      }
+    } catch (e) {
+      console.warn("[editor] salvar projeto no banco falhou (cache local ok)", e);
+      dirtyRef.current = true;
+      if (mountedRef.current) setSaveError(true);
+    }
+  };
+
+  // Descarrega o save pendente ANTES de trocar de contexto (abrir outro
+  // projeto, novo projeto, sair da tela) — sem isso as edições dos últimos
+  // 2,5s morriam com o timer do debounce.
+  const flushSave = async () => {
+    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+    if (dirtyRef.current && snapshotRef.current.meta) await salvarAgora(snapshotRef.current);
+  };
+
+  // Projeto no banco (debounce): cria na primeira edição, depois atualiza.
+  useEffect(() => {
+    if (!restoredRef.current || !meta) return;
+    dirtyRef.current = true;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      salvarAgora(snapshotRef.current);
+    }, 2500);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshot]);
+
+  // Unmount (trocar de aba do admin): dispara o save pendente na hora
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (dirtyRef.current && snapshotRef.current.meta) salvarAgora(snapshotRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Prévia da trilha respeita o slider em tempo real
   useEffect(() => {
@@ -443,44 +511,97 @@ export default function AdminEditorVideo() {
     }).catch(() => {});
   }, [subFont, loadedFonts]);
 
-  const resetEditor = (m: EditMeta, label: string) => {
+  const resetEditor = (m: EditMeta, label: string, srcUrl: string) => {
     setMeta(m);
     // preview pela CDN do Storage (inicia mais rápido); fallback = worker
     setPreviewSrc(m.preview_url || `${API}/editor/video/${m.edit_id}`);
     setSourceLabel(label);
-    setSegments([{ id: 1, start: 0, end: m.duration, keep: true }]);
-    setHistory([]); setPlayhead(0); setResultUrl(""); setCues([]); setWords([]);
-    setSubsOn(false); setTitles([]);
-    setStickers([]); setAudioClips([]);
+    setSourceUrl(srcUrl || m.preview_url || "");
+    setPlayhead(0); setResultUrl(""); setFonteExpirada(false);
+    dispatch({ type: "resetSource", duration: m.duration });
     clipAudiosRef.current.forEach((el) => el.pause());
     clipAudiosRef.current.clear();
   };
 
   const recomecar = () => {
-    if (!confirm("Descartar esta edição e recomeçar?")) return;
+    if (!confirm(projectId
+      ? "Descartar esta edição e excluir o projeto salvo?"
+      : "Descartar esta edição e recomeçar?")) return;
     if (meta?.edit_id) {
       // limpa o arquivo de trabalho no servidor (tmp + Storage) — best-effort
       fetch(`${API}/editor/descartar/${meta.edit_id}`, { method: "DELETE" }).catch(() => {});
     }
-    setMeta(null); setPreviewSrc(""); setSourceLabel(""); setSegments([]); setHistory([]);
-    setCues([]); setWords([]); setTitles([]); setResultUrl(""); setSubsOn(false);
-    setRenderJobId("");
-    setStickers([]); setAudioClips([]); setStickerJob(null); setIaStep("");
+    if (projectId != null) {
+      deleteEditorProject(projectId)
+        .then(() => queryClient.invalidateQueries({ queryKey: ["editor-projects"] }))
+        .catch(() => toast.error("Não consegui excluir o projeto salvo — exclua pelo card Meus projetos.", { duration: 8000 }));
+    }
+    dirtyRef.current = false;   // edição descartada de propósito — nada a salvar
+    limparEditor();
+  };
+
+  // Limpa o estado local SEM mexer no servidor/banco (base do Recomeçar e do
+  // Novo projeto — o Novo preserva o projeto anterior salvo)
+  const limparEditor = () => {
+    sessionSeqRef.current++;
+    setMeta(null); setPreviewSrc(""); setSourceLabel(""); setSourceUrl("");
+    setResultUrl(""); setRenderJobId(""); setRendering(false);
+    setProjectId(null); setProjectName(""); setSavedAt(""); setSaveError(false);
+    setFonteExpirada(false);
+    setStickerJob(null); setIaStep("");
+    // duration 0 = limpa o conteúdo preservando as preferências globais
+    // (música, volumes, estilo de legenda, intro) — paridade com o original
+    dispatch({ type: "resetSource", duration: 0 });
     if (stickerPollRef.current) clearInterval(stickerPollRef.current);
+    if (pollRef.current) clearInterval(pollRef.current);
     clipAudiosRef.current.forEach((el) => el.pause());
     clipAudiosRef.current.clear();
     localStorage.removeItem(EDITOR_STORAGE_KEY);
   };
 
-  const carregar = async (form: FormData, label: string) => {
+  const novoProjeto = async () => {
+    if (meta && !confirm("Começar um projeto novo? O atual continua salvo em Meus projetos.")) return;
+    await flushSave();   // honra a promessa do confirm: nada dos últimos 2,5s se perde
+    limparEditor();
+  };
+
+  const carregar = async (form: FormData, label: string, srcUrl = "") => {
     setLoadingSource(true);
     try {
-      if (meta?.edit_id) form.append("replace_edit_id", meta.edit_id);   // descarta o draft anterior
-      const res = await fetch(`${API}/editor/carregar`, { method: "POST", body: form });
+      // Fonte expirada de um projeto salvo: o upload REANEXA a fonte (troca só
+      // o vídeo, preservando cortes/legendas/stickers) — antes zerava o doc e
+      // o debounce sobrescrevia o projeto no banco com a edição vazia.
+      const reanexo = fonteExpirada && projectId != null && !!meta;
+      if (meta?.edit_id && !reanexo) form.append("replace_edit_id", meta.edit_id);   // descarta o draft anterior
+      const res = await fetch(`${API}/editor/carregar`, {
+        method: "POST", body: form, headers: await videoApiAuthHeaders(),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Falha ao carregar o vídeo");
-      resetEditor(data, label);
-      toast.success("Vídeo carregado! Clique na timeline para posicionar o cursor.");
+      if (reanexo) {
+        // proteção: o toast pediu o MESMO arquivo — duração muito diferente
+        // indica outro vídeo, e as edições ficariam fora de sincronia
+        if (meta && Math.abs(data.duration - meta.duration) > 2 &&
+            !confirm(`Este arquivo tem duração diferente do vídeo original do projeto (${fmt(data.duration)} vs ${fmt(meta.duration)}). Reanexar mesmo assim? Cortes, legendas e stickers podem ficar fora de sincronia.`)) {
+          fetch(`${API}/editor/descartar/${data.edit_id}`, { method: "DELETE" }).catch(() => {});
+          return;
+        }
+        setMeta(data);
+        setPreviewSrc(data.preview_url || `${API}/editor/video/${data.edit_id}`);
+        setSourceLabel(label);
+        setSourceUrl(srcUrl || data.preview_url || "");
+        setFonteExpirada(false);
+        // clampa os cortes à duração da fonte re-enviada (pode diferir um pouco)
+        apply((d) => ({
+          segments: d.segments
+            .map((s) => ({ ...s, end: Math.min(s.end, data.duration) }))
+            .filter((s) => s.start < data.duration - 0.05 && s.end - s.start >= 0.15),
+        }));
+        toast.success("Fonte reanexada — suas edições foram preservadas.");
+      } else {
+        resetEditor(data, label, srcUrl);
+        toast.success("Vídeo carregado! Clique na timeline para posicionar o cursor.");
+      }
     } catch (e: any) {
       toast.error(e.message, { duration: 7000 });
     } finally {
@@ -488,14 +609,85 @@ export default function AdminEditorVideo() {
     }
   };
 
-  // ── timeline ───────────────────────────────────────────────────────────────
-  const pushHistory = () => setHistory((h) => [...h.slice(-19), segments.map((s) => ({ ...s }))]);
-  const undo = () => setHistory((h) => {
-    if (!h.length) return h;
-    setSegments(h[h.length - 1]);
-    return h.slice(0, -1);
-  });
+  // ── projetos salvos ────────────────────────────────────────────────────────
+  const abrirProjeto = async (id: number) => {
+    if (loadingSource) return;
+    setLoadingSource(true);
+    try {
+      await flushSave();   // não perde as edições dos últimos 2,5s do projeto atual
+      const row = await fetchEditorProject(id);
+      if (!row) throw new Error("Projeto não encontrado.");
+      const snap = snapshotFromStored(row.doc);
+      if (!snap?.meta?.edit_id) {
+        toast.error("Este projeto está vazio ou corrompido.");
+        return;
+      }
+      restoredRef.current = true;
+      aplicarSnapshot(snap, { projectId: row.id, projectName: row.name });
+      // Mídias enviadas (música/sticker/áudio/logo) expiram no servidor em ~2
+      // dias — num projeto antigo, avisa antes do render reclamar.
+      const idadeH = row.updated_at
+        ? (Date.now() - new Date(row.updated_at).getTime()) / 3600000 : 0;
+      const temMidia = !!(snap.doc.musicUploadId || snap.doc.introUploadId
+        || snap.doc.stickers.length || snap.doc.audioClips.length);
+      if (idadeH > 40 && temMidia) {
+        toast.info("Este projeto tem mídias enviadas (música, sticker ou áudio) que podem ter expirado no servidor — se o render reclamar, re-envie esses arquivos.", { duration: 10000 });
+      }
+      // O draft do vídeo expira no servidor (24-48h). Se morreu e temos a URL
+      // da fonte, recarrega sozinho preservando a edição.
+      const head = await fetch(`${API}/editor/video/${snap.meta.edit_id}`, { method: "HEAD" }).catch(() => null);
+      if (head && head.status === 404) {
+        if (snap.sourceUrl) {
+          toast.info("O vídeo deste projeto expirou no servidor — recarregando a fonte...", { duration: 6000 });
+          await recarregarFonte(snap.sourceUrl);
+        } else {
+          setFonteExpirada(true);
+          toast.error("O vídeo deste projeto expirou no servidor — envie o MESMO arquivo de novo pela Biblioteca que as edições serão reaproveitadas.", { duration: 10000 });
+        }
+      } else {
+        toast.success(`Projeto "${row.name}" aberto.`);
+      }
+    } catch (e: any) {
+      toast.error(e.message, { duration: 7000 });
+    } finally {
+      setLoadingSource(false);
+    }
+  };
 
+  // Re-baixa a MESMA fonte preservando o doc (novo edit_id no servidor)
+  const recarregarFonte = async (videoUrl: string) => {
+    try {
+      const fd = new FormData();
+      fd.append("video_url", videoUrl);
+      const res = await fetch(`${API}/editor/carregar`, {
+        method: "POST", body: fd, headers: await videoApiAuthHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "não consegui baixar a fonte");
+      setMeta(data);
+      setPreviewSrc(data.preview_url || `${API}/editor/video/${data.edit_id}`);
+      // draft antigo morreu; se a fonte era o próprio draft, aponta pro novo
+      setSourceUrl(videoUrl.includes("editor-drafts") ? (data.preview_url || "") : videoUrl);
+      toast.success("Fonte recarregada — o projeto continua de onde parou.");
+    } catch (e: any) {
+      setFonteExpirada(true);
+      toast.error(`O vídeo deste projeto expirou e não consegui recarregar (${e.message}) — envie o MESMO arquivo de novo pela Biblioteca que as edições serão reaproveitadas.`, { duration: 10000 });
+    }
+  };
+
+  const excluirProjeto = async (id: number, name: string) => {
+    if (!confirm(`Excluir o projeto "${name}"?`)) return;
+    try {
+      await deleteEditorProject(id);
+      queryClient.invalidateQueries({ queryKey: ["editor-projects"] });
+      if (id === projectId) limparEditor();
+      toast.success("Projeto excluído.");
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  };
+
+  // ── timeline ───────────────────────────────────────────────────────────────
   const seekTo = (t: number) => {
     const clamped = Math.max(0, Math.min(meta?.duration ?? 0, t));
     setPlayhead(clamped);
@@ -540,23 +732,23 @@ export default function AdminEditorVideo() {
     if (!meta) return;
     const seg = segments.find((s) => playhead > s.start + 0.2 && playhead < s.end - 0.2);
     if (!seg) { toast.info("Posicione o cursor DENTRO de um trecho para dividir."); return; }
-    pushHistory();
-    setSegments((prev) => {
+    apply((d) => {
       const next: Segment[] = [];
-      let nid = Math.max(...prev.map((p) => p.id)) + 1;
-      for (const s of prev) {
+      let nid = Math.max(...d.segments.map((p) => p.id)) + 1;
+      for (const s of d.segments) {
         if (s.id === seg.id) {
           next.push({ ...s, end: playhead });
           next.push({ id: nid++, start: playhead, end: s.end, keep: s.keep });
         } else next.push(s);
       }
-      return next;
+      return { segments: next };
     });
   };
 
   const toggleSegment = (id: number) => {
-    pushHistory();
-    setSegments((prev) => prev.map((s) => (s.id === id ? { ...s, keep: !s.keep } : s)));
+    apply((d) => ({
+      segments: d.segments.map((s) => (s.id === id ? { ...s, keep: !s.keep } : s)),
+    }));
   };
 
   // Caixinha FIXA (Carlos 06/07): remove o intervalo [a,b] digitado, dividindo
@@ -571,17 +763,16 @@ export default function AdminEditorVideo() {
     }
     const ca = Math.max(0, a), cb = Math.min(meta.duration, b);
     if (cb - ca < 0.15) { toast.error("Intervalo pequeno demais."); return; }
-    pushHistory();
-    setSegments((prev) => {
+    apply((d) => {
       const next: Segment[] = [];
-      let nid = Math.max(0, ...prev.map((p) => p.id)) + 1;
-      for (const s of prev) {
+      let nid = Math.max(0, ...d.segments.map((p) => p.id)) + 1;
+      for (const s of d.segments) {
         if (s.end <= ca || s.start >= cb) { next.push(s); continue; }
         if (s.start < ca) next.push({ id: nid++, start: s.start, end: ca, keep: s.keep });
         next.push({ id: nid++, start: Math.max(s.start, ca), end: Math.min(s.end, cb), keep: false });
         if (s.end > cb) next.push({ id: nid++, start: cb, end: s.end, keep: s.keep });
       }
-      return next.filter((s) => s.end - s.start >= 0.15);
+      return { segments: next.filter((s) => s.end - s.start >= 0.15) };
     });
     setCutStart(""); setCutEnd("");
     toast.success(`Trecho ${fmt(ca)}–${fmt(cb)} removido — veja na timeline (dá pra restaurar).`);
@@ -598,14 +789,13 @@ export default function AdminEditorVideo() {
   const applyBound = (which: "start" | "end", value: number | null) => {
     if (!activeSeg || !meta || value === null) { toast.error("Tempo inválido — use mm:ss (ex.: 1:23.5)"); return; }
     const v = Math.max(0, Math.min(meta.duration, value));
-    pushHistory();
     // Encolher um trecho NÃO apaga a região: a sobra vira trecho REMOVIDO
     // (restaurável na timeline) — antes ela sumia sem volta (bug do Carlos:
     // "reverto e só volta o último corte").
-    setSegments((prev) => {
+    apply((d) => {
       const next: Segment[] = [];
-      let nid = Math.max(0, ...prev.map((p) => p.id)) + 1;
-      for (const s of prev) {
+      let nid = Math.max(0, ...d.segments.map((p) => p.id)) + 1;
+      for (const s of d.segments) {
         if (s.id !== activeSeg.id) { next.push(s); continue; }
         if (which === "start") {
           const ns = Math.min(v, s.end - 0.2);
@@ -617,7 +807,7 @@ export default function AdminEditorVideo() {
           if (ne < s.end - 0.15) next.push({ id: nid++, start: ne, end: s.end, keep: false });
         }
       }
-      return next;
+      return { segments: next };
     });
   };
 
@@ -627,17 +817,18 @@ export default function AdminEditorVideo() {
   // ── cortar com IA ──────────────────────────────────────────────────────────
   const applyAiSegments = (keeps: { start: number; end: number }[]) => {
     if (!meta || !keeps.length) return;
-    pushHistory();
-    const segs: Segment[] = [];
-    let id = 1, cursor = 0;
-    for (const k of keeps) {
-      const s = Math.max(0, k.start), e = Math.min(meta.duration, k.end);
-      if (s > cursor + 0.05) segs.push({ id: id++, start: cursor, end: s, keep: false });
-      segs.push({ id: id++, start: s, end: e, keep: true });
-      cursor = e;
-    }
-    if (cursor < meta.duration - 0.05) segs.push({ id: id++, start: cursor, end: meta.duration, keep: false });
-    setSegments(segs);
+    apply(() => {
+      const segs: Segment[] = [];
+      let id = 1, cursor = 0;
+      for (const k of keeps) {
+        const s = Math.max(0, k.start), e = Math.min(meta.duration, k.end);
+        if (s > cursor + 0.05) segs.push({ id: id++, start: cursor, end: s, keep: false });
+        segs.push({ id: id++, start: s, end: e, keep: true });
+        cursor = e;
+      }
+      if (cursor < meta.duration - 0.05) segs.push({ id: id++, start: cursor, end: meta.duration, keep: false });
+      return { segments: segs };
+    });
   };
 
   const cortarComIA = async () => {
@@ -683,10 +874,12 @@ export default function AdminEditorVideo() {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch(`${API}/editor/carregar-musica`, { method: "POST", body: form });
+      const res = await fetch(`${API}/editor/carregar-musica`, {
+        method: "POST", body: form, headers: await videoApiAuthHeaders(),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Falha ao enviar a música");
-      setMusicUploadId(data.music_upload_id); setMusicUploadName(file.name); setMusicId("");
+      patch({ musicUploadId: data.music_upload_id, musicUploadName: file.name, musicId: "" });
       toast.success("Música carregada!");
     } catch (e: any) { toast.error(e.message); }
   };
@@ -698,18 +891,23 @@ export default function AdminEditorVideo() {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch(`${API}/editor/carregar-sticker`, { method: "POST", body: form });
+      const res = await fetch(`${API}/editor/carregar-sticker`, {
+        method: "POST", body: form, headers: await videoApiAuthHeaders(),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Falha ao enviar o sticker");
       const start = Math.min(playhead, Math.max(0, meta.duration - 1));
       const dur = data.animated && data.duration > 0.5 ? Math.max(2, data.duration) : 4;
-      setStickers((prev) => [...prev, {
-        id: Date.now(), upload_id: data.sticker_upload_id, name: file.name,
-        animated: !!data.animated, natural_dur: data.duration || 0,
-        start, end: Math.min(meta.duration, start + dur),
-        x_pct: 0.84, y_pct: 0.76, scale_pct: 0.22,
-        movement: "none", loop: true, flip: false,
-      }]);
+      const sid = newId();
+      apply((d) => ({
+        stickers: [...d.stickers, {
+          id: sid, upload_id: data.sticker_upload_id, name: file.name,
+          animated: !!data.animated, natural_dur: data.duration || 0,
+          start, end: Math.min(meta.duration, start + dur),
+          x_pct: 0.84, y_pct: 0.76, scale_pct: 0.22,
+          movement: "none" as StickerMovement, loop: true, flip: false,
+        }],
+      }));
       toast.success("Sticker adicionado a partir do cursor — arraste-o no player para posicionar.");
     } catch (e: any) {
       toast.error(e.message);
@@ -724,16 +922,21 @@ export default function AdminEditorVideo() {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch(`${API}/editor/carregar-musica`, { method: "POST", body: form });
+      const res = await fetch(`${API}/editor/carregar-musica`, {
+        method: "POST", body: form, headers: await videoApiAuthHeaders(),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Falha ao enviar o áudio");
       const start = Math.min(playhead, Math.max(0, meta.duration - 1));
       const nat = Number(data.duration) || 5;
-      setAudioClips((prev) => [...prev, {
-        id: Date.now(), upload_id: data.music_upload_id, name: file.name,
-        natural_dur: nat, start,
-        end: Math.min(meta.duration, start + nat), volume: 1,
-      }]);
+      const cid = newId();
+      apply((d) => ({
+        audioClips: [...d.audioClips, {
+          id: cid, upload_id: data.music_upload_id, name: file.name,
+          natural_dur: nat, start,
+          end: Math.min(meta.duration, start + nat), volume: 1,
+        }],
+      }));
       toast.success("Áudio adicionado a partir do cursor — mova/estique o bloco azul na timeline.");
     } catch (e: any) {
       toast.error(e.message);
@@ -768,13 +971,15 @@ export default function AdminEditorVideo() {
 
   // Arrasto dos blocos nas FAIXAS da timeline (mover = mudar início;
   // borda direita = esticar/encurtar). Pointer capture → sem listeners globais.
-  const onTrackDown = (e: React.PointerEvent, kind: "sticker" | "audio", id: number, mode: "move" | "resize") => {
+  // checkpoint() no início: o gesto INTEIRO vira 1 passo de Desfazer.
+  const onTrackDown = (e: React.PointerEvent, kind: "sticker" | "audio", id: string, mode: "move" | "resize") => {
     e.stopPropagation();
     e.preventDefault();
     const item = kind === "sticker"
       ? stickers.find((s) => s.id === id)
       : audioClips.find((c) => c.id === id);
     if (!item || !meta) return;
+    checkpoint();
     trackDragRef.current = { kind, id, mode, grab: posFromEvent(e.clientX) - item.start };
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
   };
@@ -782,7 +987,7 @@ export default function AdminEditorVideo() {
     const d = trackDragRef.current;
     if (!d || !meta) return;
     const t = posFromEvent(e.clientX);
-    const apply = <T extends { start: number; end: number; natural_dur: number }>(item: T): T => {
+    const applyItem = <T extends { start: number; end: number; natural_dur: number }>(item: T): T => {
       if (d.mode === "move") {
         const len = item.end - item.start;
         const ns = Math.max(0, Math.min(meta.duration - len, t - d.grab));
@@ -793,17 +998,18 @@ export default function AdminEditorVideo() {
       if (d.kind === "audio") ne = Math.min(ne, item.start + (item.natural_dur || 9999));
       return { ...item, end: ne };
     };
-    if (d.kind === "sticker") setStickers((prev) => prev.map((s) => (s.id === d.id ? apply(s) : s)));
-    else setAudioClips((prev) => prev.map((c) => (c.id === d.id ? apply(c) : c)));
+    if (d.kind === "sticker") applyLive((dd) => ({ stickers: dd.stickers.map((s) => (s.id === d.id ? applyItem(s) : s)) }));
+    else applyLive((dd) => ({ audioClips: dd.audioClips.map((c) => (c.id === d.id ? applyItem(c) : c)) }));
   };
   const onTrackUp = () => { trackDragRef.current = null; };
 
   // Arrasto do sticker DENTRO do player (posicionamento visual)
-  const onStickerPreviewDown = (e: React.PointerEvent, id: number) => {
+  const onStickerPreviewDown = (e: React.PointerEvent, id: string) => {
     const st = stickers.find((x) => x.id === id);
     if (!st || st.movement !== "none") return;
     e.preventDefault();
     e.stopPropagation();
+    checkpoint();
     stickerDragRef.current = id;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
   };
@@ -813,9 +1019,11 @@ export default function AdminEditorVideo() {
     const rect = videoWrapRef.current.getBoundingClientRect();
     const x = (e.clientX - rect.left - contentRect.left) / contentRect.w;
     const y = (e.clientY - rect.top - contentRect.top) / contentRect.h;
-    setStickers((prev) => prev.map((s) => (s.id === id
-      ? { ...s, x_pct: Math.max(0, Math.min(1, x)), y_pct: Math.max(0, Math.min(1, y)) }
-      : s)));
+    applyLive((d) => ({
+      stickers: d.stickers.map((s) => (s.id === id
+        ? { ...s, x_pct: Math.max(0, Math.min(1, x)), y_pct: Math.max(0, Math.min(1, y)) }
+        : s)),
+    }));
   };
   const onStickerPreviewUp = () => { stickerDragRef.current = null; };
 
@@ -895,7 +1103,7 @@ export default function AdminEditorVideo() {
     try {
       const res = await fetch(`${API}/editor/transcrever`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await videoApiAuthHeaders()) },
         body: JSON.stringify({ edit_id: meta.edit_id }),
       });
       const data = await res.json();
@@ -905,9 +1113,13 @@ export default function AdminEditorVideo() {
           const st = await (await fetch(`${API}/status/${data.job_id}`)).json();
           if (st.status === "done") {
             clearInterval(timer); setTranscribing(false);
-            setWords(st.words || []);
-            setCues(cueMode === "karaoke" && st.words?.length ? groupWords(st.words, "karaoke") : (st.cues || []));
-            setSubsOn(true);
+            apply((d) => ({
+              words: st.words || [],
+              cues: d.cueMode === "karaoke" && st.words?.length
+                ? groupWords(st.words, "karaoke")
+                : (st.cues || []),
+              subsOn: true,
+            }));
             toast.success(`${(st.cues || []).length} legendas geradas — revise o texto se quiser.`);
           } else if (st.status === "error") {
             clearInterval(timer); setTranscribing(false);
@@ -940,42 +1152,9 @@ export default function AdminEditorVideo() {
       const res = await fetch(`${API}/editor/render`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(await videoApiAuthHeaders()) },
-        body: JSON.stringify({
-          professional_slug: professional.slug,
-          edit_id: meta.edit_id,
-          keep_segments: keepSegments.map((s) => ({ start: s.start, end: s.end })),
-          music_id: musicUploadId ? "" : musicId,
-          music_upload_id: musicUploadId,
-          music_volume: musicVolume / 100,
-          original_volume: originalVolume / 100,
-          fade_out: fadeOut,
-          titulo: titulo.trim(),
-          subtitles: subsOn && cues.length
-            ? { cues, font_id: subFont, size: subSize, color: subColor, style: subStyle, position: subPos }
-            : undefined,
-          titles: titles.length ? titles : undefined,
-          stickers: stickers.length ? stickers.map((s) => ({
-            sticker_upload_id: s.upload_id, start: s.start, end: s.end,
-            x_pct: s.x_pct, y_pct: s.y_pct, scale_pct: s.scale_pct,
-            movement: s.movement, loop: s.loop, flip: s.flip,
-          })) : undefined,
-          audio_clips: audioClips.length ? audioClips.map((c) => ({
-            upload_id: c.upload_id, start: c.start, end: c.end, volume: c.volume,
-          })) : undefined,
-          transition,
-          ducking,
-          punch_in: punchIn,
-          intro: introOn && (introSource === "upload" ? introUploadId : perfilLogo)
-            ? {
-                ...(introSource === "upload"
-                  ? { logo_upload_id: introUploadId }
-                  : { image_url: perfilLogo }),
-                duration: introDur,
-                bg: introBg,
-                effect: introEffect,
-              }
-            : undefined,
-        }),
+        // o payload nasce SEMPRE do doc (editor/serialize.ts) — render e
+        // persistência leem a mesma fonte
+        body: JSON.stringify(buildRenderPayload(doc, meta, professional.slug, perfilLogo)),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Falha ao iniciar a edição");
@@ -1027,7 +1206,23 @@ export default function AdminEditorVideo() {
         <Badge variant="secondary">corte · música · legendas</Badge>
         {meta && (
           <>
-            <span className="text-xs text-muted-foreground truncate">— {sourceLabel}</span>
+            <Input
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              placeholder={sourceLabel || "Nome do projeto"}
+              title="Nome do projeto (salvo automaticamente em Meus projetos)"
+              className="h-7 w-44 text-xs"
+            />
+            {saveError ? (
+              <span className="text-[10px] text-amber-600"
+                title="As últimas edições estão só neste navegador — verifique sua conexão/sessão">
+                ⚠ não sincronizado
+              </span>
+            ) : savedAt ? (
+              <span className="text-[10px] text-muted-foreground" title="Projeto salvo automaticamente no seu painel">
+                ✓ salvo {savedAt}
+              </span>
+            ) : null}
             <Button size="sm" variant="ghost" className="h-7 text-xs ml-auto" onClick={recomecar}>
               <RotateCcw className="h-3.5 w-3.5 mr-1" /> Recomeçar
             </Button>
@@ -1052,11 +1247,48 @@ export default function AdminEditorVideo() {
                   e.target.value = "";
                 }} />
             </label>
+            {/* Meus projetos: edições salvas no painel (sobrevivem a troca de
+                máquina — o vídeo-fonte é recarregado sozinho se expirar) */}
+            {projects.length > 0 && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium flex items-center gap-1">
+                    <FolderOpen className="h-3.5 w-3.5" /> Meus projetos
+                  </span>
+                  {meta && (
+                    <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px] ml-auto"
+                      onClick={novoProjeto} title="Guarda o projeto atual e começa outro">
+                      + Novo projeto
+                    </Button>
+                  )}
+                </div>
+                <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
+                  {projects.map((p) => (
+                    <div key={p.id}
+                      className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs transition ${p.id === projectId ? "border-primary ring-1 ring-primary" : "hover:border-primary/50"}`}>
+                      <button type="button" className="flex-1 text-left truncate py-0.5"
+                        disabled={loadingSource}
+                        onClick={() => { if (p.id !== projectId) abrirProjeto(p.id); }}
+                        title={p.id === projectId ? "Projeto aberto" : `Abrir "${p.name}"`}>
+                        {p.name}
+                      </button>
+                      <span className="text-[10px] text-muted-foreground shrink-0">
+                        {new Date(p.updated_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                      </span>
+                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-destructive shrink-0"
+                        onClick={() => excluirProjeto(p.id, p.name)}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
               {mp4Videos.length === 0 && <p className="text-xs text-muted-foreground">Seus vídeos gerados aparecem aqui.</p>}
               {mp4Videos.map((v: any) => (
                 <button key={v.id} type="button" disabled={loadingSource}
-                  onClick={() => { const fd = new FormData(); fd.append("video_url", v.embed_url); carregar(fd, v.title || "Vídeo da galeria"); }}
+                  onClick={() => { const fd = new FormData(); fd.append("video_url", v.embed_url); carregar(fd, v.title || "Vídeo da galeria", v.embed_url); }}
                   className="w-full flex items-center gap-2 rounded-lg border p-1.5 text-left text-xs hover:border-primary/60 transition">
                   {v.thumbnail_url
                     ? <img src={v.thumbnail_url} className="h-10 w-7 rounded object-cover shrink-0" alt="" />
@@ -1074,14 +1306,14 @@ export default function AdminEditorVideo() {
             <Label className="font-semibold flex items-center gap-2"><Music className="h-4 w-4" /> Trilha sonora</Label>
             <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
               <button type="button"
-                onClick={() => { setMusicId(""); setMusicUploadId(""); setMusicUploadName(""); }}
+                onClick={() => patch({ musicId: "", musicUploadId: "", musicUploadName: "" })}
                 className={`w-full rounded-lg border px-2 py-1.5 text-left text-xs transition ${!musicId && !musicUploadId ? "border-primary ring-1 ring-primary" : "hover:border-primary/50"}`}>
                 Sem música (só o áudio original)
               </button>
               {musicas.map((m) => (
                 <div key={m.id} className={`flex items-center gap-1 rounded-lg border px-2 py-1 transition ${musicId === m.id ? "border-primary ring-1 ring-primary" : ""}`}>
                   <button type="button" className="flex-1 text-left text-xs py-0.5"
-                    onClick={() => { setMusicId(m.id); setMusicUploadId(""); setMusicUploadName(""); }}>
+                    onClick={() => patch({ musicId: m.id, musicUploadId: "", musicUploadName: "" })}>
                     {m.label}
                   </button>
                   <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => previewTrack(m.id)}>
@@ -1100,21 +1332,23 @@ export default function AdminEditorVideo() {
               <div>
                 <div className="flex justify-between"><span>Volume da música</span><span>{musicVolume}%</span></div>
                 <input type="range" min={0} max={100} value={musicVolume}
-                  onChange={(e) => setMusicVolume(Number(e.target.value))} className="w-full" />
+                  onPointerDown={checkpoint}
+                  onChange={(e) => update({ musicVolume: Number(e.target.value) })} className="w-full" />
                 <p className="text-[10px] text-muted-foreground">15-25% = fundo sob a voz · 80%+ = destaque. O ▶ de prévia toca neste volume.</p>
               </div>
               <div>
                 <div className="flex justify-between"><span>Volume do áudio original</span><span>{originalVolume}%</span></div>
                 <input type="range" min={0} max={150} value={originalVolume}
-                  onChange={(e) => setOriginalVolume(Number(e.target.value))} className="w-full" />
+                  onPointerDown={checkpoint}
+                  onChange={(e) => update({ originalVolume: Number(e.target.value) })} className="w-full" />
               </div>
               <div className="flex gap-4 flex-wrap">
                 <label className="flex items-center gap-1.5 cursor-pointer">
-                  <input type="checkbox" checked={fadeOut} onChange={(e) => setFadeOut(e.target.checked)} />
+                  <input type="checkbox" checked={fadeOut} onChange={(e) => patch({ fadeOut: e.target.checked })} />
                   Fade out no final
                 </label>
                 <label className="flex items-center gap-1.5 cursor-pointer" title="A música abaixa sozinha quando você fala e volta nas pausas">
-                  <input type="checkbox" checked={ducking} onChange={(e) => setDucking(e.target.checked)} />
+                  <input type="checkbox" checked={ducking} onChange={(e) => patch({ ducking: e.target.checked })} />
                   Música abaixa na fala
                 </label>
               </div>
@@ -1184,9 +1418,9 @@ export default function AdminEditorVideo() {
                   <Button size="sm" variant="outline" className="h-7 gap-1" onClick={splitAtPlayhead}>
                     <Scissors className="h-3.5 w-3.5" /> Dividir no cursor
                   </Button>
-                  <Button size="sm" variant="ghost" className="h-7 gap-1" disabled={!history.length} onClick={undo}
-                    title="Cada clique volta UM passo de edição">
-                    <Undo2 className="h-3.5 w-3.5" /> Desfazer{history.length ? ` (${history.length})` : ""}
+                  <Button size="sm" variant="ghost" className="h-7 gap-1" disabled={!state.past.length} onClick={undo}
+                    title="Cada clique volta UM passo de edição (agora cobre a edição inteira, não só os cortes)">
+                    <Undo2 className="h-3.5 w-3.5" /> Desfazer{state.past.length ? ` (${state.past.length})` : ""}
                   </Button>
                   <span className="text-xs text-muted-foreground ml-auto">
                     duração final: <b>{fmt(finalDuration)}</b>
@@ -1331,14 +1565,14 @@ export default function AdminEditorVideo() {
                 {/* Capa de entrada (logo) */}
                 <div className="flex items-center gap-3 flex-wrap text-xs rounded-lg border px-3 py-2">
                   <label className="flex items-center gap-1.5 cursor-pointer font-medium">
-                    <input type="checkbox" checked={introOn} onChange={(e) => setIntroOn(e.target.checked)} />
+                    <input type="checkbox" checked={introOn} onChange={(e) => patch({ introOn: e.target.checked })} />
                     🎬 Capa de entrada com a logo
                   </label>
                   {introOn && (
                     <>
                       <div className="flex gap-1">
                         {perfilLogo && (
-                          <button type="button" onClick={() => setIntroSource("perfil")}
+                          <button type="button" onClick={() => patch({ introSource: "perfil" })}
                             className={`rounded-full border px-2 py-0.5 transition ${introSource === "perfil" ? "border-primary ring-1 ring-primary font-medium" : "hover:border-primary/50"}`}>
                             Logo do perfil
                           </button>
@@ -1353,33 +1587,34 @@ export default function AdminEditorVideo() {
                               try {
                                 const fd = new FormData();
                                 fd.append("file", f);
-                                const res = await fetch(`${API}/editor/carregar-logo`, { method: "POST", body: fd });
+                                const res = await fetch(`${API}/editor/carregar-logo`, {
+                                  method: "POST", body: fd, headers: await videoApiAuthHeaders(),
+                                });
                                 const data = await res.json();
                                 if (!res.ok) throw new Error(data.detail || "Falha ao enviar a imagem");
-                                setIntroUploadId(data.logo_upload_id);
-                                setIntroUploadName(f.name);
-                                setIntroSource("upload");
+                                patch({ introUploadId: data.logo_upload_id, introUploadName: f.name, introSource: "upload" });
                               } catch (err: any) { toast.error(err.message); }
                             }} />
                         </label>
                       </div>
                       <label className="flex items-center gap-1">por
                         <select className="h-7 rounded border bg-background px-1" value={introDur}
-                          onChange={(e) => setIntroDur(Number(e.target.value))}>
+                          onChange={(e) => patch({ introDur: Number(e.target.value) })}>
                           <option value={1.5}>1,5s</option><option value={2}>2s</option>
                           <option value={3}>3s</option><option value={4}>4s</option>
                         </select>
                       </label>
                       <label className="flex items-center gap-1">efeito
                         <select className="h-7 rounded border bg-background px-1" value={introEffect}
-                          onChange={(e) => setIntroEffect(e.target.value as "zoom" | "slide" | "fade")}>
+                          onChange={(e) => patch({ introEffect: e.target.value as "zoom" | "slide" | "fade" })}>
                           <option value="zoom">Zoom suave</option>
                           <option value="slide">Deslizar</option>
                           <option value="fade">Estático</option>
                         </select>
                       </label>
                       <label className="flex items-center gap-1.5">fundo
-                        <input type="color" value={introBg} onChange={(e) => setIntroBg(e.target.value)}
+                        <input type="color" value={introBg} onPointerDown={checkpoint}
+                          onChange={(e) => update({ introBg: e.target.value })}
                           className="h-7 w-9 rounded border cursor-pointer" />
                       </label>
                       {/* mini prévia da capa */}
@@ -1402,13 +1637,13 @@ export default function AdminEditorVideo() {
                   <span className="font-medium">Acabamento:</span>
                   <label className="flex items-center gap-1.5">Emendas
                     <select className="h-7 rounded border bg-background px-1" value={transition}
-                      onChange={(e) => setTransition(e.target.value as "none" | "fade")}>
+                      onChange={(e) => patch({ transition: e.target.value as "none" | "fade" })}>
                       <option value="none">Corte seco</option>
                       <option value="fade">Suave (crossfade)</option>
                     </select>
                   </label>
                   <label className="flex items-center gap-1.5 cursor-pointer" title="Leve zoom alternado a cada trecho — disfarça as emendas">
-                    <input type="checkbox" checked={punchIn} onChange={(e) => setPunchIn(e.target.checked)} />
+                    <input type="checkbox" checked={punchIn} onChange={(e) => patch({ punchIn: e.target.checked })} />
                     Zoom alternado nos cortes
                   </label>
                 </div>
@@ -1477,25 +1712,29 @@ export default function AdminEditorVideo() {
                     <span className="tabular-nums text-muted-foreground">{fmt(s.start)}–{fmt(s.end)}</span>
                     <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px] text-muted-foreground"
                       title="Leva o começo do sticker até o cursor"
-                      onClick={() => setStickers((prev) => prev.map((p) => {
-                        if (p.id !== s.id || !meta) return p;
-                        const len = p.end - p.start;
-                        const ns = Math.max(0, Math.min(meta.duration - len, playhead));
-                        return { ...p, start: ns, end: ns + len };
+                      onClick={() => apply((d) => ({
+                        stickers: d.stickers.map((p) => {
+                          if (p.id !== s.id || !meta) return p;
+                          const len = p.end - p.start;
+                          const ns = Math.max(0, Math.min(meta.duration - len, playhead));
+                          return { ...p, start: ns, end: ns + len };
+                        }),
                       }))}>
                       → cursor
                     </Button>
                     <select className="h-7 rounded border bg-background px-1" value={s.scale_pct}
                       title="Tamanho (fração da largura do vídeo)"
-                      onChange={(e) => setStickers((prev) => prev.map((p) => (p.id === s.id ? { ...p, scale_pct: Number(e.target.value) } : p)))}>
+                      onChange={(e) => apply((d) => ({ stickers: d.stickers.map((p) => (p.id === s.id ? { ...p, scale_pct: Number(e.target.value) } : p)) }))}>
                       {STICKER_SIZES.map((z) => <option key={z.label} value={z.value}>{z.label}</option>)}
                     </select>
                     <select className="h-7 rounded border bg-background px-1" value={s.movement}
                       onChange={(e) => {
                         const mv = e.target.value as StickerMovement;
-                        setStickers((prev) => prev.map((p) => (p.id === s.id
-                          ? { ...p, movement: mv, flip: mv === "walk-left" ? true : mv === "walk-right" ? false : p.flip }
-                          : p)));
+                        apply((d) => ({
+                          stickers: d.stickers.map((p) => (p.id === s.id
+                            ? { ...p, movement: mv, flip: mv === "walk-left" ? true : mv === "walk-right" ? false : p.flip }
+                            : p)),
+                        }));
                       }}>
                       <option value="none">Parado</option>
                       <option value="walk-right">🚶 Atravessa →</option>
@@ -1505,7 +1744,7 @@ export default function AdminEditorVideo() {
                       <select className="h-7 rounded border bg-background px-1" value={stickerPosKey(s)}
                         onChange={(e) => {
                           const p = STICKER_POSITIONS.find((p) => p.key === e.target.value);
-                          if (p) setStickers((prev) => prev.map((x) => (x.id === s.id ? { ...x, x_pct: p.x, y_pct: p.y } : x)));
+                          if (p) apply((d) => ({ stickers: d.stickers.map((x) => (x.id === s.id ? { ...x, x_pct: p.x, y_pct: p.y } : x)) }));
                         }}>
                         {STICKER_POSITIONS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
                         <option value="custom" disabled>Personalizado (arrastado)</option>
@@ -1513,18 +1752,18 @@ export default function AdminEditorVideo() {
                     )}
                     <label className="flex items-center gap-1 cursor-pointer" title="Espelhar horizontalmente">
                       <input type="checkbox" checked={s.flip}
-                        onChange={(e) => setStickers((prev) => prev.map((p) => (p.id === s.id ? { ...p, flip: e.target.checked } : p)))} />
+                        onChange={(e) => apply((d) => ({ stickers: d.stickers.map((p) => (p.id === s.id ? { ...p, flip: e.target.checked } : p)) }))} />
                       espelhar
                     </label>
                     {s.animated && (
                       <label className="flex items-center gap-1 cursor-pointer" title="Repete a animação enquanto estiver na tela">
                         <input type="checkbox" checked={s.loop}
-                          onChange={(e) => setStickers((prev) => prev.map((p) => (p.id === s.id ? { ...p, loop: e.target.checked } : p)))} />
+                          onChange={(e) => apply((d) => ({ stickers: d.stickers.map((p) => (p.id === s.id ? { ...p, loop: e.target.checked } : p)) }))} />
                         loop
                       </label>
                     )}
                     <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive ml-auto"
-                      onClick={() => setStickers((prev) => prev.filter((p) => p.id !== s.id))}>
+                      onClick={() => apply((d) => ({ stickers: d.stickers.filter((p) => p.id !== s.id) }))}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
@@ -1557,23 +1796,25 @@ export default function AdminEditorVideo() {
                     <span className="tabular-nums text-muted-foreground">{fmt(c.start)}–{fmt(c.end)}</span>
                     <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px] text-muted-foreground"
                       title="Leva o começo do áudio até o cursor"
-                      onClick={() => setAudioClips((prev) => prev.map((p) => {
-                        if (p.id !== c.id || !meta) return p;
-                        const len = p.end - p.start;
-                        const ns = Math.max(0, Math.min(meta.duration - len, playhead));
-                        return { ...p, start: ns, end: ns + len };
+                      onClick={() => apply((d) => ({
+                        audioClips: d.audioClips.map((p) => {
+                          if (p.id !== c.id || !meta) return p;
+                          const len = p.end - p.start;
+                          const ns = Math.max(0, Math.min(meta.duration - len, playhead));
+                          return { ...p, start: ns, end: ns + len };
+                        }),
                       }))}>
                       → cursor
                     </Button>
                     <label className="flex items-center gap-1 flex-1 min-w-28" title="Volume do clipe">
                       🔊
                       <input type="range" min={0} max={150} value={Math.round(c.volume * 100)}
-                        className="flex-1"
-                        onChange={(e) => setAudioClips((prev) => prev.map((p) => (p.id === c.id ? { ...p, volume: Number(e.target.value) / 100 } : p)))} />
+                        className="flex-1" onPointerDown={checkpoint}
+                        onChange={(e) => applyLive((d) => ({ audioClips: d.audioClips.map((p) => (p.id === c.id ? { ...p, volume: Number(e.target.value) / 100 } : p)) }))} />
                       <span className="tabular-nums w-9 text-right">{Math.round(c.volume * 100)}%</span>
                     </label>
                     <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive"
-                      onClick={() => setAudioClips((prev) => prev.filter((p) => p.id !== c.id))}>
+                      onClick={() => apply((d) => ({ audioClips: d.audioClips.filter((p) => p.id !== c.id) }))}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
@@ -1596,7 +1837,7 @@ export default function AdminEditorVideo() {
               </Button>
               {cues.length > 0 && (
                 <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                  <input type="checkbox" checked={subsOn} onChange={(e) => setSubsOn(e.target.checked)} />
+                  <input type="checkbox" checked={subsOn} onChange={(e) => patch({ subsOn: e.target.checked })} />
                   Incluir no vídeo ({cues.length} falas)
                 </label>
               )}
@@ -1607,7 +1848,7 @@ export default function AdminEditorVideo() {
                   <div className="flex gap-1.5 flex-wrap">
                     {SUB_PRESETS.map((p) => (
                       <Button key={p.label} size="sm" variant="secondary" className="h-7 text-xs"
-                        onClick={() => { setSubFont(p.font); setSubSize(p.size); setSubColor(p.color); setSubStyle(p.style); setSubPos(p.pos); }}>
+                        onClick={() => patch({ subFont: p.font, subSize: p.size, subColor: p.color, subStyle: p.style, subPos: p.pos })}>
                         {p.label}
                       </Button>
                     ))}
@@ -1616,7 +1857,7 @@ export default function AdminEditorVideo() {
                     <div className="flex gap-1.5">
                       {(["frases", "karaoke"] as const).map((m) => (
                         <button key={m} type="button"
-                          onClick={() => { setCueMode(m); setCues(groupWords(words, m)); }}
+                          onClick={() => patch({ cueMode: m, cues: groupWords(words, m) })}
                           className={`rounded-full border px-2.5 py-0.5 transition ${cueMode === m ? "border-primary ring-1 ring-primary font-medium" : "hover:border-primary/50"}`}>
                           {m === "frases" ? "Frases (~6 palavras)" : "⚡ Karaokê (2-3 palavras)"}
                         </button>
@@ -1624,21 +1865,22 @@ export default function AdminEditorVideo() {
                     </div>
                   )}
                   <div className="flex gap-2 flex-wrap">
-                    <select className="h-8 rounded border bg-background px-2" value={subFont} onChange={(e) => setSubFont(e.target.value)}>
+                    <select className="h-8 rounded border bg-background px-2" value={subFont} onChange={(e) => patch({ subFont: e.target.value })}>
                       {fontes.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
                     </select>
-                    <select className="h-8 rounded border bg-background px-2" value={subSize} onChange={(e) => setSubSize(e.target.value as SubSize)}>
+                    <select className="h-8 rounded border bg-background px-2" value={subSize} onChange={(e) => patch({ subSize: e.target.value as SubSize })}>
                       <option value="p">Pequena</option><option value="m">Média</option>
                       <option value="g">Grande</option><option value="xg">Gigante</option>
                     </select>
-                    <select className="h-8 rounded border bg-background px-2" value={subStyle} onChange={(e) => setSubStyle(e.target.value as SubStyle)}>
+                    <select className="h-8 rounded border bg-background px-2" value={subStyle} onChange={(e) => patch({ subStyle: e.target.value as SubStyle })}>
                       <option value="outline">Contorno</option><option value="box">Caixa escura</option>
                     </select>
-                    <select className="h-8 rounded border bg-background px-2" value={subPos} onChange={(e) => setSubPos(e.target.value as SubPos)}>
+                    <select className="h-8 rounded border bg-background px-2" value={subPos} onChange={(e) => patch({ subPos: e.target.value as SubPos })}>
                       <option value="bottom">Embaixo</option><option value="center">Centro</option><option value="top">Topo</option>
                     </select>
                     <label className="flex items-center gap-1.5">
-                      Cor <input type="color" value={subColor} onChange={(e) => setSubColor(e.target.value)} className="h-8 w-10 rounded border cursor-pointer" />
+                      Cor <input type="color" value={subColor} onPointerDown={checkpoint}
+                        onChange={(e) => update({ subColor: e.target.value })} className="h-8 w-10 rounded border cursor-pointer" />
                     </label>
                   </div>
                   <div className="rounded-lg bg-neutral-800 h-24 flex justify-center overflow-hidden"
@@ -1650,10 +1892,10 @@ export default function AdminEditorVideo() {
                   {cues.map((c, i) => (
                     <div key={i} className="flex items-center gap-1.5 text-xs">
                       <span className="tabular-nums text-muted-foreground w-14 shrink-0">{fmt(c.start)}</span>
-                      <Input value={c.text} className="h-7 text-xs"
-                        onChange={(e) => setCues((prev) => prev.map((p, j) => (j === i ? { ...p, text: e.target.value } : p)))} />
+                      <Input value={c.text} className="h-7 text-xs" onFocus={checkpoint}
+                        onChange={(e) => applyLive((d) => ({ cues: d.cues.map((p, j) => (j === i ? { ...p, text: e.target.value } : p)) }))} />
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive shrink-0"
-                        onClick={() => setCues((prev) => prev.filter((_, j) => j !== i))}>
+                        onClick={() => apply((d) => ({ cues: d.cues.filter((_, j) => j !== i) }))}>
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
@@ -1687,11 +1929,13 @@ export default function AdminEditorVideo() {
                 <Button size="sm" variant="outline" className="h-8" disabled={!newTitle.trim()}
                   onClick={() => {
                     if (!meta) return;
-                    setTitles((prev) => [...prev, {
-                      start: playhead, end: Math.min(meta.duration, playhead + newTitleDur),
-                      text: newTitle.trim(), font_id: subFont, size: subSize,
-                      color: subColor, style: subStyle, position: "center",
-                    }]);
+                    apply((d) => ({
+                      titles: [...d.titles, {
+                        start: playhead, end: Math.min(meta.duration, playhead + newTitleDur),
+                        text: newTitle.trim(), font_id: d.subFont, size: d.subSize,
+                        color: d.subColor, style: d.subStyle, position: "center" as TitlePos,
+                      }],
+                    }));
                     setNewTitle("");
                     toast.success("Texto adicionado a partir do cursor — ajuste o estilo na lista.");
                   }}>
@@ -1701,31 +1945,32 @@ export default function AdminEditorVideo() {
               {titles.map((t, i) => (
                 <div key={i} className="flex items-center gap-1.5 text-xs flex-wrap rounded border px-2 py-1">
                   <span className="tabular-nums text-muted-foreground">{fmt(t.start)}–{fmt(t.end)}</span>
-                  <Input value={t.text} className="h-7 text-xs flex-1 min-w-32"
-                    onChange={(e) => setTitles((prev) => prev.map((p, j) => (j === i ? { ...p, text: e.target.value } : p)))} />
+                  <Input value={t.text} className="h-7 text-xs flex-1 min-w-32" onFocus={checkpoint}
+                    onChange={(e) => applyLive((d) => ({ titles: d.titles.map((p, j) => (j === i ? { ...p, text: e.target.value } : p)) }))} />
                   <select className="h-7 rounded border bg-background px-1" value={t.font_id}
-                    onChange={(e) => setTitles((prev) => prev.map((p, j) => (j === i ? { ...p, font_id: e.target.value } : p)))}>
+                    onChange={(e) => apply((d) => ({ titles: d.titles.map((p, j) => (j === i ? { ...p, font_id: e.target.value } : p)) }))}>
                     {fontes.map((f) => <option key={f.id} value={f.id}>{f.label.split(" (")[0]}</option>)}
                   </select>
                   <select className="h-7 rounded border bg-background px-1" value={t.size}
-                    onChange={(e) => setTitles((prev) => prev.map((p, j) => (j === i ? { ...p, size: e.target.value as SubSize } : p)))}>
+                    onChange={(e) => apply((d) => ({ titles: d.titles.map((p, j) => (j === i ? { ...p, size: e.target.value as SubSize } : p)) }))}>
                     <option value="p">P</option><option value="m">M</option><option value="g">G</option><option value="xg">XG</option>
                   </select>
                   <select className="h-7 rounded border bg-background px-1" value={t.position}
-                    onChange={(e) => setTitles((prev) => prev.map((p, j) => (j === i ? { ...p, position: e.target.value as TitlePos } : p)))}>
+                    onChange={(e) => apply((d) => ({ titles: d.titles.map((p, j) => (j === i ? { ...p, position: e.target.value as TitlePos } : p)) }))}>
                     <option value="top">Topo</option><option value="center">Centro</option><option value="bottom">Embaixo</option>
                     <option value="left-bottom">◧ Esq. baixo (selo)</option>
                     <option value="left-center">◧ Esq. centro</option>
                     <option value="left-top">◩ Esq. topo</option>
                   </select>
                   <input type="color" value={t.color} className="h-7 w-8 rounded border cursor-pointer"
-                    onChange={(e) => setTitles((prev) => prev.map((p, j) => (j === i ? { ...p, color: e.target.value } : p)))} />
+                    onPointerDown={checkpoint}
+                    onChange={(e) => applyLive((d) => ({ titles: d.titles.map((p, j) => (j === i ? { ...p, color: e.target.value } : p)) }))} />
                   <select className="h-7 rounded border bg-background px-1" value={t.style}
-                    onChange={(e) => setTitles((prev) => prev.map((p, j) => (j === i ? { ...p, style: e.target.value as SubStyle } : p)))}>
+                    onChange={(e) => apply((d) => ({ titles: d.titles.map((p, j) => (j === i ? { ...p, style: e.target.value as SubStyle } : p)) }))}>
                     <option value="outline">Contorno</option><option value="box">Caixa</option>
                   </select>
                   <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive"
-                    onClick={() => setTitles((prev) => prev.filter((_, j) => j !== i))}>
+                    onClick={() => apply((d) => ({ titles: d.titles.filter((_, j) => j !== i) }))}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>
@@ -1748,10 +1993,9 @@ export default function AdminEditorVideo() {
                 </span>
                 <Button size="sm" className="h-7"
                   onClick={() => {
-                    pushHistory();
                     // 1 trecho [0..duração]: cobre inclusive regiões que algum
                     // ajuste antigo tenha deixado órfãs
-                    setSegments([{ id: 1, start: 0, end: meta.duration, keep: true }]);
+                    patch({ segments: [{ id: 1, start: 0, end: meta.duration, keep: true }] });
                     toast.success("Vídeo inteiro restaurado — remova só o que não quiser.");
                   }}>
                   Restaurar o vídeo inteiro
@@ -1759,7 +2003,8 @@ export default function AdminEditorVideo() {
               </div>
             )}
             <div className="flex items-center gap-2 flex-wrap">
-              <Input value={titulo} onChange={(e) => setTitulo(e.target.value)}
+              <Input value={titulo} onFocus={checkpoint}
+                onChange={(e) => update({ titulo: e.target.value })}
                 placeholder="Título do vídeo editado (opcional)" className="text-sm max-w-xs" />
               <Button size="lg" onClick={renderizar} disabled={rendering || !keepSegments.length} className="gap-2">
                 {rendering ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}

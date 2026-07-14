@@ -507,6 +507,8 @@ export default function ProfessionalLanding({ slugOverride }: { slugOverride?: s
         slug={professional.slug}
         dark={effectiveDark}
         onToggleDark={DARK_MODE_ENABLED ? toggleDark : undefined}
+        hasServices={hasServices}
+        hasProducts={hasProdItems}
       />
       {(() => {
         let z = 0;

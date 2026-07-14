@@ -20,9 +20,13 @@ interface LandingHeaderProps {
   slug?: string;
   dark?: boolean;
   onToggleDark?: () => void;
+  /** Mostra o atalho "Serviços" (âncora #servicos) — só quando há sessões de terapia. */
+  hasServices?: boolean;
+  /** Mostra o atalho "Produtos" (âncora #produtos) — só quando há produtos/materiais. */
+  hasProducts?: boolean;
 }
 
-export default function LandingHeader({ professionalName, whatsapp, ctaMessage, ctaLabel, campaignRef, onWhatsAppClick, logoUrl, slug, dark, onToggleDark }: LandingHeaderProps) {
+export default function LandingHeader({ professionalName, whatsapp, ctaMessage, ctaLabel, campaignRef, onWhatsAppClick, logoUrl, slug, dark, onToggleDark, hasServices, hasProducts }: LandingHeaderProps) {
   const { user, isProfessional } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -54,7 +58,8 @@ export default function LandingHeader({ professionalName, whatsapp, ctaMessage, 
           <button onClick={() => scrollTo("hero")} className="hover:text-foreground transition-colors">Início</button>
           <button onClick={() => scrollTo("about")} className="hover:text-foreground transition-colors">Sobre</button>
           <button onClick={() => scrollTo("content")} className="hover:text-foreground transition-colors">Conteúdos</button>
-          <button onClick={() => scrollTo("produtos")} className="hover:text-foreground transition-colors">Serviços</button>
+          {hasServices && <button onClick={() => scrollTo("servicos")} className="hover:text-foreground transition-colors">Serviços</button>}
+          {hasProducts && <button onClick={() => scrollTo("produtos")} className="hover:text-foreground transition-colors">Produtos</button>}
           <button onClick={() => scrollTo("contact")} className="hover:text-foreground transition-colors">Contato</button>
           {onToggleDark && (
             <Button variant="ghost" size="icon" onClick={onToggleDark} className="h-8 w-8">
@@ -89,7 +94,8 @@ export default function LandingHeader({ professionalName, whatsapp, ctaMessage, 
           <button onClick={() => scrollTo("hero")} className="block w-full text-left py-2 text-sm text-muted-foreground hover:text-foreground">Início</button>
           <button onClick={() => scrollTo("about")} className="block w-full text-left py-2 text-sm text-muted-foreground hover:text-foreground">Sobre</button>
           <button onClick={() => scrollTo("content")} className="block w-full text-left py-2 text-sm text-muted-foreground hover:text-foreground">Conteúdos</button>
-          <button onClick={() => scrollTo("produtos")} className="block w-full text-left py-2 text-sm text-muted-foreground hover:text-foreground">Serviços</button>
+          {hasServices && <button onClick={() => scrollTo("servicos")} className="block w-full text-left py-2 text-sm text-muted-foreground hover:text-foreground">Serviços</button>}
+          {hasProducts && <button onClick={() => scrollTo("produtos")} className="block w-full text-left py-2 text-sm text-muted-foreground hover:text-foreground">Produtos</button>}
           {onToggleDark && (
             <Button variant="ghost" size="sm" onClick={onToggleDark} className="w-full justify-start gap-2">
               {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}

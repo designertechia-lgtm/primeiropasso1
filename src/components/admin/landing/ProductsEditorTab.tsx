@@ -11,12 +11,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Eye, FileText, Upload, ShoppingBag, BookOpen, Package, Briefcase } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, FileText, Upload, ShoppingBag, BookOpen, Package } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
 import { InfoHint } from "@/components/ui/InfoHint";
 import { formatPrice } from "@/components/landing/ProductsSection";
-import ServicesEditor from "@/components/admin/landing/ServicesEditor";
 import StockGalleryHint from "@/components/admin/landing/StockGalleryHint";
 import ReceivablesOnboarding from "@/components/admin/landing/ReceivablesOnboarding";
 import OrdersPanel from "@/components/admin/landing/OrdersPanel";
@@ -90,33 +89,28 @@ export default function ProductsEditorTab() {
     queryClient.invalidateQueries({ queryKey: ["products-all"] });
   };
 
-  // Textos editáveis das DUAS seções: "Sessões de terapia" (services_*) e
-  // "Materiais e e-books" (products_*). Cada uma tem seu próprio título/subtítulo.
-  const [svcTitle, setSvcTitle] = useState("");
-  const [svcSubtitle, setSvcSubtitle] = useState("");
+  // Textos da seção "Materiais e e-books" (products_title/subtitle). As sessões de terapia
+  // e seus textos ficam na aba "Serviços" (ServicesEditorTab) — blocos separados.
   const [secTitle, setSecTitle] = useState("");
   const [secSubtitle, setSecSubtitle] = useState("");
-  const [savingTexts, setSavingTexts] = useState<"services" | "products" | null>(null);
+  const [savingTexts, setSavingTexts] = useState(false);
   const [textsInit, setTextsInit] = useState(false);
   useEffect(() => {
     if (professional && !textsInit) {
-      setSvcTitle((professional as any).services_title || "");
-      setSvcSubtitle((professional as any).services_subtitle || "");
       setSecTitle((professional as any).products_title || "");
       setSecSubtitle((professional as any).products_subtitle || "");
       setTextsInit(true);
     }
   }, [professional, textsInit]);
 
-  const saveTexts = async (kind: "services" | "products") => {
+  const saveTexts = async () => {
     if (!professional) return;
-    setSavingTexts(kind);
-    const fields =
-      kind === "services"
-        ? { services_title: svcTitle.trim() || null, services_subtitle: svcSubtitle.trim() || null }
-        : { products_title: secTitle.trim() || null, products_subtitle: secSubtitle.trim() || null };
-    const { error } = await supabase.from("professionals").update(fields as any).eq("id", professional.id);
-    setSavingTexts(null);
+    setSavingTexts(true);
+    const { error } = await supabase
+      .from("professionals")
+      .update({ products_title: secTitle.trim() || null, products_subtitle: secSubtitle.trim() || null } as any)
+      .eq("id", professional.id);
+    setSavingTexts(false);
     if (error) {
       toast.error("Erro ao salvar os textos da seção");
       return;
@@ -124,7 +118,6 @@ export default function ProductsEditorTab() {
     toast.success("Textos da seção salvos!");
     queryClient.invalidateQueries({ queryKey: ["my-professional"] });
     queryClient.invalidateQueries({ queryKey: ["landing-preview-products"] });
-    queryClient.invalidateQueries({ queryKey: ["landing-preview-services"] });
   };
 
   const openNew = () => {
@@ -223,10 +216,12 @@ export default function ProductsEditorTab() {
   return (
     <div className="space-y-8">
       <div className="flex items-center gap-1.5 mb-3">
-        <span className="text-sm font-semibold text-foreground">Produtos e Serviços</span>
+        <span className="text-sm font-semibold text-foreground flex items-center gap-2">
+          <ShoppingBag className="h-4 w-4 text-primary" /> Materiais e e-books
+        </span>
         <InfoHint>
-          São <strong>duas seções independentes</strong> na sua página: <strong>Sessões de terapia</strong> (atendimentos) e
-          <strong> Materiais e e-books</strong>. Cada uma tem seu próprio título e só aparece quando você cadastra ao menos um item.
+          E-books, PDFs e produtos físicos. Viram uma <strong>seção própria</strong> na sua página, com título e subtítulo
+          próprios, e só aparecem quando você cadastra ao menos um item. (As <strong>sessões de terapia</strong> ficam na aba <strong>Serviços</strong>.)
         </InfoHint>
       </div>
 
@@ -239,41 +234,7 @@ export default function ProductsEditorTab() {
       {/* Carteira: saldo, chave PIX de saque e saque */}
       <WalletPanel />
 
-      {/* ── Seção 1: Sessões de terapia (atendimentos agendáveis) ── */}
-      <div className="space-y-3 rounded-xl border p-4">
-        <div>
-          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <Briefcase className="h-4 w-4 text-primary" /> Sessões de terapia
-          </h3>
-          <p className="text-xs text-muted-foreground">Seus atendimentos. São os mesmos usados no agendamento. Vira uma seção própria na página.</p>
-        </div>
-
-        {/* Textos da seção "Sessões de terapia" */}
-        <div className="space-y-2">
-          <Label>Título da seção <FieldHint text="Aparece como título da seção de sessões na sua página. Em branco usa 'Sessões de terapia'." /></Label>
-          <Input value={svcTitle} onChange={(e) => setSvcTitle(e.target.value)} placeholder="Sessões de terapia" />
-        </div>
-        <div className="space-y-2">
-          <Label>Subtítulo</Label>
-          <Textarea rows={2} value={svcSubtitle} onChange={(e) => setSvcSubtitle(e.target.value)} placeholder="Atendimentos para cuidar de você, no seu tempo." />
-        </div>
-        <Button onClick={() => saveTexts("services")} disabled={savingTexts === "services"} variant="outline" size="sm">
-          {savingTexts === "services" ? "Salvando..." : "Salvar textos das sessões"}
-        </Button>
-
-        <ServicesEditor />
-      </div>
-
-      {/* ── Seção 2: Materiais e e-books ── */}
-      <div className="space-y-3 rounded-xl border p-4">
-        <div>
-          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <ShoppingBag className="h-4 w-4 text-primary" /> Materiais e e-books
-          </h3>
-          <p className="text-xs text-muted-foreground">E-books, PDFs e produtos físicos. Vira uma seção própria na página.</p>
-        </div>
-
-        {/* Textos da seção "Materiais e e-books" */}
+      {/* Textos da seção "Materiais e e-books" */}
         <div className="space-y-2">
           <Label>Título da seção <FieldHint text="Aparece como título da seção de materiais na sua página. Em branco usa 'Materiais e e-books'." /></Label>
           <Input value={secTitle} onChange={(e) => setSecTitle(e.target.value)} placeholder="Materiais e e-books" />
@@ -282,8 +243,8 @@ export default function ProductsEditorTab() {
           <Label>Subtítulo</Label>
           <Textarea rows={2} value={secSubtitle} onChange={(e) => setSecSubtitle(e.target.value)} placeholder="Guias e materiais para levar o cuidado para casa." />
         </div>
-        <Button onClick={() => saveTexts("products")} disabled={savingTexts === "products"} variant="outline" size="sm">
-          {savingTexts === "products" ? "Salvando..." : "Salvar textos dos materiais"}
+        <Button onClick={saveTexts} disabled={savingTexts} variant="outline" size="sm">
+          {savingTexts ? "Salvando..." : "Salvar textos dos materiais"}
         </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -477,7 +438,6 @@ export default function ProductsEditorTab() {
           })}
         </div>
       )}
-      </div>
     </div>
   );
 }

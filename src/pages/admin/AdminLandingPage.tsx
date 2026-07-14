@@ -39,6 +39,7 @@ import { toVideoEmbedUrl, isYouTubeOrVimeo } from "@/lib/landing/videoEmbed";
 import GenerateAboutVideoDialog from "@/components/admin/landing/GenerateAboutVideoDialog";
 import ApproachesEditor from "@/components/admin/ApproachesEditor";
 import ProductsEditorTab from "@/components/admin/landing/ProductsEditorTab";
+import ServicesEditorTab from "@/components/admin/landing/ServicesEditorTab";
 import TestimonialsEditorTab from "@/components/admin/landing/TestimonialsEditorTab";
 import TrackingEditorTab from "@/components/admin/landing/TrackingEditorTab";
 import BrandDnaEditorTab from "@/components/admin/landing/BrandDnaEditorTab";
@@ -207,7 +208,7 @@ function SectionBlock({
   );
 }
 
-type Section = "dna" | "secoes" | "hero" | "dores" | "vilao" | "solucao" | "sobre" | "oferta" | "depoimentos" | "publico" | "faq" | "produtos" | "cores" | "contatos" | "rastreamento" | "ab";
+type Section = "dna" | "secoes" | "hero" | "dores" | "vilao" | "solucao" | "sobre" | "oferta" | "depoimentos" | "publico" | "faq" | "servicos" | "produtos" | "cores" | "contatos" | "rastreamento" | "ab";
 
 // Abas do editor + agrupamento em 2 níveis (evita a barra achatada de 15 abas).
 // O grupo ativo é o que contém a aba ativa.
@@ -224,14 +225,15 @@ const EDITOR_TABS: { id: Section; label: string; icon: React.ElementType }[] = [
   { id: "publico",      label: "Para quem é",  icon: Users         },
   { id: "faq",          label: "FAQ",          icon: HelpCircle    },
   { id: "depoimentos",  label: "Depoimentos",  icon: Quote         },
-  { id: "produtos",     label: "Serviços",     icon: ShoppingBag   },
+  { id: "servicos",     label: "Serviços",     icon: Briefcase     },
+  { id: "produtos",     label: "Produtos",     icon: ShoppingBag   },
   { id: "contatos",     label: "Contatos",     icon: MessageCircle },
   { id: "rastreamento", label: "Rastreamento", icon: BarChart3     },
   { id: "ab",           label: "Teste A/B",    icon: FlaskConical  },
 ];
 const EDITOR_TAB_GROUPS: { id: string; label: string; icon: React.ElementType; ids: Section[] }[] = [
   { id: "marca",   label: "Marca",   icon: Dna,      ids: ["dna", "cores"] },
-  { id: "pagina",  label: "Página",  icon: Layout,   ids: ["secoes", "hero", "dores", "vilao", "solucao", "sobre", "oferta", "publico", "faq", "depoimentos", "produtos"] },
+  { id: "pagina",  label: "Página",  icon: Layout,   ids: ["secoes", "hero", "dores", "vilao", "solucao", "sobre", "oferta", "publico", "faq", "depoimentos", "servicos", "produtos"] },
   { id: "ajustes", label: "Ajustes", icon: Settings, ids: ["contatos", "rastreamento", "ab"] },
 ];
 
@@ -434,7 +436,7 @@ export default function AdminLandingPage() {
   // Deep-link da aba (ex.: /admin/landing?tab=produtos, usado pelo atalho do menu lateral).
   useEffect(() => {
     const tab = searchParams.get("tab");
-    const valid = ["dna", "secoes", "hero", "dores", "vilao", "solucao", "sobre", "oferta", "depoimentos", "publico", "faq", "produtos", "cores", "contatos", "rastreamento", "ab"];
+    const valid = ["dna", "secoes", "hero", "dores", "vilao", "solucao", "sobre", "oferta", "depoimentos", "publico", "faq", "servicos", "produtos", "cores", "contatos", "rastreamento", "ab"];
     if (tab && valid.includes(tab)) setActiveSection(tab as Section);
   }, [searchParams]);
   const [saving, setSaving] = useState(false);
@@ -1116,7 +1118,7 @@ export default function AdminLandingPage() {
     } : {}),
     ...(previewServices.length > 0 ? {
       services: {
-        label: "Sessões de terapia", icon: Briefcase, active: activeSection === "produtos", onClick: () => selectSection("produtos"),
+        label: "Sessões de terapia", icon: Briefcase, active: activeSection === "servicos", onClick: () => selectSection("servicos"),
         node: <ProductsSection products={[]} services={previewServices as any} slug={professional?.slug} whatsapp={contactWhatsapp || undefined} title={(professional as any)?.services_title ?? undefined} subtitle={(professional as any)?.services_subtitle ?? undefined} defaultTitle="Sessões de terapia" defaultSubtitle="Atendimentos para cuidar de você, no seu tempo." />,
       },
     } : {}),
@@ -1329,7 +1331,10 @@ export default function AdminLandingPage() {
           {/* ── DNA DA MARCA (fonte única; gera a landing) ── */}
           {activeSection === "dna" && <BrandDnaEditorTab expanded={editorExpanded} />}
 
-          {/* ── PRODUTOS E SERVIÇOS (CRUD; reflete na seção do preview) ── */}
+          {/* ── SERVIÇOS (sessões de terapia — CRUD + textos da seção) ── */}
+          {activeSection === "servicos" && <ServicesEditorTab />}
+
+          {/* ── PRODUTOS (e-books/materiais — CRUD + textos + recebimentos Asaas) ── */}
           {activeSection === "produtos" && <ProductsEditorTab />}
 
           {/* ── DEPOIMENTOS (moderação + liga/desliga; tabela testimonials) ── */}

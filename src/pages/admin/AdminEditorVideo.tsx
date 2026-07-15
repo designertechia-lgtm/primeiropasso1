@@ -40,7 +40,7 @@ import { toast } from "sonner";
 import {
   Scissors, Play, Pause, Loader2, Music, Upload, Film, Trash2, Undo2,
   CheckCircle2, AlertCircle, Video as VideoIcon, Captions, Wand2, RotateCcw,
-  FolderOpen,
+  FolderOpen, Copy,
 } from "lucide-react";
 import { videoApiAuthHeaders } from "@/lib/videoApi";
 import {
@@ -624,15 +624,10 @@ export default function AdminEditorVideo() {
       }
       restoredRef.current = true;
       aplicarSnapshot(snap, { projectId: row.id, projectName: row.name });
-      // Mídias enviadas (música/sticker/áudio/logo) expiram no servidor em ~2
-      // dias — num projeto antigo, avisa antes do render reclamar.
-      const idadeH = row.updated_at
-        ? (Date.now() - new Date(row.updated_at).getTime()) / 3600000 : 0;
-      const temMidia = !!(snap.doc.musicUploadId || snap.doc.introUploadId
-        || snap.doc.stickers.length || snap.doc.audioClips.length);
-      if (idadeH > 40 && temMidia) {
-        toast.info("Este projeto tem mídias enviadas (música, sticker ou áudio) que podem ter expirado no servidor — se o render reclamar, re-envie esses arquivos.", { duration: 10000 });
-      }
+      // Música/sticker/áudio/logo de projeto salvo NÃO expiram mais: a limpeza
+      // do worker preserva o que estiver referenciado (RPC editor_media_in_use).
+      // O VÍDEO continua expirando por idade — é grande — e é recarregado logo
+      // abaixo.
       // O draft do vídeo expira no servidor (24-48h). Se morreu e temos a URL
       // da fonte, recarrega sozinho preservando a edição.
       const head = await fetch(`${API}/editor/video/${snap.meta.edit_id}`, { method: "HEAD" }).catch(() => null);
@@ -943,6 +938,84 @@ export default function AdminEditorVideo() {
     } finally {
       setUploadingClip(false);
     }
+  };
+
+  // ── duplicar (quick win 14/07) ─────────────────────────────────────────────
+  // Clona o item logo DEPOIS do original (ou no cursor, se houver espaço lá),
+  // sem passar pelo servidor: o upload_id é o mesmo arquivo.
+  const proximoSlot = (item: { start: number; end: number }) => {
+    const len = item.end - item.start;
+    const dur = meta?.duration ?? 0;
+    const slot = (start: number) => ({
+      start: Math.max(0, start), end: Math.min(dur, Math.max(0, start) + len),
+    });
+    // 1) no cursor, se ele estiver fora do item e a cópia couber
+    if (playhead > item.end - 0.05 && playhead + len <= dur) return slot(playhead);
+    // 2) logo depois do original
+    if (item.end + len <= dur) return slot(item.end);
+    // 3) logo antes (item colado no fim do vídeo — caso comum: quem adiciona
+    //    perto do fim ganha end == duração, e "depois" não cabe)
+    if (item.start - len >= 0) return slot(item.start - len);
+    // 4) não cabe inteiro em lugar nenhum: encosta no fim, deslocado do
+    //    original — cópia em cima do original parece "não aconteceu nada"
+    //    (e, em áudio, tocaria dobrado)
+    return slot(Math.min(Math.max(0, dur - len), item.start + Math.max(0.3, len / 2)));
+  };
+
+  const duplicarSticker = (id: string) => {
+    const s = stickers.find((x) => x.id === id);
+    if (!s || !meta) return;
+    const nid = newId();
+    apply((d) => {
+      const orig = d.stickers.find((x) => x.id === id);
+      if (!orig) return {};
+      const i = d.stickers.findIndex((x) => x.id === id);
+      const copia = { ...orig, id: nid, ...proximoSlot(orig) };
+      const next = [...d.stickers];
+      next.splice(i + 1, 0, copia);
+      return { stickers: next };
+    });
+    toast.success("Sticker duplicado — mova o novo bloco na faixa roxa.");
+  };
+
+  const duplicarClip = (id: string) => {
+    const c = audioClips.find((x) => x.id === id);
+    if (!c || !meta) return;
+    const nid = newId();
+    apply((d) => {
+      const orig = d.audioClips.find((x) => x.id === id);
+      if (!orig) return {};
+      const i = d.audioClips.findIndex((x) => x.id === id);
+      const copia = { ...orig, id: nid, ...proximoSlot(orig) };
+      const next = [...d.audioClips];
+      next.splice(i + 1, 0, copia);
+      return { audioClips: next };
+    });
+    toast.success("Áudio duplicado — mova o novo bloco na faixa azul.");
+  };
+
+  const duplicarTexto = (id: string) => {
+    const t = titles.find((x) => x.id === id);
+    if (!t || !meta) return;
+    const nid = newId();
+    apply((d) => {
+      const orig = d.titles.find((x) => x.id === id);
+      if (!orig) return {};
+      const i = d.titles.findIndex((x) => x.id === id);
+      const copia = { ...orig, id: nid, ...proximoSlot(orig) };
+      const next = [...d.titles];
+      next.splice(i + 1, 0, copia);
+      return { titles: next };
+    });
+    toast.success("Texto duplicado — ajuste o tempo e o conteúdo da cópia.");
+  };
+
+  // Leva o item para o cursor preservando a duração (mesma regra dos stickers)
+  const paraOCursor = <T extends { start: number; end: number }>(item: T): T => {
+    if (!meta) return item;
+    const len = item.end - item.start;
+    const ns = Math.max(0, Math.min(meta.duration - len, playhead));
+    return { ...item, start: ns, end: ns + len };
   };
 
   const gerarStickerIA = async () => {
@@ -1762,7 +1835,11 @@ export default function AdminEditorVideo() {
                         loop
                       </label>
                     )}
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive ml-auto"
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground ml-auto"
+                      title="Duplicar este sticker" onClick={() => duplicarSticker(s.id)}>
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive"
                       onClick={() => apply((d) => ({ stickers: d.stickers.filter((p) => p.id !== s.id) }))}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
@@ -1813,6 +1890,10 @@ export default function AdminEditorVideo() {
                         onChange={(e) => applyLive((d) => ({ audioClips: d.audioClips.map((p) => (p.id === c.id ? { ...p, volume: Number(e.target.value) / 100 } : p)) }))} />
                       <span className="tabular-nums w-9 text-right">{Math.round(c.volume * 100)}%</span>
                     </label>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground"
+                      title="Duplicar este áudio" onClick={() => duplicarClip(c.id)}>
+                      <Copy className="h-3 w-3" />
+                    </Button>
                     <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive"
                       onClick={() => apply((d) => ({ audioClips: d.audioClips.filter((p) => p.id !== c.id) }))}>
                       <Trash2 className="h-3 w-3" />
@@ -1929,8 +2010,10 @@ export default function AdminEditorVideo() {
                 <Button size="sm" variant="outline" className="h-8" disabled={!newTitle.trim()}
                   onClick={() => {
                     if (!meta) return;
+                    const tid = newId();
                     apply((d) => ({
                       titles: [...d.titles, {
+                        id: tid,
                         start: playhead, end: Math.min(meta.duration, playhead + newTitleDur),
                         text: newTitle.trim(), font_id: d.subFont, size: d.subSize,
                         color: d.subColor, style: d.subStyle, position: "center" as TitlePos,
@@ -1942,21 +2025,42 @@ export default function AdminEditorVideo() {
                   + Adicionar no cursor ({fmt(playhead)})
                 </Button>
               </div>
-              {titles.map((t, i) => (
-                <div key={i} className="flex items-center gap-1.5 text-xs flex-wrap rounded border px-2 py-1">
+              {titles.map((t) => (
+                <div key={t.id} className="flex items-center gap-1.5 text-xs flex-wrap rounded border px-2 py-1">
                   <span className="tabular-nums text-muted-foreground">{fmt(t.start)}–{fmt(t.end)}</span>
                   <Input value={t.text} className="h-7 text-xs flex-1 min-w-32" onFocus={checkpoint}
-                    onChange={(e) => applyLive((d) => ({ titles: d.titles.map((p, j) => (j === i ? { ...p, text: e.target.value } : p)) }))} />
+                    onChange={(e) => applyLive((d) => ({ titles: d.titles.map((p) => (p.id === t.id ? { ...p, text: e.target.value } : p)) }))} />
+                  <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px] text-muted-foreground"
+                    title="Leva o começo do texto até o cursor"
+                    onClick={() => apply((d) => ({ titles: d.titles.map((p) => (p.id === t.id ? paraOCursor(p) : p)) }))}>
+                    → cursor
+                  </Button>
+                  <label className="flex items-center gap-1" title="Quanto tempo o texto fica na tela">
+                    <Input type="number" min={0.5} max={60} step={0.5}
+                      value={Number((t.end - t.start).toFixed(1))}
+                      className="h-7 w-14 text-xs tabular-nums"
+                      onFocus={checkpoint}
+                      onChange={(e) => {
+                        // digitação = contínua (applyLive): o ajuste inteiro vira
+                        // 1 passo de Desfazer, não um por tecla
+                        if (e.target.value === "") return;   // deixa apagar pra redigitar
+                        const len = Math.max(0.5, Math.min(60, Number(e.target.value)));
+                        applyLive((d) => ({
+                          titles: d.titles.map((p) => (p.id === t.id
+                            ? { ...p, end: Math.min(meta?.duration ?? p.end, p.start + len) } : p)),
+                        }));
+                      }} />s
+                  </label>
                   <select className="h-7 rounded border bg-background px-1" value={t.font_id}
-                    onChange={(e) => apply((d) => ({ titles: d.titles.map((p, j) => (j === i ? { ...p, font_id: e.target.value } : p)) }))}>
+                    onChange={(e) => apply((d) => ({ titles: d.titles.map((p) => (p.id === t.id ? { ...p, font_id: e.target.value } : p)) }))}>
                     {fontes.map((f) => <option key={f.id} value={f.id}>{f.label.split(" (")[0]}</option>)}
                   </select>
                   <select className="h-7 rounded border bg-background px-1" value={t.size}
-                    onChange={(e) => apply((d) => ({ titles: d.titles.map((p, j) => (j === i ? { ...p, size: e.target.value as SubSize } : p)) }))}>
+                    onChange={(e) => apply((d) => ({ titles: d.titles.map((p) => (p.id === t.id ? { ...p, size: e.target.value as SubSize } : p)) }))}>
                     <option value="p">P</option><option value="m">M</option><option value="g">G</option><option value="xg">XG</option>
                   </select>
                   <select className="h-7 rounded border bg-background px-1" value={t.position}
-                    onChange={(e) => apply((d) => ({ titles: d.titles.map((p, j) => (j === i ? { ...p, position: e.target.value as TitlePos } : p)) }))}>
+                    onChange={(e) => apply((d) => ({ titles: d.titles.map((p) => (p.id === t.id ? { ...p, position: e.target.value as TitlePos } : p)) }))}>
                     <option value="top">Topo</option><option value="center">Centro</option><option value="bottom">Embaixo</option>
                     <option value="left-bottom">◧ Esq. baixo (selo)</option>
                     <option value="left-center">◧ Esq. centro</option>
@@ -1964,13 +2068,17 @@ export default function AdminEditorVideo() {
                   </select>
                   <input type="color" value={t.color} className="h-7 w-8 rounded border cursor-pointer"
                     onPointerDown={checkpoint}
-                    onChange={(e) => applyLive((d) => ({ titles: d.titles.map((p, j) => (j === i ? { ...p, color: e.target.value } : p)) }))} />
+                    onChange={(e) => applyLive((d) => ({ titles: d.titles.map((p) => (p.id === t.id ? { ...p, color: e.target.value } : p)) }))} />
                   <select className="h-7 rounded border bg-background px-1" value={t.style}
-                    onChange={(e) => apply((d) => ({ titles: d.titles.map((p, j) => (j === i ? { ...p, style: e.target.value as SubStyle } : p)) }))}>
+                    onChange={(e) => apply((d) => ({ titles: d.titles.map((p) => (p.id === t.id ? { ...p, style: e.target.value as SubStyle } : p)) }))}>
                     <option value="outline">Contorno</option><option value="box">Caixa</option>
                   </select>
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground ml-auto"
+                    title="Duplicar este texto" onClick={() => duplicarTexto(t.id)}>
+                    <Copy className="h-3 w-3" />
+                  </Button>
                   <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive"
-                    onClick={() => apply((d) => ({ titles: d.titles.filter((_, j) => j !== i) }))}>
+                    onClick={() => apply((d) => ({ titles: d.titles.filter((p) => p.id !== t.id) }))}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>

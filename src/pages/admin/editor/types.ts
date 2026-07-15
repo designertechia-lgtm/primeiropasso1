@@ -24,8 +24,10 @@ export type SubStyle = "outline" | "box";
 export type SubPos = "bottom" | "center" | "top";
 // Textos aceitam também o canto esquerdo (estilo selo/lower-third — Carlos 06/07)
 export type TitlePos = SubPos | "left-bottom" | "left-center" | "left-top";
+// id só do front (estável para duplicar/reordenar e, na Fase 1, arrastar na
+// timeline): buildRenderPayload remove antes de mandar ao worker.
 export type Title = {
-  start: number; end: number; text: string; font_id: string;
+  id: string; start: number; end: number; text: string; font_id: string;
   size: SubSize; color: string; style: SubStyle; position: TitlePos;
 };
 

@@ -9,8 +9,20 @@
  *   formato antigo (flat, ids numéricos) — quem tinha edição em andamento não
  *   perde nada no deploy desta fase.
  */
-import { EDITOR_CONTRACT_VERSION, type EditMeta, type StickerJob } from "./types";
+import { EDITOR_CONTRACT_VERSION, newId, type EditMeta, type StickerJob } from "./types";
 import { emptyDoc, type EditorDoc } from "./documentReducer";
+
+/** Garante o que o front assume mas o dado salvo pode não ter: ids estáveis em
+ *  textos/stickers/clipes (docs gravados antes dos ids existirem, inclusive v2
+ *  já em produção). Sem isso, duplicar/editar texto operaria no item errado. */
+function normalizeDoc(d: EditorDoc): EditorDoc {
+  return {
+    ...d,
+    titles: (d.titles || []).map((t) => (t.id ? t : { ...t, id: newId() })),
+    stickers: (d.stickers || []).map((s) => (s.id ? { ...s, id: String(s.id) } : { ...s, id: newId() })),
+    audioClips: (d.audioClips || []).map((c) => (c.id ? { ...c, id: String(c.id) } : { ...c, id: newId() })),
+  };
+}
 
 export type ProjectSnapshot = {
   v: 2;
@@ -48,7 +60,8 @@ export function buildRenderPayload(
     subtitles: doc.subsOn && doc.cues.length
       ? { cues: doc.cues, font_id: doc.subFont, size: doc.subSize, color: doc.subColor, style: doc.subStyle, position: doc.subPos }
       : undefined,
-    titles: doc.titles.length ? doc.titles : undefined,
+    // o id é só do front — o worker recebe o mesmo formato de sempre
+    titles: doc.titles.length ? doc.titles.map(({ id: _id, ...t }) => t) : undefined,
     stickers: doc.stickers.length ? doc.stickers.map((s) => ({
       sticker_upload_id: s.upload_id, start: s.start, end: s.end,
       x_pct: s.x_pct, y_pct: s.y_pct, scale_pct: s.scale_pct,
@@ -79,7 +92,10 @@ export function snapshotFromStored(raw: unknown): ProjectSnapshot | null {
   if (!raw || typeof raw !== "object") return null;
   const s = raw as Record<string, any>;
   if (s.v === 2 && s.doc) {
-    return { ...emptySnapshot(), ...s, doc: { ...emptyDoc(), ...s.doc } } as ProjectSnapshot;
+    return {
+      ...emptySnapshot(), ...s,
+      doc: normalizeDoc({ ...emptyDoc(), ...s.doc }),
+    } as ProjectSnapshot;
   }
   if (!s.meta?.edit_id) return null;
   // ── migração do formato antigo (estado flat, ids numéricos) ──
@@ -101,9 +117,11 @@ export function snapshotFromStored(raw: unknown): ProjectSnapshot | null {
     subColor: s.subColor || "#FFFFFF",
     subStyle: s.subStyle || "outline",
     subPos: s.subPos || "bottom",
+    // ids normalizados logo abaixo (normalizeDoc) — o formato antigo não tinha
+    // id em textos e usava id numérico em stickers/clipes
     titles: s.titles || [],
-    stickers: (s.stickers || []).map((x: any) => ({ ...x, id: String(x.id) })),
-    audioClips: (s.audioClips || []).map((x: any) => ({ ...x, id: String(x.id) })),
+    stickers: s.stickers || [],
+    audioClips: s.audioClips || [],
     transition: s.transition || "none",
     ducking: s.ducking ?? true,
     punchIn: !!s.punchIn,
@@ -126,7 +144,7 @@ export function snapshotFromStored(raw: unknown): ProjectSnapshot | null {
     stickerJob: s.stickerJob?.job_id ? s.stickerJob : null,
     projectId: null,
     projectName: "",
-    doc,
+    doc: normalizeDoc(doc),
   };
 }
 

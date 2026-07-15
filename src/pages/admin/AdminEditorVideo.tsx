@@ -40,13 +40,13 @@ import { toast } from "sonner";
 import {
   Scissors, Play, Pause, Loader2, Music, Upload, Film, Trash2, Undo2,
   CheckCircle2, AlertCircle, Video as VideoIcon, Captions, Wand2, RotateCcw,
-  FolderOpen, Copy,
+  FolderOpen, Copy, Plus, Minus,
 } from "lucide-react";
 import { videoApiAuthHeaders } from "@/lib/videoApi";
 import {
   API, EDITOR_STORAGE_KEY, EDITOR_CONTRACT_VERSION,
   STICKER_SIZES, STICKER_POSITIONS, SUB_PRESETS,
-  groupWords, fmt, parseTime, newId,
+  groupWords, fmt, parseTime, newId, normalizarSegments,
   type Segment, type EditMeta, type SubSize, type SubStyle, type SubPos,
   type TitlePos, type Sticker, type StickerMovement, type StickerJob,
 } from "./editor/types";
@@ -54,7 +54,7 @@ import {
   editorReducer, initialEditorState, type EditorDoc,
 } from "./editor/documentReducer";
 import {
-  buildRenderPayload, snapshotFromStored, type ProjectSnapshot,
+  buildRenderPayload, snapshotFromStored, metaSemThumbs, type ProjectSnapshot,
 } from "./editor/serialize";
 import {
   listEditorProjects, fetchEditorProject, insertEditorProject,
@@ -99,6 +99,11 @@ export default function AdminEditorVideo() {
   const [fonteExpirada, setFonteExpirada] = useState(false);
 
   const [playhead, setPlayhead] = useState(0);
+  // Timeline pro (Fase 1): zoom com scroll horizontal e snap magnético
+  const [zoom, setZoom] = useState(1);
+  const [snapOn, setSnapOn] = useState(true);
+  const [snapGuide, setSnapGuide] = useState<number | null>(null);
+  const [thumbsErro, setThumbsErro] = useState(false);
   const [startField, setStartField] = useState("");
   const [endField, setEndField] = useState("");
   const [cutStart, setCutStart] = useState("");   // caixinha FIXA de corte por tempo
@@ -137,13 +142,15 @@ export default function AdminEditorVideo() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const segDragRef = useRef<{ segId: number } | null>(null);
   const draggingRef = useRef(false);
   const restoredRef = useRef(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const videoWrapRef = useRef<HTMLDivElement>(null);
   const metaRef = useRef<EditMeta | null>(null);
   const clipAudiosRef = useRef<Map<string, HTMLAudioElement>>(new Map());
-  const trackDragRef = useRef<{ kind: "sticker" | "audio"; id: string; mode: "move" | "resize"; grab: number } | null>(null);
+  const trackDragRef = useRef<{ kind: "sticker" | "audio" | "title"; id: string; mode: "move" | "resize"; grab: number } | null>(null);
   const stickerDragRef = useRef<string | null>(null);
   const stickerPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -389,11 +396,18 @@ export default function AdminEditorVideo() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // meta sem thumbs, estável: as thumbnails chegam depois (GET /editor/thumbs)
+  // e não podem, ao chegar, disparar um save inútil do projeto
+  const metaSlim = useMemo(() => metaSemThumbs(meta), [
+    meta?.edit_id, meta?.duration, meta?.width, meta?.height,
+    meta?.has_audio, meta?.preview_url,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Snapshot completo do projeto (o que vai pro navegador E pro banco)
   const snapshot: ProjectSnapshot = useMemo(() => ({
-    v: 2, meta, sourceLabel, sourceUrl, resultUrl, renderJobId, stickerJob,
+    v: 2, meta: metaSlim, sourceLabel, sourceUrl, resultUrl, renderJobId, stickerJob,
     projectId, projectName, doc,
-  }), [meta, sourceLabel, sourceUrl, resultUrl, renderJobId, stickerJob,
+  }), [metaSlim, sourceLabel, sourceUrl, resultUrl, renderJobId, stickerJob,
        projectId, projectName, doc]);
 
   // Cache local (sobrevive a F5 — comportamento original)
@@ -496,6 +510,41 @@ export default function AdminEditorVideo() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Miniaturas da timeline: não são salvas com o projeto (base64 pesado) —
+  // ao restaurar/abrir, o painel repõe pelo worker. Com retry: se o worker
+  // estiver reiniciando (deploy), uma falha silenciosa deixaria a timeline
+  // pulsando "carregando" a sessão inteira.
+  useEffect(() => {
+    setThumbsErro(false);
+    const id = meta?.edit_id;
+    if (!id || meta?.thumbs?.length) return;
+    let vivo = true;
+    (async () => {
+      for (let tentativa = 0; tentativa < 3 && vivo; tentativa++) {
+        if (tentativa) await new Promise((r) => setTimeout(r, 2500 * tentativa));
+        if (!vivo) return;
+        try {
+          const res = await fetch(`${API}/editor/thumbs/${id}`, {
+            headers: await videoApiAuthHeaders(),
+          });
+          if (!res.ok) continue;
+          const d = await res.json();
+          if (!vivo) return;
+          // o worker devolve "" no frame que o ffmpeg não conseguiu, e SEMPRE
+          // devolve `count` entradas — checar só o tamanho aceitaria uma lista
+          // toda vazia e a timeline pulsaria "carregando" para sempre
+          const lista: string[] = d.thumbs || [];
+          const bons = lista.filter(Boolean).length;
+          if (!lista.length || bons < lista.length / 2) continue;
+          setMeta((m) => (m && m.edit_id === id ? { ...m, thumbs: lista } : m));
+          return;
+        } catch { /* rede/worker fora — tenta de novo */ }
+      }
+      if (vivo) setThumbsErro(true);   // para de fingir que está carregando
+    })();
+    return () => { vivo = false; };
+  }, [meta?.edit_id, meta?.thumbs?.length]);
+
   // Prévia da trilha respeita o slider em tempo real
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = Math.min(1, musicVolume / 100);
@@ -593,9 +642,11 @@ export default function AdminEditorVideo() {
         setFonteExpirada(false);
         // clampa os cortes à duração da fonte re-enviada (pode diferir um pouco)
         apply((d) => ({
-          segments: d.segments
-            .map((s) => ({ ...s, end: Math.min(s.end, data.duration) }))
-            .filter((s) => s.start < data.duration - 0.05 && s.end - s.start >= 0.15),
+          segments: normalizarSegments(
+            d.segments
+              .map((s) => ({ ...s, end: Math.min(s.end, data.duration) }))
+              .filter((s) => s.start < data.duration - 0.05 && s.end - s.start >= 0.15),
+            data.duration),
         }));
         toast.success("Fonte reanexada — suas edições foram preservadas.");
       } else {
@@ -697,6 +748,126 @@ export default function AdminEditorVideo() {
     draggingRef.current = true;
     seekTo(posFromEvent(e.clientX));
   };
+
+  // ── snap magnético (Fase 1) ────────────────────────────────────────────────
+  // Pontos onde os blocos "grudam": início/fim do vídeo, cursor e as bordas de
+  // todo mundo — é o que evita a fresta de 0,1s entre um corte e um sticker.
+  // Cada ponto carrega o DONO: quem está sendo arrastado se exclui por
+  // identidade, nunca por valor — o valor do item vira igual ao do alvo assim
+  // que ele gruda, e excluir por valor mataria o alvo junto (o bloco desgrudava
+  // no frame seguinte e o corte oscilava).
+  const snapPoints = useMemo(() => {
+    if (!meta) return [] as { t: number; dono: string }[];
+    const pts = [
+      { t: 0, dono: "fix" }, { t: meta.duration, dono: "fix" }, { t: playhead, dono: "fix" },
+    ];
+    segments.forEach((s, i) => {
+      pts.push({ t: s.start, dono: `seg${i}` }, { t: s.end, dono: `seg${i}` });
+    });
+    for (const s of stickers) pts.push({ t: s.start, dono: `stk${s.id}` }, { t: s.end, dono: `stk${s.id}` });
+    for (const c of audioClips) pts.push({ t: c.start, dono: `aud${c.id}` }, { t: c.end, dono: `aud${c.id}` });
+    for (const t of titles) pts.push({ t: t.start, dono: `tit${t.id}` }, { t: t.end, dono: `tit${t.id}` });
+    return pts;
+  }, [meta, playhead, segments, stickers, audioClips, titles]);
+
+  /** Cola `t` no ponto notável mais próximo (tolerância de 8px, convertida para
+   *  segundos pela escala atual — no zoom a régua fica mais fina, então a
+   *  tolerância em TEMPO diminui junto). `donos` = quem não conta (o próprio
+   *  item arrastado). PURA de propósito: é chamada de handlers de arrasto, e
+   *  quem mexe no estado é o chamador. guide != null indica que GRUDOU. */
+  const calcSnap = (t: number, donos: string[] = []): { t: number; guide: number | null } => {
+    if (!snapOn || !meta || !timelineRef.current) return { t, guide: null };
+    const largura = timelineRef.current.getBoundingClientRect().width || 1;
+    const tol = (8 / largura) * meta.duration;
+    let melhor = t, dist = tol;
+    for (const p of snapPoints) {
+      if (donos.includes(p.dono)) continue;
+      const d = Math.abs(p.t - t);
+      if (d < dist) { dist = d; melhor = p.t; }
+    }
+    return { t: melhor, guide: dist < tol ? melhor : null };
+  };
+
+  // ── arrastar a FRONTEIRA entre dois trechos (Fase 1) ──────────────────────
+  // Só existem fronteiras internas: os trechos são uma partição contígua de
+  // [0, duração], então mover a borda de um move a do vizinho junto — nunca
+  // abre buraco nem sobrepõe.
+  const onBorderDown = (e: React.PointerEvent, segId: number) => {
+    e.stopPropagation();
+    e.preventDefault();
+    checkpoint();
+    // guarda o ID, não o índice: o poll do corte por IA pode reconstruir os
+    // trechos no meio do arrasto e o índice passaria a apontar outro corte
+    segDragRef.current = { segId };
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+  };
+  const onBorderMove = (e: React.PointerEvent) => {
+    const d = segDragRef.current;
+    if (!d || !meta) return;
+    // se o nó remontou no meio do gesto, o pointer capture se perde e o "up"
+    // nunca chega — sem isso, passar o mouse por cima já movia o corte
+    if (e.buttons === 0) { onBorderUp(); return; }
+    const i = segments.findIndex((s) => s.id === d.segId);
+    if (i < 0 || i >= segments.length - 1) return;
+    const { t, guide } = calcSnap(posFromEvent(e.clientX), [`seg${i}`, `seg${i + 1}`]);
+    setSnapGuide(guide);
+    applyLive((doc) => {
+      const segs = [...doc.segments];
+      const j = segs.findIndex((s) => s.id === d.segId);
+      const cur = segs[j], prox = segs[j + 1];
+      if (!cur || !prox) return {};
+      const nt = Math.max(cur.start + 0.2, Math.min(prox.end - 0.2, t));
+      segs[j] = { ...cur, end: nt };
+      segs[j + 1] = { ...prox, start: nt };
+      return { segments: segs };
+    });
+  };
+  const onBorderUp = () => { segDragRef.current = null; setSnapGuide(null); };
+
+  // ── régua (Fase 1) ─────────────────────────────────────────────────────────
+  // Passo que mantém ~8 marcas visíveis em qualquer zoom (0:00, 0:05, 0:10...)
+  const rulerStep = useMemo(() => {
+    if (!meta?.duration) return 5;
+    const visivel = meta.duration / zoom;
+    const alvo = visivel / 8;
+    return [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600].find((s) => s >= alvo) ?? 600;
+  }, [meta?.duration, zoom]);
+  const rulerMarks = useMemo(() => {
+    if (!meta?.duration) return [] as number[];
+    const m: number[] = [];
+    for (let t = 0; t <= meta.duration + 1e-6; t += rulerStep) m.push(Number(t.toFixed(3)));
+    return m;
+  }, [meta?.duration, rulerStep]);
+  const rotuloRegua = (t: number) => {
+    const mm = Math.floor(t / 60);
+    const ss = t - mm * 60;
+    return rulerStep < 1 ? `${mm}:${ss.toFixed(1).padStart(4, "0")}`
+                         : `${mm}:${String(Math.round(ss)).padStart(2, "0")}`;
+  };
+
+  // Zoom mantém o CURSOR no lugar (é o que a pessoa está olhando)
+  const aplicarZoom = (novo: number) => {
+    const z = Math.max(1, Math.min(16, novo));
+    setZoom(z);
+    requestAnimationFrame(() => {
+      const box = scrollRef.current;
+      if (!box || !meta?.duration) return;
+      const alvo = (playhead / meta.duration) * box.scrollWidth;
+      box.scrollLeft = Math.max(0, alvo - box.clientWidth / 2);
+    });
+  };
+
+  // Com zoom, o playhead sai da área visível durante o play — acompanha
+  useEffect(() => {
+    const box = scrollRef.current;
+    if (!box || zoom === 1 || !meta?.duration) return;
+    const v = videoRef.current;
+    if (!v || v.paused) return;
+    const x = (playhead / meta.duration) * box.scrollWidth;
+    if (x < box.scrollLeft + 40 || x > box.scrollLeft + box.clientWidth - 40) {
+      box.scrollLeft = Math.max(0, x - box.clientWidth / 2);
+    }
+  }, [playhead, zoom, meta?.duration]);
   useEffect(() => {
     const move = (e: MouseEvent) => { if (draggingRef.current) seekTo(posFromEvent(e.clientX)); };
     const up = () => { draggingRef.current = false; };
@@ -767,7 +938,9 @@ export default function AdminEditorVideo() {
         next.push({ id: nid++, start: Math.max(s.start, ca), end: Math.min(s.end, cb), keep: false });
         if (s.end > cb) next.push({ id: nid++, start: cb, end: s.end, keep: s.keep });
       }
-      return { segments: next.filter((s) => s.end - s.start >= 0.15) };
+      // descartar as sobras curtas abria buraco na partição — normalizar
+      // devolve a região como trecho removido
+      return { segments: normalizarSegments(next.filter((s) => s.end - s.start >= 0.15), meta.duration) };
     });
     setCutStart(""); setCutEnd("");
     toast.success(`Trecho ${fmt(ca)}–${fmt(cb)} removido — veja na timeline (dá pra restaurar).`);
@@ -786,7 +959,8 @@ export default function AdminEditorVideo() {
     const v = Math.max(0, Math.min(meta.duration, value));
     // Encolher um trecho NÃO apaga a região: a sobra vira trecho REMOVIDO
     // (restaurável na timeline) — antes ela sumia sem volta (bug do Carlos:
-    // "reverto e só volta o último corte").
+    // "reverto e só volta o último corte"). Esticar come o vizinho, e
+    // normalizarSegments garante a partição nos dois casos.
     apply((d) => {
       const next: Segment[] = [];
       let nid = Math.max(0, ...d.segments.map((p) => p.id)) + 1;
@@ -802,7 +976,7 @@ export default function AdminEditorVideo() {
           if (ne < s.end - 0.15) next.push({ id: nid++, start: ne, end: s.end, keep: false });
         }
       }
-      return { segments: next };
+      return { segments: normalizarSegments(next, meta.duration) };
     });
   };
 
@@ -812,9 +986,13 @@ export default function AdminEditorVideo() {
   // ── cortar com IA ──────────────────────────────────────────────────────────
   const applyAiSegments = (keeps: { start: number; end: number }[]) => {
     if (!meta || !keeps.length) return;
-    apply(() => {
+    apply((d) => {
       const segs: Segment[] = [];
-      let id = 1, cursor = 0;
+      // ids ACIMA dos atuais: renumerar a partir de 1 colidia com os ids
+      // antigos e, se este poll chegasse no meio de um arrasto de fronteira,
+      // o gesto continuava — em outro corte (o id "existia", mas era outro)
+      let id = Math.max(0, ...d.segments.map((p) => p.id)) + 1;
+      let cursor = 0;
       for (const k of keeps) {
         const s = Math.max(0, k.start), e = Math.min(meta.duration, k.end);
         if (s > cursor + 0.05) segs.push({ id: id++, start: cursor, end: s, keep: false });
@@ -822,7 +1000,7 @@ export default function AdminEditorVideo() {
         cursor = e;
       }
       if (cursor < meta.duration - 0.05) segs.push({ id: id++, start: cursor, end: meta.duration, keep: false });
-      return { segments: segs };
+      return { segments: normalizarSegments(segs, meta.duration) };
     });
   };
 
@@ -1045,12 +1223,12 @@ export default function AdminEditorVideo() {
   // Arrasto dos blocos nas FAIXAS da timeline (mover = mudar início;
   // borda direita = esticar/encurtar). Pointer capture → sem listeners globais.
   // checkpoint() no início: o gesto INTEIRO vira 1 passo de Desfazer.
-  const onTrackDown = (e: React.PointerEvent, kind: "sticker" | "audio", id: string, mode: "move" | "resize") => {
+  const onTrackDown = (e: React.PointerEvent, kind: "sticker" | "audio" | "title", id: string, mode: "move" | "resize") => {
     e.stopPropagation();
     e.preventDefault();
-    const item = kind === "sticker"
-      ? stickers.find((s) => s.id === id)
-      : audioClips.find((c) => c.id === id);
+    const item = kind === "sticker" ? stickers.find((s) => s.id === id)
+      : kind === "audio" ? audioClips.find((c) => c.id === id)
+      : titles.find((t) => t.id === id);
     if (!item || !meta) return;
     checkpoint();
     trackDragRef.current = { kind, id, mode, grab: posFromEvent(e.clientX) - item.start };
@@ -1059,22 +1237,53 @@ export default function AdminEditorVideo() {
   const onTrackMove = (e: React.PointerEvent) => {
     const d = trackDragRef.current;
     if (!d || !meta) return;
+    if (e.buttons === 0) { onTrackUp(); return; }   // gesto perdido (nó remontou)
+    const item = d.kind === "sticker" ? stickers.find((s) => s.id === d.id)
+      : d.kind === "audio" ? audioClips.find((c) => c.id === d.id)
+      : titles.find((t) => t.id === d.id);
+    if (!item) return;
     const t = posFromEvent(e.clientX);
-    const applyItem = <T extends { start: number; end: number; natural_dur: number }>(item: T): T => {
-      if (d.mode === "move") {
-        const len = item.end - item.start;
-        const ns = Math.max(0, Math.min(meta.duration - len, t - d.grab));
-        return { ...item, start: ns, end: ns + len };
-      }
-      let ne = Math.max(item.start + 0.3, Math.min(meta.duration, t));
-      // áudio não estica além do arquivo; sticker pode (loop/último frame)
-      if (d.kind === "audio") ne = Math.min(ne, item.start + (item.natural_dur || 9999));
-      return { ...item, end: ne };
-    };
-    if (d.kind === "sticker") applyLive((dd) => ({ stickers: dd.stickers.map((s) => (s.id === d.id ? applyItem(s) : s)) }));
-    else applyLive((dd) => ({ audioClips: dd.audioClips.map((c) => (c.id === d.id ? applyItem(c) : c)) }));
+    // snap calculado FORA do reducer (o updater precisa ser puro); o próprio
+    // item sai por IDENTIDADE — por valor ele se auto-excluiria ao grudar
+    const eu = [`${d.kind === "sticker" ? "stk" : d.kind === "audio" ? "aud" : "tit"}${d.id}`];
+    let novo: { start: number; end: number };
+    let guide: number | null = null;
+    if (d.mode === "move") {
+      const len = item.end - item.start;
+      const bruto = Math.max(0, Math.min(meta.duration - len, t - d.grab));
+      // tenta grudar pelas DUAS bordas: vale a que GRUDOU (guide != null) —
+      // comparar deslocamento fazia a borda que não grudou (deslocamento 0)
+      // ganhar sempre, e o encaixe nunca acontecia
+      const ini = calcSnap(bruto, eu);
+      const fim = calcSnap(bruto + len, eu);
+      let ns = bruto;
+      if (ini.guide !== null && fim.guide !== null) {
+        const usaIni = Math.abs(ini.t - bruto) <= Math.abs(fim.t - (bruto + len));
+        ns = usaIni ? ini.t : fim.t - len;
+        guide = usaIni ? ini.guide : fim.guide;
+      } else if (ini.guide !== null) { ns = ini.t; guide = ini.guide; }
+      else if (fim.guide !== null) { ns = fim.t - len; guide = fim.guide; }
+      const preso = Math.max(0, Math.min(meta.duration - len, ns));
+      // bloco encostado na borda do vídeo: o clamp desfaz o encaixe — a guia
+      // não pode acender apontando um encaixe que não aconteceu
+      if (Math.abs(preso - ns) > 1e-6) guide = null;
+      ns = preso;
+      novo = { start: ns, end: ns + len };
+    } else {
+      const r = calcSnap(t, eu);
+      let ne = Math.max(item.start + 0.3, Math.min(meta.duration, r.t));
+      // áudio não estica além do arquivo; sticker/texto podem (loop/tempo em tela)
+      const nat = (item as { natural_dur?: number }).natural_dur;
+      if (d.kind === "audio") ne = Math.min(ne, item.start + (nat || 9999));
+      guide = Math.abs(ne - r.t) < 1e-6 ? r.guide : null;   // clamp desfez o snap
+      novo = { start: item.start, end: ne };
+    }
+    setSnapGuide(guide);
+    if (d.kind === "sticker") applyLive((dd) => ({ stickers: dd.stickers.map((s) => (s.id === d.id ? { ...s, ...novo } : s)) }));
+    else if (d.kind === "audio") applyLive((dd) => ({ audioClips: dd.audioClips.map((c) => (c.id === d.id ? { ...c, ...novo } : c)) }));
+    else applyLive((dd) => ({ titles: dd.titles.map((x) => (x.id === d.id ? { ...x, ...novo } : x)) }));
   };
-  const onTrackUp = () => { trackDragRef.current = null; };
+  const onTrackUp = () => { trackDragRef.current = null; setSnapGuide(null); };
 
   // Arrasto do sticker DENTRO do player (posicionamento visual)
   const onStickerPreviewDown = (e: React.PointerEvent, id: string) => {
@@ -1539,77 +1748,162 @@ export default function AdminEditorVideo() {
                   </Button>
                 </div>
 
-                <div ref={timelineRef} className="relative select-none cursor-col-resize" onMouseDown={onTimelineDown}>
-                  <div className="flex h-16 rounded-lg overflow-hidden border">
-                    {meta.thumbs.map((t, i) =>
-                      t ? <img key={i} src={t} draggable={false} className="h-full object-cover" style={{ width: `${100 / meta.thumbs.length}%` }} alt="" />
-                        : <div key={i} className="h-full bg-muted" style={{ width: `${100 / meta.thumbs.length}%` }} />,
-                    )}
-                  </div>
-                  <div className="absolute inset-0 pointer-events-none">
-                    {segments.map((s) => (
-                      <div key={s.id}
-                        className={`absolute top-0 h-full border-2 rounded-sm ${
-                          s.keep
-                            ? (activeSeg?.id === s.id ? "border-primary" : "border-emerald-400/70")
-                            : "border-red-500/70 bg-black/60 backdrop-grayscale"}`}
-                        style={{ left: `${(s.start / meta.duration) * 100}%`, width: `${((s.end - s.start) / meta.duration) * 100}%` }}>
-                        <button type="button"
-                          title={s.keep ? "Remover este trecho" : "Restaurar este trecho"}
-                          onMouseDown={(e) => e.stopPropagation()}
-                          onClick={(e) => { e.stopPropagation(); toggleSegment(s.id); }}
-                          className={`pointer-events-auto absolute top-0.5 right-0.5 rounded p-0.5 ${
-                            s.keep ? "bg-black/50 text-white hover:bg-red-600" : "bg-red-600 text-white hover:bg-emerald-600"}`}>
-                          {s.keep ? <Trash2 className="h-3 w-3" /> : <RotateCcw className="h-3 w-3" />}
-                        </button>
-                      </div>
-                    ))}
-                    <div className="absolute top-[-4px] bottom-[-4px] w-0.5 bg-primary"
-                      style={{ left: `${(playhead / meta.duration) * 100}%` }}>
-                      <div className="h-2.5 w-2.5 rounded-full bg-primary -translate-x-[45%]" />
-                    </div>
-                  </div>
-                </div>
-                <div className="flex justify-between text-[10px] text-muted-foreground tabular-nums">
-                  <span>0:00</span><span>{fmt(meta.duration / 2)}</span><span>{fmt(meta.duration)}</span>
+                {/* Zoom + snap (Fase 1). Tudo abaixo vive no MESMO container
+                    rolável e com a mesma largura — as faixas ficam alinhadas
+                    com a timeline em qualquer zoom. */}
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-muted-foreground">Zoom</span>
+                  <Button size="sm" variant="outline" className="h-6 w-6 p-0"
+                    disabled={zoom <= 1} onClick={() => aplicarZoom(zoom / 2)} title="Afastar">
+                    <Minus className="h-3 w-3" />
+                  </Button>
+                  <span className="tabular-nums w-9 text-center">{zoom}×</span>
+                  <Button size="sm" variant="outline" className="h-6 w-6 p-0"
+                    disabled={zoom >= 16} onClick={() => aplicarZoom(zoom * 2)} title="Aproximar (mais precisão no corte)">
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                  {zoom > 1 && (
+                    <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
+                      onClick={() => { setZoom(1); if (scrollRef.current) scrollRef.current.scrollLeft = 0; }}>
+                      ver tudo
+                    </Button>
+                  )}
+                  <label className="flex items-center gap-1.5 cursor-pointer ml-auto"
+                    title="Ao arrastar, os blocos grudam no cursor, nos cortes e nas bordas dos outros — sem frestas">
+                    <input type="checkbox" checked={snapOn} onChange={(e) => setSnapOn(e.target.checked)} />
+                    🧲 Encaixe
+                  </label>
                 </div>
 
-                {/* Faixas extras (estilo CapCut): stickers e clipes de áudio.
-                    Arraste o bloco pra mover no tempo; borda direita estica. */}
-                {stickers.length > 0 && (
-                  <div className="relative h-7 rounded border bg-violet-500/5 overflow-hidden">
-                    {stickers.map((s) => (
-                      <div key={s.id}
-                        className="absolute top-0.5 bottom-0.5 rounded bg-violet-500/70 border border-violet-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
-                        style={{ left: `${(s.start / meta.duration) * 100}%`, width: `${Math.max(1.2, ((s.end - s.start) / meta.duration) * 100)}%`, touchAction: "none" }}
-                        title={`${s.name} · ${fmt(s.start)}–${fmt(s.end)} — arraste pra mover; borda direita estica`}
-                        onPointerDown={(e) => onTrackDown(e, "sticker", s.id, "move")}
-                        onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
-                        <span className="truncate pointer-events-none">🖼 {s.name}</span>
-                        <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/40"
-                          style={{ touchAction: "none" }}
-                          onPointerDown={(e) => onTrackDown(e, "sticker", s.id, "resize")} />
+                <div ref={scrollRef} className="overflow-x-auto overflow-y-hidden pb-1">
+                  <div className="relative space-y-1" style={{ width: `${zoom * 100}%` }}>
+                    {/* régua */}
+                    <div className="relative h-4 select-none">
+                      {rulerMarks.map((t) => (
+                        <div key={t} className="absolute top-0 flex flex-col items-start"
+                          style={{ left: `${(t / meta.duration) * 100}%` }}>
+                          <div className="h-1.5 w-px bg-muted-foreground/50" />
+                          <span className="text-[9px] text-muted-foreground tabular-nums -translate-x-1/2 ml-px whitespace-nowrap">
+                            {rotuloRegua(t)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div ref={timelineRef} className="relative select-none cursor-col-resize" onMouseDown={onTimelineDown}>
+                      <div className="flex h-16 rounded-lg overflow-hidden border">
+                        {(meta.thumbs.length ? meta.thumbs : Array(20).fill("")).map((t, i, arr) =>
+                          t ? <img key={i} src={t} draggable={false} className="h-full object-cover" style={{ width: `${100 / arr.length}%` }} alt="" />
+                            : <div key={i} className={`h-full bg-muted ${thumbsErro ? "" : "animate-pulse"}`}
+                                style={{ width: `${100 / arr.length}%` }} />,
+                        )}
                       </div>
-                    ))}
-                  </div>
-                )}
-                {audioClips.length > 0 && (
-                  <div className="relative h-7 rounded border bg-sky-500/5 overflow-hidden">
-                    {audioClips.map((c) => (
-                      <div key={c.id}
-                        className="absolute top-0.5 bottom-0.5 rounded bg-sky-500/70 border border-sky-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
-                        style={{ left: `${(c.start / meta.duration) * 100}%`, width: `${Math.max(1.2, ((c.end - c.start) / meta.duration) * 100)}%`, touchAction: "none" }}
-                        title={`${c.name} · ${fmt(c.start)}–${fmt(c.end)} — arraste pra mover; borda direita estica`}
-                        onPointerDown={(e) => onTrackDown(e, "audio", c.id, "move")}
-                        onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
-                        <span className="truncate pointer-events-none">🎧 {c.name}</span>
-                        <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/40"
-                          style={{ touchAction: "none" }}
-                          onPointerDown={(e) => onTrackDown(e, "audio", c.id, "resize")} />
+                      {thumbsErro && !meta.thumbs.length && (
+                        <span className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground pointer-events-none">
+                          (sem miniaturas — a timeline funciona normalmente)
+                        </span>
+                      )}
+                      <div className="absolute inset-0 pointer-events-none">
+                        {segments.map((s) => (
+                          <div key={s.id}
+                            className={`absolute top-0 h-full border-2 rounded-sm ${
+                              s.keep
+                                ? (activeSeg?.id === s.id ? "border-primary" : "border-emerald-400/70")
+                                : "border-red-500/70 bg-black/60 backdrop-grayscale"}`}
+                            style={{ left: `${(s.start / meta.duration) * 100}%`, width: `${((s.end - s.start) / meta.duration) * 100}%` }}>
+                            <button type="button"
+                              title={s.keep ? "Remover este trecho" : "Restaurar este trecho"}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => { e.stopPropagation(); toggleSegment(s.id); }}
+                              className={`pointer-events-auto absolute top-0.5 right-0.5 rounded p-0.5 ${
+                                s.keep ? "bg-black/50 text-white hover:bg-red-600" : "bg-red-600 text-white hover:bg-emerald-600"}`}>
+                              {s.keep ? <Trash2 className="h-3 w-3" /> : <RotateCcw className="h-3 w-3" />}
+                            </button>
+                          </div>
+                        ))}
+                        {/* alças das FRONTEIRAS entre trechos: arraste para mover
+                            o ponto de corte (o vizinho acompanha) */}
+                        {segments.slice(0, -1).map((s) => (
+                          <div key={`b${s.id}`}
+                            className="pointer-events-auto absolute top-0 bottom-0 w-2 -translate-x-1/2 cursor-ew-resize group"
+                            style={{ left: `${(s.end / meta.duration) * 100}%`, touchAction: "none" }}
+                            title="Arraste para ajustar onde o corte acontece"
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onPointerDown={(e) => onBorderDown(e, s.id)}
+                            onPointerMove={onBorderMove}
+                            onPointerUp={onBorderUp}
+                            onPointerCancel={onBorderUp}>
+                            <div className="mx-auto h-full w-0.5 bg-white/70 group-hover:bg-primary group-hover:w-1 transition-all" />
+                          </div>
+                        ))}
+                        <div className="absolute top-[-4px] bottom-[-4px] w-0.5 bg-primary"
+                          style={{ left: `${(playhead / meta.duration) * 100}%` }}>
+                          <div className="h-2.5 w-2.5 rounded-full bg-primary -translate-x-[45%]" />
+                        </div>
                       </div>
-                    ))}
+                    </div>
+
+                    {/* guia do encaixe: mostra em que ponto o bloco grudou */}
+                    {snapGuide !== null && (
+                      <div className="absolute top-4 bottom-0 w-px bg-amber-400 pointer-events-none z-10"
+                        style={{ left: `${(snapGuide / meta.duration) * 100}%` }} />
+                    )}
+
+                    {/* Faixas (estilo CapCut): textos, stickers e clipes de áudio.
+                        Arraste o bloco pra mover no tempo; borda direita estica. */}
+                    {titles.length > 0 && (
+                      <div className="relative h-7 rounded border bg-amber-500/5 overflow-hidden">
+                        {titles.map((t) => (
+                          <div key={t.id}
+                            className="absolute top-0.5 bottom-0.5 rounded bg-amber-500/70 border border-amber-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
+                            style={{ left: `${(t.start / meta.duration) * 100}%`, width: `${Math.max(1.2, ((t.end - t.start) / meta.duration) * 100)}%`, touchAction: "none" }}
+                            title={`${t.text} · ${fmt(t.start)}–${fmt(t.end)} — arraste pra mover; borda direita estica`}
+                            onPointerDown={(e) => onTrackDown(e, "title", t.id, "move")}
+                            onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
+                            <span className="truncate pointer-events-none">T {t.text || "(texto)"}</span>
+                            <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/40"
+                              style={{ touchAction: "none" }}
+                              onPointerDown={(e) => onTrackDown(e, "title", t.id, "resize")} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {stickers.length > 0 && (
+                      <div className="relative h-7 rounded border bg-violet-500/5 overflow-hidden">
+                        {stickers.map((s) => (
+                          <div key={s.id}
+                            className="absolute top-0.5 bottom-0.5 rounded bg-violet-500/70 border border-violet-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
+                            style={{ left: `${(s.start / meta.duration) * 100}%`, width: `${Math.max(1.2, ((s.end - s.start) / meta.duration) * 100)}%`, touchAction: "none" }}
+                            title={`${s.name} · ${fmt(s.start)}–${fmt(s.end)} — arraste pra mover; borda direita estica`}
+                            onPointerDown={(e) => onTrackDown(e, "sticker", s.id, "move")}
+                            onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
+                            <span className="truncate pointer-events-none">🖼 {s.name}</span>
+                            <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/40"
+                              style={{ touchAction: "none" }}
+                              onPointerDown={(e) => onTrackDown(e, "sticker", s.id, "resize")} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {audioClips.length > 0 && (
+                      <div className="relative h-7 rounded border bg-sky-500/5 overflow-hidden">
+                        {audioClips.map((c) => (
+                          <div key={c.id}
+                            className="absolute top-0.5 bottom-0.5 rounded bg-sky-500/70 border border-sky-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
+                            style={{ left: `${(c.start / meta.duration) * 100}%`, width: `${Math.max(1.2, ((c.end - c.start) / meta.duration) * 100)}%`, touchAction: "none" }}
+                            title={`${c.name} · ${fmt(c.start)}–${fmt(c.end)} — arraste pra mover; borda direita estica`}
+                            onPointerDown={(e) => onTrackDown(e, "audio", c.id, "move")}
+                            onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
+                            <span className="truncate pointer-events-none">🎧 {c.name}</span>
+                            <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/40"
+                              style={{ touchAction: "none" }}
+                              onPointerDown={(e) => onTrackDown(e, "audio", c.id, "resize")} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
 
                 {activeSeg && (
                   <div className="flex items-center gap-2 flex-wrap rounded-lg border bg-muted/30 px-3 py-2 text-xs">

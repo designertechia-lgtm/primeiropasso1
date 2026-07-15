@@ -148,6 +148,12 @@ export function snapshotFromStored(raw: unknown): ProjectSnapshot | null {
   };
 }
 
+/** meta sem as thumbnails: elas são data-URLs base64 (~76KB medidos no primeiro
+ *  projeto real) e não têm por que viajar para o localStorage/banco a cada save
+ *  — o painel repõe por GET /editor/thumbs/{edit_id}. */
+export const metaSemThumbs = (m: EditMeta | null): EditMeta | null =>
+  m ? { ...m, thumbs: [] } : null;
+
 export const emptySnapshot = (): ProjectSnapshot => ({
   v: 2,
   meta: null,

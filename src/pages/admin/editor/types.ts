@@ -94,6 +94,37 @@ export const groupWords = (ws: Cue[], mode: "frases" | "karaoke"): Cue[] => {
   return cues;
 };
 
+/**
+ * Devolve os trechos como uma PARTIÇÃO válida de [0, duração]: ordenada, sem
+ * buraco e sem sobreposição. É a invariante de que o resto do editor depende —
+ * a alça de fronteira move `segs[i].end` junto com `segs[i+1].start`, e o
+ * render concatena os `keep` na ordem.
+ *
+ * Quem podia quebrar: "início = 0:02" num trecho que começa em 0:05 fazia o
+ * trecho invadir o vizinho (o render devolvia um pedaço marcado como removido),
+ * e um resto menor que 0,15s era descartado, abrindo buraco. Aqui, região
+ * descoberta vira trecho REMOVIDO (restaurável) e sobreposição é resolvida a
+ * favor de quem começa antes.
+ */
+export const normalizarSegments = (segs: Segment[], duration: number): Segment[] => {
+  const ord = [...segs]
+    .filter((s) => s.end - s.start > 0.01)
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+  const out: Segment[] = [];
+  let nid = Math.max(0, ...segs.map((s) => s.id)) + 1;
+  let cursor = 0;
+  for (const s of ord) {
+    const start = Math.max(cursor, s.start);
+    const end = Math.min(duration, s.end);
+    if (end - start <= 0.01) continue;          // engolido pelo anterior
+    if (start > cursor + 0.01) out.push({ id: nid++, start: cursor, end: start, keep: false });
+    out.push({ ...s, start, end });
+    cursor = end;
+  }
+  if (cursor < duration - 0.01) out.push({ id: nid++, start: cursor, end: duration, keep: false });
+  return out.length ? out : [{ id: 1, start: 0, end: duration, keep: true }];
+};
+
 export const fmt = (s: number) => {
   const m = Math.floor(s / 60);
   const ss = s % 60;

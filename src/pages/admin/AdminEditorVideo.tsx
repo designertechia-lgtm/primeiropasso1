@@ -56,6 +56,7 @@ import {
 import {
   buildRenderPayload, snapshotFromStored, metaSemThumbs, type ProjectSnapshot,
 } from "./editor/serialize";
+import { evaluateScene, drawScene, fontesDaCena, FONTE_PADRAO } from "./editor/scene";
 import {
   listEditorProjects, fetchEditorProject, insertEditorProject,
   updateEditorProject, deleteEditorProject,
@@ -148,6 +149,8 @@ export default function AdminEditorVideo() {
   const restoredRef = useRef(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const videoWrapRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLCanvasElement>(null);
+  const fontesPedidasRef = useRef<Map<string, number>>(new Map());
   const metaRef = useRef<EditMeta | null>(null);
   const clipAudiosRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const trackDragRef = useRef<{ kind: "sticker" | "audio" | "title"; id: string; mode: "move" | "resize"; grab: number } | null>(null);
@@ -550,15 +553,28 @@ export default function AdminEditorVideo() {
     if (audioRef.current) audioRef.current.volume = Math.min(1, musicVolume / 100);
   }, [musicVolume, previewingTrack]);
 
-  // Fonte real do servidor via @font-face → amostra idêntica ao resultado
+  // Fontes reais do servidor via @font-face → a prévia desenha com a MESMA
+  // fonte que o ffmpeg vai queimar. Carrega todas as que a cena usa (a legenda
+  // e cada texto podem ter fontes diferentes), não só a da legenda.
   useEffect(() => {
-    if (!subFont || loadedFonts.has(subFont)) return;
-    const face = new FontFace(`edfont-${subFont}`, `url(${API}/editor/fonte/${subFont})`);
-    face.load().then((f) => {
-      (document as any).fonts.add(f);
-      setLoadedFonts((prev) => new Set(prev).add(subFont));
-    }).catch(() => {});
-  }, [subFont, loadedFonts]);
+    const querem = new Set([subFont, FONTE_PADRAO, ...fontesDaCena(doc)].filter(Boolean));
+    for (const id of querem) {
+      // Conta tentativas ANTES de pedir: sem isso, uma fonte que falha (id
+      // fora da whitelist → 404) era re-pedida a cada tecla digitada (o doc
+      // muda de identidade). Com teto de 3, uma oscilação de rede ainda se
+      // recupera — desistir na 1ª falha deixaria a fonte errada até o F5.
+      const tentativas = fontesPedidasRef.current.get(id) ?? 0;
+      if (tentativas >= 3) continue;
+      fontesPedidasRef.current.set(id, tentativas + 1);
+      const face = new FontFace(`edfont-${id}`, `url(${API}/editor/fonte/${id})`);
+      face.load().then((f) => {
+        (document as any).fonts.add(f);
+        fontesPedidasRef.current.set(id, 99);   // pronta: não pede mais
+        setLoadedFonts((prev) => new Set(prev).add(id));
+      }).catch(() => { /* 404 ou rede — cai na fonte padrão; re-tenta até 3x */ });
+    }
+  }, [subFont, doc]);
+
 
   const resetEditor = (m: EditMeta, label: string, srcUrl: string) => {
     setMeta(m);
@@ -1331,6 +1347,26 @@ export default function AdminEditorVideo() {
     return { left: (videoBox.w - w) / 2, top: (videoBox.h - h) / 2, w, h };
   }, [meta, videoBox]);
 
+  // ── prévia em tempo real de legendas/textos/selos (Fase 2) ────────────────
+  // Desenha no canvas sobre o player o que o ffmpeg desenharia em `playhead`.
+  // Os stickers seguem em DOM (por baixo) para continuarem arrastáveis — a
+  // ordem bate com o motor: stickers → selos → legendas/textos.
+  useEffect(() => {
+    const cv = overlayRef.current;
+    if (!cv || !contentRect) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = Math.max(1, Math.round(contentRect.w));
+    const h = Math.max(1, Math.round(contentRect.h));
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    }
+    const ctx = cv.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // meta.height: o selo é dimensionado em px de VÍDEO (o PIL clampa lá)
+    drawScene(ctx, evaluateScene(doc, playhead), { w, h }, loadedFonts, meta?.height || h);
+  }, [doc, playhead, contentRect, loadedFonts, meta?.height]);
+
   // Playhead fluido durante o play (timeupdate nativo é ~4Hz — pouco pra
   // prévia de sticker andando e sincronização dos clipes de áudio)
   useEffect(() => {
@@ -1682,6 +1718,18 @@ export default function AdminEditorVideo() {
                         onPointerMove={onStickerPreviewMove} onPointerUp={onStickerPreviewUp} />
                     );
                   })}
+                  {/* prévia de legendas/textos/selos: desenhada como o ffmpeg
+                      desenha (mesma régua de estilo). Fica ACIMA dos stickers,
+                      como no motor, e não intercepta o mouse (o sticker embaixo
+                      continua arrastável). */}
+                  {contentRect && (
+                    <canvas ref={overlayRef}
+                      className="absolute pointer-events-none"
+                      style={{
+                        left: contentRect.left, top: contentRect.top,
+                        width: contentRect.w, height: contentRect.h,
+                      }} />
+                  )}
                 </div>
                 <label className="flex items-center gap-1.5 text-xs cursor-pointer"
                   title="No play, os trechos removidos são pulados — você vê o resultado antes de renderizar">
@@ -2301,7 +2349,10 @@ export default function AdminEditorVideo() {
                     onChange={(e) => setNewTitleDur(Math.max(1, Math.min(30, Number(e.target.value) || 3)))}
                     className="h-8 w-14 text-xs" />s
                 </label>
-                <Button size="sm" variant="outline" className="h-8" disabled={!newTitle.trim()}
+                {/* sem texto fora dos "|" não há o que desenhar (e o motor
+                    quebrava com um texto só de pipes) */}
+                <Button size="sm" variant="outline" className="h-8"
+                  disabled={!newTitle.replace(/\|/g, "").trim()}
                   onClick={() => {
                     if (!meta) return;
                     const tid = newId();

@@ -9,7 +9,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
 
-const ADS_API_VERSION = "v21"
+// v24 desde 15/07/2026 — Google descontinua a v21 em 05/08/2026 (e-mail oficial);
+// diag validado na v24 antes da troca (OAuth+leitura+mutate respondem normalmente).
+const ADS_API_VERSION = "v24"
 const ADS_API_BASE = `https://googleads.googleapis.com/${ADS_API_VERSION}`
 
 serve(async (req) => {

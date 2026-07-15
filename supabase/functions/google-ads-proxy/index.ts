@@ -20,8 +20,9 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 }
 
-// Versão da Google Ads API (sunset ~12 meses; validada em 11/06/2026)
-const ADS_API_VERSION = "v21"
+// Versão da Google Ads API — v24 desde 15/07/2026 (Google descontinua a v21 em
+// 05/08/2026, e-mail oficial; diag validado na v24 antes da troca).
+const ADS_API_VERSION = "v24"
 const ADS_API_BASE = `https://googleads.googleapis.com/${ADS_API_VERSION}`
 
 // fetch com timeout — I/O externo sem AbortController já travou edge no projeto (regra fetchT 45s).

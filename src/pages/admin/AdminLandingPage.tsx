@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun, ListOrdered, ArrowUp, ArrowDown, Eye, EyeOff, Newspaper, PlayCircle, ShoppingBag, HelpCircle, Quote, Users, Target, Gift, BarChart3, Dna, Maximize2, Minimize2, Settings, FlaskConical, Briefcase } from "lucide-react";
+import { Pencil, X, Palette, Layout, BookOpen, Lightbulb, AlertCircle, Plus, Sparkles, Loader2, ExternalLink, TriangleAlert, Phone, Mail, Instagram, Linkedin, Facebook, MessageCircle, Type, Moon, Sun, ListOrdered, ArrowUp, ArrowDown, Eye, EyeOff, Newspaper, PlayCircle, ShoppingBag, HelpCircle, Quote, Users, Target, Gift, BarChart3, Dna, Maximize2, Minimize2, Settings, FlaskConical, Briefcase, Wand2 } from "lucide-react";
 import ImageUpload from "@/components/dashboard/ImageUpload";
 import { FieldHint } from "@/components/ui/FieldHint";
 import { InfoHint } from "@/components/ui/InfoHint";
@@ -45,6 +45,8 @@ import TrackingEditorTab from "@/components/admin/landing/TrackingEditorTab";
 import BrandDnaEditorTab from "@/components/admin/landing/BrandDnaEditorTab";
 import AbTestEditorTab from "@/components/admin/landing/AbTestEditorTab";
 import StockGalleryHint from "@/components/admin/landing/StockGalleryHint";
+import IconPicker from "@/components/admin/landing/IconPicker";
+import { PAIN_FALLBACK_ICONS, SOLUTION_FALLBACK_ICONS } from "@/lib/landing/icons";
 
 // ── Vídeo: detecção de arquivo direto vs embed (YouTube/Vimeo) ────────────
 // Espelha a lógica do AboutSection da landing pública, pro preview do editor
@@ -58,7 +60,10 @@ function isDirectVideoUrl(url: string): boolean {
 // toVideoEmbedUrl agora vive em @/lib/landing/videoEmbed (compartilhado com a página pública).
 
 // ── AI helper ─────────────────────────────────────────────
-async function callGenerateText(field: string, context: { name: string; crp?: string; specialty?: string }) {
+async function callGenerateText(
+  field: string,
+  context: { name: string; crp?: string; specialty?: string; items?: string[] },
+) {
   const { data, error } = await supabase.functions.invoke("generate-text", {
     body: { field, context },
   });
@@ -88,6 +93,27 @@ function AiButton({ onClick, loading }: { onClick: () => void; loading: boolean 
         </button>
       </TooltipTrigger>
       <TooltipContent>Gerar com Inteligência Artificial</TooltipContent>
+    </Tooltip>
+  );
+}
+
+// Irmão do AiButton, para os ícones. Separado de propósito: o AiButton reescreve o texto do campo;
+// este mexe SÓ nos ícones. Visual mais discreto porque é a ação secundária da seção.
+function SugerirIconesButton({ onClick, loading }: { onClick: () => void; loading: boolean }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={onClick}
+          disabled={loading}
+          className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/70 hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+        >
+          {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
+          {loading ? "Escolhendo..." : "Ícones"}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>Sugerir ícones com IA a partir dos textos (não reescreve o texto)</TooltipContent>
     </Tooltip>
   );
 }
@@ -357,13 +383,13 @@ export default function AdminLandingPage() {
   // dores
   const [painTitle, setPainTitle] = useState("");
   const [painSubtitle, setPainSubtitle] = useState("");
-  const [painItems, setPainItems] = useState<{ text: string }[]>([]);
+  const [painItems, setPainItems] = useState<{ text: string; icon?: string }[]>([]);
   const [newPainItem, setNewPainItem] = useState("");
 
   // solução
   const [solutionTitle, setSolutionTitle] = useState("");
   const [solutionSubtitle, setSolutionSubtitle] = useState("");
-  const [solutionItems, setSolutionItems] = useState<{ title: string; desc: string }[]>([]);
+  const [solutionItems, setSolutionItems] = useState<{ title: string; desc: string; icon?: string }[]>([]);
 
   // vilão (por que nada funcionou)
   const [villainTitle, setVillainTitle] = useState("");
@@ -510,27 +536,69 @@ export default function AdminLandingPage() {
 
   // 6 itens/cards: fecham 2 linhas cheias na grade de 3 colunas (mesmos defaults dos componentes públicos).
   const DEFAULT_PAIN_ITEMS = [
-    { text: "Pensamentos acelerados que não param" },
-    { text: "Dificuldade para dormir ou descansar de verdade" },
-    { text: "Ansiedade que aperta o peito sem motivo aparente" },
-    { text: "Relacionamentos que desgastam ao invés de nutrir" },
-    { text: "Autocobrança constante que nunca dá trégua" },
-    { text: "Sensação de que algo precisa mudar, mas não sabe por onde começar" },
+    { text: "Pensamentos acelerados que não param", icon: "brain" },
+    { text: "Dificuldade para dormir ou descansar de verdade", icon: "moon" },
+    { text: "Ansiedade que aperta o peito sem motivo aparente", icon: "heart-pulse" },
+    { text: "Relacionamentos que desgastam ao invés de nutrir", icon: "users" },
+    { text: "Autocobrança constante que nunca dá trégua", icon: "alert-circle" },
+    { text: "Sensação de que algo precisa mudar, mas não sabe por onde começar", icon: "compass" },
   ];
 
   const DEFAULT_SOLUTION_ITEMS = [
-    { title: "Autoconhecimento", desc: "Entenda seus padrões de pensamento e como eles influenciam suas emoções e comportamentos." },
-    { title: "Objetivos Claros", desc: "Juntos, definimos metas terapêuticas que fazem sentido para a sua vida real." },
-    { title: "Novas Perspectivas", desc: "Aprenda a mudar a forma como você percebe os desafios, com técnicas práticas e baseadas em evidências." },
-    { title: "Espaço Seguro", desc: "Atendimento 100% ético e sigiloso, onde você pode se expressar sem julgamentos." },
-    { title: "Ferramentas Práticas", desc: "Estratégias e exercícios que você leva para o dia a dia, muito além das sessões." },
-    { title: "Acolhimento Contínuo", desc: "Um acompanhamento próximo e humano em cada etapa do seu processo." },
+    { title: "Autoconhecimento", desc: "Entenda seus padrões de pensamento e como eles influenciam suas emoções e comportamentos.", icon: "brain" },
+    { title: "Objetivos Claros", desc: "Juntos, definimos metas terapêuticas que fazem sentido para a sua vida real.", icon: "target" },
+    { title: "Novas Perspectivas", desc: "Aprenda a mudar a forma como você percebe os desafios, com técnicas práticas e baseadas em evidências.", icon: "eye" },
+    { title: "Espaço Seguro", desc: "Atendimento 100% ético e sigiloso, onde você pode se expressar sem julgamentos.", icon: "shield-check" },
+    { title: "Ferramentas Práticas", desc: "Estratégias e exercícios que você leva para o dia a dia, muito além das sessões.", icon: "wrench" },
+    { title: "Acolhimento Contínuo", desc: "Um acompanhamento próximo e humano em cada etapa do seu processo.", icon: "heart" },
   ];
 
   const aiContext = {
     name: (professional as any)?.full_name || "o profissional",
     crp: professional?.crp || undefined,
     specialty: professional?.approaches?.[0] || undefined,
+  };
+
+  // Pede à IA só os ÍCONES dos cards que já existem — o texto não é reescrito.
+  // É o caminho para as landings publicadas antes do campo `icon` existir: sem isto, só ganhariam
+  // ícone certo quem regerasse a copy inteira (perdendo a que já aprovou).
+  const sugerirIcones = async (secao: "pain" | "solution") => {
+    const field = secao === "pain" ? "pain_icons" : "solution_icons";
+    const atuais: any[] = secao === "pain"
+      ? (painItems.length > 0 ? painItems : DEFAULT_PAIN_ITEMS)
+      : (solutionItems.length > 0 ? solutionItems : DEFAULT_SOLUTION_ITEMS);
+
+    if (atuais.length === 0) {
+      toast.error("Nenhum card para sugerir ícone.");
+      return;
+    }
+
+    // O que a IA lê de cada card: em Dores é o texto; em Soluções, título + descrição.
+    const textos = atuais.map((it) =>
+      secao === "pain" ? it.text : [it.title, it.desc].filter(Boolean).join(" — "),
+    );
+
+    setAiLoading(field);
+    try {
+      const icones = await callGenerateText(field, { ...aiContext, specialty: approaches.join(", "), items: textos });
+      if (!Array.isArray(icones)) throw new Error("A IA não devolveu uma lista de ícones.");
+
+      // Casa por posição e ignora o que a edge invalidou (null) — esse card mantém o que tinha.
+      const atualizados = atuais.map((it, i) =>
+        typeof icones[i] === "string" ? { ...it, icon: icones[i] } : it,
+      );
+      if (secao === "pain") setPainItems(atualizados);
+      else setSolutionItems(atualizados);
+
+      const trocados = atualizados.filter((it, i) => it.icon !== atuais[i].icon).length;
+      toast.success(
+        trocados > 0 ? `${trocados} ícone(s) atualizado(s). Revise e salve.` : "Os ícones atuais já eram os melhores.",
+      );
+    } catch (e: any) {
+      toast.error("Erro ao sugerir ícones", { description: e.message ?? String(e), duration: 6000 });
+    } finally {
+      setAiLoading(null);
+    }
   };
 
   const generate = async (field: string, onResult: (val: any) => void) => {
@@ -1627,17 +1695,31 @@ export default function AdminLandingPage() {
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label>Itens <FieldHint text="Cada item é um sintoma/dor exibido como card. Deixe vazio para usar o padrão." /></Label>
-                  <AiButton loading={aiLoading === "pain_items"} onClick={() => generate("pain_items", setPainItems)} />
+                  <Label>Itens <FieldHint text="Cada item é um sintoma/dor exibido como card. Clique no ícone para trocá-lo. Deixe vazio para usar o padrão." /></Label>
+                  <div className="flex items-center gap-1.5">
+                    <SugerirIconesButton loading={aiLoading === "pain_icons"} onClick={() => sugerirIcones("pain")} />
+                    <AiButton loading={aiLoading === "pain_items"} onClick={() => generate("pain_items", setPainItems)} />
+                  </div>
                 </div>
                 <div className="space-y-2">
                   {(painItems.length > 0 ? painItems : DEFAULT_PAIN_ITEMS).map((item, i) => (
                     <div key={i} className="flex gap-2 items-center">
+                      <IconPicker
+                        value={item.icon}
+                        label={item.text}
+                        fallback={PAIN_FALLBACK_ICONS[i % PAIN_FALLBACK_ICONS.length]}
+                        onChange={(icon) => {
+                          const updated = [...(painItems.length > 0 ? painItems : DEFAULT_PAIN_ITEMS)];
+                          updated[i] = { ...updated[i], icon };
+                          setPainItems(updated);
+                        }}
+                      />
                       <Input
                         value={item.text}
                         onChange={(e) => {
                           const updated = [...(painItems.length > 0 ? painItems : DEFAULT_PAIN_ITEMS)];
-                          updated[i] = { text: e.target.value };
+                          // Spread obrigatório: sem ele, digitar no texto apagava o `icon` do item.
+                          updated[i] = { ...updated[i], text: e.target.value };
                           setPainItems(updated);
                         }}
                       />
@@ -1680,13 +1762,26 @@ export default function AdminLandingPage() {
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label>Cards de benefícios <FieldHint text="Cada card tem título e descrição. Deixe vazio para usar o padrão." /></Label>
-                  <AiButton loading={aiLoading === "solution_items"} onClick={() => generate("solution_items", setSolutionItems)} />
+                  <Label>Cards de benefícios <FieldHint text="Cada card tem título e descrição. Clique no ícone para trocá-lo. Deixe vazio para usar o padrão." /></Label>
+                  <div className="flex items-center gap-1.5">
+                    <SugerirIconesButton loading={aiLoading === "solution_icons"} onClick={() => sugerirIcones("solution")} />
+                    <AiButton loading={aiLoading === "solution_items"} onClick={() => generate("solution_items", setSolutionItems)} />
+                  </div>
                 </div>
                 <div className="space-y-3">
                   {(solutionItems.length > 0 ? solutionItems : DEFAULT_SOLUTION_ITEMS).map((item, i) => (
                     <div key={i} className="rounded-lg border p-3 space-y-2">
                       <div className="flex gap-2 items-center">
+                        <IconPicker
+                          value={item.icon}
+                          label={item.title}
+                          fallback={SOLUTION_FALLBACK_ICONS[i % SOLUTION_FALLBACK_ICONS.length]}
+                          onChange={(icon) => {
+                            const updated = [...(solutionItems.length > 0 ? solutionItems : DEFAULT_SOLUTION_ITEMS)];
+                            updated[i] = { ...updated[i], icon };
+                            setSolutionItems(updated);
+                          }}
+                        />
                         <Input
                           placeholder="Título"
                           value={item.title}

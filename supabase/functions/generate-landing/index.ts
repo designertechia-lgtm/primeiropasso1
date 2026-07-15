@@ -81,14 +81,33 @@ const arrOf = (props: Record<string, any>) => ({
   type: "array",
   items: { type: "object", properties: props, required: Object.keys(props), additionalProperties: false },
 });
+
+// Ícones aceitos nos cards de Dores e Soluções. `enum` no structured output é o que impede o
+// modelo de inventar um nome que não existe — ele só consegue escolher um destes.
+// ESPELHO de ICON_NAMES em `src/lib/landing/icons.ts` (a edge roda em Deno e não importa o módulo
+// do front). Ao mexer lá, atualize aqui. Divergir não quebra: o front cai no ícone por posição.
+const ICON_NAMES = [
+  "brain", "heart", "heart-crack", "cloud", "cloud-rain", "moon", "sparkles", "frown",
+  "smile", "activity", "heart-pulse", "stethoscope", "bed", "dumbbell", "leaf", "flower",
+  "clock", "timer", "calendar", "calendar-clock", "hourglass", "alarm-clock", "repeat",
+  "refresh", "users", "user", "user-plus", "message-circle", "message-square", "handshake",
+  "home", "baby", "briefcase", "laptop", "code", "bug", "server", "database", "settings",
+  "wrench", "terminal", "git-branch", "alert-triangle", "alert-circle", "alert-octagon",
+  "x-circle", "ban", "flame", "trending-down", "thumbs-down", "battery-low", "lightbulb",
+  "target", "check-circle", "shield", "shield-check", "rocket", "trending-up", "award",
+  "trophy", "key", "compass", "thumbs-up", "zap", "book-open", "graduation-cap", "eye",
+  "search", "map", "footprints",
+];
+const icon = { type: "string", enum: ICON_NAMES };
+
 const LANDING_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
     hero_title: str, hero_subtitle: str,
-    pain_title: str, pain_subtitle: str, pain_items: arrOf({ text: str }),
+    pain_title: str, pain_subtitle: str, pain_items: arrOf({ text: str, icon }),
     villain_title: str, villain_body: str,
-    solution_title: str, solution_subtitle: str, solution_items: arrOf({ title: str, desc: str }),
+    solution_title: str, solution_subtitle: str, solution_items: arrOf({ title: str, desc: str, icon }),
     offer_title: str, offer_description: str, offer_steps: arrOf({ title: str, desc: str }),
     audience_title: str, audience_for: { type: "array", items: str }, audience_not_for: { type: "array", items: str },
     faq_title: str, faq_items: arrOf({ q: str, a: str }),
@@ -117,13 +136,19 @@ Gere a copy de cada seção. Regras de tamanho:
 - pain: título reflexivo + subtítulo empático + EXATAMENTE 6 itens (frases curtas de identificação).
 - villain: título em pergunta + corpo em 2 parágrafos (nomeia a causa real sem culpar o cliente + a virada).
 - solution: título + subtítulo + EXATAMENTE 6 cards (title 2–4 palavras + desc ≤ 20 palavras).
+
+ÍCONES (campo "icon" de cada item de pain e solution): escolha o ícone que representa o CONTEÚDO
+daquele item específico, não a seção. Ex.: item sobre sono → "moon"; sobre prazo → "clock"; sobre
+falha técnica → "bug"; sobre cansaço → "battery-low". Prefira o mais literal ao mais poético, e não
+repita o mesmo ícone em dois itens da mesma seção. Em pain use ícones do problema; em solution, do
+ganho.
 - offer: título + descrição de UMA oferta principal + 3 passos de "como funciona" (title + desc).
 - audience: título + 4 itens "é para você se…" + 3 itens "talvez não seja o momento se…".
 - faq: título + 5 perguntas; a PRIMEIRA obrigatoriamente "Isto substitui acompanhamento médico ou psicológico?" com resposta responsável (complementa, não substitui; urgência → SAMU 192 / CVV 188).
 - testimonials: título + subtítulo (a seção de prova social; NÃO invente depoimentos).
 
 Responda APENAS um JSON válido com EXATAMENTE estas chaves:
-{"hero_title":"","hero_subtitle":"","pain_title":"","pain_subtitle":"","pain_items":[{"text":""}],"villain_title":"","villain_body":"","solution_title":"","solution_subtitle":"","solution_items":[{"title":"","desc":""}],"offer_title":"","offer_description":"","offer_steps":[{"title":"","desc":""}],"audience_title":"","audience_for":[""],"audience_not_for":[""],"faq_title":"","faq_items":[{"q":"","a":""}],"testimonials_title":"","testimonials_subtitle":""}
+{"hero_title":"","hero_subtitle":"","pain_title":"","pain_subtitle":"","pain_items":[{"text":"","icon":""}],"villain_title":"","villain_body":"","solution_title":"","solution_subtitle":"","solution_items":[{"title":"","desc":"","icon":""}],"offer_title":"","offer_description":"","offer_steps":[{"title":"","desc":""}],"audience_title":"","audience_for":[""],"audience_not_for":[""],"faq_title":"","faq_items":[{"q":"","a":""}],"testimonials_title":"","testimonials_subtitle":""}
 Sem comentários, sem cercas de código, apenas o JSON.`;
 }
 

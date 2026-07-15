@@ -1,23 +1,22 @@
 import { useState, useEffect, useRef } from "react";
-import { Lightbulb, Target, RefreshCw, Shield, Zap, CheckCircle2, ChevronDown } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { splitHeadline } from "@/lib/landing/sections";
+import { resolveIcon, SOLUTION_FALLBACK_ICONS } from "@/lib/landing/icons";
 
 // Intervalo (ms) entre cada card abrir/fechar na cascata automática. Ajuste só este número.
 const STEP_MS = 1200;
 
 // 6 cards: preenche 2 linhas cheias na grade de 3 colunas (sem card órfão).
 const DEFAULT_ITEMS = [
-  { title: "Autoconhecimento", desc: "Entenda seus padrões de pensamento e como eles influenciam suas emoções e comportamentos." },
-  { title: "Objetivos Claros", desc: "Juntos, definimos metas terapêuticas que fazem sentido para a sua vida real." },
-  { title: "Novas Perspectivas", desc: "Aprenda a mudar a forma como você percebe os desafios, com técnicas práticas e baseadas em evidências." },
-  { title: "Espaço Seguro", desc: "Atendimento 100% ético e sigiloso, onde você pode se expressar sem julgamentos." },
-  { title: "Ferramentas Práticas", desc: "Estratégias e exercícios que você leva para o dia a dia, muito além das sessões." },
-  { title: "Acolhimento Contínuo", desc: "Um acompanhamento próximo e humano em cada etapa do seu processo." },
+  { title: "Autoconhecimento", desc: "Entenda seus padrões de pensamento e como eles influenciam suas emoções e comportamentos.", icon: "brain" },
+  { title: "Objetivos Claros", desc: "Juntos, definimos metas terapêuticas que fazem sentido para a sua vida real.", icon: "target" },
+  { title: "Novas Perspectivas", desc: "Aprenda a mudar a forma como você percebe os desafios, com técnicas práticas e baseadas em evidências.", icon: "eye" },
+  { title: "Espaço Seguro", desc: "Atendimento 100% ético e sigiloso, onde você pode se expressar sem julgamentos.", icon: "shield-check" },
+  { title: "Ferramentas Práticas", desc: "Estratégias e exercícios que você leva para o dia a dia, muito além das sessões.", icon: "wrench" },
+  { title: "Acolhimento Contínuo", desc: "Um acompanhamento próximo e humano em cada etapa do seu processo.", icon: "heart" },
 ];
 
-const ICONS = [Lightbulb, Target, RefreshCw, Shield, Zap, CheckCircle2];
-
-interface SolutionItem { title: string; desc: string; }
+interface SolutionItem { title: string; desc: string; icon?: string; }
 
 interface SolutionSectionProps {
   title?: string;
@@ -31,6 +30,10 @@ function itemTitle(s: SolutionItem | string): string {
 }
 function itemDesc(s: SolutionItem | string): string {
   return typeof s === "string" ? "" : (s?.desc ?? "");
+}
+// O ícone é opcional: string crua e item antigo não têm.
+function itemIcon(s: SolutionItem | string): string | undefined {
+  return typeof s === "string" ? undefined : s?.icon;
 }
 
 // Remove qualquer marcação de negrito (**) do contexto — o gerador às vezes embrulha frases ou o
@@ -57,14 +60,18 @@ export default function SolutionSection({ title, subtitle, items }: SolutionSect
 
   // Itens COM descrição = etapas (cards accordion). Itens só-texto (string crua, sem descrição) são
   // introdução do método — distribuídos como parágrafo acima dos cards, não viram card.
-  const stepItems = displayItems.filter((it) => itemDesc(it).trim() !== "");
+  const stepIdx = displayItems.map((_, i) => i).filter((i) => itemDesc(displayItems[i]).trim() !== "");
   const introTexts = displayItems
     .filter((it) => itemDesc(it).trim() === "")
     .map((it) => cleanText(itemTitle(it)))
     .filter((t) => t !== "");
   // Fallback: se NENHUM item tem descrição, não dá pra separar — mostra todos como cards.
-  const cardItems = stepItems.length > 0 ? stepItems : displayItems;
-  const intros = stepItems.length > 0 ? introTexts : [];
+  // Guardamos o índice de cada card na lista ORIGINAL (`cardIdx`) porque o ícone de fallback é
+  // ancorado nele: contar pela posição na grade fazia um item sem descrição deslocar o ícone de
+  // todos os cards seguintes.
+  const cardIdx = stepIdx.length > 0 ? stepIdx : displayItems.map((_, i) => i);
+  const cardItems = cardIdx.map((i) => displayItems[i]);
+  const intros = stepIdx.length > 0 ? introTexts : [];
 
   // Índices (na ordem da grade) só dos cards que realmente expandem — apenas esses entram na cascata.
   // Funciona com qualquer quantidade de cards; itens de texto corrido (sem descrição) são ignorados.
@@ -140,7 +147,7 @@ export default function SolutionSection({ title, subtitle, items }: SolutionSect
             items-start: ao abrir, o card cresce pra baixo sem esticar/desalinhar os vizinhos. */}
         <div ref={gridRef} className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto items-start">
           {cardItems.map((s, i) => {
-            const Icon = ICONS[i % ICONS.length];
+            const Icon = resolveIcon(itemIcon(s), SOLUTION_FALLBACK_ICONS[cardIdx[i] % SOLUTION_FALLBACK_ICONS.length]);
             const title = cleanText(itemTitle(s));
             const desc = cleanText(itemDesc(s));
             // Só vira accordion quando há título curto E descrição. Item sem descrição (ex.: string

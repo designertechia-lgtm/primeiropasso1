@@ -52,6 +52,46 @@ interface Context {
   existing_titles?: string[];
   existing_cover_urls?: string[];
   existing_carousel_urls?: string[];
+  items?: string[]; // textos já existentes (modos pain_icons / solution_icons)
+}
+
+// Ícones aceitos nos cards de Dores e Soluções.
+// ESPELHO de ICON_NAMES em `src/lib/landing/icons.ts` (a edge roda em Deno e não importa o módulo
+// do front). Ao mexer lá, atualize aqui. Divergir não quebra: nome fora desta lista é descartado
+// em sanitizeIcons() e o front cai no ícone por posição.
+// Ao contrário de generate-landing, aqui não há structured output para prender o modelo ao enum —
+// por isso a lista vai no prompt E o resultado é validado contra ela antes de sair da edge.
+const ICON_NAMES = [
+  "brain", "heart", "heart-crack", "cloud", "cloud-rain", "moon", "sparkles", "frown",
+  "smile", "activity", "heart-pulse", "stethoscope", "bed", "dumbbell", "leaf", "flower",
+  "clock", "timer", "calendar", "calendar-clock", "hourglass", "alarm-clock", "repeat",
+  "refresh", "users", "user", "user-plus", "message-circle", "message-square", "handshake",
+  "home", "baby", "briefcase", "laptop", "code", "bug", "server", "database", "settings",
+  "wrench", "terminal", "git-branch", "alert-triangle", "alert-circle", "alert-octagon",
+  "x-circle", "ban", "flame", "trending-down", "thumbs-down", "battery-low", "lightbulb",
+  "target", "check-circle", "shield", "shield-check", "rocket", "trending-up", "award",
+  "trophy", "key", "compass", "thumbs-up", "zap", "book-open", "graduation-cap", "eye",
+  "search", "map", "footprints",
+];
+const ICON_SET = new Set(ICON_NAMES);
+
+const ICON_RULE = `Cada item tem um campo "icon": escolha o ícone que representa o CONTEÚDO daquele item específico, não o tema da seção. Prefira o mais literal ao mais poético (item sobre sono → "moon"; sobre prazo → "clock"; sobre falha técnica → "bug"; sobre cansaço → "battery-low"). Não repita o mesmo ícone em dois itens.
+Use EXCLUSIVAMENTE um destes nomes, exatamente como escritos: ${ICON_NAMES.join(", ")}.`;
+
+// Descarta ícone que não está no catálogo (o modelo pode inventar — aqui não há enum prendendo).
+// Item fica sem `icon` e o front usa o ícone por posição: some o ícone errado, nunca a tela.
+function sanitizeIcons(parsed: any, field: string): any {
+  if (field === "pain_icons" || field === "solution_icons") {
+    return Array.isArray(parsed) ? parsed.map((n: any) => (ICON_SET.has(n) ? n : null)) : parsed;
+  }
+  if ((field === "pain_items" || field === "solution_items") && Array.isArray(parsed)) {
+    return parsed.map((it: any) => {
+      if (!it || typeof it !== "object" || ICON_SET.has(it.icon)) return it;
+      const { icon: _descartado, ...resto } = it;
+      return resto;
+    });
+  }
+  return parsed;
 }
 
 const PROMPTS: Record<string, (ctx: Context) => string> = {
@@ -90,7 +130,28 @@ Responda APENAS com o subtítulo, sem aspas.`,
     `Você é um redator especialista em marketing para profissionais de saúde mental.
 Crie uma lista de EXATAMENTE 6 sintomas/dores emocionais que os pacientes de ${ctx.name}${ctx.specialty ? ` (${ctx.specialty})` : ""} costumam sentir.
 Cada item deve ser uma frase curta (máx 12 palavras), em primeira ou segunda pessoa, que gere identificação imediata.
-Responda APENAS um JSON válido com 6 itens no formato: [{"text":"..."},{"text":"..."},{"text":"..."},{"text":"..."},{"text":"..."},{"text":"..."}]
+${ICON_RULE}
+Responda APENAS um JSON válido com 6 itens no formato: [{"text":"...","icon":"..."},{"text":"...","icon":"..."},{"text":"...","icon":"..."},{"text":"...","icon":"..."},{"text":"...","icon":"..."},{"text":"...","icon":"..."}]
+Sem comentários, sem markdown, apenas o JSON.`,
+
+  // Só os ícones, a partir dos textos que já existem — para landings publicadas antes do campo
+  // `icon` existir. NÃO reescreve o texto: o profissional não perde a copy que já aprovou.
+  pain_icons: (ctx) =>
+    `Você escolhe ícones para os cards da seção "dores" de uma landing page.
+${ICON_RULE}
+Estes são os itens, na ordem (use o texto de cada um para escolher o ícone do problema que ele descreve):
+${(ctx.items ?? []).map((t: string, i: number) => `${i + 1}. ${t}`).join("\n")}
+Responda APENAS um JSON válido — um array com EXATAMENTE ${(ctx.items ?? []).length} nomes de ícone, na mesma ordem dos itens acima.
+Formato: ["nome-do-icone","nome-do-icone",...]
+Sem comentários, sem markdown, apenas o JSON.`,
+
+  solution_icons: (ctx) =>
+    `Você escolhe ícones para os cards da seção "soluções/benefícios" de uma landing page.
+${ICON_RULE}
+Estes são os cards, na ordem (use o título e a descrição para escolher o ícone do GANHO que ele entrega):
+${(ctx.items ?? []).map((t: string, i: number) => `${i + 1}. ${t}`).join("\n")}
+Responda APENAS um JSON válido — um array com EXATAMENTE ${(ctx.items ?? []).length} nomes de ícone, na mesma ordem dos cards acima.
+Formato: ["nome-do-icone","nome-do-icone",...]
 Sem comentários, sem markdown, apenas o JSON.`,
 
   solution_title: (ctx) =>
@@ -109,7 +170,8 @@ Responda APENAS com o subtítulo, sem aspas.`,
     `Você é um redator especialista em marketing para profissionais de saúde mental.
 Crie EXATAMENTE 6 cards de benefícios do trabalho de ${ctx.name}${ctx.specialty ? ` (${ctx.specialty})` : ""}.
 Cada card tem um título curto (2-4 palavras) e uma descrição (1-2 frases, máx 20 palavras).
-Responda APENAS um JSON válido com 6 cards: [{"title":"...","desc":"..."},{"title":"...","desc":"..."},{"title":"...","desc":"..."},{"title":"...","desc":"..."},{"title":"...","desc":"..."},{"title":"...","desc":"..."}]
+${ICON_RULE}
+Responda APENAS um JSON válido com 6 cards: [{"title":"...","desc":"...","icon":"..."},{"title":"...","desc":"...","icon":"..."},{"title":"...","desc":"...","icon":"..."},{"title":"...","desc":"...","icon":"..."},{"title":"...","desc":"...","icon":"..."},{"title":"...","desc":"...","icon":"..."}]
 Sem comentários, sem markdown, apenas o JSON.`,
 
   // Vilão — "por que nada funcionou": nomeia a causa-raiz sem culpar o cliente + a virada.
@@ -289,12 +351,12 @@ Deno.serve(async (req) => {
     }
 
     // Se for um dos campos que espera JSON, tenta parsear
-    const jsonFields = ["pain_items", "solution_items", "article_with_carousel", "faq_items", "offer_steps", "audience_lists"];
+    const jsonFields = ["pain_items", "solution_items", "pain_icons", "solution_icons", "article_with_carousel", "faq_items", "offer_steps", "audience_lists"];
     if (jsonFields.includes(field)) {
       try {
         console.log(`Tentando parsear JSON para o campo: ${field}`);
         const clean = text.replace(/```json|```/g, "").trim();
-        const parsed = JSON.parse(clean);
+        const parsed = sanitizeIcons(JSON.parse(clean), field);
 
         // Automação de imagens para artigos
         if (field === "article_with_carousel" && parsed.carousel_items) {

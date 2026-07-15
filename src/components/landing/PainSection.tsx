@@ -1,19 +1,17 @@
-import { CircleAlert, Brain, Heart, Moon, Users, AlertTriangle } from "lucide-react";
 import { splitHeadline } from "@/lib/landing/sections";
+import { resolveIcon, PAIN_FALLBACK_ICONS } from "@/lib/landing/icons";
 
 // 6 itens: preenche 2 linhas cheias na grade de 3 colunas (sem card órfão).
 const DEFAULT_ITEMS = [
-  { text: "Pensamentos acelerados que não param" },
-  { text: "Dificuldade para dormir ou descansar de verdade" },
-  { text: "Ansiedade que aperta o peito sem motivo aparente" },
-  { text: "Relacionamentos que desgastam ao invés de nutrir" },
-  { text: "Autocobrança constante que nunca dá trégua" },
-  { text: "Sensação de que algo precisa mudar, mas não sabe por onde começar" },
+  { text: "Pensamentos acelerados que não param", icon: "brain" },
+  { text: "Dificuldade para dormir ou descansar de verdade", icon: "moon" },
+  { text: "Ansiedade que aperta o peito sem motivo aparente", icon: "heart-pulse" },
+  { text: "Relacionamentos que desgastam ao invés de nutrir", icon: "users" },
+  { text: "Autocobrança constante que nunca dá trégua", icon: "alert-circle" },
+  { text: "Sensação de que algo precisa mudar, mas não sabe por onde começar", icon: "compass" },
 ];
 
-const ICONS = [Brain, Moon, Heart, Users, CircleAlert, AlertTriangle];
-
-interface PainItem { text: string; }
+interface PainItem { text: string; icon?: string; }
 
 interface PainSectionProps {
   title?: string;
@@ -25,6 +23,11 @@ interface PainSectionProps {
 // Extrai o texto de um item seja ele objeto {text} ou string crua — nunca quebra.
 function itemText(s: PainItem | string): string {
   return typeof s === "string" ? s : (s?.text ?? "");
+}
+
+// O ícone é opcional: string crua e item antigo não têm.
+function itemIcon(s: PainItem | string): string | undefined {
+  return typeof s === "string" ? undefined : s?.icon;
 }
 
 // Palavras-chave de dor para destacar em negrito
@@ -87,7 +90,7 @@ export default function PainSection({ title, subtitle, items }: PainSectionProps
         {/* Layout em cards (mosaico, flex-wrap centralizado) */}
         <div className="flex flex-wrap justify-center gap-6 max-w-5xl mx-auto">
           {displayItems.map((s, i) => {
-            const Icon = ICONS[i % ICONS.length];
+            const Icon = resolveIcon(itemIcon(s), PAIN_FALLBACK_ICONS[i % PAIN_FALLBACK_ICONS.length]);
             return (
               <div
                 key={i}

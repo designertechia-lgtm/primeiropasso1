@@ -23,7 +23,8 @@
  *     a prévia desenha essas linhas em Bold. Na poppins não muda nada (a
  *     família só tem Bold e ExtraBold, então o \b0 cai na Bold mesmo).
  */
-import type { AudioClip, Cue, Sticker, SubPos, SubSize, SubStyle, Title, TitlePos } from "./types";
+import type { AudioClip, Cue, Sticker, SubSize, SubStyle, TitlePos } from "./types";
+import { ANIM_DUR, ANIM_LOOP_DUR } from "./types";
 import type { EditorDoc } from "./documentReducer";
 
 /** PlayResY do ASS: toda a régua de tamanho/margem vive nesta altura virtual. */
@@ -62,7 +63,72 @@ export type TextoNaTela = {
   color: string;
   style: SubStyle;
   position: TitlePos;
+  /** estado da animação NESTE instante (calculado por animEstado) */
+  anim?: EstadoAnim;
 };
+
+/** O que a animação faz com o texto em `t`: espelha o que as tags \fad, \t e
+ *  \move mandam a libass fazer (ver _anim_tags no motor). */
+export type EstadoAnim = { alpha: number; escala: number; giro: number; dy: number };
+const ANIM_NEUTRA: EstadoAnim = { alpha: 1, escala: 1, giro: 0, dy: 0 };
+
+/** Deslocamento do slide na régua de 384 (o `desloc` do motor). */
+const SLIDE_DESLOC = 40;
+
+export function animEstado(
+  t: { start: number; end: number; anim_in?: string; anim_out?: string; anim_loop?: string },
+  agora: number,
+): EstadoAnim {
+  const dur = Math.max(0.001, t.end - t.start);
+  const tl = agora - t.start;
+  const d = Math.min(ANIM_DUR, dur / 2);   // igual ao motor: metade do tempo em tela
+  const st: EstadoAnim = { ...ANIM_NEUTRA };
+  const ain = t.anim_in ?? "nenhuma";
+  const aout = t.anim_out ?? "nenhuma";
+  const aloop = t.anim_loop ?? "nenhuma";
+
+  // ── entrada ──
+  if (tl < d && ain !== "nenhuma") {
+    const p = Math.max(0, Math.min(1, tl / d));
+    if (ain === "fade") st.alpha = p;
+    else if (ain === "zoom") st.escala = 0.6 + 0.4 * p;
+    else if (ain === "pop") {
+      // 50 → 112 → 100, com a virada em 60% (igual ao motor)
+      const h = 0.6;
+      st.escala = p < h ? 0.5 + (1.12 - 0.5) * (p / h) : 1.12 + (1.0 - 1.12) * ((p - h) / (1 - h));
+    } else if (ain === "rotate") st.giro = -25 * (1 - p);
+    else if (ain === "slide") st.dy = SLIDE_DESLOC * (1 - p);
+  }
+  // ── saída ──
+  const tRest = dur - tl;
+  if (tRest < d && aout !== "nenhuma") {
+    const p = Math.max(0, Math.min(1, tRest / d));   // 1 → 0
+    if (aout === "fade") st.alpha = Math.min(st.alpha, p);
+    else if (aout === "zoom") st.escala = 0.6 + 0.4 * p;
+    else if (aout === "slide") st.dy = -SLIDE_DESLOC * (1 - p);
+  }
+  // ── loop (só depois da entrada, como no motor) ──
+  if (aloop !== "nenhuma") {
+    const inicio = ain !== "nenhuma" ? d : 0;
+    if (tl >= inicio) {
+      const ciclo = aloop === "respirar" ? ANIM_LOOP_DUR * 2 : ANIM_LOOP_DUR;
+      const decorrido = tl - inicio;
+      const f = (decorrido % ciclo) / ciclo;            // 0..1 dentro do ciclo
+      const vai = f < 0.5 ? f / 0.5 : 1 - (f - 0.5) / 0.5;   // triangular, como o \t
+      if (aloop === "pulsar") st.escala *= 1 + 0.06 * vai;
+      else if (aloop === "respirar") st.escala *= 1 + 0.03 * vai;
+      else if (aloop === "balancar") {
+        // o motor sai de 0 → +3 no primeiro meio-ciclo e depois oscila
+        // -3 ↔ +3; começar direto em +3 deixaria a prévia meio ciclo fora de
+        // fase em relação ao vídeo
+        const idx = Math.floor(decorrido / ciclo);
+        const de = idx === 0 ? 0 : -3;
+        st.giro += f < 0.5 ? de + (3 - de) * (f / 0.5) : 3 - 6 * ((f - 0.5) / 0.5);
+      }
+    }
+  }
+  return st;
+}
 
 export type Cena = {
   legenda: TextoNaTela | null;
@@ -104,7 +170,9 @@ export function evaluateScene(doc: EditorDoc, t: number): Cena {
     : undefined;
   // o motor passa TODOS os títulos (selos inclusive) por remap_cues ANTES de
   // separar selo de texto — a truncagem enxerga os dois grupos juntos
-  const visiveis = truncarSobrepostos(doc.titles).filter((x) => ativo(x, t));
+  const visiveis = truncarSobrepostos(doc.titles)
+    .filter((x) => ativo(x, t))
+    .map((x) => ({ ...x, anim: animEstado(x, t) }));
   return {
     legenda: cue
       ? {
@@ -329,7 +397,33 @@ export function drawScene(
   carregadas: Set<string>, videoH: number,
 ) {
   ctx.clearRect(0, 0, rect.w, rect.h);
-  for (const s of cena.selos) desenharSelo(ctx, s, rect, carregadas, videoH);
+  for (const s of cena.selos) comAnim(ctx, s, rect, () => desenharSelo(ctx, s, rect, carregadas, videoH));
   if (cena.legenda) desenharTexto(ctx, cena.legenda, rect, carregadas);
-  for (const t of cena.textos) desenharTexto(ctx, t, rect, carregadas);
+  for (const t of cena.textos) comAnim(ctx, t, rect, () => desenharTexto(ctx, t, rect, carregadas));
+}
+
+/** Aplica o estado da animação em volta do desenho. Escala e giro acontecem em
+ *  torno da ÂNCORA do texto (o ponto que o Alignment do ASS usa), senão o
+ *  zoom "foge" do lugar onde o motor o mantém. */
+function comAnim(
+  ctx: CanvasRenderingContext2D, item: TextoNaTela, rect: Rect, desenhar: () => void,
+) {
+  const a = item.anim;
+  if (!a || (a.alpha === 1 && a.escala === 1 && a.giro === 0 && a.dy === 0)) {
+    desenhar();
+    return;
+  }
+  const escala = rect.h / PLAY_RES_Y;
+  const { align, marginV } = SUB_POSITIONS[item.position] ?? SUB_POSITIONS.bottom;
+  const col = align % 3;
+  const ax = col === 1 ? ASS_MARGIN_LR * escala : col === 2 ? rect.w / 2 : rect.w - ASS_MARGIN_LR * escala;
+  const ay = align <= 3 ? rect.h - marginV * escala : align <= 6 ? rect.h / 2 : marginV * escala;
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, Math.min(1, a.alpha));
+  ctx.translate(ax, ay + a.dy * escala);
+  if (a.giro) ctx.rotate((a.giro * Math.PI) / 180);
+  if (a.escala !== 1) ctx.scale(a.escala, a.escala);
+  ctx.translate(-ax, -ay);
+  desenhar();
+  ctx.restore();
 }

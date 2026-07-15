@@ -13,7 +13,9 @@ export const EDITOR_STORAGE_KEY = "pp-editor-video";
 // que não entende, com mensagem clara.
 // v3: campo `filtro` + transições além de fade. Sem o bump, um worker v2
 // descartaria o filtro calado e o vídeo sairia sem a cor escolhida.
-export const EDITOR_CONTRACT_VERSION = 3;
+// v4: anim_in/anim_out/anim_loop nos textos — worker v3 queimaria o texto
+// parado sem avisar.
+export const EDITOR_CONTRACT_VERSION = 4;
 
 export type Segment = { id: number; start: number; end: number; keep: boolean };
 export type EditMeta = {
@@ -26,12 +28,36 @@ export type SubStyle = "outline" | "box";
 export type SubPos = "bottom" | "center" | "top";
 // Textos aceitam também o canto esquerdo (estilo selo/lower-third — Carlos 06/07)
 export type TitlePos = SubPos | "left-bottom" | "left-center" | "left-top";
+// Animações de texto (spec 12) — espelham ANIM_* do motor. "flutuar"/"quicar"
+// da spec não entram: a libass não anima POSIÇÃO em loop (só escala/rotação).
+export type AnimIn = "nenhuma" | "fade" | "zoom" | "pop" | "slide" | "rotate";
+export type AnimOut = "nenhuma" | "fade" | "zoom" | "slide";
+export type AnimLoop = "nenhuma" | "pulsar" | "respirar" | "balancar";
+
 // id só do front (estável para duplicar/reordenar e, na Fase 1, arrastar na
 // timeline): buildRenderPayload remove antes de mandar ao worker.
 export type Title = {
   id: string; start: number; end: number; text: string; font_id: string;
   size: SubSize; color: string; style: SubStyle; position: TitlePos;
+  anim_in?: AnimIn; anim_out?: AnimOut; anim_loop?: AnimLoop;
 };
+
+export const ANIM_IN_OPTS: { id: AnimIn; label: string }[] = [
+  { id: "nenhuma", label: "—" }, { id: "fade", label: "Surgir" },
+  { id: "zoom", label: "Zoom" }, { id: "pop", label: "Pop" },
+  { id: "slide", label: "Deslizar" }, { id: "rotate", label: "Girar" },
+];
+export const ANIM_OUT_OPTS: { id: AnimOut; label: string }[] = [
+  { id: "nenhuma", label: "—" }, { id: "fade", label: "Sumir" },
+  { id: "zoom", label: "Zoom" }, { id: "slide", label: "Deslizar" },
+];
+export const ANIM_LOOP_OPTS: { id: AnimLoop; label: string }[] = [
+  { id: "nenhuma", label: "—" }, { id: "pulsar", label: "Pulsar" },
+  { id: "respirar", label: "Respirar" }, { id: "balancar", label: "Balançar" },
+];
+/** ANIM_MS / ANIM_LOOP_MS do motor (em segundos). */
+export const ANIM_DUR = 0.35;
+export const ANIM_LOOP_DUR = 1.2;
 
 // Stickers/sobreposições: imagem, GIF ou WebM-alpha sobre o vídeo, com posição
 // (centro em % da tela), tamanho, movimento e loop. id = uuid (Date.now()

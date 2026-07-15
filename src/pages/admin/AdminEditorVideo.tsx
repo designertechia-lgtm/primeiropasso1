@@ -47,8 +47,10 @@ import {
   API, EDITOR_STORAGE_KEY, EDITOR_CONTRACT_VERSION,
   STICKER_SIZES, STICKER_POSITIONS, SUB_PRESETS,
   groupWords, fmt, parseTime, newId, normalizarSegments,
+  ANIM_IN_OPTS, ANIM_OUT_OPTS, ANIM_LOOP_OPTS,
   type Segment, type EditMeta, type SubSize, type SubStyle, type SubPos,
   type TitlePos, type Sticker, type StickerMovement, type StickerJob,
+  type AnimIn, type AnimOut, type AnimLoop,
 } from "./editor/types";
 import {
   editorReducer, initialEditorState, type EditorDoc,
@@ -2450,6 +2452,28 @@ export default function AdminEditorVideo() {
                     onChange={(e) => apply((d) => ({ titles: d.titles.map((p) => (p.id === t.id ? { ...p, style: e.target.value as SubStyle } : p)) }))}>
                     <option value="outline">Contorno</option><option value="box">Caixa</option>
                   </select>
+                  {/* animações (spec 12): entram/saem/repetem — veja no player */}
+                  <label className="flex items-center gap-1" title="Como o texto ENTRA na tela">
+                    ↘
+                    <select className="h-7 rounded border bg-background px-1" value={t.anim_in ?? "nenhuma"}
+                      onChange={(e) => apply((d) => ({ titles: d.titles.map((p) => (p.id === t.id ? { ...p, anim_in: e.target.value as AnimIn } : p)) }))}>
+                      {ANIM_IN_OPTS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                    </select>
+                  </label>
+                  <label className="flex items-center gap-1" title="Como o texto SAI da tela">
+                    ↗
+                    <select className="h-7 rounded border bg-background px-1" value={t.anim_out ?? "nenhuma"}
+                      onChange={(e) => apply((d) => ({ titles: d.titles.map((p) => (p.id === t.id ? { ...p, anim_out: e.target.value as AnimOut } : p)) }))}>
+                      {ANIM_OUT_OPTS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                    </select>
+                  </label>
+                  <label className="flex items-center gap-1" title="Movimento contínuo enquanto o texto está na tela">
+                    ∞
+                    <select className="h-7 rounded border bg-background px-1" value={t.anim_loop ?? "nenhuma"}
+                      onChange={(e) => apply((d) => ({ titles: d.titles.map((p) => (p.id === t.id ? { ...p, anim_loop: e.target.value as AnimLoop } : p)) }))}>
+                      {ANIM_LOOP_OPTS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                    </select>
+                  </label>
                   <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground ml-auto"
                     title="Duplicar este texto" onClick={() => duplicarTexto(t.id)}>
                     <Copy className="h-3 w-3" />

@@ -15,14 +15,25 @@ export const EDITOR_STORAGE_KEY = "pp-editor-video";
 // descartaria o filtro calado e o vídeo sairia sem a cor escolhida.
 // v4: anim_in/anim_out/anim_loop nos textos — worker v3 queimaria o texto
 // parado sem avisar.
-export const EDITOR_CONTRACT_VERSION = 4;
+// v5: subtitles.karaoke + cues[].words — worker v4 queimaria a legenda sem o
+// destaque palavra a palavra.
+export const EDITOR_CONTRACT_VERSION = 5;
 
 export type Segment = { id: number; start: number; end: number; keep: boolean };
 export type EditMeta = {
   edit_id: string; duration: number; width: number; height: number;
   has_audio: boolean; thumbs: string[]; preview_url?: string;
 };
-export type Cue = { start: number; end: number; text: string };
+// `words` = palavras com tempo (whisper), preenchido só no PAYLOAD do render
+// (wordsDoCue) e na prévia. No documento salvo elas NÃO ficam dentro do cue:
+// já vivem em doc.words e duplicá-las engordaria o jsonb em ~60KB por save.
+export type Cue = { start: number; end: number; text: string; words?: Cue[] };
+
+/** As palavras que caem na janela do cue — é delas que sai o tempo de cada \k.
+ *  Editar o texto da legenda faz o motor (e a prévia) cair no proporcional,
+ *  em vez de acender a palavra errada. */
+export const wordsDoCue = (cue: Cue, words: Cue[]): Cue[] =>
+  words.filter((w) => w.start >= cue.start - 0.01 && w.end <= cue.end + 0.01);
 export type SubSize = "p" | "m" | "g" | "xg";
 export type SubStyle = "outline" | "box";
 export type SubPos = "bottom" | "center" | "top";
@@ -110,7 +121,10 @@ export const groupWords = (ws: Cue[], mode: "frases" | "karaoke"): Cue[] => {
   const cues: Cue[] = [];
   let cur: Cue[] = [];
   const flush = () => {
-    if (cur.length) cues.push({ start: cur[0].start, end: cur[cur.length - 1].end, text: cur.map((x) => x.text).join(" ") });
+    if (cur.length) cues.push({
+      start: cur[0].start, end: cur[cur.length - 1].end,
+      text: cur.map((x) => x.text).join(" "),
+    });
     cur = [];
   };
   for (const w of ws) {

@@ -9,7 +9,9 @@
  *   formato antigo (flat, ids numéricos) — quem tinha edição em andamento não
  *   perde nada no deploy desta fase.
  */
-import { EDITOR_CONTRACT_VERSION, newId, type EditMeta, type StickerJob } from "./types";
+import {
+  EDITOR_CONTRACT_VERSION, newId, wordsDoCue, type EditMeta, type StickerJob,
+} from "./types";
 import { emptyDoc, type EditorDoc } from "./documentReducer";
 
 /** Garante o que o front assume mas o dado salvo pode não ter: ids estáveis em
@@ -58,7 +60,18 @@ export function buildRenderPayload(
     fade_out: doc.fadeOut,
     titulo: doc.titulo.trim(),
     subtitles: doc.subsOn && doc.cues.length
-      ? { cues: doc.cues, font_id: doc.subFont, size: doc.subSize, color: doc.subColor, style: doc.subStyle, position: doc.subPos }
+      ? {
+          // as palavras entram só aqui, no payload: no doc salvo elas viveriam
+          // duplicadas (doc.words já as tem) e engordariam o banco à toa
+          cues: doc.cueMode === "karaoke"
+            ? doc.cues.map((c) => ({ ...c, words: wordsDoCue(c, doc.words) }))
+            : doc.cues,
+          font_id: doc.subFont, size: doc.subSize,
+          color: doc.subColor, style: doc.subStyle, position: doc.subPos,
+          // no modo karaokê a cor escolhida vira o DESTAQUE e o resto sai
+          // branco (a libass pinta com a Secondary o que ainda não foi dito)
+          karaoke: doc.cueMode === "karaoke",
+        }
       : undefined,
     // o id é só do front — o worker recebe o mesmo formato de sempre
     titles: doc.titles.length ? doc.titles.map(({ id: _id, ...t }) => t) : undefined,

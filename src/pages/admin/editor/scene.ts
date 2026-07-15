@@ -24,7 +24,7 @@
  *     família só tem Bold e ExtraBold, então o \b0 cai na Bold mesmo).
  */
 import type { AudioClip, Cue, Sticker, SubSize, SubStyle, TitlePos } from "./types";
-import { ANIM_DUR, ANIM_LOOP_DUR } from "./types";
+import { ANIM_DUR, ANIM_LOOP_DUR, wordsDoCue } from "./types";
 import type { EditorDoc } from "./documentReducer";
 
 /** PlayResY do ASS: toda a régua de tamanho/margem vive nesta altura virtual. */
@@ -65,7 +65,13 @@ export type TextoNaTela = {
   position: TitlePos;
   /** estado da animação NESTE instante (calculado por animEstado) */
   anim?: EstadoAnim;
+  /** karaokê: palavras com tempo + o instante atual (para saber o que já
+   *  acendeu). Espelha o \k do motor. */
+  karaoke?: { words: Cue[]; agora: number };
 };
+
+/** Cor de quem ainda não foi falado — KARAOKE_BASE_COLOR do motor. */
+export const KARAOKE_BASE_COLOR = "#FFFFFF";
 
 /** O que a animação faz com o texto em `t`: espelha o que as tags \fad, \t e
  *  \move mandam a libass fazer (ver _anim_tags no motor). */
@@ -178,6 +184,8 @@ export function evaluateScene(doc: EditorDoc, t: number): Cena {
       ? {
           id: "sub", text: cue.text, font_id: doc.subFont, size: doc.subSize,
           color: doc.subColor, style: doc.subStyle, position: doc.subPos as TitlePos,
+          karaoke: doc.cueMode === "karaoke"
+            ? { words: palavrasDoCue(cue, doc.words), agora: t } : undefined,
         }
       : null,
     textos: visiveis.filter((x) => !isSelo(x)),
@@ -185,6 +193,31 @@ export function evaluateScene(doc: EditorDoc, t: number): Cena {
     stickers: doc.stickers.filter((s) => ativo(s, t)),
     audios: doc.audioClips.filter((c) => ativo(c, t)),
   };
+}
+
+/**
+ * As palavras que o karaokê vai acender, com os MESMOS critérios do
+ * `_karaoke_text` do motor: usa os tempos do whisper quando as palavras ainda
+ * correspondem ao texto; se o texto foi editado à mão, divide o tempo
+ * proporcionalmente ao tamanho de cada palavra (nunca acende a errada).
+ */
+export function palavrasDoCue(cue: Cue, todas: Cue[] = []): Cue[] {
+  const texto = (cue.text || "").trim();
+  if (!texto) return [];
+  const janela = cue.words?.length ? cue.words : wordsDoCue(cue, todas);
+  const casam = !!janela.length
+    && janela.map((w) => w.text.trim()).join(" ").trim() === texto;
+  if (casam) return janela;
+  const toks = texto.split(/\s+/);
+  const total = toks.reduce((a, t) => a + t.length, 0) || 1;
+  const dur = Math.max(0.001, cue.end - cue.start);
+  let cursor = cue.start;
+  return toks.map((t) => {
+    const d = (dur * t.length) / total;
+    const w = { start: cursor, end: cursor + d, text: t };
+    cursor += d;
+    return w;
+  });
 }
 
 /** Fontes que a cena precisa ter carregadas para desenhar fiel. */
@@ -285,8 +318,7 @@ function desenharTexto(
       const bx = esquerda ? x - padX : x - larg / 2 - padX;
       ctx.fillStyle = "rgba(0,0,0,0.6)";   // &H66000000
       ctx.fillRect(bx, y - padY, larg + padX * 2, alturaLinha(l.px) + padY * 2 - l.px * 0.2);
-      ctx.fillStyle = item.color;
-      ctx.fillText(l.texto, x, y);
+      pintarLinha(ctx, item, l.texto, x, y, larg, esquerda, false, escala);
     } else {
       ctx.lineJoin = "round";
       // Outline: 2 no _ass_style (régua de 384). strokeText centra o traço na
@@ -295,11 +327,46 @@ function desenharTexto(
       ctx.lineWidth = 2 * 2 * escala;
       ctx.strokeStyle = "#000";
       ctx.strokeText(l.texto, x, y);
-      ctx.fillStyle = item.color;
-      ctx.fillText(l.texto, x, y);
+      pintarLinha(ctx, item, l.texto, x, y, larg, esquerda, true, escala);
     }
     y += alturaLinha(l.px);
   }
+}
+
+/**
+ * Pinta o texto de uma linha. Sem karaokê é um fillText só. Com karaokê,
+ * desenha palavra a palavra: as já ditas na cor escolhida (a Primary do ASS) e
+ * as que faltam em branco (a Secondary) — é o \k da libass acendendo cada uma.
+ * O `ctx.font` já está configurado pelo chamador.
+ */
+function pintarLinha(
+  ctx: CanvasRenderingContext2D, item: TextoNaTela, texto: string,
+  x: number, y: number, larg: number, esquerda: boolean,
+  contorno: boolean, escala: number,
+) {
+  const k = item.karaoke;
+  if (!k?.words.length) {
+    ctx.fillStyle = item.color;
+    ctx.fillText(texto, x, y);
+    return;
+  }
+  // desenha da esquerda da linha, acumulando o avanço de cada palavra
+  const espaco = ctx.measureText(" ").width;
+  let cx = esquerda ? x : x - larg / 2;
+  const anterior = ctx.textAlign;
+  ctx.textAlign = "left";
+  for (const palavra of texto.split(/\s+/)) {
+    if (!palavra) continue;
+    const w = k.words.find((p) => p.text.trim() === palavra);
+    const jaDita = w ? k.agora >= w.start : false;
+    if (contorno) {
+      ctx.strokeText(palavra, cx, y);   // o contorno cobre a palavra inteira
+    }
+    ctx.fillStyle = jaDita ? item.color : KARAOKE_BASE_COLOR;
+    ctx.fillText(palavra, cx, y);
+    cx += ctx.measureText(palavra).width + espaco;
+  }
+  ctx.textAlign = anterior;
 }
 
 /**

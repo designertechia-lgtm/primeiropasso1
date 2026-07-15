@@ -1436,8 +1436,11 @@ export default function AdminEditorVideo() {
             clearInterval(timer); setTranscribing(false);
             apply((d) => ({
               words: st.words || [],
-              cues: d.cueMode === "karaoke" && st.words?.length
-                ? groupWords(st.words, "karaoke")
+              // reagrupa SEMPRE localmente quando há palavras: os cues do
+              // worker não carregam `words`, e sem elas o karaokê não teria de
+              // onde tirar o tempo de cada palavra
+              cues: st.words?.length
+                ? groupWords(st.words, d.cueMode)
                 : (st.cues || []),
               subsOn: true,
             }));

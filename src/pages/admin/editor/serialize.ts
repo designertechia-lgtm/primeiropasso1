@@ -71,6 +71,7 @@ export function buildRenderPayload(
       upload_id: c.upload_id, start: c.start, end: c.end, volume: c.volume,
     })) : undefined,
     transition: doc.transition,
+    filtro: doc.filtro,
     ducking: doc.ducking,
     punch_in: doc.punchIn,
     intro: doc.introOn && (doc.introSource === "upload" ? doc.introUploadId : perfilLogo)
@@ -123,6 +124,7 @@ export function snapshotFromStored(raw: unknown): ProjectSnapshot | null {
     stickers: s.stickers || [],
     audioClips: s.audioClips || [],
     transition: s.transition || "none",
+    filtro: s.filtro || "nenhum",
     ducking: s.ducking ?? true,
     punchIn: !!s.punchIn,
     introOn: !!s.introOn,

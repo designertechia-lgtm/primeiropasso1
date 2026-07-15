@@ -40,7 +40,7 @@ import { toast } from "sonner";
 import {
   Scissors, Play, Pause, Loader2, Music, Upload, Film, Trash2, Undo2,
   CheckCircle2, AlertCircle, Video as VideoIcon, Captions, Wand2, RotateCcw,
-  FolderOpen, Copy, Plus, Minus,
+  FolderOpen, Copy, Plus, Minus, Palette,
 } from "lucide-react";
 import { videoApiAuthHeaders } from "@/lib/videoApi";
 import {
@@ -57,6 +57,7 @@ import {
   buildRenderPayload, snapshotFromStored, metaSemThumbs, type ProjectSnapshot,
 } from "./editor/serialize";
 import { evaluateScene, drawScene, fontesDaCena, FONTE_PADRAO } from "./editor/scene";
+import { FILTROS, FILTRO_IDS, TRANSICOES, filtroCss } from "./editor/filtros";
 import {
   listEditorProjects, fetchEditorProject, insertEditorProject,
   updateEditorProject, deleteEditorProject,
@@ -74,8 +75,8 @@ export default function AdminEditorVideo() {
     segments, musicId, musicUploadId, musicUploadName, musicVolume,
     originalVolume, fadeOut, subsOn, cues, words, cueMode, subFont, subSize,
     subColor, subStyle, subPos, titles, stickers, audioClips, transition,
-    ducking, punchIn, introOn, introSource, introUploadId, introUploadName,
-    introDur, introBg, introEffect, titulo,
+    filtro, ducking, punchIn, introOn, introSource, introUploadId,
+    introUploadName, introDur, introBg, introEffect, titulo,
   } = doc;
   const patch = (changes: Partial<EditorDoc>) => dispatch({ type: "patch", changes });
   const apply = (fn: (d: EditorDoc) => Partial<EditorDoc>) => dispatch({ type: "apply", fn });
@@ -1682,8 +1683,12 @@ export default function AdminEditorVideo() {
             <div className="grid grid-cols-1 md:grid-cols-[minmax(0,320px)_1fr] gap-4 items-start">
               <div className="space-y-2">
                 <div ref={videoWrapRef} className="relative">
+                  {/* o filtro de cor vale só para o VÍDEO: legendas, textos e
+                      stickers são queimados depois no motor, então não são
+                      filtrados (por isso o filter vai aqui, não no wrapper) */}
                   <video ref={videoRef} src={previewSrc} controls playsInline
                     className="w-full max-h-72 rounded-lg bg-black"
+                    style={{ filter: filtroCss(filtro) }}
                     onTimeUpdate={onVideoTime}
                     onPause={() => clipAudiosRef.current.forEach((el) => el.pause())} />
                   {/* prévia dos stickers EXATAMENTE onde o ffmpeg vai desenhar;
@@ -2050,17 +2055,44 @@ export default function AdminEditorVideo() {
                 {/* Acabamento + Render */}
                 <div className="flex items-center gap-3 flex-wrap text-xs rounded-lg border px-3 py-2">
                   <span className="font-medium">Acabamento:</span>
-                  <label className="flex items-center gap-1.5">Emendas
+                  <label className="flex items-center gap-1.5" title="Como um trecho vira o próximo">
+                    Emendas
                     <select className="h-7 rounded border bg-background px-1" value={transition}
-                      onChange={(e) => patch({ transition: e.target.value as "none" | "fade" })}>
-                      <option value="none">Corte seco</option>
-                      <option value="fade">Suave (crossfade)</option>
+                      onChange={(e) => patch({ transition: e.target.value })}>
+                      {TRANSICOES.map((t) => (
+                        <option key={t.id} value={t.id}>{t.label}</option>
+                      ))}
                     </select>
                   </label>
                   <label className="flex items-center gap-1.5 cursor-pointer" title="Leve zoom alternado a cada trecho — disfarça as emendas">
                     <input type="checkbox" checked={punchIn} onChange={(e) => patch({ punchIn: e.target.checked })} />
                     Zoom alternado nos cortes
                   </label>
+                  {segments.filter((s) => s.keep).length < 2 && transition !== "none" && (
+                    <span className="text-muted-foreground">
+                      (a emenda só aparece com 2+ trechos)
+                    </span>
+                  )}
+                </div>
+
+                {/* Filtros de cor (o look do vídeo) — a prévia no player usa a
+                    mesma definição que o motor queima no render */}
+                <div className="space-y-1.5 rounded-lg border px-3 py-2">
+                  <div className="flex items-center gap-2 text-xs">
+                    <Palette className="h-3.5 w-3.5 text-primary" />
+                    <span className="font-medium">Filtro de cor</span>
+                    <span className="text-muted-foreground">— veja no player, ao vivo</span>
+                  </div>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {FILTRO_IDS.map((id) => (
+                      <button key={id} type="button"
+                        onClick={() => patch({ filtro: id })}
+                        className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
+                          filtro === id ? "border-primary ring-1 ring-primary font-medium" : "hover:border-primary/50"}`}>
+                        {FILTROS[id].label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
               </div>

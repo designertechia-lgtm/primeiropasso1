@@ -39,7 +39,8 @@ export type EditorDoc = {
   titles: Title[];
   stickers: Sticker[];
   audioClips: AudioClip[];
-  transition: "none" | "fade";
+  transition: string;        // chave de TRANSICOES (editor/filtros.ts)
+  filtro: string;            // chave de FILTROS (look de cor)
   ducking: boolean;
   punchIn: boolean;
   introOn: boolean;
@@ -73,6 +74,7 @@ export const emptyDoc = (): EditorDoc => ({
   stickers: [],
   audioClips: [],
   transition: "none",
+  filtro: "nenhum",
   ducking: true,
   punchIn: false,
   introOn: false,

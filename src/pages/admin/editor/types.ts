@@ -11,7 +11,9 @@ export const EDITOR_STORAGE_KEY = "pp-editor-video";
 // Incidente Rodada 8: worker antigo ignorava campos novos do render em
 // silêncio — agora o payload declara a versão esperada e o worker recusa o
 // que não entende, com mensagem clara.
-export const EDITOR_CONTRACT_VERSION = 2;
+// v3: campo `filtro` + transições além de fade. Sem o bump, um worker v2
+// descartaria o filtro calado e o vídeo sairia sem a cor escolhida.
+export const EDITOR_CONTRACT_VERSION = 3;
 
 export type Segment = { id: number; start: number; end: number; keep: boolean };
 export type EditMeta = {

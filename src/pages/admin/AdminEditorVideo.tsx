@@ -59,7 +59,8 @@ import {
   buildRenderPayload, snapshotFromStored, metaSemThumbs, type ProjectSnapshot,
 } from "./editor/serialize";
 import { evaluateScene, drawScene, fontesDaCena, FONTE_PADRAO } from "./editor/scene";
-import { FILTROS, FILTRO_IDS, EFEITOS, TRANSICOES, filtroCss } from "./editor/filtros";
+import { FILTROS, FILTRO_IDS, EFEITOS, TRANSICOES, filtroCss,
+  EXPORT_RESOLUCOES, EXPORT_FPS, EXPORT_CODECS, EXPORT_FORMATOS } from "./editor/filtros";
 import {
   listEditorProjects, fetchEditorProject, insertEditorProject,
   updateEditorProject, deleteEditorProject,
@@ -113,6 +114,15 @@ export default function AdminEditorVideo() {
   const [amostraErro, setAmostraErro] = useState("");
   const [gravando, setGravando] = useState(false);
   const [gravSegs, setGravSegs] = useState(0);
+  // opções de exportação: escolha de SAÍDA, não conteúdo — estado local, não vai
+  // pro doc/banco (não faz sentido versionar "exportei em 720p" com o projeto)
+  const [expRes, setExpRes] = useState("1080p");
+  const [expFps, setExpFps] = useState(30);
+  const [expCodec, setExpCodec] = useState("h264");
+  const [expFormato, setExpFormato] = useState("mp4");
+  const [gifUrl, setGifUrl] = useState("");
+  // codecs REAIS do worker (h265 só se o encoder existir lá) — vem do capabilities
+  const [codecsDisp, setCodecsDisp] = useState<string[]>(["h264"]);
   const [startField, setStartField] = useState("");
   const [endField, setEndField] = useState("");
   const [cutStart, setCutStart] = useState("");   // caixinha FIXA de corte por tempo
@@ -208,6 +218,11 @@ export default function AdminEditorVideo() {
       .then((d) => {
         if ((d.contract_version ?? 1) < EDITOR_CONTRACT_VERSION) {
           console.warn("[editor] worker com contrato antigo:", d.contract_version);
+        }
+        // só oferece os codecs que o worker de fato tem (h265 pode faltar no
+        // build do ffmpeg) — evita oferecer uma opção que cairia calada
+        if (Array.isArray(d.export?.codecs) && d.export.codecs.length) {
+          setCodecsDisp(d.export.codecs);
         }
       })
       .catch(() => {});
@@ -1613,7 +1628,12 @@ export default function AdminEditorVideo() {
       const res = await fetch(`${API}/editor/exportar`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(await videoApiAuthHeaders()) },
-        body: JSON.stringify({ professional_slug: professional.slug, video_url: resultUrl, format, titulo: titulo.trim() }),
+        body: JSON.stringify({
+          professional_slug: professional.slug, video_url: resultUrl, format,
+          titulo: titulo.trim(),
+          // opções de saída (spec 22); gif ignora fps/codec no motor
+          resolucao: expRes, fps: expFps, codec: expCodec, formato: expFormato,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Falha ao exportar");
@@ -1622,8 +1642,17 @@ export default function AdminEditorVideo() {
           const st = await (await fetch(`${API}/status/${data.job_id}`)).json();
           if (st.status === "done") {
             clearInterval(timer); setExporting("");
-            toast.success(`Versão ${format} pronta — está em Meus Vídeos!`);
-            queryClient.invalidateQueries({ queryKey: ["admin-videos"] });
+            if (st.is_gif && st.download_url) {
+              // GIF não vai pra galeria (um <video> não toca gif) — baixa direto
+              setGifUrl(st.download_url);
+              toast.success("GIF pronto! O download começou.", { duration: 8000 });
+              const a = document.createElement("a");
+              a.href = st.download_url; a.download = "";
+              document.body.appendChild(a); a.click(); a.remove();
+            } else {
+              toast.success(`Versão ${format} pronta — está em Meus Vídeos!`);
+              queryClient.invalidateQueries({ queryKey: ["admin-videos"] });
+            }
           } else if (st.status === "error") {
             clearInterval(timer); setExporting("");
             toast.error(st.message || "A exportação falhou", { duration: 8000 });
@@ -2723,8 +2752,48 @@ export default function AdminEditorVideo() {
               <div className="pt-1 space-y-2">
                 <Label className="font-semibold text-emerald-600">✓ Edição pronta</Label>
                 <video src={resultUrl} controls playsInline className="w-full max-h-72 rounded-lg bg-black" />
+
+                {/* opções de saída (spec 22) */}
+                <div className="flex items-center gap-2 flex-wrap text-xs rounded-lg border px-3 py-2">
+                  <span className="font-medium">Opções de saída:</span>
+                  <label className="flex items-center gap-1">Qualidade
+                    <select className="h-7 rounded border bg-background px-1"
+                      value={expFormato === "gif" ? "480p" : expRes}
+                      disabled={expFormato === "gif"}
+                      onChange={(e) => setExpRes(e.target.value)}>
+                      {(expFormato === "gif" ? [{ id: "480p", label: "480p" }] : EXPORT_RESOLUCOES)
+                        .map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+                    </select>
+                  </label>
+                  <label className="flex items-center gap-1">FPS
+                    <select className="h-7 rounded border bg-background px-1" value={expFps}
+                      disabled={expFormato === "gif"}
+                      onChange={(e) => setExpFps(Number(e.target.value))}>
+                      {EXPORT_FPS.map((f) => <option key={f} value={f}>{f}</option>)}
+                    </select>
+                  </label>
+                  <label className="flex items-center gap-1">Formato
+                    <select className="h-7 rounded border bg-background px-1" value={expFormato}
+                      onChange={(e) => setExpFormato(e.target.value)}>
+                      {EXPORT_FORMATOS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+                    </select>
+                  </label>
+                  {expFormato !== "gif" && codecsDisp.length > 1 && (
+                    <label className="flex items-center gap-1">Codec
+                      <select className="h-7 rounded border bg-background px-1" value={expCodec}
+                        onChange={(e) => setExpCodec(e.target.value)}>
+                        {EXPORT_CODECS.filter((c) => codecsDisp.includes(c.id))
+                          .map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                      </select>
+                    </label>
+                  )}
+                  {expFormato === "gif" && (
+                    <span className="text-muted-foreground">GIF sai curto, sem som, em 480p</span>
+                  )}
+                </div>
+
                 <div className="flex items-center gap-2 flex-wrap text-xs">
-                  <span className="text-muted-foreground">Exportar para outra plataforma:</span>
+                  <span className="text-muted-foreground">Gerar para:</span>
                   {(["9:16", "1:1", "16:9"] as const).map((f) => (
                     <Button key={f} size="sm" variant="outline" className="h-7"
                       disabled={!!exporting} onClick={() => exportarFormato(f)}>
@@ -2732,7 +2801,18 @@ export default function AdminEditorVideo() {
                       {f === "9:16" ? "📱 Reels 9:16" : f === "1:1" ? "◻ Feed 1:1" : "🖥 YouTube 16:9"}
                     </Button>
                   ))}
+                  {exporting && (
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" /> Pode sair da tela — cai em Meus Vídeos.
+                    </span>
+                  )}
                 </div>
+                {gifUrl && (
+                  <a href={gifUrl} download
+                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                    ⬇ Baixar o GIF de novo (não vai para Meus Vídeos)
+                  </a>
+                )}
               </div>
             )}
           </CardContent>

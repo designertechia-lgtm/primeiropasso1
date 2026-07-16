@@ -55,6 +55,23 @@ export const EFEITOS: { id: string; label: string }[] = [
   { id: "glitch", label: "Glitch" },
 ];
 
+// ── Opções de exportação (spec 22) — espelho de video_editor.py ──
+// Resolução vale para o lado MENOR (720p 9:16 = 720x1280). Teto 1080p:
+// 2K/4K custam demais no worker e o público posta em rede social.
+export const EXPORT_RESOLUCOES = [
+  { id: "480p", label: "480p" }, { id: "720p", label: "720p" },
+  { id: "1080p", label: "1080p (máx)" },
+];
+export const EXPORT_FPS = [24, 25, 30, 50, 60];
+export const EXPORT_CODECS = [
+  { id: "h264", label: "H.264 (compatível com tudo)" },
+  { id: "h265", label: "H.265 (menor, mas nem todo app abre)" },
+];
+export const EXPORT_FORMATOS = [
+  { id: "mp4", label: "MP4" }, { id: "mov", label: "MOV" },
+  { id: "gif", label: "GIF (sem áudio, curto)" },
+];
+
 /** Transições: o painel manda a chave; o motor traduz para o xfade.
  *  "spin" e "3D" da spec não existem no xfade e ficaram de fora. */
 export const TRANSICOES: { id: string; label: string }[] = [

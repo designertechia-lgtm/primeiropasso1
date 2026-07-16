@@ -27,6 +27,8 @@ export type EditorDoc = {
   musicVolume: number;          // 0-100 (UI)
   originalVolume: number;       // 0-150 (UI)
   fadeOut: boolean;
+  fadeIn: boolean;           // o áudio entra subindo
+  denoise: boolean;          // reduz o chiado de fundo da voz
   subsOn: boolean;
   cues: Cue[];
   words: Cue[];
@@ -62,6 +64,8 @@ export const emptyDoc = (): EditorDoc => ({
   musicVolume: 20,
   originalVolume: 100,
   fadeOut: true,
+  fadeIn: false,
+  denoise: false,
   subsOn: false,
   cues: [],
   words: [],

@@ -58,6 +58,8 @@ export function buildRenderPayload(
     music_volume: doc.musicVolume / 100,
     original_volume: doc.originalVolume / 100,
     fade_out: doc.fadeOut,
+    fade_in: doc.fadeIn,
+    denoise: doc.denoise,
     titulo: doc.titulo.trim(),
     subtitles: doc.subsOn && doc.cues.length
       ? {
@@ -123,6 +125,8 @@ export function snapshotFromStored(raw: unknown): ProjectSnapshot | null {
     musicVolume: s.musicVolume ?? 20,
     originalVolume: s.originalVolume ?? 100,
     fadeOut: s.fadeOut ?? true,
+    fadeIn: !!s.fadeIn,
+    denoise: !!s.denoise,
     subsOn: !!s.subsOn,
     cues: s.cues || [],
     words: s.words || [],

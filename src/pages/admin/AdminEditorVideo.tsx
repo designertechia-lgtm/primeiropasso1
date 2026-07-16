@@ -40,7 +40,7 @@ import { toast } from "sonner";
 import {
   Scissors, Play, Pause, Loader2, Music, Upload, Film, Trash2, Undo2,
   CheckCircle2, AlertCircle, Video as VideoIcon, Captions, Wand2, RotateCcw,
-  FolderOpen, Copy, Plus, Minus, Palette, Sparkles,
+  FolderOpen, Copy, Plus, Minus, Palette, Sparkles, Mic, Square,
 } from "lucide-react";
 import { videoApiAuthHeaders } from "@/lib/videoApi";
 import {
@@ -75,7 +75,7 @@ export default function AdminEditorVideo() {
   const doc = state.doc;
   const {
     segments, musicId, musicUploadId, musicUploadName, musicVolume,
-    originalVolume, fadeOut, subsOn, cues, words, cueMode, subFont, subSize,
+    originalVolume, fadeOut, fadeIn, denoise, subsOn, cues, words, cueMode, subFont, subSize,
     subColor, subStyle, subPos, titles, stickers, audioClips, transition,
     filtro, efeito, ducking, punchIn, introOn, introSource, introUploadId,
     introUploadName, introDur, introBg, introEffect, titulo,
@@ -111,6 +111,8 @@ export default function AdminEditorVideo() {
   const [amostraUrl, setAmostraUrl] = useState("");
   const [amostraCarregando, setAmostraCarregando] = useState(false);
   const [amostraErro, setAmostraErro] = useState("");
+  const [gravando, setGravando] = useState(false);
+  const [gravSegs, setGravSegs] = useState(0);
   const [startField, setStartField] = useState("");
   const [endField, setEndField] = useState("");
   const [cutStart, setCutStart] = useState("");   // caixinha FIXA de corte por tempo
@@ -157,6 +159,8 @@ export default function AdminEditorVideo() {
   const videoWrapRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const fontesPedidasRef = useRef<Map<string, number>>(new Map());
+  const mediaRecRef = useRef<MediaRecorder | null>(null);
+  const gravTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const metaRef = useRef<EditMeta | null>(null);
   const clipAudiosRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const trackDragRef = useRef<{ kind: "sticker" | "audio" | "title"; id: string; mode: "move" | "resize"; grab: number } | null>(null);
@@ -1257,6 +1261,76 @@ export default function AdminEditorVideo() {
     return { ...item, start: ns, end: ns + len };
   };
 
+  // ── voice over: gravar narração aqui mesmo (spec 10) ──────────────────────
+  // A gravação vira um clipe de áudio comum: entra no cursor, aparece na faixa
+  // azul e pode ser movida/esticada como qualquer outra. Sem tela nova, sem
+  // fluxo novo — só reusa o que já existe.
+  const gravarNarracao = async () => {
+    if (gravando) {                       // 2º clique = parar
+      mediaRecRef.current?.stop();
+      return;
+    }
+    if (!meta) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true },
+      });
+      const rec = new MediaRecorder(stream);
+      const pedacos: Blob[] = [];
+      const inicio = playhead;            // congela: o cursor anda se der play
+      rec.ondataavailable = (e) => { if (e.data.size) pedacos.push(e.data); };
+      rec.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setGravando(false);
+        setGravSegs(0);
+        if (gravTimerRef.current) clearInterval(gravTimerRef.current);
+        const blob = new Blob(pedacos, { type: "audio/webm" });
+        if (blob.size < 1200) {           // clique sem fala
+          toast.info("Gravação muito curta — nada foi adicionado.");
+          return;
+        }
+        setUploadingClip(true);
+        try {
+          const form = new FormData();
+          form.append("file", blob, `narracao-${Date.now()}.webm`);
+          const res = await fetch(`${API}/editor/carregar-musica`, {
+            method: "POST", body: form, headers: await videoApiAuthHeaders(),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || "Falha ao enviar a narração");
+          const nat = Number(data.duration) || 1;
+          const cid = newId();
+          apply((d) => ({
+            audioClips: [...d.audioClips, {
+              id: cid, upload_id: data.music_upload_id,
+              name: `🎙 Narração ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`,
+              natural_dur: nat, start: inicio,
+              end: Math.min(meta.duration, inicio + nat), volume: 1,
+            }],
+          }));
+          toast.success("Narração gravada e posta na timeline — mova o bloco azul se quiser.");
+        } catch (e: any) {
+          toast.error(e.message, { duration: 8000 });
+        } finally {
+          setUploadingClip(false);
+        }
+      };
+      mediaRecRef.current = rec;
+      rec.start();
+      setGravando(true);
+      setGravSegs(0);
+      gravTimerRef.current = setInterval(() => setGravSegs((s) => s + 1), 1000);
+    } catch {
+      toast.error("Não consegui acessar o microfone — verifique a permissão do navegador.", { duration: 9000 });
+    }
+  };
+
+  // sair da tela no meio da gravação não pode deixar o microfone ligado
+  useEffect(() => () => {
+    if (mediaRecRef.current?.state === "recording") mediaRecRef.current.stop();
+    if (gravTimerRef.current) clearInterval(gravTimerRef.current);
+  }, []);
+
   const gerarStickerIA = async () => {
     if (!meta || !professional?.slug || !iaDesc.trim() || stickerJob) return;
     setIaStep("Enviando o pedido...");
@@ -1709,6 +1783,10 @@ export default function AdminEditorVideo() {
                   onChange={(e) => update({ originalVolume: Number(e.target.value) })} className="w-full" />
               </div>
               <div className="flex gap-4 flex-wrap">
+                <label className="flex items-center gap-1.5 cursor-pointer" title="O áudio entra subindo no começo">
+                  <input type="checkbox" checked={fadeIn} onChange={(e) => patch({ fadeIn: e.target.checked })} />
+                  Fade in no início
+                </label>
                 <label className="flex items-center gap-1.5 cursor-pointer">
                   <input type="checkbox" checked={fadeOut} onChange={(e) => patch({ fadeOut: e.target.checked })} />
                   Fade out no final
@@ -1716,6 +1794,11 @@ export default function AdminEditorVideo() {
                 <label className="flex items-center gap-1.5 cursor-pointer" title="A música abaixa sozinha quando você fala e volta nas pausas">
                   <input type="checkbox" checked={ducking} onChange={(e) => patch({ ducking: e.target.checked })} />
                   Música abaixa na fala
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer"
+                  title="Reduz chiado constante da gravação — ar-condicionado, ventilador, ruído de sala">
+                  <input type="checkbox" checked={denoise} onChange={(e) => patch({ denoise: e.target.checked })} />
+                  🎧 Limpar ruído de fundo
                 </label>
               </div>
             </div>
@@ -2321,12 +2404,28 @@ export default function AdminEditorVideo() {
                   Áudio que toca num <b>ponto exato</b> do vídeo (efeito, vinheta, narração) — além da
                   trilha global. Entra no cursor; mova/estique na <b>faixa azul</b> da timeline.
                 </p>
+                {/* voice over: grava aqui e vira um clipe na faixa azul */}
+                <Button size="sm" variant={gravando ? "destructive" : "outline"}
+                  className="h-8 gap-1.5 w-fit" disabled={uploadingClip}
+                  onClick={gravarNarracao}
+                  title={gravando ? "Parar e colocar na timeline" : "Gravar narração pelo microfone, a partir do cursor"}>
+                  {gravando ? (
+                    <><Square className="h-3 w-3 fill-current" /> Parar ({fmt(gravSegs)})</>
+                  ) : (
+                    <><Mic className="h-3.5 w-3.5" /> Gravar narração no cursor</>
+                  )}
+                </Button>
+                {gravando && (
+                  <p className="text-[10px] text-muted-foreground">
+                    Gravando… fale e clique em Parar. A narração entra em {fmt(playhead)}.
+                  </p>
+                )}
                 <label className="flex items-center gap-1.5 rounded-lg border-2 border-dashed px-3 py-1.5 text-xs cursor-pointer hover:border-primary/60 transition w-fit">
                   {uploadingClip ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
                   Enviar áudio (mp3 · wav · m4a)
                   <input type="file" className="hidden"
                     accept="audio/mpeg,audio/wav,audio/mp4,audio/ogg,audio/aac"
-                    disabled={uploadingClip}
+                    disabled={uploadingClip || gravando}
                     onChange={(e) => {
                       const f = e.target.files?.[0];
                       if (f) uploadClip(f);

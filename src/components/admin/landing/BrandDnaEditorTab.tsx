@@ -231,7 +231,10 @@ export default function BrandDnaEditorTab({ expanded = false }: { expanded?: boo
 
   const hasContent = DNA_SECTIONS.some((s) => (sections[s.key] || "").trim() !== "");
 
-  // Monta a ficha que alimenta o gerador (perfil + abordagens + dores da landing).
+  // Monta a ficha que alimenta o gerador (perfil + abordagens + dores da landing + os campos "de
+  // ouro" coletados no onboarding /bem-vindo). Antes, os de ouro iam sempre vazios e o DNA saía
+  // genérico — a edge generate-brand-bible SEMPRE soube usá-los (fichaBlock), faltava o front enviar.
+  const dna = (p.dna_inputs && typeof p.dna_inputs === "object") ? p.dna_inputs : {};
   const buildProfile = () => ({
     nome: p.full_name || "",
     profissao: p.category_custom || p.category || "",
@@ -240,6 +243,15 @@ export default function BrandDnaEditorTab({ expanded = false }: { expanded?: boo
     formacao_abordagens: (p.approaches || []).join(", "),
     modalidade: p.attendance_mode || "",
     dores: (p.pain_items || []).map((i: any) => (typeof i === "string" ? i : i?.text)).filter(Boolean).join("; "),
+    // Campos de ouro (onboarding). String vazia quando não preenchidos — a edge simplesmente omite
+    // a linha da ficha (fichaBlock só inclui campo não-vazio).
+    anos_experiencia: dna.anos_experiencia || "",
+    publico_alvo: dna.publico_alvo || "",
+    transformacao: dna.transformacao || "",
+    metodo: dna.metodo || "",
+    diferenciais: dna.diferenciais || "",
+    servicos: dna.servicos || "",
+    tom: dna.tom || "",
   });
 
   const rebuildMarkdown = (secs: Record<string, string>) =>

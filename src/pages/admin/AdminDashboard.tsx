@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useProfessional } from "@/hooks/useProfessional";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Video, Users, TrendingUp, AlertCircle, RefreshCw, CheckCircle2, Circle, ArrowRight } from "lucide-react";
+import { FileText, Video, Users, TrendingUp, AlertCircle, RefreshCw, CheckCircle2, Circle, ArrowRight, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis } from "recharts";
@@ -224,6 +224,14 @@ export default function AdminDashboard() {
                 </li>
               ))}
             </ul>
+            {/* Atalho para quem pulou o onboarding no cadastro: reabre o formulário guiado, que
+                preenche de uma vez os campos que os passos acima verificam + o DNA. */}
+            <Link
+              to="/bem-vindo"
+              className="mt-3 flex items-center justify-center gap-1.5 rounded-lg border border-primary/30 bg-background py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/10"
+            >
+              <Sparkles className="h-4 w-4" /> Preencher tudo de uma vez (formulário guiado)
+            </Link>
           </CardContent>
         </Card>
       )}

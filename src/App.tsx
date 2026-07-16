@@ -12,6 +12,7 @@ import Index from "./pages/Index.tsx";
 import Login from "./pages/Login.tsx";
 import Cadastro from "./pages/Cadastro.tsx";
 import Reset from "./pages/Reset.tsx";
+import OnboardingWelcome from "./pages/OnboardingWelcome.tsx";
 import ProfessionalLanding from "./pages/ProfessionalLanding.tsx";
 import PoliticaPrivacidade from "./pages/PoliticaPrivacidade.tsx";
 import ArticlePage from "./pages/ArticlePage.tsx";
@@ -102,6 +103,9 @@ const App = () => (
             <Route path="/minha-conta/agendar/:slug" element={<PatientRoute><PatientAgendar /></PatientRoute>} />
             <Route path="/minha-conta/perfil" element={<PatientRoute><PatientPerfil /></PatientRoute>} />
             {/* Protected professional routes */}
+            {/* Onboarding pós-cadastro: exige login (professional) mas SEM o DashboardLayout —
+                é tela cheia. Não é gate: o próprio formulário tem "Fazer depois". */}
+            <Route path="/bem-vindo" element={<ProtectedRoute requiredRole="professional"><OnboardingWelcome /></ProtectedRoute>} />
             <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
             <Route path="/admin/perfil" element={<AdminRoute><AdminPerfil /></AdminRoute>} />
             <Route path="/admin/artigos" element={<Navigate to="/admin/redes-sociais?tab=artigos" replace />} />

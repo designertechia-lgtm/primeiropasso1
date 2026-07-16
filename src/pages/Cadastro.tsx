@@ -32,7 +32,9 @@ export default function Cadastro() {
 
   useEffect(() => {
     if (!pendingRedirect || authLoading || !user) return;
-    navigate("/admin", { replace: true });
+    // Recém-cadastrado vai para o onboarding guiado (coleta o contexto do DNA e do Axel).
+    // Login normal (Login.tsx) continua indo direto ao /admin — este redirect é só do signup.
+    navigate("/bem-vindo", { replace: true });
   }, [pendingRedirect, authLoading, user, roles, navigate]);
 
   const handleSignUp = async (e: React.FormEvent) => {

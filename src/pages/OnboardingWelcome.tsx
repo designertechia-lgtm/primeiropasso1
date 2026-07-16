@@ -68,6 +68,27 @@ const EMPTY: Draft = {
 const TOTAL_STEPS = 5;
 const STEP_TITLES = ["Sua atuação", "Quem você atende", "Como você trabalha", "Atendimento e valores", "Você e sua voz"];
 
+// O onboarding mostra só um campo de texto livre para a profissão — mas o `category` clínico ainda
+// precisa ser preenchido nos bastidores, porque é ele que liga o "limite clínico" do Axel no
+// WhatsApp (psicólogo/terapeuta/psiquiatra = "você não faz terapia") e o público=paciente no
+// video-api. Derivamos a categoria do próprio texto: quem se identifica como clínico regulamentado
+// mantém o guardrail; o resto vira "outro". O texto digitado sempre fica preservado em
+// category_custom (é a fonte de verdade da área, usada pelo DNA e pelo Axel). No AdminPerfil o
+// dropdown continua existindo para o profissional corrigir, se a detecção não acertar.
+function derivarCategoria(textoLivre: string): string {
+  const t = (textoLivre || "").toLowerCase();
+  if (/psic[oó]log/.test(t)) return "psicologo";
+  if (/psiquiatr/.test(t)) return "psiquiatra";
+  if (/terapeut|psican[aá]l/.test(t)) return "terapeuta";
+  return "outro";
+}
+
+// Rótulo legível de uma categoria clínica salva no banco — usado só para pré-preencher o campo de
+// texto quando o profissional já tinha uma categoria e ainda não escreveu a área por extenso.
+const CATEGORIA_LABEL: Record<string, string> = {
+  psicologo: "Psicólogo(a)", terapeuta: "Terapeuta", psiquiatra: "Psiquiatra",
+};
+
 export default function OnboardingWelcome() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -89,7 +110,9 @@ export default function OnboardingWelcome() {
     let base: Draft = {
       ...EMPTY,
       category: p.category || "outro",
-      categoryCustom: p.category_custom || "",
+      // Campo de texto único: mostra a área por extenso; se ainda não há texto mas há categoria
+      // clínica salva, pré-preenche com o rótulo dela para o profissional ver/editar.
+      categoryCustom: p.category_custom || CATEGORIA_LABEL[p.category] || "",
       approaches: Array.isArray(p.approaches) ? p.approaches : [],
       dores: Array.isArray(p.pain_items) ? p.pain_items.map((i: any) => (typeof i === "string" ? i : i?.text)).filter(Boolean) : [],
       attendanceMode: p.attendance_mode || "online",
@@ -149,10 +172,14 @@ export default function OnboardingWelcome() {
     const temAlgumOuro = Object.values(dnaInputs).some(Boolean);
     const painItems = d.dores.map((t) => t.trim()).filter(Boolean).map((text) => ({ text }));
 
+    const areaTexto = d.categoryCustom.trim();
+    // Categoria derivada do texto (liga/desliga o guardrail clínico do Axel). O texto sempre fica
+    // preservado em category_custom — inclusive para clínicos, então "Psicóloga clínica de ansiedade"
+    // não perde o "de ansiedade" ao virar category=psicologo.
+    const categoriaDerivada = derivarCategoria(areaTexto);
     const patch: Record<string, unknown> = {
-      category: d.category,
-      // Igual ao AdminPerfil: category_custom só quando "outro".
-      category_custom: d.category === "outro" ? (d.categoryCustom.trim() || null) : null,
+      category: categoriaDerivada,
+      category_custom: areaTexto || null,
       approaches: d.approaches,
       attendance_mode: d.attendanceMode || "online",
       address: d.address.trim() || null,
@@ -246,24 +273,12 @@ export default function OnboardingWelcome() {
           <CardContent className="p-6 space-y-5">
             {step === 1 && (
               <>
-                <FieldBlock label="Qual é a sua profissão ou atividade?">
-                  <Select value={d.category} onValueChange={(v) => set("category", v)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="psicologo">Psicólogo(a)</SelectItem>
-                      <SelectItem value="terapeuta">Terapeuta</SelectItem>
-                      <SelectItem value="psiquiatra">Psiquiatra</SelectItem>
-                      <SelectItem value="outro">Outra área</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {d.category === "outro" && (
-                    <Input
-                      className="mt-2"
-                      placeholder="Descreva sua área — ex: Nutricionista esportivo, Coach financeiro, Plataforma digital"
-                      value={d.categoryCustom}
-                      onChange={(e) => set("categoryCustom", e.target.value)}
-                    />
-                  )}
+                <FieldBlock label="Qual é a sua profissão ou atividade?" hint="Escreva do seu jeito. Ex: Psicóloga clínica, Nutricionista esportivo, Coach financeiro, Engenharia de IA aplicada.">
+                  <Input
+                    placeholder="Ex: Psicóloga clínica · Nutricionista esportivo · Engenharia de IA aplicada"
+                    value={d.categoryCustom}
+                    onChange={(e) => set("categoryCustom", e.target.value)}
+                  />
                 </FieldBlock>
 
                 <FieldBlock label="Há quanto tempo você atua?" hint="Ex: 8 anos · desde 2015 · comecei recentemente">

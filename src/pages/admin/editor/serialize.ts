@@ -52,7 +52,7 @@ export function buildRenderPayload(
     contract_version: EDITOR_CONTRACT_VERSION,
     professional_slug: professionalSlug,
     edit_id: meta.edit_id,
-    keep_segments: keep.map((s) => ({ start: s.start, end: s.end })),
+    keep_segments: keep.map((s) => ({ start: s.start, end: s.end, speed: s.speed ?? 1 })),
     music_id: doc.musicUploadId ? "" : doc.musicId,
     music_upload_id: doc.musicUploadId,
     music_volume: doc.musicVolume / 100,

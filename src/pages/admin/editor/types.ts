@@ -19,9 +19,13 @@ export const EDITOR_STORAGE_KEY = "pp-editor-video";
 // destaque palavra a palavra.
 // v6: campo `efeito` — worker v5 renderizaria sem o efeito, calado.
 // v7: fade_in + denoise — worker v6 ignoraria os dois em silêncio.
-export const EDITOR_CONTRACT_VERSION = 7;
+// v8: keep_segments[].speed — worker v7 renderiza em velocidade normal calado
+// e as legendas dessincronizam do trecho lento/rápido.
+export const EDITOR_CONTRACT_VERSION = 8;
 
-export type Segment = { id: number; start: number; end: number; keep: boolean };
+// speed: velocidade do trecho (1 = normal, 0.5 = câmera lenta, 2 = acelerado).
+// Ausente = 1 (retrocompat com projetos salvos antes desta feature).
+export type Segment = { id: number; start: number; end: number; keep: boolean; speed?: number };
 export type EditMeta = {
   edit_id: string; duration: number; width: number; height: number;
   has_audio: boolean; thumbs: string[]; preview_url?: string;

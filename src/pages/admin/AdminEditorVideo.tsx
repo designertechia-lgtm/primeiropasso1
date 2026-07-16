@@ -972,6 +972,13 @@ export default function AdminEditorVideo() {
         if (next) v.currentTime = Math.max(next.start, removed.end);
         else v.pause();
       }
+      // prévia da câmera lenta/acelerado: o player toca o trecho na velocidade
+      // que o render vai aplicar (setpts) — o que você ouve/vê é o que sai
+      const atual = segments.find((s) => s.keep && v.currentTime >= s.start && v.currentTime < s.end);
+      const sp = atual?.speed ?? 1;
+      if (Math.abs(v.playbackRate - sp) > 1e-3) v.playbackRate = sp;
+    } else if (v.playbackRate !== 1) {
+      v.playbackRate = 1;   // prévia da edição desligada → velocidade real do player
     }
     if (!draggingRef.current) setPlayhead(v.currentTime);
   };
@@ -986,7 +993,7 @@ export default function AdminEditorVideo() {
       for (const s of d.segments) {
         if (s.id === seg.id) {
           next.push({ ...s, end: playhead });
-          next.push({ id: nid++, start: playhead, end: s.end, keep: s.keep });
+          next.push({ id: nid++, start: playhead, end: s.end, keep: s.keep, speed: s.speed });
         } else next.push(s);
       }
       return { segments: next };
@@ -1016,9 +1023,9 @@ export default function AdminEditorVideo() {
       let nid = Math.max(0, ...d.segments.map((p) => p.id)) + 1;
       for (const s of d.segments) {
         if (s.end <= ca || s.start >= cb) { next.push(s); continue; }
-        if (s.start < ca) next.push({ id: nid++, start: s.start, end: ca, keep: s.keep });
+        if (s.start < ca) next.push({ id: nid++, start: s.start, end: ca, keep: s.keep, speed: s.speed });
         next.push({ id: nid++, start: Math.max(s.start, ca), end: Math.min(s.end, cb), keep: false });
-        if (s.end > cb) next.push({ id: nid++, start: cb, end: s.end, keep: s.keep });
+        if (s.end > cb) next.push({ id: nid++, start: cb, end: s.end, keep: s.keep, speed: s.speed });
       }
       // descartar as sobras curtas abria buraco na partição — normalizar
       // devolve a região como trecho removido
@@ -1063,7 +1070,8 @@ export default function AdminEditorVideo() {
   };
 
   const keepSegments = segments.filter((s) => s.keep);
-  const finalDuration = keepSegments.reduce((a, s) => a + (s.end - s.start), 0);
+  // duração REAL: câmera lenta (0,5×) dobra o tempo do trecho, acelerado encurta
+  const finalDuration = keepSegments.reduce((a, s) => a + (s.end - s.start) / (s.speed ?? 1), 0);
 
   // ── cortar com IA ──────────────────────────────────────────────────────────
   const applyAiSegments = (keeps: { start: number; end: number }[]) => {
@@ -1530,6 +1538,14 @@ export default function AdminEditorVideo() {
           clipAudiosRef.current.set(c.id, el);
         }
         el.volume = Math.max(0, Math.min(1, c.volume));
+        // o playhead (relógio da timeline original) avança na VELOCIDADE do
+        // trecho, mas o clipe toca natural no render. Na prévia, o áudio segue
+        // o mesmo ritmo do playhead pra não gaguejar (re-seek constante); soar
+        // um pouco lento na câmera lenta é aceitável, travar não é.
+        const spSeg = previewEdit
+          ? (segments.find((s) => s.keep && playhead >= s.start && playhead < s.end)?.speed ?? 1)
+          : 1;
+        if (Math.abs(el.playbackRate - spSeg) > 1e-3) el.playbackRate = spSeg;
         const want = playhead - c.start;
         if (Math.abs((el.currentTime || 0) - want) > 0.4) el.currentTime = want;
         if (el.paused) el.play().catch(() => {});
@@ -2041,6 +2057,11 @@ export default function AdminEditorVideo() {
                                 s.keep ? "bg-black/50 text-white hover:bg-red-600" : "bg-red-600 text-white hover:bg-emerald-600"}`}>
                               {s.keep ? <Trash2 className="h-3 w-3" /> : <RotateCcw className="h-3 w-3" />}
                             </button>
+                            {s.keep && (s.speed ?? 1) !== 1 && (
+                              <span className="absolute bottom-0.5 left-0.5 rounded bg-black/70 text-white text-[8px] px-1 leading-tight">
+                                {(s.speed ?? 1) < 1 ? "🐢" : "⚡"}{String(s.speed).replace(".", ",")}×
+                              </span>
+                            )}
                           </div>
                         ))}
                         {/* alças das FRONTEIRAS entre trechos: arraste para mover
@@ -2148,6 +2169,22 @@ export default function AdminEditorVideo() {
                       onClick={() => toggleSegment(activeSeg.id)}>
                       {activeSeg.keep ? "Remover trecho" : "Restaurar trecho"}
                     </Button>
+                    {activeSeg.keep && (
+                      <label className="flex items-center gap-1" title="Câmera lenta ou acelerado só neste trecho">
+                        Velocidade
+                        <select className="h-7 rounded border bg-background px-1"
+                          value={activeSeg.speed ?? 1}
+                          onChange={(e) => {
+                            const sp = Number(e.target.value);
+                            apply((d) => ({ segments: d.segments.map((s) => (s.id === activeSeg.id ? { ...s, speed: sp } : s)) }));
+                          }}>
+                          <option value={0.5}>🐢 0,5× (lenta)</option>
+                          <option value={1}>1× normal</option>
+                          <option value={1.5}>1,5×</option>
+                          <option value={2}>⚡ 2× (rápida)</option>
+                        </select>
+                      </label>
+                    )}
                   </div>
                 )}
 

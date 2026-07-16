@@ -54,6 +54,12 @@ export type EditorDoc = {
   introBg: string;
   introEffect: "zoom" | "slide" | "fade";
   titulo: string;
+  // Multi-track (Fase A): ainda NÃO usados pelo editor — o modelo flat acima
+  // continua sendo a fonte de verdade. tracks é derivado por docFlatToTracks
+  // quando preciso; canvasW/H é a resolução do PROJETO (default = da 1ª fonte).
+  tracks: import("./tracksModel").Track[];
+  canvasW: number;
+  canvasH: number;
 };
 
 export const emptyDoc = (): EditorDoc => ({
@@ -91,6 +97,9 @@ export const emptyDoc = (): EditorDoc => ({
   introBg: "#FFFFFF",
   introEffect: "zoom",
   titulo: "",
+  tracks: [],
+  canvasW: 0,
+  canvasH: 0,
 });
 
 export type EditorState = { doc: EditorDoc; past: EditorDoc[] };

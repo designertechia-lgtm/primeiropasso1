@@ -75,6 +75,8 @@ export const ANIM_LOOP_OPTS: { id: AnimLoop; label: string }[] = [
 /** ANIM_MS / ANIM_LOOP_MS do motor (em segundos). */
 export const ANIM_DUR = 0.35;
 export const ANIM_LOOP_DUR = 1.2;
+/** XFADE_DUR do motor (video_editor.py) — duração do crossfade das transições. */
+export const XFADE_DUR = 0.4;
 
 // Stickers/sobreposições: imagem, GIF ou WebM-alpha sobre o vídeo, com posição
 // (centro em % da tela), tamanho, movimento e loop. id = uuid (Date.now()

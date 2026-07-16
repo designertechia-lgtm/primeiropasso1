@@ -414,21 +414,27 @@ export default function AdminPerfil() {
       <Card>
         <CardHeader><CardTitle>Área de Atuação <FieldHint text="Define o vocabulário e o contexto visual dos vídeos gerados pela IA." /></CardTitle></CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="category">Categoria profissional</Label>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger id="category">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="terapeuta">Terapeuta</SelectItem>
-                <SelectItem value="psicologo">Psicólogo</SelectItem>
-                <SelectItem value="psiquiatra">Psiquiatra</SelectItem>
-                <SelectItem value="outro">Outro</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {category === "outro" && (
+          {/* O seletor de categoria só faz sentido para as áreas clínicas regulamentadas, onde a
+              categoria liga o "limite clínico" do Axel e o público=paciente. Quem é "outro" (não
+              clínico) descreve a área em texto livre — sem escolher categoria. Um link discreto
+              reabre o seletor, pra ninguém ficar preso em "outro" (era o que acontecia: category
+              só saía de "outro" por aqui). */}
+          {category !== "outro" ? (
+            <div className="space-y-2">
+              <Label htmlFor="category">Categoria profissional</Label>
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger id="category">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="terapeuta">Terapeuta</SelectItem>
+                  <SelectItem value="psicologo">Psicólogo</SelectItem>
+                  <SelectItem value="psiquiatra">Psiquiatra</SelectItem>
+                  <SelectItem value="outro">Outro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
             <div className="space-y-2">
               <Label htmlFor="categoryCustom">
                 Descreva sua área <FieldHint text="A IA usa esse texto para escolher o vocabulário e o tom certos. Ex: Nutricionista esportivo, Coach financeiro, Plataforma digital." />
@@ -439,6 +445,13 @@ export default function AdminPerfil() {
                 value={categoryCustom}
                 onChange={(e) => setCategoryCustom(e.target.value)}
               />
+              <button
+                type="button"
+                onClick={() => setCategory("psicologo")}
+                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+              >
+                Sou psicólogo(a), terapeuta ou psiquiatra — escolher categoria
+              </button>
             </div>
           )}
 

@@ -40,7 +40,7 @@ import { toast } from "sonner";
 import {
   Scissors, Play, Pause, Loader2, Music, Upload, Film, Trash2, Undo2,
   CheckCircle2, AlertCircle, Video as VideoIcon, Captions, Wand2, RotateCcw,
-  FolderOpen, Copy, Plus, Minus, Palette,
+  FolderOpen, Copy, Plus, Minus, Palette, Sparkles,
 } from "lucide-react";
 import { videoApiAuthHeaders } from "@/lib/videoApi";
 import {
@@ -59,7 +59,7 @@ import {
   buildRenderPayload, snapshotFromStored, metaSemThumbs, type ProjectSnapshot,
 } from "./editor/serialize";
 import { evaluateScene, drawScene, fontesDaCena, FONTE_PADRAO } from "./editor/scene";
-import { FILTROS, FILTRO_IDS, TRANSICOES, filtroCss } from "./editor/filtros";
+import { FILTROS, FILTRO_IDS, EFEITOS, TRANSICOES, filtroCss } from "./editor/filtros";
 import {
   listEditorProjects, fetchEditorProject, insertEditorProject,
   updateEditorProject, deleteEditorProject,
@@ -77,7 +77,7 @@ export default function AdminEditorVideo() {
     segments, musicId, musicUploadId, musicUploadName, musicVolume,
     originalVolume, fadeOut, subsOn, cues, words, cueMode, subFont, subSize,
     subColor, subStyle, subPos, titles, stickers, audioClips, transition,
-    filtro, ducking, punchIn, introOn, introSource, introUploadId,
+    filtro, efeito, ducking, punchIn, introOn, introSource, introUploadId,
     introUploadName, introDur, introBg, introEffect, titulo,
   } = doc;
   const patch = (changes: Partial<EditorDoc>) => dispatch({ type: "patch", changes });
@@ -108,6 +108,9 @@ export default function AdminEditorVideo() {
   const [snapOn, setSnapOn] = useState(true);
   const [snapGuide, setSnapGuide] = useState<number | null>(null);
   const [thumbsErro, setThumbsErro] = useState(false);
+  const [amostraUrl, setAmostraUrl] = useState("");
+  const [amostraCarregando, setAmostraCarregando] = useState(false);
+  const [amostraErro, setAmostraErro] = useState("");
   const [startField, setStartField] = useState("");
   const [endField, setEndField] = useState("");
   const [cutStart, setCutStart] = useState("");   // caixinha FIXA de corte por tempo
@@ -550,6 +553,45 @@ export default function AdminEditorVideo() {
     })();
     return () => { vivo = false; };
   }, [meta?.edit_id, meta?.thumbs?.length]);
+
+  // ── amostra REAL do efeito (Fase efeitos) ─────────────────────────────────
+  // O efeito não tem prévia ao vivo (VHS/glitch não existem em CSS), então o
+  // worker manda o frame do cursor já passado pelo ffmpeg. Com debounce: cada
+  // amostra é um ffmpeg, e clicar nas pílulas dispararia uma por clique.
+  useEffect(() => {
+    const id = meta?.edit_id;
+    if (!id) { setAmostraUrl(""); return; }
+    let vivo = true;
+    let urlAntiga = "";
+    const timer = setTimeout(async () => {
+      setAmostraCarregando(true);
+      try {
+        const q = new URLSearchParams({
+          t: String(Math.max(0, playhead)), filtro, efeito,
+        });
+        const res = await fetch(`${API}/editor/amostra/${id}?${q}`, {
+          headers: await videoApiAuthHeaders(),
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        const blob = await res.blob();
+        if (!vivo) return;
+        urlAntiga = URL.createObjectURL(blob);
+        setAmostraUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return urlAntiga; });
+        setAmostraErro("");
+      } catch {
+        if (vivo) setAmostraErro("amostra indisponível");
+      } finally {
+        if (vivo) setAmostraCarregando(false);
+      }
+    }, 450);
+    return () => { vivo = false; clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meta?.edit_id, filtro, efeito, Math.round(playhead * 2)]);
+
+  // libera o último blob ao sair (o effect acima só libera o anterior)
+  useEffect(() => () => { if (amostraUrl) URL.revokeObjectURL(amostraUrl); },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []);
 
   // Prévia da trilha respeita o slider em tempo real
   useEffect(() => {
@@ -2080,23 +2122,69 @@ export default function AdminEditorVideo() {
                   )}
                 </div>
 
-                {/* Filtros de cor (o look do vídeo) — a prévia no player usa a
-                    mesma definição que o motor queima no render */}
-                <div className="space-y-1.5 rounded-lg border px-3 py-2">
-                  <div className="flex items-center gap-2 text-xs">
-                    <Palette className="h-3.5 w-3.5 text-primary" />
-                    <span className="font-medium">Filtro de cor</span>
-                    <span className="text-muted-foreground">— veja no player, ao vivo</span>
-                  </div>
-                  <div className="flex gap-1.5 flex-wrap">
-                    {FILTRO_IDS.map((id) => (
-                      <button key={id} type="button"
-                        onClick={() => patch({ filtro: id })}
-                        className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
-                          filtro === id ? "border-primary ring-1 ring-primary font-medium" : "hover:border-primary/50"}`}>
-                        {FILTROS[id].label}
-                      </button>
-                    ))}
+                {/* Filtro de cor (prévia ao vivo no player) + Efeito (prévia
+                    pela amostra real: VHS/granulado/glitch não têm equivalente
+                    fiel em CSS, e aproximar faria a prévia mentir) */}
+                <div className="space-y-2 rounded-lg border px-3 py-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3">
+                    <div className="space-y-2 min-w-0">
+                      <div>
+                        <div className="flex items-center gap-2 text-xs">
+                          <Palette className="h-3.5 w-3.5 text-primary" />
+                          <span className="font-medium">Filtro de cor</span>
+                          <span className="text-muted-foreground">— ao vivo no player</span>
+                        </div>
+                        <div className="flex gap-1.5 flex-wrap mt-1">
+                          {FILTRO_IDS.map((id) => (
+                            <button key={id} type="button"
+                              onClick={() => patch({ filtro: id })}
+                              className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
+                                filtro === id ? "border-primary ring-1 ring-primary font-medium" : "hover:border-primary/50"}`}>
+                              {FILTROS[id].label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 text-xs">
+                          <Sparkles className="h-3.5 w-3.5 text-primary" />
+                          <span className="font-medium">Efeito</span>
+                          <span className="text-muted-foreground">— veja na amostra ao lado</span>
+                        </div>
+                        <div className="flex gap-1.5 flex-wrap mt-1">
+                          {EFEITOS.map((e) => (
+                            <button key={e.id} type="button"
+                              onClick={() => patch({ efeito: e.id })}
+                              className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
+                                efeito === e.id ? "border-primary ring-1 ring-primary font-medium" : "hover:border-primary/50"}`}>
+                              {e.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    {/* amostra REAL: o frame do cursor passado pelo ffmpeg */}
+                    <div className="shrink-0 space-y-1">
+                      <div className="relative rounded border bg-muted/40 overflow-hidden"
+                        style={{ width: 124, height: 124 }}>
+                        {amostraUrl ? (
+                          <img src={amostraUrl} alt="Amostra com filtro e efeito"
+                            className="h-full w-full object-contain" />
+                        ) : (
+                          <div className="h-full w-full flex items-center justify-center text-[10px] text-muted-foreground text-center px-2">
+                            {amostraErro || "amostra do cursor"}
+                          </div>
+                        )}
+                        {amostraCarregando && (
+                          <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-[9px] text-muted-foreground text-center leading-tight">
+                        frame real do<br />seu vídeo
+                      </p>
+                    </div>
                   </div>
                 </div>
 

@@ -35,6 +35,26 @@ export function filtroCss(id: string): string {
   return ops.map(([nome, k]) => `${nome}(${k})`).join(" ");
 }
 
+/**
+ * Efeitos visuais (spec 15) — espelho de EFEITOS no motor.
+ * Diferente dos filtros de cor, estes NÃO têm prévia ao vivo: VHS, granulado e
+ * glitch não têm equivalente fiel em CSS, e aproximar faria a prévia mentir.
+ * A prévia deles é a AMOSTRA REAL (GET /editor/amostra) — o frame do próprio
+ * vídeo passado pelo ffmpeg.
+ * Fora de propósito: partículas/chuva/fogo/raios (precisam de vídeos de
+ * overlay) e estilo anime (precisa de modelo de IA).
+ */
+export const EFEITOS: { id: string; label: string }[] = [
+  { id: "nenhum", label: "Sem efeito" },
+  { id: "blur", label: "Desfoque" },
+  { id: "film", label: "Granulado" },
+  { id: "vinheta", label: "Vinheta" },
+  { id: "rgb", label: "RGB split" },
+  { id: "shake", label: "Tremido" },
+  { id: "vhs", label: "VHS" },
+  { id: "glitch", label: "Glitch" },
+];
+
 /** Transições: o painel manda a chave; o motor traduz para o xfade.
  *  "spin" e "3D" da spec não existem no xfade e ficaram de fora. */
 export const TRANSICOES: { id: string; label: string }[] = [

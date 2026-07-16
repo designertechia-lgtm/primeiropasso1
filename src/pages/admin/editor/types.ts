@@ -17,7 +17,8 @@ export const EDITOR_STORAGE_KEY = "pp-editor-video";
 // parado sem avisar.
 // v5: subtitles.karaoke + cues[].words — worker v4 queimaria a legenda sem o
 // destaque palavra a palavra.
-export const EDITOR_CONTRACT_VERSION = 5;
+// v6: campo `efeito` — worker v5 renderizaria sem o efeito, calado.
+export const EDITOR_CONTRACT_VERSION = 6;
 
 export type Segment = { id: number; start: number; end: number; keep: boolean };
 export type EditMeta = {

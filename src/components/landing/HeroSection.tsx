@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
-import { DEMO_PROFESSIONAL } from "@/data/demoProfessional";
 import { buildWhatsAppLink, buildLandingCtaMessage, landingCtaLabel } from "@/lib/utils";
 
 type PhotoStyle = "portrait" | "circle" | "square" | "horizontal";
@@ -59,11 +58,18 @@ export default function HeroSection({ title, subtitle, whatsapp, ctaMessage, cta
     }
   }, [activeBgUrl, isVideo]);
 
-  const displayImage = heroImageUrl || photoUrl || DEMO_PROFESSIONAL.hero_image_url || DEMO_PROFESSIONAL.photo_url;
-  const displayName = professionalName && professionalName !== "Profissional" ? professionalName : DEMO_PROFESSIONAL.full_name;
-  const displayCrp = crp || DEMO_PROFESSIONAL.crp;
-  const displayTitle = title || DEMO_PROFESSIONAL.hero_title;
-  const displaySubtitle = subtitle || DEMO_PROFESSIONAL.hero_subtitle;
+  // Campo vazio fica vazio — NUNCA cai em dado de outro profissional.
+  // Havia um fallback para o profissional de demonstração (a psicóloga fictícia "Dra. Marina
+  // Oliveira") aqui: `crp || DEMO_PROFESSIONAL.crp` e afins. O efeito era o oposto do esperado —
+  // quem não tinha conselho exibia o CRP dela, quem não tinha foto exibia o rosto dela, e uma
+  // padaria anunciava "cuidar da sua saúde mental". Como o `||` garantia valor sempre, os `&&`
+  // do JSX abaixo nunca disparavam e era impossível esconder o campo apagando-o no admin.
+  // O JSX já trata cada um destes vazio: o CRP e o nome somem, e a foto vira o placeholder.
+  const displayImage = heroImageUrl || photoUrl;
+  const displayName = professionalName && professionalName !== "Profissional" ? professionalName : "";
+  const displayCrp = crp;
+  const displayTitle = title;
+  const displaySubtitle = subtitle;
   const whatsappLink = whatsapp
     ? buildWhatsAppLink(whatsapp, buildLandingCtaMessage(ctaMessage, campaignRef))
     : "#";
@@ -159,14 +165,18 @@ export default function HeroSection({ title, subtitle, whatsapp, ctaMessage, cta
               </div>
             )}
 
-            {/* Title & Subtitle */}
+            {/* Title & Subtitle — cada um some quando vazio, senão sobra a tag e um buraco no card. */}
             <div className="max-w-2xl space-y-4">
-              <h1 className="font-heading text-3xl md:text-4xl lg:text-5xl font-bold text-black dark:text-white leading-tight drop-shadow-md">
-                {displayTitle}
-              </h1>
-              <p className="text-lg md:text-xl text-black/90 dark:text-white/90 leading-relaxed font-medium drop-shadow-sm">
-                {displaySubtitle}
-              </p>
+              {displayTitle && (
+                <h1 className="font-heading text-3xl md:text-4xl lg:text-5xl font-bold text-black dark:text-white leading-tight drop-shadow-md">
+                  {displayTitle}
+                </h1>
+              )}
+              {displaySubtitle && (
+                <p className="text-lg md:text-xl text-black/90 dark:text-white/90 leading-relaxed font-medium drop-shadow-sm">
+                  {displaySubtitle}
+                </p>
+              )}
             </div>
 
             {/* CTA Buttons */}

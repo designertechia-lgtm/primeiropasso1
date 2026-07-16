@@ -1,3 +1,15 @@
+// ⚠️ NÃO USE COMO FALLBACK DE LANDING REAL. Arquivo órfão desde 15/07/2026 — nada importa daqui.
+//
+// Isto é uma psicóloga FICTÍCIA. O HeroSection usava estes valores para preencher campo vazio
+// (`crp || DEMO_PROFESSIONAL.crp` etc.) e o resultado foi dado falso em página pública: 9 dos 17
+// profissionais exibiam o CRP "06/123456" dela, 5 exibiam a foto (uma pessoa do Unsplash) como se
+// fosse a própria, e uma padaria anunciava "cuidar da sua saúde mental". Campo vazio deve ficar
+// vazio — o JSX do Hero já esconde cada um.
+//
+// `src/components/landing/HeroSection.test.tsx` falha se este fallback voltar ao Hero.
+// Se for reaproveitar isto (ex.: uma página /demo de verdade), passe os valores como props
+// explícitas dessa página — nunca como fallback dentro de um componente que também serve
+// profissional real.
 export const DEMO_PROFESSIONAL = {
   slug: "demo",
   full_name: "Dra. Marina Oliveira",

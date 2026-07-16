@@ -281,8 +281,16 @@ export default function AdminPerfil() {
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="crp">Número do conselho / associação <FieldHint text="Ex: CRP 06/12345, CFP 01/00000, CRM 123456." /></Label>
+            <Label htmlFor="crp">
+              Número do conselho / associação{" "}
+              <FieldHint text="Ex: CRP 06/12345, CFP 01/00000, CRM 123456. Não tem conselho? Deixe vazio — a linha não aparece na sua página." />
+            </Label>
             <Input id="crp" placeholder="Ex: CRP 06/12345 · CFP 01/00000" value={crp} onChange={(e) => setCrp(e.target.value)} />
+            {!crp?.trim() && (
+              <p className="text-xs text-muted-foreground">
+                Vazio: nenhuma linha de registro aparece na sua página. É o certo para quem não tem conselho.
+              </p>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">

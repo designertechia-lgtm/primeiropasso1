@@ -1,16 +1,19 @@
-// Trava o vazamento do profissional de demonstração.
+// Trava o vazamento de perfil fictício no Hero.
 //
-// O Hero tinha `crp || DEMO_PROFESSIONAL.crp` (e o mesmo para foto, nome, título e subtítulo).
-// Quem não tinha conselho exibia o CRP da psicóloga fictícia "Dra. Marina Oliveira" na landing
-// pública — 9 dos 17 profissionais, incluindo uma padaria. Estes testes falham se o fallback
-// voltar em qualquer um dos cinco campos.
+// Até 15/07/2026 o Hero preenchia campo vazio com um perfil de demonstração
+// (`src/data/demoProfessional.ts`, já APAGADO): `crp || DEMO_PROFESSIONAL.crp`, e o mesmo para
+// foto, nome, título e subtítulo. Quem não tinha conselho exibia na landing PÚBLICA o CRP de uma
+// psicóloga fictícia — 9 dos 17 profissionais, incluindo uma padaria.
+//
+// Os valores abaixo estão fixos de propósito: são os que vazavam. O arquivo não existe mais, e
+// estes testes falham se um fallback assim voltar em qualquer um dos cinco campos.
 
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import HeroSection from "./HeroSection";
 
-// Valores reais do DEMO_PROFESSIONAL (src/data/demoProfessional.ts) — o que NUNCA pode vazar.
-const MARINA = {
+// O perfil fictício que vazava. Nenhum destes valores pode voltar à tela de um profissional real.
+const PERFIL_FICTICIO = {
   nome: "Dra. Marina Oliveira",
   crp: "06/123456",
   titulo: "Dê o primeiro passo para uma mente equilibrada",
@@ -35,10 +38,10 @@ const renderHero = (props: Record<string, unknown>) =>
     </MemoryRouter>,
   );
 
-describe("HeroSection — não vaza o profissional de demonstração", () => {
-  it("CRP vazio não exibe o registro da psicóloga fictícia", () => {
+describe("HeroSection — não vaza perfil fictício", () => {
+  it("CRP vazio não exibe o registro do perfil fictício", () => {
     renderHero(semConselho);
-    expect(screen.queryByText(MARINA.crp)).toBeNull();
+    expect(screen.queryByText(PERFIL_FICTICIO.crp)).toBeNull();
   });
 
   it("CRP vazio não deixa nenhum resquício de número de conselho na tela", () => {
@@ -52,26 +55,26 @@ describe("HeroSection — não vaza o profissional de demonstração", () => {
     expect(screen.getByText("CRP 12/34567")).toBeInTheDocument();
   });
 
-  it("subtítulo vazio não exibe o texto de saúde mental da demo", () => {
+  it("subtítulo vazio não exibe o texto de saúde mental do perfil fictício", () => {
     renderHero({ ...semConselho, subtitle: "" });
-    expect(screen.queryByText(MARINA.subtitulo)).toBeNull();
+    expect(screen.queryByText(PERFIL_FICTICIO.subtitulo)).toBeNull();
   });
 
-  it("título vazio não exibe a headline da demo", () => {
+  it("título vazio não exibe a headline do perfil fictício", () => {
     renderHero({ ...semConselho, title: "" });
-    expect(screen.queryByText(MARINA.titulo)).toBeNull();
+    expect(screen.queryByText(PERFIL_FICTICIO.titulo)).toBeNull();
   });
 
-  it("sem foto, mostra o placeholder — nunca o rosto da pessoa da demo", () => {
+  it("sem foto, mostra o placeholder — nunca o rosto do perfil fictício", () => {
     const { container } = renderHero({ ...semConselho, photoUrl: "", heroImageUrl: "" });
     const imgs = Array.from(container.querySelectorAll("img"));
-    expect(imgs.some((i) => i.getAttribute("src")?.includes(MARINA.foto))).toBe(false);
+    expect(imgs.some((i) => i.getAttribute("src")?.includes(PERFIL_FICTICIO.foto))).toBe(false);
     expect(screen.getByText("Foto do profissional")).toBeInTheDocument();
   });
 
-  it("nome vazio não vira o nome da psicóloga fictícia", () => {
+  it("nome vazio não vira o nome do perfil fictício", () => {
     renderHero({ ...semConselho, professionalName: "" });
-    expect(screen.queryByText(MARINA.nome)).toBeNull();
+    expect(screen.queryByText(PERFIL_FICTICIO.nome)).toBeNull();
   });
 
   it("o texto real do profissional continua sendo exibido", () => {

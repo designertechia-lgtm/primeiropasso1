@@ -58,13 +58,15 @@ export default function HeroSection({ title, subtitle, whatsapp, ctaMessage, cta
     }
   }, [activeBgUrl, isVideo]);
 
-  // Campo vazio fica vazio — NUNCA cai em dado de outro profissional.
-  // Havia um fallback para o profissional de demonstração (a psicóloga fictícia "Dra. Marina
-  // Oliveira") aqui: `crp || DEMO_PROFESSIONAL.crp` e afins. O efeito era o oposto do esperado —
-  // quem não tinha conselho exibia o CRP dela, quem não tinha foto exibia o rosto dela, e uma
-  // padaria anunciava "cuidar da sua saúde mental". Como o `||` garantia valor sempre, os `&&`
-  // do JSX abaixo nunca disparavam e era impossível esconder o campo apagando-o no admin.
-  // O JSX já trata cada um destes vazio: o CRP e o nome somem, e a foto vira o placeholder.
+  // Campo vazio fica vazio — NUNCA preencher com dado de outro perfil.
+  // Até 15/07/2026 havia aqui um fallback para um perfil fictício de demonstração
+  // (`crp || DEMO_PROFESSIONAL.crp` e afins; o arquivo foi apagado). O efeito era o oposto do
+  // esperado: quem não tinha conselho exibia na landing PÚBLICA o CRP de uma psicóloga que não
+  // existe, quem não tinha foto exibia o rosto dela, e uma padaria anunciava "cuidar da sua saúde
+  // mental". E como o `||` garantia valor sempre, os `&&` do JSX abaixo nunca disparavam — era
+  // impossível esconder o campo apagando-o no admin.
+  // O JSX já trata cada um destes vazio: CRP, nome, título e subtítulo somem; a foto vira o
+  // placeholder. Coberto por HeroSection.test.tsx.
   const displayImage = heroImageUrl || photoUrl;
   const displayName = professionalName && professionalName !== "Profissional" ? professionalName : "";
   const displayCrp = crp;

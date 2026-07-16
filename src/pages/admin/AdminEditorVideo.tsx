@@ -40,7 +40,7 @@ import { toast } from "sonner";
 import {
   Scissors, Play, Pause, Loader2, Music, Upload, Film, Trash2, Undo2,
   CheckCircle2, AlertCircle, Video as VideoIcon, Captions, Wand2, RotateCcw,
-  FolderOpen, Copy, Plus, Minus, Palette, Sparkles, Mic, Square,
+  FolderOpen, Copy, Plus, Minus, Palette, Sparkles, Mic, Square, HelpCircle,
 } from "lucide-react";
 import { videoApiAuthHeaders } from "@/lib/videoApi";
 import {
@@ -61,6 +61,7 @@ import {
 import { evaluateScene, drawScene, fontesDaCena, FONTE_PADRAO } from "./editor/scene";
 import { FILTROS, FILTRO_IDS, EFEITOS, TRANSICOES, filtroCss,
   EXPORT_RESOLUCOES, EXPORT_FPS, EXPORT_CODECS, EXPORT_FORMATOS } from "./editor/filtros";
+import EditorOnboarding, { onboardingPendente } from "./editor/EditorOnboarding";
 import {
   listEditorProjects, fetchEditorProject, insertEditorProject,
   updateEditorProject, deleteEditorProject,
@@ -123,6 +124,7 @@ export default function AdminEditorVideo() {
   const [gifUrl, setGifUrl] = useState("");
   // codecs REAIS do worker (h265 só se o encoder existir lá) — vem do capabilities
   const [codecsDisp, setCodecsDisp] = useState<string[]>(["h264"]);
+  const [tourAberto, setTourAberto] = useState(false);
   const [startField, setStartField] = useState("");
   const [endField, setEndField] = useState("");
   const [cutStart, setCutStart] = useState("");   // caixinha FIXA de corte por tempo
@@ -1346,6 +1348,9 @@ export default function AdminEditorVideo() {
     if (gravTimerRef.current) clearInterval(gravTimerRef.current);
   }, []);
 
+  // tour de boas-vindas na primeira vez no editor
+  useEffect(() => { if (onboardingPendente()) setTourAberto(true); }, []);
+
   const gerarStickerIA = async () => {
     if (!meta || !professional?.slug || !iaDesc.trim() || stickerJob) return;
     setIaStep("Enviando o pedido...");
@@ -1669,10 +1674,15 @@ export default function AdminEditorVideo() {
   return (
     <div className="space-y-4">
       <audio ref={audioRef} onEnded={() => setPreviewingTrack("")} />
+      <EditorOnboarding aberto={tourAberto} onFechar={() => setTourAberto(false)} />
       <div className="flex items-center gap-2 flex-wrap">
         <Scissors className="h-5 w-5 text-primary" />
         <h2 className="font-heading text-xl font-bold">Editor de Vídeo</h2>
         <Badge variant="secondary">corte · música · legendas</Badge>
+        <Button size="sm" variant="ghost" className="h-6 w-6 p-0 rounded-full text-muted-foreground"
+          title="Como funciona o editor" onClick={() => setTourAberto(true)}>
+          <HelpCircle className="h-4 w-4" />
+        </Button>
         {meta && (
           <>
             <Input

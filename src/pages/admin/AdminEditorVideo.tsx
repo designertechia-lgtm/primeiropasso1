@@ -608,7 +608,7 @@ export default function AdminEditorVideo() {
       // largura ~natural (as imgs usam w-auto, então NUNCA esticam; isto só
       // garante que há quadros suficientes para preencher, sem sobrar cinza).
       // A fita cresce com o zoom (alturaFita) — um quadro 9:16 tem ~0,56×altura
-      const alt = zoom <= 1 ? 64 : zoom <= 2 ? 96 : zoom <= 4 ? 128 : 144;
+      const alt = zoom <= 1 ? 64 : zoom <= 2 ? 96 : zoom <= 4 ? 128 : zoom <= 8 ? 144 : 192;
       const ratio = meta && meta.width && meta.height ? meta.width / meta.height : 0.5625;
       const larguraQuadro = Math.max(24, Math.min(alt, alt * ratio));
       const n = Math.max(12, Math.min(160, Math.ceil(vis / larguraQuadro) + 2));
@@ -992,7 +992,7 @@ export default function AdminEditorVideo() {
   // não só mais quadros na horizontal (Carlos: "o aumento vertical não está
   // sendo aplicado"). Os overlays (cortes/playhead/alças) são absolute inset-0
   // em %, então acompanham qualquer altura.
-  const alturaFita = zoom <= 1 ? 64 : zoom <= 2 ? 96 : zoom <= 4 ? 128 : 144;
+  const alturaFita = zoom <= 1 ? 64 : zoom <= 2 ? 96 : zoom <= 4 ? 128 : zoom <= 8 ? 144 : 192;
 
   // Zoom mantém o CURSOR no lugar (é o que a pessoa está olhando)
   const aplicarZoom = (novo: number) => {

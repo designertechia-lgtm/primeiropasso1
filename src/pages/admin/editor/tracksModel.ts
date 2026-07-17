@@ -46,6 +46,10 @@ export type VideoClip = ClipBase & {
   filtro: string;
   efeito: string;
   transition_in?: string;    // emenda com o clipe ANTERIOR da mesma faixa
+  // herança do sticker (PiP): travessia da tela e loop do gif/webm — o motor
+  // v9 usa para reproduzir o overlay do v8 tal e qual
+  movement?: string;
+  loop?: boolean;
 };
 
 export type AudioClipT = ClipBase & {
@@ -108,8 +112,10 @@ export function timelineFinalDe(
 ): { segs: SegFinal[]; xf: number; totalFinal: number } {
   // duração final de cada trecho, já com a velocidade
   const dur = keep.map((s) => (s.end - s.start) / (s.speed ?? 1));
-  // xf clampado ao menor trecho final (espelha video_editor.py:1363)
-  const xf = transitionOn && keep.length > 1
+  // xf clampado ao menor trecho final (espelha video_editor.py:1405). No motor
+  // a capa de entrada é um PART: com intro ligada, até 1 trecho só crossfada
+  // (parts > 1) — e a intro (>= 1s) nunca é quem clampa (0,9s > XFADE 0,4s).
+  const xf = transitionOn && (keep.length > 1 || introDur > 0)
     ? Math.min(XFADE_DUR, Math.max(0.1, Math.min(...dur) * 0.9))
     : 0;
   // a intro consome xf ao emendar com o 1º trecho (video_editor.py:1387)
@@ -158,23 +164,27 @@ export function docFlatToTracks(doc: EditorDoc, sourceId: string): Track[] {
     transition_in: i > 0 ? doc.transition : undefined,
   }));
 
-  // textos e legendas → TextClips (posição já na timeline final).
+  // textos e legendas → TextClips (posição já na timeline final), em FAIXAS
+  // SEPARADAS: "text" = títulos (estilo por clipe + animações), "subs" =
+  // legendas (estilo único + karaokê) — o motor v9 trata cada papel como o v8.
   // origToFinal em start E end aplica a velocidade nos dois (esticam com o
   // trecho, como remap_cues). Caso raro de item ATRAVESSANDO um corte (o motor
-  // quebra em pedaços) fica para a Fase B — aqui vale o caso que cabe num
+  // quebra em pedaços) fica para fase futura — aqui vale o caso que cabe num
   // trecho, que é o comum.
   const textClips: TextClip[] = [];
-  const push = (start: number, end: number, base: Omit<TextClip, "id" | "kind" | "timeline_start" | "timeline_end">) => {
+  const subClips: TextClip[] = [];
+  const push = (alvo: TextClip[], start: number, end: number,
+                base: Omit<TextClip, "id" | "kind" | "timeline_start" | "timeline_end">) => {
     const fs = origToFinal(start, segs);
     if (fs === null) return;
     const fe = origToFinal(end, segs);
-    textClips.push({
-      ...base, id: uid("t", textClips.length), kind: "text",
+    alvo.push({
+      ...base, id: uid(alvo === subClips ? "c" : "t", alvo.length), kind: "text",
       timeline_start: fs, timeline_end: fe ?? fs + (end - start),
     });
   };
   for (const t of doc.titles as Title[]) {
-    push(t.start, t.end, {
+    push(textClips, t.start, t.end, {
       text: t.text, font_id: t.font_id, size: t.size, color: t.color,
       style: t.style, position: t.position,
       anim_in: t.anim_in, anim_out: t.anim_out, anim_loop: t.anim_loop,
@@ -182,12 +192,19 @@ export function docFlatToTracks(doc: EditorDoc, sourceId: string): Track[] {
   }
   if (doc.subsOn) {
     for (const c of doc.cues as Cue[]) {
-      push(c.start, c.end, {
+      push(subClips, c.start, c.end, {
         text: c.text, font_id: doc.subFont, size: doc.subSize, color: doc.subColor,
         style: doc.subStyle, position: doc.subPos as TitlePos,
         karaoke: doc.cueMode === "karaoke",
         words: doc.cueMode === "karaoke"
-          ? doc.words.filter((w) => w.start >= c.start - 0.01 && w.end <= c.end + 0.01)
+          ? doc.words
+              .filter((w) => w.start >= c.start - 0.01 && w.end <= c.end + 0.01)
+              .map((w) => ({
+                // words também vão na timeline FINAL (o \k dessincronizaria)
+                start: origToFinal(w.start, segs) ?? w.start,
+                end: origToFinal(w.end, segs) ?? w.end,
+                text: w.text,
+              }))
           : undefined,
       });
     }
@@ -207,6 +224,7 @@ export function docFlatToTracks(doc: EditorDoc, sourceId: string): Track[] {
       transform: { x: s.x_pct, y: s.y_pct, escala: s.scale_pct, opacidade: 1,
                    giro: s.flip ? 180 : 0 },
       filtro: "nenhum", efeito: "nenhum",
+      movement: s.movement, loop: s.loop,
     };
   });
 
@@ -225,6 +243,7 @@ export function docFlatToTracks(doc: EditorDoc, sourceId: string): Track[] {
   const tracks: Track[] = [{ id: "video-base", kind: "video", z: 0, clips: videoBase }];
   if (stickerClips.length) tracks.push({ id: "video-pip", kind: "video", z: 1, clips: stickerClips });
   if (textClips.length) tracks.push({ id: "text", kind: "text", z: 2, clips: textClips });
+  if (subClips.length) tracks.push({ id: "subs", kind: "text", z: 3, clips: subClips });
   if (audioClips.length) tracks.push({ id: "audio", kind: "audio", z: 0, clips: audioClips });
   return tracks;
 }

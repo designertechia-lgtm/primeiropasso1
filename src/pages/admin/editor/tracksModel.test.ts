@@ -44,6 +44,15 @@ describe("timelineFinalDe — espelho de _norm_segments/remap (motor)", () => {
     expect(origToFinal(5.5, segs)).toBeCloseTo(3.1, 3);
   });
 
+  it("intro + transição com 1 trecho SÓ ainda crossfada (a capa é um part)", () => {
+    // v8: parts = [intro, trecho] → used_xfade; head = intro - xf = 1,6
+    const keep = [seg(1, 0, 4, true, 1)];
+    const { segs, xf } = timelineFinalDe(keep, true, 2);
+    expect(xf).toBeCloseTo(0.4, 3);
+    expect(segs[0].finalStart).toBeCloseTo(1.6, 3);   // max(0, 2 - 0.4)
+    expect(origToFinal(1.0, segs)).toBeCloseTo(2.6, 3);
+  });
+
   it("instante fora dos trechos keep → null", () => {
     const keep = [seg(1, 0, 2, true, 1), seg(2, 3, 5, true, 0.5)];
     const { segs } = timelineFinalDe(keep, false, 0);
@@ -80,12 +89,18 @@ describe("docFlatToTracks — doc flat v8 → faixas, tempos batendo com o motor
       words: [{ start: 3.5, end: 4.0, text: "oi" }, { start: 4.0, end: 4.5, text: "mundo" }],
     });
     const tracks = docFlatToTracks(doc, "fonteA");
-    const txt = tracks.find((t) => t.id === "text")!;
-    const cue = txt.clips[0] as TextClip;
+    // legendas ficam na faixa PRÓPRIA "subs" (títulos na "text") — o motor v9
+    // trata cada papel como o v8 (estilo único + karaokê vs estilo por texto)
+    const subs = tracks.find((t) => t.id === "subs")!;
+    const cue = subs.clips[0] as TextClip;
     expect(cue.timeline_start).toBeCloseTo(3.0, 3);
     expect(cue.timeline_end).toBeCloseTo(5.0, 3);
     expect(cue.karaoke).toBe(true);
     expect(cue.words).toHaveLength(2);
+    // words também na timeline FINAL (esticadas pelo 0,5×), como o remap_cues
+    expect(cue.words![0].start).toBeCloseTo(3.0, 3);
+    expect(cue.words![0].end).toBeCloseTo(4.0, 3);
+    expect(cue.words![1].end).toBeCloseTo(5.0, 3);
   });
 
   it("clipe de áudio NÃO estica na câmera lenta (duração natural)", () => {

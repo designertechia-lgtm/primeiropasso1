@@ -1690,7 +1690,7 @@ export default function AdminEditorVideo() {
 
   // ── UI ─────────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <audio ref={audioRef} onEnded={() => setPreviewingTrack("")} />
       <EditorOnboarding aberto={tourAberto} onFechar={() => setTourAberto(false)} />
       <div className="flex items-center gap-3 flex-wrap">
@@ -1731,10 +1731,10 @@ export default function AdminEditorVideo() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Biblioteca */}
         <Card>
-          <CardContent className="pt-4 space-y-3">
+          <CardContent className="pt-5 space-y-4">
             <Label className="font-semibold flex items-center gap-2"><Film className="h-4 w-4" /> Biblioteca de mídia</Label>
             <label className="flex items-center justify-center gap-2 rounded-lg border-2 border-dashed p-3 text-sm cursor-pointer hover:border-primary/60 transition">
               {loadingSource ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
@@ -1803,7 +1803,7 @@ export default function AdminEditorVideo() {
 
         {/* Trilha sonora */}
         <Card>
-          <CardContent className="pt-4 space-y-3">
+          <CardContent className="pt-5 space-y-4">
             <Label className="font-semibold flex items-center gap-2"><Music className="h-4 w-4" /> Trilha sonora</Label>
             <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
               <button type="button"
@@ -1870,8 +1870,8 @@ export default function AdminEditorVideo() {
       {/* Preview + Timeline JUNTOS (pedido do Carlos: preview colado na timeline) */}
       {meta && (
         <Card>
-          <CardContent className="pt-4 space-y-3">
-            <div className="grid grid-cols-1 md:grid-cols-[minmax(0,320px)_1fr] gap-4 items-start">
+          <CardContent className="pt-5 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-[minmax(0,340px)_1fr] gap-5 items-start">
               <div className="space-y-2">
                 <div ref={videoWrapRef} className="relative">
                   {/* o filtro de cor vale só para o VÍDEO: legendas, textos e
@@ -1954,7 +1954,7 @@ export default function AdminEditorVideo() {
                 </div>
 
                 {/* Caixinha FIXA de corte por tempo (sempre visível) */}
-                <div className="flex items-center gap-2 flex-wrap rounded-lg border px-3 py-2 text-xs">
+                <div className="flex items-center gap-2 flex-wrap rounded-lg border bg-muted/30 px-3 py-2 text-xs">
                   <Scissors className="h-3.5 w-3.5 text-destructive shrink-0" />
                   <span className="font-medium">Remover trecho:</span>
                   <label className="flex items-center gap-1">de
@@ -2195,7 +2195,7 @@ export default function AdminEditorVideo() {
                 )}
 
                 {/* Capa de entrada (logo) */}
-                <div className="flex items-center gap-3 flex-wrap text-xs rounded-lg border px-3 py-2">
+                <div className="flex items-center gap-3 flex-wrap text-xs rounded-lg border bg-muted/30 px-3 py-2">
                   <label className="flex items-center gap-1.5 cursor-pointer font-medium">
                     <input type="checkbox" checked={introOn} onChange={(e) => patch({ introOn: e.target.checked })} />
                     <Clapperboard className="h-3.5 w-3.5" /> Capa de entrada com a logo
@@ -2265,7 +2265,7 @@ export default function AdminEditorVideo() {
                 </div>
 
                 {/* Acabamento + Render */}
-                <div className="flex items-center gap-3 flex-wrap text-xs rounded-lg border px-3 py-2">
+                <div className="flex items-center gap-3 flex-wrap text-xs rounded-lg border bg-muted/30 px-3 py-2">
                   <span className="font-medium">Acabamento:</span>
                   <label className="flex items-center gap-1.5" title="Como um trecho vira o próximo">
                     Emendas
@@ -2290,7 +2290,7 @@ export default function AdminEditorVideo() {
                 {/* Filtro de cor (prévia ao vivo no player) + Efeito (prévia
                     pela amostra real: VHS/granulado/glitch não têm equivalente
                     fiel em CSS, e aproximar faria a prévia mentir) */}
-                <div className="space-y-2 rounded-lg border px-3 py-2">
+                <div className="space-y-2 rounded-lg border bg-muted/30 px-3 py-2">
                   <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3">
                     <div className="space-y-2 min-w-0">
                       <div>
@@ -2363,7 +2363,7 @@ export default function AdminEditorVideo() {
       {meta && (
         <Card>
           <CardContent className="pt-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
               {/* Stickers */}
               <div className="space-y-2">
                 <Label className="font-semibold flex items-center gap-2"><ImageIcon className="h-4 w-4" /> Stickers e sobreposições</Label>
@@ -2557,7 +2557,7 @@ export default function AdminEditorVideo() {
       {/* Legendas + Textos */}
       {meta && (
         <Card>
-          <CardContent className="pt-4 space-y-3">
+          <CardContent className="pt-5 space-y-4">
             <div className="flex items-center gap-2 flex-wrap">
               <Label className="font-semibold flex items-center gap-2"><Captions className="h-4 w-4" /> Legendas</Label>
               <Button size="sm" variant="outline" className="h-7 gap-1" disabled={transcribing} onClick={gerarLegendas}>
@@ -2764,7 +2764,7 @@ export default function AdminEditorVideo() {
       {/* Rodapé: renderizar (pedido do Carlos — o fluxo termina aqui) */}
       {meta && (
         <Card className="border-primary/40">
-          <CardContent className="pt-4 space-y-3">
+          <CardContent className="pt-5 space-y-4">
             {!keepSegments.length && (
               <div className="flex items-center gap-2 flex-wrap rounded-lg border border-amber-400/60 bg-amber-50/60 dark:bg-amber-950/20 px-3 py-2 text-xs">
                 <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
@@ -2807,7 +2807,7 @@ export default function AdminEditorVideo() {
                 <video src={resultUrl} controls playsInline className="w-full max-h-72 rounded-lg bg-black" />
 
                 {/* opções de saída (spec 22) */}
-                <div className="flex items-center gap-2 flex-wrap text-xs rounded-lg border px-3 py-2">
+                <div className="flex items-center gap-2 flex-wrap text-xs rounded-lg border bg-muted/30 px-3 py-2">
                   <span className="font-medium">Opções de saída:</span>
                   <label className="flex items-center gap-1">Qualidade
                     <select className="h-7 rounded border bg-background px-1"

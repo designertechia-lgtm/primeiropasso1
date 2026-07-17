@@ -556,7 +556,9 @@ export default function AdminEditorVideo() {
         if (tentativa) await new Promise((r) => setTimeout(r, 2500 * tentativa));
         if (!vivo) return;
         try {
-          const res = await fetch(`${API}/editor/thumbs/${id}`, {
+          // 40 frames (não 20): a timeline agora é larga e tem zoom — mais
+          // miniaturas esticam menos ao ampliar
+          const res = await fetch(`${API}/editor/thumbs/${id}?count=40`, {
             headers: await videoApiAuthHeaders(),
           });
           if (!res.ok) continue;
@@ -1867,12 +1869,14 @@ export default function AdminEditorVideo() {
         </Card>
       </div>
 
-      {/* Preview + Timeline JUNTOS (pedido do Carlos: preview colado na timeline) */}
+      {/* Preview EM CIMA + Timeline em LARGURA TOTAL embaixo (layout de editor).
+          Antes ficavam lado a lado e a timeline espremida tornava o zoom inútil
+          (Carlos 16/07) — agora a timeline usa a tela toda. */}
       {meta && (
         <Card>
           <CardContent className="pt-5 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-[minmax(0,340px)_1fr] gap-5 items-start">
-              <div className="space-y-2">
+            <div className="space-y-4">
+              <div className="space-y-2 max-w-md mx-auto w-full">
                 <div ref={videoWrapRef} className="relative">
                   {/* o filtro de cor vale só para o VÍDEO: legendas, textos e
                       stickers são queimados depois no motor, então não são

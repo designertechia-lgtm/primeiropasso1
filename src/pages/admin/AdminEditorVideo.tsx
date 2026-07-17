@@ -41,6 +41,8 @@ import {
   Scissors, Play, Pause, Loader2, Music, Upload, Film, Trash2, Undo2,
   CheckCircle2, AlertCircle, Video as VideoIcon, Captions, Wand2, RotateCcw,
   FolderOpen, Copy, Plus, Minus, Palette, Sparkles, Mic, Square, HelpCircle,
+  Image as ImageIcon, Headphones, Volume2, Magnet, Download, Type, Clapperboard,
+  Repeat, LogIn, LogOut, Check,
 } from "lucide-react";
 import { videoApiAuthHeaders } from "@/lib/videoApi";
 import {
@@ -1691,13 +1693,17 @@ export default function AdminEditorVideo() {
     <div className="space-y-4">
       <audio ref={audioRef} onEnded={() => setPreviewingTrack("")} />
       <EditorOnboarding aberto={tourAberto} onFechar={() => setTourAberto(false)} />
-      <div className="flex items-center gap-2 flex-wrap">
-        <Scissors className="h-5 w-5 text-primary" />
-        <h2 className="font-heading text-xl font-bold">Editor de Vídeo</h2>
-        <Badge variant="secondary">corte · música · legendas</Badge>
-        <Button size="sm" variant="ghost" className="h-6 w-6 p-0 rounded-full text-muted-foreground"
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary shrink-0">
+          <Clapperboard className="h-5 w-5" />
+        </div>
+        <div className="mr-auto">
+          <h2 className="font-heading text-xl font-bold leading-tight">Editor de Vídeo</h2>
+          <p className="text-xs text-muted-foreground">corte · legendas · efeitos · exportação</p>
+        </div>
+        <Button size="sm" variant="ghost" className="h-8 gap-1.5 text-muted-foreground"
           title="Como funciona o editor" onClick={() => setTourAberto(true)}>
-          <HelpCircle className="h-4 w-4" />
+          <HelpCircle className="h-4 w-4" /> Ajuda
         </Button>
         {meta && (
           <>
@@ -1706,19 +1712,19 @@ export default function AdminEditorVideo() {
               onChange={(e) => setProjectName(e.target.value)}
               placeholder={sourceLabel || "Nome do projeto"}
               title="Nome do projeto (salvo automaticamente em Meus projetos)"
-              className="h-7 w-44 text-xs"
+              className="h-8 w-44 text-sm"
             />
             {saveError ? (
-              <span className="text-[10px] text-amber-600"
+              <span className="flex items-center gap-1 text-[11px] font-medium text-amber-600"
                 title="As últimas edições estão só neste navegador — verifique sua conexão/sessão">
-                ⚠ não sincronizado
+                <AlertCircle className="h-3.5 w-3.5" /> não sincronizado
               </span>
             ) : savedAt ? (
-              <span className="text-[10px] text-muted-foreground" title="Projeto salvo automaticamente no seu painel">
-                ✓ salvo {savedAt}
+              <span className="flex items-center gap-1 text-[11px] text-muted-foreground" title="Projeto salvo automaticamente no seu painel">
+                <Check className="h-3.5 w-3.5 text-primary" /> salvo {savedAt}
               </span>
             ) : null}
-            <Button size="sm" variant="ghost" className="h-7 text-xs ml-auto" onClick={recomecar}>
+            <Button size="sm" variant="ghost" className="h-8 text-xs text-muted-foreground" onClick={recomecar}>
               <RotateCcw className="h-3.5 w-3.5 mr-1" /> Recomeçar
             </Button>
           </>
@@ -1853,7 +1859,7 @@ export default function AdminEditorVideo() {
                 <label className="flex items-center gap-1.5 cursor-pointer"
                   title="Reduz chiado constante da gravação — ar-condicionado, ventilador, ruído de sala">
                   <input type="checkbox" checked={denoise} onChange={(e) => patch({ denoise: e.target.checked })} />
-                  🎧 Limpar ruído de fundo
+                  <Headphones className="h-3.5 w-3.5" /> Limpar ruído de fundo
                 </label>
               </div>
             </div>
@@ -2009,7 +2015,7 @@ export default function AdminEditorVideo() {
                   <label className="flex items-center gap-1.5 cursor-pointer ml-auto"
                     title="Ao arrastar, os blocos grudam no cursor, nos cortes e nas bordas dos outros — sem frestas">
                     <input type="checkbox" checked={snapOn} onChange={(e) => setSnapOn(e.target.checked)} />
-                    🧲 Encaixe
+                    <Magnet className="h-3.5 w-3.5" /> Encaixe
                   </label>
                 </div>
 
@@ -2192,7 +2198,7 @@ export default function AdminEditorVideo() {
                 <div className="flex items-center gap-3 flex-wrap text-xs rounded-lg border px-3 py-2">
                   <label className="flex items-center gap-1.5 cursor-pointer font-medium">
                     <input type="checkbox" checked={introOn} onChange={(e) => patch({ introOn: e.target.checked })} />
-                    🎬 Capa de entrada com a logo
+                    <Clapperboard className="h-3.5 w-3.5" /> Capa de entrada com a logo
                   </label>
                   {introOn && (
                     <>
@@ -2360,7 +2366,7 @@ export default function AdminEditorVideo() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Stickers */}
               <div className="space-y-2">
-                <Label className="font-semibold flex items-center gap-2">🖼 Stickers e sobreposições</Label>
+                <Label className="font-semibold flex items-center gap-2"><ImageIcon className="h-4 w-4" /> Stickers e sobreposições</Label>
                 <p className="text-[11px] text-muted-foreground">
                   Imagem, GIF animado ou WebM com fundo transparente sobre o vídeo (ex.: um gatinho
                   andando enquanto você fala). Entra no cursor; mova/estique na <b>faixa roxa</b> da
@@ -2475,7 +2481,7 @@ export default function AdminEditorVideo() {
 
               {/* Clipes de áudio posicionados */}
               <div className="space-y-2">
-                <Label className="font-semibold flex items-center gap-2">🎧 Efeitos sonoros e narrações</Label>
+                <Label className="font-semibold flex items-center gap-2"><Headphones className="h-4 w-4" /> Efeitos sonoros e narrações</Label>
                 <p className="text-[11px] text-muted-foreground">
                   Áudio que toca num <b>ponto exato</b> do vídeo (efeito, vinheta, narração) — além da
                   trilha global. Entra no cursor; mova/estique na <b>faixa azul</b> da timeline.
@@ -2526,7 +2532,7 @@ export default function AdminEditorVideo() {
                       → cursor
                     </Button>
                     <label className="flex items-center gap-1 flex-1 min-w-28" title="Volume do clipe">
-                      🔊
+                      <Volume2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       <input type="range" min={0} max={150} value={Math.round(c.volume * 100)}
                         className="flex-1" onPointerDown={checkpoint}
                         onChange={(e) => applyLive((d) => ({ audioClips: d.audioClips.map((p) => (p.id === c.id ? { ...p, volume: Number(e.target.value) / 100 } : p)) }))} />
@@ -2635,7 +2641,7 @@ export default function AdminEditorVideo() {
 
             {/* Textos/títulos manuais */}
             <div className="border-t pt-3 space-y-2">
-              <Label className="font-semibold text-sm">Textos no vídeo</Label>
+              <Label className="font-semibold text-sm flex items-center gap-1.5"><Type className="h-3.5 w-3.5" /> Textos no vídeo</Label>
               <p className="text-[11px] text-muted-foreground">
                 Dica: <b>|</b> separa título e subtítulo — a 1ª linha sai grande e o resto menor,
                 automático. Com posição <b>Canto esq. (selo)</b> + estilo <b>Caixa</b>:
@@ -2720,21 +2726,21 @@ export default function AdminEditorVideo() {
                   </select>
                   {/* animações (spec 12): entram/saem/repetem — veja no player */}
                   <label className="flex items-center gap-1" title="Como o texto ENTRA na tela">
-                    ↘
+                    <LogIn className="h-3.5 w-3.5 text-muted-foreground" />
                     <select className="h-7 rounded border bg-background px-1" value={t.anim_in ?? "nenhuma"}
                       onChange={(e) => apply((d) => ({ titles: d.titles.map((p) => (p.id === t.id ? { ...p, anim_in: e.target.value as AnimIn } : p)) }))}>
                       {ANIM_IN_OPTS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
                     </select>
                   </label>
                   <label className="flex items-center gap-1" title="Como o texto SAI da tela">
-                    ↗
+                    <LogOut className="h-3.5 w-3.5 text-muted-foreground" />
                     <select className="h-7 rounded border bg-background px-1" value={t.anim_out ?? "nenhuma"}
                       onChange={(e) => apply((d) => ({ titles: d.titles.map((p) => (p.id === t.id ? { ...p, anim_out: e.target.value as AnimOut } : p)) }))}>
                       {ANIM_OUT_OPTS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
                     </select>
                   </label>
                   <label className="flex items-center gap-1" title="Movimento contínuo enquanto o texto está na tela">
-                    ∞
+                    <Repeat className="h-3.5 w-3.5 text-muted-foreground" />
                     <select className="h-7 rounded border bg-background px-1" value={t.anim_loop ?? "nenhuma"}
                       onChange={(e) => apply((d) => ({ titles: d.titles.map((p) => (p.id === t.id ? { ...p, anim_loop: e.target.value as AnimLoop } : p)) }))}>
                       {ANIM_LOOP_OPTS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
@@ -2797,7 +2803,7 @@ export default function AdminEditorVideo() {
 
             {resultUrl && (
               <div className="pt-1 space-y-2">
-                <Label className="font-semibold text-emerald-600">✓ Edição pronta</Label>
+                <Label className="font-semibold text-primary flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4" /> Edição pronta</Label>
                 <video src={resultUrl} controls playsInline className="w-full max-h-72 rounded-lg bg-black" />
 
                 {/* opções de saída (spec 22) */}
@@ -2857,7 +2863,7 @@ export default function AdminEditorVideo() {
                 {gifUrl && (
                   <a href={gifUrl} download
                     className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-                    ⬇ Baixar o GIF de novo (não vai para Meus Vídeos)
+                    <Download className="h-3.5 w-3.5" /> Baixar o GIF de novo (não vai para Meus Vídeos)
                   </a>
                 )}
               </div>

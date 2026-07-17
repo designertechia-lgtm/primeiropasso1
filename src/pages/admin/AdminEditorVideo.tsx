@@ -64,6 +64,7 @@ import { evaluateScene, drawScene, fontesDaCena, FONTE_PADRAO } from "./editor/s
 import { FILTROS, FILTRO_IDS, EFEITOS, TRANSICOES, filtroCss,
   EXPORT_RESOLUCOES, EXPORT_FPS, EXPORT_CODECS, EXPORT_FORMATOS } from "./editor/filtros";
 import EditorOnboarding, { onboardingPendente } from "./editor/EditorOnboarding";
+import { usePreviewClock } from "./editor/previewClock";
 import {
   listEditorProjects, fetchEditorProject, insertEditorProject,
   updateEditorProject, deleteEditorProject,
@@ -333,7 +334,7 @@ export default function AdminEditorVideo() {
     setSourceLabel(s.sourceLabel || "");
     setSourceUrl(s.sourceUrl || m.preview_url || "");
     setResultUrl(s.resultUrl || "");
-    setPlayhead(0);
+    clock.pause(); clock.seek(0);
     setProjectId(extra?.projectId !== undefined ? extra.projectId : s.projectId);
     setProjectName(extra?.projectName !== undefined ? extra.projectName : (s.projectName || ""));
     const d: EditorDoc = { ...s.doc };
@@ -709,7 +710,7 @@ export default function AdminEditorVideo() {
     setPreviewSrc(m.preview_url || `${API}/editor/video/${m.edit_id}`);
     setSourceLabel(label);
     setSourceUrl(srcUrl || m.preview_url || "");
-    setPlayhead(0); setResultUrl(""); setFonteExpirada(false);
+    clock.pause(); clock.seek(0); setResultUrl(""); setFonteExpirada(false);
     dispatch({ type: "resetSource", duration: m.duration });
     clipAudiosRef.current.forEach((el) => el.pause());
     clipAudiosRef.current.clear();
@@ -736,6 +737,7 @@ export default function AdminEditorVideo() {
   // Novo projeto — o Novo preserva o projeto anterior salvo)
   const limparEditor = () => {
     sessionSeqRef.current++;
+    clock.pause();
     setMeta(null); setPreviewSrc(""); setSourceLabel(""); setSourceUrl("");
     setResultUrl(""); setRenderJobId(""); setRendering(false);
     setProjectId(null); setProjectName(""); setSavedAt(""); setSaveError(false);
@@ -876,12 +878,26 @@ export default function AdminEditorVideo() {
     }
   };
 
+  // ── relógio mestre da prévia (Fase C do multi-track) ──────────────────────
+  // O tempo vive no relógio (rAF), não mais no <video>: o vídeo é uma FONTE
+  // COMANDADA (playbackRate + seek quando desvia >0,15s). É o motor que rege
+  // N fontes nas próximas fases — e já deixa o cursor/karaokê/sticker fluidos
+  // (60fps vs o intervalo de 120ms de antes).
+  const clock = usePreviewClock({
+    videoRef,
+    duration: meta?.duration ?? 0,
+    segments,
+    previewEdit,
+    onTick: setPlayhead,
+  });
+  const [previewVol, setPreviewVol] = useState(1);
+  useEffect(() => {
+    const v = videoRef.current;
+    if (v) v.volume = previewVol;
+  }, [previewVol, previewSrc]);
+
   // ── timeline ───────────────────────────────────────────────────────────────
-  const seekTo = (t: number) => {
-    const clamped = Math.max(0, Math.min(meta?.duration ?? 0, t));
-    setPlayhead(clamped);
-    if (videoRef.current) videoRef.current.currentTime = clamped;
-  };
+  const seekTo = (t: number) => clock.seek(t);
   const posFromEvent = (clientX: number) => {
     if (!timelineRef.current || !meta) return 0;
     const rect = timelineRef.current.getBoundingClientRect();
@@ -1010,8 +1026,7 @@ export default function AdminEditorVideo() {
   useEffect(() => {
     const box = scrollRef.current;
     if (!box || zoom === 1 || !meta?.duration) return;
-    const v = videoRef.current;
-    if (!v || v.paused) return;
+    if (!clock.playing) return;
     const x = (playhead / meta.duration) * box.scrollWidth;
     if (x < box.scrollLeft + 40 || x > box.scrollLeft + box.clientWidth - 40) {
       box.scrollLeft = Math.max(0, x - box.clientWidth / 2);
@@ -1026,29 +1041,8 @@ export default function AdminEditorVideo() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meta?.duration]);
 
-  // Prévia da edição: durante o PLAY, pula os trechos removidos (pausado, o
-  // cursor vai a qualquer lugar — inclusive dentro de trecho removido).
-  const onVideoTime = (e: React.SyntheticEvent<HTMLVideoElement>) => {
-    const v = e.currentTarget;
-    if (previewEdit && !v.paused && segments.length) {
-      const removed = segments.find((s) => !s.keep && v.currentTime >= s.start && v.currentTime < s.end - 0.05);
-      if (removed) {
-        const next = segments
-          .filter((s) => s.keep && s.end > removed.end - 0.05)
-          .sort((a, b) => a.start - b.start)[0];
-        if (next) v.currentTime = Math.max(next.start, removed.end);
-        else v.pause();
-      }
-      // prévia da câmera lenta/acelerado: o player toca o trecho na velocidade
-      // que o render vai aplicar (setpts) — o que você ouve/vê é o que sai
-      const atual = segments.find((s) => s.keep && v.currentTime >= s.start && v.currentTime < s.end);
-      const sp = atual?.speed ?? 1;
-      if (Math.abs(v.playbackRate - sp) > 1e-3) v.playbackRate = sp;
-    } else if (v.playbackRate !== 1) {
-      v.playbackRate = 1;   // prévia da edição desligada → velocidade real do player
-    }
-    if (!draggingRef.current) setPlayhead(v.currentTime);
-  };
+  // (a prévia da edição — pular removidos + velocidade por trecho — vive no
+  // relógio mestre: avancarPlayhead em editor/previewClock.ts)
 
   const splitAtPlayhead = () => {
     if (!meta) return;
@@ -1581,21 +1575,12 @@ export default function AdminEditorVideo() {
     drawScene(ctx, evaluateScene(doc, playhead), { w, h }, loadedFonts, meta?.height || h);
   }, [doc, playhead, contentRect, loadedFonts, meta?.height]);
 
-  // Playhead fluido durante o play (timeupdate nativo é ~4Hz — pouco pra
-  // prévia de sticker andando e sincronização dos clipes de áudio)
-  useEffect(() => {
-    if (!meta) return;
-    const id = setInterval(() => {
-      const v = videoRef.current;
-      if (v && !v.paused && !draggingRef.current) setPlayhead(v.currentTime);
-    }, 120);
-    return () => clearInterval(id);
-  }, [meta]);
+  // (o playhead fluido vem do relógio mestre a ~60fps — o setInterval de
+  // 120ms que existia aqui morreu com o clock da Fase C)
 
   // Prévia dos clipes de áudio: toca cada clipe na janela dele, no ponto certo
   useEffect(() => {
-    const v = videoRef.current;
-    const playing = !!v && !v.paused;
+    const playing = clock.playing;
     for (const c of audioClips) {
       let el = clipAudiosRef.current.get(c.id);
       const active = playing && playhead >= c.start && playhead < c.end;
@@ -1626,7 +1611,8 @@ export default function AdminEditorVideo() {
         clipAudiosRef.current.delete(id);
       }
     }
-  }, [playhead, audioClips]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playhead, audioClips, clock.playing]);
 
   const activeStickers = meta
     ? stickers.filter((s) => playhead >= s.start && playhead <= s.end)
@@ -1943,12 +1929,23 @@ export default function AdminEditorVideo() {
                 <div ref={videoWrapRef} className="relative">
                   {/* o filtro de cor vale só para o VÍDEO: legendas, textos e
                       stickers são queimados depois no motor, então não são
-                      filtrados (por isso o filter vai aqui, não no wrapper) */}
-                  <video ref={videoRef} src={previewSrc} controls playsInline
-                    className="w-full max-h-72 rounded-lg bg-black"
+                      filtrados (por isso o filter vai aqui, não no wrapper).
+                      SEM controles nativos (Fase C): o relógio mestre rege a
+                      prévia — clicar no vídeo toca/pausa. */}
+                  <video ref={videoRef} src={previewSrc} playsInline
+                    className="w-full max-h-72 rounded-lg bg-black cursor-pointer"
                     style={{ filter: filtroCss(filtro) }}
-                    onTimeUpdate={onVideoTime}
+                    onClick={clock.toggle}
+                    onEnded={clock.pause}
                     onPause={() => clipAudiosRef.current.forEach((el) => el.pause())} />
+                  {/* convite de play quando parado (decorativo — o clique é no vídeo) */}
+                  {!clock.playing && previewSrc && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white">
+                        <Play className="h-6 w-6 ml-0.5" />
+                      </div>
+                    </div>
+                  )}
                   {/* prévia dos stickers EXATAMENTE onde o ffmpeg vai desenhar;
                       arraste (quando sem movimento) para posicionar */}
                   {contentRect && activeStickers.map((s) => {
@@ -2000,7 +1997,16 @@ export default function AdminEditorVideo() {
                   ▶ Prévia da edição (pula os trechos removidos)
                 </label>
                 <div className="flex items-center gap-2 text-xs">
+                  <Button size="sm" variant="outline" className="h-7 w-7 p-0 rounded-full"
+                    title={clock.playing ? "Pausar" : "Tocar"} onClick={clock.toggle}>
+                    {clock.playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 ml-0.5" />}
+                  </Button>
                   <span className="tabular-nums">cursor: {fmt(playhead)} / {fmt(meta.duration)}</span>
+                  <label className="flex items-center gap-1 ml-2" title="Volume da prévia">
+                    <Volume2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    <input type="range" min={0} max={1} step={0.05} value={previewVol}
+                      onChange={(e) => setPreviewVol(Number(e.target.value))} className="w-16" />
+                  </label>
                   <span className="ml-auto text-muted-foreground">{meta.width}x{meta.height}</span>
                 </div>
               </div>

@@ -610,11 +610,13 @@ export default function AdminEditorVideo() {
       const vis = box.clientWidth || 1;
       const t0 = (box.scrollLeft / total) * dur;
       const t1 = Math.min(dur, ((box.scrollLeft + vis) / total) * dur);
-      // largura natural de um quadro (altura 64px) pela proporção do vídeo → n =
-      // quantos cabem na largura visível, para cada slot ficar ~natural (sem esticar)
+      // quantos quadros pedir para cobrir a largura visível com quadros de
+      // largura ~natural (as imgs usam w-auto, então NUNCA esticam; isto só
+      // garante que há quadros suficientes para preencher, sem sobrar cinza).
+      // A fita tem 64px de altura; um quadro vertical (9:16) tem ~36px de largura
       const ratio = meta && meta.width && meta.height ? meta.width / meta.height : 0.5625;
-      const slotPx = Math.max(24, 64 * ratio);
-      const n = Math.max(20, Math.min(160, Math.round(vis / slotPx)));
+      const larguraQuadro = Math.max(24, Math.min(64, 64 * ratio));
+      const n = Math.max(20, Math.min(160, Math.ceil(vis / larguraQuadro) + 2));
       try {
         const res = await fetch(
           `${API}/editor/thumbs/${id}?count=${n}&start=${t0.toFixed(2)}&end=${t1.toFixed(2)}`,
@@ -2113,13 +2115,14 @@ export default function AdminEditorVideo() {
                             )}
                           </div>
                         ) : winThumbs ? (
-                          // ampliado: só o trecho visível, em tamanho natural, posicionado no tempo
+                          // ampliado: quadros do trecho visível em LARGURA NATURAL
+                          // (w-auto = a proporção do vídeo manda; nunca estica),
+                          // começando no ponto certo do tempo (left = t0)
                           <div className="absolute top-0 bottom-0 flex"
-                            style={{ left: `${(winThumbs.t0 / meta.duration) * 100}%`,
-                                     width: `${((winThumbs.t1 - winThumbs.t0) / meta.duration) * 100}%` }}>
-                            {winThumbs.list.map((t, i, arr) =>
-                              t ? <img key={i} src={t} draggable={false} className="h-full object-cover" style={{ width: `${100 / arr.length}%` }} alt="" />
-                                : <div key={i} className="h-full bg-muted" style={{ width: `${100 / arr.length}%` }} />,
+                            style={{ left: `${(winThumbs.t0 / meta.duration) * 100}%` }}>
+                            {winThumbs.list.map((t, i) =>
+                              t ? <img key={i} src={t} draggable={false} className="h-full w-auto shrink-0" alt="" />
+                                : <div key={i} className="h-full w-9 shrink-0 bg-muted" />,
                             )}
                           </div>
                         ) : (

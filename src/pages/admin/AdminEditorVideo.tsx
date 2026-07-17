@@ -131,9 +131,6 @@ export default function AdminEditorVideo() {
   const [gifUrl, setGifUrl] = useState("");
   // codecs REAIS do worker (h265 só se o encoder existir lá) — vem do capabilities
   const [codecsDisp, setCodecsDisp] = useState<string[]>(["h264"]);
-  // o worker sabe gerar miniaturas por janela [start,end]? (só então o zoom pede
-  // o trecho visível; worker antigo devolveria a timeline inteira no lugar errado)
-  const [thumbsWindowOk, setThumbsWindowOk] = useState(false);
   const [tourAberto, setTourAberto] = useState(false);
   const [startField, setStartField] = useState("");
   const [endField, setEndField] = useState("");
@@ -236,7 +233,6 @@ export default function AdminEditorVideo() {
         if (Array.isArray(d.export?.codecs) && d.export.codecs.length) {
           setCodecsDisp(d.export.codecs);
         }
-        setThumbsWindowOk(!!d.thumbs?.window);
       })
       .catch(() => {});
     const clipEls = clipAudiosRef.current;
@@ -602,9 +598,7 @@ export default function AdminEditorVideo() {
     const id = meta?.edit_id;
     const dur = meta?.duration || 0;
     if (!box || !id || dur <= 0) return;
-    // 1× usa a fita base; sem suporte a janela no worker, também (não pede um
-    // trecho que ele devolveria como timeline inteira)
-    if (zoom <= 1 || !thumbsWindowOk) { setWinThumbs(null); return; }
+    if (zoom <= 1) { setWinThumbs(null); return; }   // 1× usa a fita base inteira
     winTimerRef.current = setTimeout(async () => {
       const total = box.scrollWidth || 1;
       const vis = box.clientWidth || 1;
@@ -629,14 +623,14 @@ export default function AdminEditorVideo() {
     }, 250);
   };
 
-  // dispara a janela quando o zoom muda OU quando o suporte chega do capabilities
-  // (é assíncrono — sem esta dep, ampliar antes do capabilities carregar deixava
-  // a fita presa em "carregando"). O scroll dispara pelo onScroll do container.
+  // dispara a janela quando o zoom muda ou troca a fonte (o scroll dispara pelo
+  // onScroll do container). O worker já suporta janela (confirmado em prod), então
+  // não dependemos do /capabilities aqui — evita ficar refém do cache dele.
   useEffect(() => {
     pedirJanelaThumbs();
     return () => { if (winTimerRef.current) clearTimeout(winTimerRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zoom, meta?.edit_id, meta?.duration, thumbsWindowOk]);
+  }, [zoom, meta?.edit_id, meta?.duration]);
 
   // ── amostra REAL do efeito (Fase efeitos) ─────────────────────────────────
   // O efeito não tem prévia ao vivo (VHS/glitch não existem em CSS), então o
@@ -2104,9 +2098,9 @@ export default function AdminEditorVideo() {
                     </div>
 
                     <div ref={timelineRef} className="relative select-none cursor-col-resize" onMouseDown={onTimelineDown}>
-                      <div className="relative h-16 rounded-lg overflow-hidden border bg-muted/60">
-                        {zoom <= 1 || !thumbsWindowOk ? (
-                          // 1× (ou worker sem janela): a fita inteira preenche a largura
+                      <div className="relative h-16 rounded-lg overflow-hidden border bg-neutral-800">
+                        {zoom <= 1 ? (
+                          // 1×: fita inteira preenche a largura (slot ~natural)
                           <div className="flex h-full w-full">
                             {(meta.thumbs.length ? meta.thumbs : Array(20).fill("")).map((t, i, arr) =>
                               t ? <img key={i} src={t} draggable={false} className="h-full object-cover" style={{ width: `${100 / arr.length}%` }} alt="" />
@@ -2115,9 +2109,8 @@ export default function AdminEditorVideo() {
                             )}
                           </div>
                         ) : winThumbs ? (
-                          // ampliado: quadros do trecho visível em LARGURA NATURAL
-                          // (w-auto = a proporção do vídeo manda; nunca estica),
-                          // começando no ponto certo do tempo (left = t0)
+                          // ampliado: cada quadro em LARGURA NATURAL (w-auto = a proporção
+                          // REAL da imagem manda; nunca estica), começando no tempo t0
                           <div className="absolute top-0 bottom-0 flex"
                             style={{ left: `${(winThumbs.t0 / meta.duration) * 100}%` }}>
                             {winThumbs.list.map((t, i) =>

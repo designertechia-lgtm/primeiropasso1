@@ -627,12 +627,14 @@ export default function AdminEditorVideo() {
     }, 250);
   };
 
-  // dispara a janela quando o zoom muda (o scroll dispara pelo onScroll do container)
+  // dispara a janela quando o zoom muda OU quando o suporte chega do capabilities
+  // (é assíncrono — sem esta dep, ampliar antes do capabilities carregar deixava
+  // a fita presa em "carregando"). O scroll dispara pelo onScroll do container.
   useEffect(() => {
     pedirJanelaThumbs();
     return () => { if (winTimerRef.current) clearTimeout(winTimerRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zoom, meta?.edit_id, meta?.duration]);
+  }, [zoom, meta?.edit_id, meta?.duration, thumbsWindowOk]);
 
   // ── amostra REAL do efeito (Fase efeitos) ─────────────────────────────────
   // O efeito não tem prévia ao vivo (VHS/glitch não existem em CSS), então o
@@ -2070,6 +2072,12 @@ export default function AdminEditorVideo() {
                       onClick={() => { setZoom(1); if (scrollRef.current) scrollRef.current.scrollLeft = 0; }}>
                       ver tudo
                     </Button>
+                  )}
+                  {zoom > 1 && winThumbs && (
+                    // deixa claro que o zoom mostra um RECORTE navegável do vídeo
+                    <span className="text-[10px] text-muted-foreground tabular-nums">
+                      trecho {Math.floor(winThumbs.t0 / 60)}:{String(Math.round(winThumbs.t0 % 60)).padStart(2, "0")}–{Math.floor(winThumbs.t1 / 60)}:{String(Math.round(winThumbs.t1 % 60)).padStart(2, "0")}
+                    </span>
                   )}
                   <label className="flex items-center gap-1.5 cursor-pointer ml-auto"
                     title="Ao arrastar, os blocos grudam no cursor, nos cortes e nas bordas dos outros — sem frestas">

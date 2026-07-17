@@ -112,9 +112,11 @@ export default function AdminEditorVideo() {
   const [snapOn, setSnapOn] = useState(true);
   const [snapGuide, setSnapGuide] = useState<number | null>(null);
   const [thumbsErro, setThumbsErro] = useState(false);
-  // fita de miniaturas mais densa, pedida conforme o zoom sobe (para os quadros
-  // ganharem detalhe em vez de esticar). null = usa a fita base de meta.thumbs.
-  const [densThumbs, setDensThumbs] = useState<string[] | null>(null);
+  // miniaturas do TRECHO VISÍVEL (quando ampliado): os quadros vêm em tamanho
+  // natural do intervalo na tela, em vez de esticar a fita inteira (que estoura
+  // a imagem em zoom alto). null/zoom 1× = usa a fita base de meta.thumbs.
+  const [winThumbs, setWinThumbs] = useState<{ t0: number; t1: number; list: string[] } | null>(null);
+  const winTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [amostraUrl, setAmostraUrl] = useState("");
   const [amostraCarregando, setAmostraCarregando] = useState(false);
   const [amostraErro, setAmostraErro] = useState("");
@@ -129,6 +131,9 @@ export default function AdminEditorVideo() {
   const [gifUrl, setGifUrl] = useState("");
   // codecs REAIS do worker (h265 só se o encoder existir lá) — vem do capabilities
   const [codecsDisp, setCodecsDisp] = useState<string[]>(["h264"]);
+  // o worker sabe gerar miniaturas por janela [start,end]? (só então o zoom pede
+  // o trecho visível; worker antigo devolveria a timeline inteira no lugar errado)
+  const [thumbsWindowOk, setThumbsWindowOk] = useState(false);
   const [tourAberto, setTourAberto] = useState(false);
   const [startField, setStartField] = useState("");
   const [endField, setEndField] = useState("");
@@ -231,6 +236,7 @@ export default function AdminEditorVideo() {
         if (Array.isArray(d.export?.codecs) && d.export.codecs.length) {
           setCodecsDisp(d.export.codecs);
         }
+        setThumbsWindowOk(!!d.thumbs?.window);
       })
       .catch(() => {});
     const clipEls = clipAudiosRef.current;
@@ -582,35 +588,51 @@ export default function AdminEditorVideo() {
     return () => { vivo = false; };
   }, [meta?.edit_id, meta?.thumbs?.length]);
 
-  // Fonte nova = fita densa antiga não vale mais
-  useEffect(() => { setDensThumbs(null); }, [meta?.edit_id]);
+  // Fonte nova = janela antiga não vale mais
+  useEffect(() => { setWinThumbs(null); }, [meta?.edit_id]);
 
-  // Fita densa por zoom: ao ampliar, pede mais quadros para as miniaturas
-  // GANHAREM detalhe em vez de esticar. O passe único do worker gera 200
-  // quadros tão rápido quanto 40 (~0,7s) e cacheia por count. Debounce para não
-  // disparar a cada clique no +/−; só sobe a densidade, nunca desce (a fita mais
-  // densa serve para qualquer zoom).
-  useEffect(() => {
+  // Miniaturas do TRECHO VISÍVEL: ao ampliar/rolar, pede os quadros SÓ do
+  // intervalo na tela, em tamanho natural. É o que faz o zoom REVELAR detalhe
+  // (mais quadros distintos do trecho) em vez de esticar os mesmos quadros da
+  // timeline inteira — que estoura a imagem em zoom alto. Debounce para o scroll
+  // não spammar o worker; o worker cacheia por janela.
+  const pedirJanelaThumbs = () => {
+    if (winTimerRef.current) clearTimeout(winTimerRef.current);
+    const box = scrollRef.current;
     const id = meta?.edit_id;
-    if (!id || zoom <= 1) return;   // em 1× a fita base (meta.thumbs) já cobre
-    const alvo = Math.min(200, Math.max(40, Math.round(40 * zoom)));  // 40 quadros por "tela"
-    const atual = densThumbs?.length ?? meta?.thumbs?.length ?? 0;
-    if (alvo <= atual) return;   // já temos densidade suficiente
-    let vivo = true;
-    const h = setTimeout(async () => {
+    const dur = meta?.duration || 0;
+    if (!box || !id || dur <= 0) return;
+    // 1× usa a fita base; sem suporte a janela no worker, também (não pede um
+    // trecho que ele devolveria como timeline inteira)
+    if (zoom <= 1 || !thumbsWindowOk) { setWinThumbs(null); return; }
+    winTimerRef.current = setTimeout(async () => {
+      const total = box.scrollWidth || 1;
+      const vis = box.clientWidth || 1;
+      const t0 = (box.scrollLeft / total) * dur;
+      const t1 = Math.min(dur, ((box.scrollLeft + vis) / total) * dur);
+      // largura natural de um quadro (altura 64px) pela proporção do vídeo → n =
+      // quantos cabem na largura visível, para cada slot ficar ~natural (sem esticar)
+      const ratio = meta && meta.width && meta.height ? meta.width / meta.height : 0.5625;
+      const slotPx = Math.max(24, 64 * ratio);
+      const n = Math.max(20, Math.min(160, Math.round(vis / slotPx)));
       try {
-        const res = await fetch(`${API}/editor/thumbs/${id}?count=${alvo}`, {
-          headers: await videoApiAuthHeaders(),
-        });
-        if (!res.ok || !vivo) return;
+        const res = await fetch(
+          `${API}/editor/thumbs/${id}?count=${n}&start=${t0.toFixed(2)}&end=${t1.toFixed(2)}`,
+          { headers: await videoApiAuthHeaders() });
+        if (!res.ok) return;
         const lista: string[] = (await res.json()).thumbs || [];
-        if (vivo && lista.length && lista.filter(Boolean).length >= lista.length / 2)
-          setDensThumbs(lista);
-      } catch { /* rede/worker fora — mantém a fita atual */ }
-    }, 350);
-    return () => { vivo = false; clearTimeout(h); };
+        if (lista.length && lista.filter(Boolean).length >= lista.length / 2)
+          setWinThumbs({ t0, t1, list: lista });
+      } catch { /* rede/worker fora — mantém a janela atual */ }
+    }, 250);
+  };
+
+  // dispara a janela quando o zoom muda (o scroll dispara pelo onScroll do container)
+  useEffect(() => {
+    pedirJanelaThumbs();
+    return () => { if (winTimerRef.current) clearTimeout(winTimerRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zoom, meta?.edit_id]);
+  }, [zoom, meta?.edit_id, meta?.duration]);
 
   // ── amostra REAL do efeito (Fase efeitos) ─────────────────────────────────
   // O efeito não tem prévia ao vivo (VHS/glitch não existem em CSS), então o
@@ -957,10 +979,6 @@ export default function AdminEditorVideo() {
     for (let t = 0; t <= meta.duration + 1e-6; t += rulerStep) m.push(Number(t.toFixed(3)));
     return m;
   }, [meta?.duration, rulerStep]);
-  // fita de miniaturas ativa: a mais densa que já baixamos (densThumbs sobe com
-  // o zoom) ou a base de meta.thumbs
-  const fitaThumbs = densThumbs && densThumbs.length > (meta?.thumbs?.length ?? 0)
-    ? densThumbs : (meta?.thumbs ?? []);
   const rotuloRegua = (t: number) => {
     const mm = Math.floor(t / 60);
     const ss = t - mm * 60;
@@ -2060,7 +2078,7 @@ export default function AdminEditorVideo() {
                   </label>
                 </div>
 
-                <div ref={scrollRef} className="overflow-x-auto overflow-y-hidden pb-1">
+                <div ref={scrollRef} onScroll={pedirJanelaThumbs} className="overflow-x-auto overflow-y-hidden pb-1">
                   <div className="relative space-y-1" style={{ width: `${zoom * 100}%` }}>
                     {/* régua */}
                     <div className="relative h-4 select-none">
@@ -2076,11 +2094,30 @@ export default function AdminEditorVideo() {
                     </div>
 
                     <div ref={timelineRef} className="relative select-none cursor-col-resize" onMouseDown={onTimelineDown}>
-                      <div className="flex h-16 rounded-lg overflow-hidden border">
-                        {(fitaThumbs.length ? fitaThumbs : Array(20).fill("")).map((t, i, arr) =>
-                          t ? <img key={i} src={t} draggable={false} className="h-full object-cover" style={{ width: `${100 / arr.length}%` }} alt="" />
-                            : <div key={i} className={`h-full bg-muted ${thumbsErro ? "" : "animate-pulse"}`}
-                                style={{ width: `${100 / arr.length}%` }} />,
+                      <div className="relative h-16 rounded-lg overflow-hidden border bg-muted/60">
+                        {zoom <= 1 || !thumbsWindowOk ? (
+                          // 1× (ou worker sem janela): a fita inteira preenche a largura
+                          <div className="flex h-full w-full">
+                            {(meta.thumbs.length ? meta.thumbs : Array(20).fill("")).map((t, i, arr) =>
+                              t ? <img key={i} src={t} draggable={false} className="h-full object-cover" style={{ width: `${100 / arr.length}%` }} alt="" />
+                                : <div key={i} className={`h-full bg-muted ${thumbsErro ? "" : "animate-pulse"}`}
+                                    style={{ width: `${100 / arr.length}%` }} />,
+                            )}
+                          </div>
+                        ) : winThumbs ? (
+                          // ampliado: só o trecho visível, em tamanho natural, posicionado no tempo
+                          <div className="absolute top-0 bottom-0 flex"
+                            style={{ left: `${(winThumbs.t0 / meta.duration) * 100}%`,
+                                     width: `${((winThumbs.t1 - winThumbs.t0) / meta.duration) * 100}%` }}>
+                            {winThumbs.list.map((t, i, arr) =>
+                              t ? <img key={i} src={t} draggable={false} className="h-full object-cover" style={{ width: `${100 / arr.length}%` }} alt="" />
+                                : <div key={i} className="h-full bg-muted" style={{ width: `${100 / arr.length}%` }} />,
+                            )}
+                          </div>
+                        ) : (
+                          <span className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground pointer-events-none animate-pulse">
+                            carregando os quadros do trecho…
+                          </span>
                         )}
                       </div>
                       {thumbsErro && !meta.thumbs.length && (

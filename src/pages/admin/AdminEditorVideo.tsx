@@ -607,13 +607,17 @@ export default function AdminEditorVideo() {
       // quantos quadros pedir para cobrir a largura visível com quadros de
       // largura ~natural (as imgs usam w-auto, então NUNCA esticam; isto só
       // garante que há quadros suficientes para preencher, sem sobrar cinza).
-      // A fita tem 64px de altura; um quadro vertical (9:16) tem ~36px de largura
+      // A fita cresce com o zoom (alturaFita) — um quadro 9:16 tem ~0,56×altura
+      const alt = zoom <= 1 ? 64 : zoom <= 2 ? 96 : zoom <= 4 ? 128 : 144;
       const ratio = meta && meta.width && meta.height ? meta.width / meta.height : 0.5625;
-      const larguraQuadro = Math.max(24, Math.min(64, 64 * ratio));
-      const n = Math.max(20, Math.min(160, Math.ceil(vis / larguraQuadro) + 2));
+      const larguraQuadro = Math.max(24, Math.min(alt, alt * ratio));
+      const n = Math.max(12, Math.min(160, Math.ceil(vis / larguraQuadro) + 2));
+      // pede a imagem MAIOR que o exibido (nitidez em tela retina); worker antigo
+      // ignora height e manda 90px — degrada suave, não quebra
+      const hPx = Math.min(200, Math.round(alt * 1.3));
       try {
         const res = await fetch(
-          `${API}/editor/thumbs/${id}?count=${n}&start=${t0.toFixed(2)}&end=${t1.toFixed(2)}`,
+          `${API}/editor/thumbs/${id}?count=${n}&start=${t0.toFixed(2)}&end=${t1.toFixed(2)}&height=${hPx}`,
           { headers: await videoApiAuthHeaders() });
         if (!res.ok) return;
         const lista: string[] = (await res.json()).thumbs || [];
@@ -983,6 +987,12 @@ export default function AdminEditorVideo() {
     return rulerStep < 1 ? `${mm}:${ss.toFixed(1).padStart(4, "0")}`
                          : `${mm}:${String(Math.round(ss)).padStart(2, "0")}`;
   };
+
+  // Zoom também AMPLIA a fita na VERTICAL: miniaturas maiores = zoom de verdade,
+  // não só mais quadros na horizontal (Carlos: "o aumento vertical não está
+  // sendo aplicado"). Os overlays (cortes/playhead/alças) são absolute inset-0
+  // em %, então acompanham qualquer altura.
+  const alturaFita = zoom <= 1 ? 64 : zoom <= 2 ? 96 : zoom <= 4 ? 128 : 144;
 
   // Zoom mantém o CURSOR no lugar (é o que a pessoa está olhando)
   const aplicarZoom = (novo: number) => {
@@ -2098,7 +2108,8 @@ export default function AdminEditorVideo() {
                     </div>
 
                     <div ref={timelineRef} className="relative select-none cursor-col-resize" onMouseDown={onTimelineDown}>
-                      <div className="relative h-16 rounded-lg overflow-hidden border bg-neutral-800">
+                      <div className="relative rounded-lg overflow-hidden border bg-neutral-800 transition-[height] duration-200"
+                        style={{ height: alturaFita }}>
                         {zoom <= 1 ? (
                           // 1×: fita inteira preenche a largura (slot ~natural)
                           <div className="flex h-full w-full">
@@ -2115,7 +2126,7 @@ export default function AdminEditorVideo() {
                             style={{ left: `${(winThumbs.t0 / meta.duration) * 100}%` }}>
                             {winThumbs.list.map((t, i) =>
                               t ? <img key={i} src={t} draggable={false} className="h-full w-auto shrink-0" alt="" />
-                                : <div key={i} className="h-full w-9 shrink-0 bg-muted" />,
+                                : <div key={i} className="h-full shrink-0 bg-muted" style={{ width: Math.round(alturaFita * 0.5625) }} />,
                             )}
                           </div>
                         ) : (

@@ -167,24 +167,37 @@ export function docFlatToTracks(doc: EditorDoc, sourceId: string): Track[] {
   // textos e legendas → TextClips (posição já na timeline final), em FAIXAS
   // SEPARADAS: "text" = títulos (estilo por clipe + animações), "subs" =
   // legendas (estilo único + karaokê) — o motor v9 trata cada papel como o v8.
-  // origToFinal em start E end aplica a velocidade nos dois (esticam com o
-  // trecho, como remap_cues). Caso raro de item ATRAVESSANDO um corte (o motor
-  // quebra em pedaços) fica para fase futura — aqui vale o caso que cabe num
-  // trecho, que é o comum.
+  // ESPELHO EXATO do remap_cues: o item é recortado POR TRECHO keep — item
+  // atravessando um corte vira pedaços (contíguos na timeline final) e item
+  // começando dentro de removido preserva só a parte visível (antes o adaptador
+  // descartava — divergia do v8).
   const textClips: TextClip[] = [];
   const subClips: TextClip[] = [];
-  const push = (alvo: TextClip[], start: number, end: number,
-                base: Omit<TextClip, "id" | "kind" | "timeline_start" | "timeline_end">) => {
-    const fs = origToFinal(start, segs);
-    if (fs === null) return;
-    const fe = origToFinal(end, segs);
-    alvo.push({
-      ...base, id: uid(alvo === subClips ? "c" : "t", alvo.length), kind: "text",
-      timeline_start: fs, timeline_end: fe ?? fs + (end - start),
-    });
+  const push = (alvo: TextClip[], start: number, end: number, words: Cue[] | undefined,
+                base: Omit<TextClip, "id" | "kind" | "timeline_start" | "timeline_end" | "words">) => {
+    for (const { seg, finalStart, speed } of segs) {
+      const s = Math.max(start, seg.start);
+      const e = Math.min(end, seg.end);
+      if (e - s < 0.15) continue;   // mesmo piso do remap_cues (:510)
+      // words presas à janela do pedaço e na timeline FINAL (remap_cues:520);
+      // pedaço sem palavra vai SEM words — o \k cai na divisão proporcional
+      const dentro = (words ?? []).filter((w) => w.end > s && w.start < e);
+      alvo.push({
+        ...base, id: uid(alvo === subClips ? "c" : "t", alvo.length), kind: "text",
+        timeline_start: (s - seg.start) / speed + finalStart,
+        timeline_end: (e - seg.start) / speed + finalStart,
+        words: dentro.length
+          ? dentro.map((w) => ({
+              start: (Math.max(w.start, s) - seg.start) / speed + finalStart,
+              end: (Math.min(w.end, e) - seg.start) / speed + finalStart,
+              text: w.text,
+            }))
+          : undefined,
+      });
+    }
   };
   for (const t of doc.titles as Title[]) {
-    push(textClips, t.start, t.end, {
+    push(textClips, t.start, t.end, undefined, {
       text: t.text, font_id: t.font_id, size: t.size, color: t.color,
       style: t.style, position: t.position,
       anim_in: t.anim_in, anim_out: t.anim_out, anim_loop: t.anim_loop,
@@ -192,53 +205,63 @@ export function docFlatToTracks(doc: EditorDoc, sourceId: string): Track[] {
   }
   if (doc.subsOn) {
     for (const c of doc.cues as Cue[]) {
-      push(subClips, c.start, c.end, {
-        text: c.text, font_id: doc.subFont, size: doc.subSize, color: doc.subColor,
-        style: doc.subStyle, position: doc.subPos as TitlePos,
-        karaoke: doc.cueMode === "karaoke",
-        words: doc.cueMode === "karaoke"
-          ? doc.words
-              .filter((w) => w.start >= c.start - 0.01 && w.end <= c.end + 0.01)
-              .map((w) => ({
-                // words também vão na timeline FINAL (o \k dessincronizaria)
-                start: origToFinal(w.start, segs) ?? w.start,
-                end: origToFinal(w.end, segs) ?? w.end,
-                text: w.text,
-              }))
+      push(subClips, c.start, c.end,
+        doc.cueMode === "karaoke"
+          ? doc.words.filter((w) => w.start >= c.start - 0.01 && w.end <= c.end + 0.01)
           : undefined,
+        {
+          text: c.text, font_id: doc.subFont, size: doc.subSize, color: doc.subColor,
+          style: doc.subStyle, position: doc.subPos as TitlePos,
+          karaoke: doc.cueMode === "karaoke",
+        });
+    }
+  }
+
+  // stickers → clipes de vídeo PiP. ESPELHO do remap_spans (estica=True): o
+  // sticker acompanha os cortes E a velocidade — atravessado por um corte vira
+  // PEDAÇOS (src_in retoma no ponto certo), num trecho lento estica junto.
+  const stickerClips: VideoClip[] = [];
+  for (const s of doc.stickers as Sticker[]) {
+    for (const { seg, finalStart, speed } of segs) {
+      const a = Math.max(s.start, seg.start);
+      const b = Math.min(s.end, seg.end);
+      if (b - a < 0.15) continue;   // mesmo piso do remap_spans (:575)
+      stickerClips.push({
+        id: uid("s", stickerClips.length), kind: "video", source_id: s.upload_id,
+        src_in: Math.round((a - s.start) * 1000) / 1000,
+        src_out: s.natural_dur || (s.end - s.start), speed: 1, volume: 0,
+        timeline_start: (a - seg.start) / speed + finalStart,
+        timeline_end: (b - seg.start) / speed + finalStart,
+        transform: { x: s.x_pct, y: s.y_pct, escala: s.scale_pct, opacidade: 1,
+                     giro: s.flip ? 180 : 0 },
+        filtro: "nenhum", efeito: "nenhum",
+        movement: s.movement, loop: s.loop,
       });
     }
   }
 
-  // stickers → clipes de vídeo PiP. estica=True no motor: o sticker acompanha a
-  // velocidade do trecho — por isso o fim também passa por origToFinal.
-  const stickerClips: VideoClip[] = (doc.stickers as Sticker[]).map((s, i) => {
-    const fs = origToFinal(s.start, segs);
-    const fe = origToFinal(s.end, segs);
-    const start = fs ?? s.start;
-    return {
-      id: uid("s", i), kind: "video", source_id: s.upload_id,
-      src_in: 0, src_out: s.natural_dur || (s.end - s.start), speed: 1, volume: 0,
-      timeline_start: start,
-      timeline_end: fe ?? start + (s.end - s.start),
-      transform: { x: s.x_pct, y: s.y_pct, escala: s.scale_pct, opacidade: 1,
-                   giro: s.flip ? 180 : 0 },
-      filtro: "nenhum", efeito: "nenhum",
-      movement: s.movement, loop: s.loop,
-    };
-  });
-
-  // áudio: clipes posicionados (narração/efeito) — 1 span contínuo por clipe
-  const audioClips: AudioClipT[] = (doc.audioClips as AudioClip[]).map((c, i) => {
-    const fs = origToFinal(c.start, segs);
-    return {
-      id: uid("a", i), kind: "audio", source_id: c.upload_id,
-      src_in: 0, src_out: c.natural_dur || (c.end - c.start),
-      timeline_start: fs ?? c.start,
-      timeline_end: (fs ?? c.start) + (c.end - c.start),
-      volume: c.volume,
-    };
-  });
+  // áudio: clipes posicionados (narração) — ESPELHO do remap_spans
+  // (estica=False): UM span contínuo a partir do primeiro momento visível, na
+  // duração da janela ORIGINAL (não estica nem quebra; src_in compensa o
+  // pedaço que caiu em trecho removido)
+  const audioClips: AudioClipT[] = [];
+  for (const c of doc.audioClips as AudioClip[]) {
+    for (const { seg, finalStart, speed } of segs) {
+      const a = Math.max(c.start, seg.start);
+      const b = Math.min(c.end, seg.end);
+      if (b - a < 0.15) continue;
+      const ini = (a - seg.start) / speed + finalStart;
+      audioClips.push({
+        id: uid("a", audioClips.length), kind: "audio", source_id: c.upload_id,
+        src_in: Math.round((a - c.start) * 1000) / 1000,
+        src_out: Math.round((a - c.start) * 1000) / 1000 + (c.end - c.start),
+        timeline_start: ini,
+        timeline_end: ini + (c.end - c.start),
+        volume: c.volume,
+      });
+      break;   // só o primeiro trecho onde o clipe aparece (1 span por clipe)
+    }
+  }
 
   const tracks: Track[] = [{ id: "video-base", kind: "video", z: 0, clips: videoBase }];
   if (stickerClips.length) tracks.push({ id: "video-pip", kind: "video", z: 1, clips: stickerClips });

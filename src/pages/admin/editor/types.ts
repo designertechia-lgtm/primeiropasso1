@@ -21,7 +21,11 @@ export const EDITOR_STORAGE_KEY = "pp-editor-video";
 // v7: fade_in + denoise — worker v6 ignoraria os dois em silêncio.
 // v8: keep_segments[].speed — worker v7 renderiza em velocidade normal calado
 // e as legendas dessincronizam do trecho lento/rápido.
-export const EDITOR_CONTRACT_VERSION = 8;
+// v9: multi-track (Fase D) — o payload leva `tracks` (faixas em timeline FINAL,
+// de docFlatToTracks) e o worker renderiza pelo motor render_tracks, PROVADO
+// equivalente ao v8 em 7/7 casos (frames RMS 0.0, áudio 0,1 dB). Os campos v8
+// continuam no payload: são o FALLBACK automático se o v9 falhar no worker.
+export const EDITOR_CONTRACT_VERSION = 9;
 
 // speed: velocidade do trecho (1 = normal, 0.5 = câmera lenta, 2 = acelerado).
 // Ausente = 1 (retrocompat com projetos salvos antes desta feature).

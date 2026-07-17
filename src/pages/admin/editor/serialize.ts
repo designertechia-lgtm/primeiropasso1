@@ -13,6 +13,7 @@ import {
   EDITOR_CONTRACT_VERSION, newId, wordsDoCue, type EditMeta, type StickerJob,
 } from "./types";
 import { emptyDoc, type EditorDoc } from "./documentReducer";
+import { docFlatToTracks } from "./tracksModel";
 
 /** Garante o que o front assume mas o dado salvo pode não ter: ids estáveis em
  *  textos/stickers/clipes (docs gravados antes dos ids existirem, inclusive v2
@@ -52,6 +53,12 @@ export function buildRenderPayload(
     contract_version: EDITOR_CONTRACT_VERSION,
     professional_slug: professionalSlug,
     edit_id: meta.edit_id,
+    // ── multi-track v9 (Fase D): o worker renderiza pelas FAIXAS ─────────────
+    // (tempos já na timeline final — o remap do worker sai da jogada). Os
+    // campos v8 abaixo CONTINUAM: são o fallback automático se o v9 falhar.
+    tracks: docFlatToTracks(doc, meta.edit_id),
+    canvas_w: meta.width,
+    canvas_h: meta.height,
     keep_segments: keep.map((s) => ({ start: s.start, end: s.end, speed: s.speed ?? 1 })),
     music_id: doc.musicUploadId ? "" : doc.musicId,
     music_upload_id: doc.musicUploadId,

@@ -103,6 +103,65 @@ describe("docFlatToTracks — doc flat v8 → faixas, tempos batendo com o motor
     expect(cue.words![1].end).toBeCloseTo(5.0, 3);
   });
 
+  it("título ATRAVESSANDO o corte vira 2 pedaços contíguos (como remap_cues)", () => {
+    // [1.5,3.5] cruza o removido [2,3]: pedaço 1 em [1.5,2.0] (trecho 1×) e
+    // pedaço 2 em [2.0,3.0] (trecho 0,5× estica 0,5s→1,0s)
+    const doc = docBase({
+      titles: [{ id: "1", start: 1.5, end: 3.5, text: "cruza", font_id: "bevietnam",
+                 size: "m", color: "#FFF", style: "outline", position: "center" }],
+    });
+    const txt = docFlatToTracks(doc, "fonteA").find((t) => t.id === "text")!;
+    expect(txt.clips).toHaveLength(2);
+    expect((txt.clips[0] as TextClip).timeline_start).toBeCloseTo(1.5, 3);
+    expect((txt.clips[0] as TextClip).timeline_end).toBeCloseTo(2.0, 3);
+    expect((txt.clips[1] as TextClip).timeline_start).toBeCloseTo(2.0, 3);
+    expect((txt.clips[1] as TextClip).timeline_end).toBeCloseTo(3.0, 3);
+  });
+
+  it("legenda começando DENTRO do removido preserva só a parte visível", () => {
+    // [2.2,3.8]: o começo caiu no removido [2,3] — o v8 mostra [3,3.8] do
+    // trecho lento → final [2.0, 3.6]. (Antes o adaptador DESCARTAVA o cue.)
+    const doc = docBase({
+      subsOn: true, cues: [{ start: 2.2, end: 3.8, text: "parcial" }],
+    });
+    const subs = docFlatToTracks(doc, "fonteA").find((t) => t.id === "subs")!;
+    expect(subs.clips).toHaveLength(1);
+    expect((subs.clips[0] as TextClip).timeline_start).toBeCloseTo(2.0, 3);
+    expect((subs.clips[0] as TextClip).timeline_end).toBeCloseTo(3.6, 3);
+  });
+
+  it("sticker atravessando o corte vira pedaços com src_in retomando", () => {
+    const doc = docBase({
+      stickers: [{ id: "1", upload_id: "stk", name: "s", natural_dur: 4, animated: true,
+                   start: 1.5, end: 3.5, x_pct: 0.5, y_pct: 0.5, scale_pct: 0.2,
+                   movement: "none", loop: true, flip: false }],
+    });
+    const pip = docFlatToTracks(doc, "fonteA").find((t) => t.id === "video-pip")!;
+    expect(pip.clips).toHaveLength(2);
+    const p0 = pip.clips[0] as VideoClip;
+    const p1 = pip.clips[1] as VideoClip;
+    expect(p0.src_in).toBeCloseTo(0, 3);
+    expect(p0.timeline_start).toBeCloseTo(1.5, 3);
+    expect(p1.src_in).toBeCloseTo(1.5, 3);   // retoma a animação no ponto certo
+    expect(p1.timeline_start).toBeCloseTo(2.0, 3);
+    expect(p1.timeline_end).toBeCloseTo(3.0, 3);
+  });
+
+  it("áudio começando no removido: 1 span do primeiro momento visível", () => {
+    // [2.5,4.0]: primeiro momento visível = 3.0 (final 2.0); src_in compensa
+    // os 0,5s que caíram no removido; duração segue a da janela (1,5s)
+    const doc = docBase({
+      audioClips: [{ id: "x", upload_id: "narr", name: "n", natural_dur: 1.5,
+                     start: 2.5, end: 4.0, volume: 1 }],
+    });
+    const aud = docFlatToTracks(doc, "fonteA").find((t) => t.id === "audio")!;
+    expect(aud.clips).toHaveLength(1);
+    const c = aud.clips[0] as AudioClipT;
+    expect(c.timeline_start).toBeCloseTo(2.0, 3);
+    expect(c.timeline_end).toBeCloseTo(3.5, 3);
+    expect(c.src_in).toBeCloseTo(0.5, 3);
+  });
+
   it("clipe de áudio NÃO estica na câmera lenta (duração natural)", () => {
     const doc = docBase({
       audioClips: [{ id: "x", upload_id: "narr.mp3", name: "n", natural_dur: 1,

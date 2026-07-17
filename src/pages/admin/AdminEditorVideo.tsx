@@ -112,6 +112,9 @@ export default function AdminEditorVideo() {
   const [snapOn, setSnapOn] = useState(true);
   const [snapGuide, setSnapGuide] = useState<number | null>(null);
   const [thumbsErro, setThumbsErro] = useState(false);
+  // fita de miniaturas mais densa, pedida conforme o zoom sobe (para os quadros
+  // ganharem detalhe em vez de esticar). null = usa a fita base de meta.thumbs.
+  const [densThumbs, setDensThumbs] = useState<string[] | null>(null);
   const [amostraUrl, setAmostraUrl] = useState("");
   const [amostraCarregando, setAmostraCarregando] = useState(false);
   const [amostraErro, setAmostraErro] = useState("");
@@ -579,6 +582,36 @@ export default function AdminEditorVideo() {
     return () => { vivo = false; };
   }, [meta?.edit_id, meta?.thumbs?.length]);
 
+  // Fonte nova = fita densa antiga não vale mais
+  useEffect(() => { setDensThumbs(null); }, [meta?.edit_id]);
+
+  // Fita densa por zoom: ao ampliar, pede mais quadros para as miniaturas
+  // GANHAREM detalhe em vez de esticar. O passe único do worker gera 200
+  // quadros tão rápido quanto 40 (~0,7s) e cacheia por count. Debounce para não
+  // disparar a cada clique no +/−; só sobe a densidade, nunca desce (a fita mais
+  // densa serve para qualquer zoom).
+  useEffect(() => {
+    const id = meta?.edit_id;
+    if (!id || zoom <= 1) return;   // em 1× a fita base (meta.thumbs) já cobre
+    const alvo = Math.min(200, Math.max(40, Math.round(40 * zoom)));  // 40 quadros por "tela"
+    const atual = densThumbs?.length ?? meta?.thumbs?.length ?? 0;
+    if (alvo <= atual) return;   // já temos densidade suficiente
+    let vivo = true;
+    const h = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API}/editor/thumbs/${id}?count=${alvo}`, {
+          headers: await videoApiAuthHeaders(),
+        });
+        if (!res.ok || !vivo) return;
+        const lista: string[] = (await res.json()).thumbs || [];
+        if (vivo && lista.length && lista.filter(Boolean).length >= lista.length / 2)
+          setDensThumbs(lista);
+      } catch { /* rede/worker fora — mantém a fita atual */ }
+    }, 350);
+    return () => { vivo = false; clearTimeout(h); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoom, meta?.edit_id]);
+
   // ── amostra REAL do efeito (Fase efeitos) ─────────────────────────────────
   // O efeito não tem prévia ao vivo (VHS/glitch não existem em CSS), então o
   // worker manda o frame do cursor já passado pelo ffmpeg. Com debounce: cada
@@ -924,6 +957,10 @@ export default function AdminEditorVideo() {
     for (let t = 0; t <= meta.duration + 1e-6; t += rulerStep) m.push(Number(t.toFixed(3)));
     return m;
   }, [meta?.duration, rulerStep]);
+  // fita de miniaturas ativa: a mais densa que já baixamos (densThumbs sobe com
+  // o zoom) ou a base de meta.thumbs
+  const fitaThumbs = densThumbs && densThumbs.length > (meta?.thumbs?.length ?? 0)
+    ? densThumbs : (meta?.thumbs ?? []);
   const rotuloRegua = (t: number) => {
     const mm = Math.floor(t / 60);
     const ss = t - mm * 60;
@@ -2040,7 +2077,7 @@ export default function AdminEditorVideo() {
 
                     <div ref={timelineRef} className="relative select-none cursor-col-resize" onMouseDown={onTimelineDown}>
                       <div className="flex h-16 rounded-lg overflow-hidden border">
-                        {(meta.thumbs.length ? meta.thumbs : Array(20).fill("")).map((t, i, arr) =>
+                        {(fitaThumbs.length ? fitaThumbs : Array(20).fill("")).map((t, i, arr) =>
                           t ? <img key={i} src={t} draggable={false} className="h-full object-cover" style={{ width: `${100 / arr.length}%` }} alt="" />
                             : <div key={i} className={`h-full bg-muted ${thumbsErro ? "" : "animate-pulse"}`}
                                 style={{ width: `${100 / arr.length}%` }} />,

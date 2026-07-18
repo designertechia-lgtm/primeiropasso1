@@ -43,6 +43,10 @@ export type EditorDoc = {
   audioClips: AudioClip[];
   // PiP de vídeo (Fase F): 2º vídeo sobre o principal, timeline ORIGINAL
   pipClips: PipClip[];
+  // Ocultar/silenciar FAIXA inteira (Fase F): a faixa oculta sai da prévia E
+  // do render (áudio oculto = mudo), sem perder o conteúdo — o olhinho do
+  // gutter alterna. Chaves: subs | text | sticker | pip | audio.
+  trackFlags: { [faixa: string]: { hidden?: boolean } };
   transition: string;        // chave de TRANSICOES (editor/filtros.ts)
   filtro: string;            // chave de FILTROS (look de cor)
   efeito: string;            // chave de EFEITOS (textura/distorção)
@@ -87,6 +91,7 @@ export const emptyDoc = (): EditorDoc => ({
   stickers: [],
   audioClips: [],
   pipClips: [],
+  trackFlags: {},
   transition: "none",
   filtro: "nenhum",
   efeito: "nenhum",

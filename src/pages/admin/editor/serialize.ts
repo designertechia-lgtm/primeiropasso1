@@ -43,12 +43,30 @@ export type ProjectSnapshot = {
   doc: EditorDoc;
 };
 
+/** Aplica o "olhinho" das faixas: a faixa oculta sai do doc EFETIVO (prévia e
+ *  render leem daqui) sem tocar no conteúdo guardado. Áudio oculto = mudo. */
+export function aplicarFaixasOcultas(doc: EditorDoc): EditorDoc {
+  const fl = doc.trackFlags || {};
+  const oculta = (k: string) => !!fl[k]?.hidden;
+  if (!Object.keys(fl).some((k) => fl[k]?.hidden)) return doc;
+  return {
+    ...doc,
+    subsOn: doc.subsOn && !oculta("subs"),
+    titles: oculta("text") ? [] : doc.titles,
+    stickers: oculta("sticker") ? [] : doc.stickers,
+    pipClips: oculta("pip") ? [] : doc.pipClips,
+    audioClips: oculta("audio") ? [] : doc.audioClips,
+  };
+}
+
 export function buildRenderPayload(
-  doc: EditorDoc,
+  docCompleto: EditorDoc,
   meta: EditMeta,
   professionalSlug: string,
   perfilLogo: string,
 ) {
+  // faixas ocultas não vão pro render — o que você vê é o que sai
+  const doc = aplicarFaixasOcultas(docCompleto);
   const keep = doc.segments.filter((s) => s.keep);
   return {
     contract_version: EDITOR_CONTRACT_VERSION,

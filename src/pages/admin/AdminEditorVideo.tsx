@@ -42,7 +42,7 @@ import {
   CheckCircle2, AlertCircle, Video as VideoIcon, Captions, Wand2, RotateCcw,
   FolderOpen, Copy, Plus, Minus, Palette, Sparkles, Mic, Square, HelpCircle,
   Image as ImageIcon, Headphones, Volume2, Magnet, Download, Type, Clapperboard,
-  Repeat, LogIn, LogOut, Check,
+  Repeat, LogIn, LogOut, Check, Eye, EyeOff,
 } from "lucide-react";
 import { videoApiAuthHeaders } from "@/lib/videoApi";
 import {
@@ -58,7 +58,8 @@ import {
   editorReducer, initialEditorState, type EditorDoc,
 } from "./editor/documentReducer";
 import {
-  buildRenderPayload, snapshotFromStored, metaSemThumbs, type ProjectSnapshot,
+  buildRenderPayload, snapshotFromStored, metaSemThumbs, aplicarFaixasOcultas,
+  type ProjectSnapshot,
 } from "./editor/serialize";
 import { evaluateScene, drawScene, fontesDaCena, FONTE_PADRAO } from "./editor/scene";
 import { FILTROS, FILTRO_IDS, EFEITOS, TRANSICOES, filtroCss,
@@ -941,6 +942,20 @@ export default function AdminEditorVideo() {
   // barra "Adicionar" da timeline → rola até a seção que cria aquele conteúdo
   const irParaSecao = (id: string) =>
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+
+  // Faixas ocultas (olhinho): a prévia lê o doc EFETIVO — o que você vê é o
+  // que o render vai fazer (o buildRenderPayload aplica o MESMO filtro)
+  const docPrevia = useMemo(() => aplicarFaixasOcultas(doc), [doc]);
+  const faixaOculta = (k: string) => !!doc.trackFlags?.[k]?.hidden;
+  const alternarFaixa = (k: string) =>
+    patch({ trackFlags: { ...doc.trackFlags, [k]: { hidden: !faixaOculta(k) } } });
+  const olhoFaixa = (k: string) => (
+    <button type="button" className="ml-auto opacity-70 hover:opacity-100 shrink-0"
+      title={faixaOculta(k) ? "Mostrar a faixa (volta pra prévia e pro render)" : "Ocultar a faixa (sai da prévia E do render)"}
+      onClick={() => alternarFaixa(k)}>
+      {faixaOculta(k) ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+    </button>
+  );
   const posFromEvent = (clientX: number) => {
     if (!timelineRef.current || !meta) return 0;
     const rect = timelineRef.current.getBoundingClientRect();
@@ -1353,6 +1368,22 @@ export default function AdminEditorVideo() {
     toast.success("Sticker duplicado — mova o novo bloco na faixa roxa.");
   };
 
+  const duplicarPip = (id: string) => {
+    const p = pipClips.find((x) => x.id === id);
+    if (!p || !meta) return;
+    const nid = newId();
+    apply((d) => {
+      const orig = d.pipClips.find((x) => x.id === id);
+      if (!orig) return {};
+      const i = d.pipClips.findIndex((x) => x.id === id);
+      const copia = { ...orig, id: nid, ...proximoSlot(orig) };
+      const next = [...d.pipClips];
+      next.splice(i + 1, 0, copia);
+      return { pipClips: next };
+    });
+    toast.success("Vídeo sobreposto duplicado — mova o novo bloco na faixa rosa.");
+  };
+
   const duplicarClip = (id: string) => {
     const c = audioClips.find((x) => x.id === id);
     if (!c || !meta) return;
@@ -1669,9 +1700,10 @@ export default function AdminEditorVideo() {
     const ctx = cv.getContext("2d");
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    // meta.height: o selo é dimensionado em px de VÍDEO (o PIL clampa lá)
-    drawScene(ctx, evaluateScene(doc, playhead), { w, h }, loadedFonts, meta?.height || h);
-  }, [doc, playhead, contentRect, loadedFonts, meta?.height]);
+    // meta.height: o selo é dimensionado em px de VÍDEO (o PIL clampa lá).
+    // docPrevia: faixas ocultas pelo olhinho não são desenhadas
+    drawScene(ctx, evaluateScene(docPrevia, playhead), { w, h }, loadedFonts, meta?.height || h);
+  }, [docPrevia, playhead, contentRect, loadedFonts, meta?.height]);
 
   // (o playhead fluido vem do relógio mestre a ~60fps — o setInterval de
   // 120ms que existia aqui morreu com o clock da Fase C)
@@ -1681,7 +1713,7 @@ export default function AdminEditorVideo() {
     const playing = clock.playing;
     for (const c of audioClips) {
       let el = clipAudiosRef.current.get(c.id);
-      const active = playing && playhead >= c.start && playhead < c.end;
+      const active = playing && !faixaOculta("audio") && playhead >= c.start && playhead < c.end;
       if (active) {
         if (!el) {
           el = new Audio(`${API}/editor/audio/${c.upload_id}`);
@@ -1719,7 +1751,7 @@ export default function AdminEditorVideo() {
     for (const p of pipClips) {
       const el = pipVideosRef.current.get(p.id);
       if (!el) continue;
-      const naJanela = playhead >= p.start && playhead < p.end;
+      const naJanela = !faixaOculta("pip") && playhead >= p.start && playhead < p.end;
       el.volume = Math.max(0, Math.min(1, p.volume));
       el.muted = p.volume <= 0.01;
       if (naJanela) {
@@ -1739,7 +1771,7 @@ export default function AdminEditorVideo() {
   }, [playhead, pipClips, clock.playing, previewEdit, segments]);
 
   const activeStickers = meta
-    ? stickers.filter((s) => playhead >= s.start && playhead <= s.end)
+    ? docPrevia.stickers.filter((s) => playhead >= s.start && playhead <= s.end)
     : [];
   const stickerPosKey = (s: Sticker) => {
     const p = STICKER_POSITIONS.find((p) => Math.abs(p.x - s.x_pct) < 0.03 && Math.abs(p.y - s.y_pct) < 0.03);
@@ -1802,12 +1834,43 @@ export default function AdminEditorVideo() {
     if (!keepSegments.length) { toast.error("Mantenha ao menos um trecho do vídeo."); return; }
     setRendering(true); setResultUrl(""); setRenderProgress(5); setRenderStep("Enviando a edição...");
     try {
+      // Pré-voo do PiP: a fonte é um draft e pode ter expirado — o HEAD já
+      // restaura do Storage sozinho; se nem isso der, re-carrega da galeria
+      // (source_url) e troca o edit_id no doc. Upload local expirado não tem
+      // de onde voltar: erro claro em vez de job quebrado.
+      let docRender = doc;
+      if (docPrevia.pipClips.length) {
+        const trocas = new Map<string, string>();
+        for (const p of docPrevia.pipClips) {
+          try {
+            const ping = await fetch(`${API}/editor/video/${p.edit_id}`, { method: "HEAD" });
+            if (ping.ok) continue;
+          } catch { /* rede — tenta a recarga mesmo assim */ }
+          if (!p.source_url) {
+            throw new Error(`O vídeo sobreposto "${p.name}" expirou no servidor — exclua o clipe e envie o arquivo de novo.`);
+          }
+          setRenderStep(`Recarregando o vídeo sobreposto "${p.name}"...`);
+          const fd = new FormData();
+          fd.append("video_url", p.source_url);
+          const r = await fetch(`${API}/editor/carregar`, {
+            method: "POST", body: fd, headers: await videoApiAuthHeaders(),
+          });
+          const d2 = await r.json();
+          if (!r.ok) throw new Error(d2.detail || `Não consegui recarregar "${p.name}" da galeria.`);
+          trocas.set(p.id, d2.edit_id);
+        }
+        if (trocas.size) {
+          const pips = doc.pipClips.map((p) => (trocas.has(p.id) ? { ...p, edit_id: trocas.get(p.id)! } : p));
+          docRender = { ...doc, pipClips: pips };
+          update({ pipClips: pips });   // persiste os ids novos (sem passo de undo)
+        }
+      }
       const res = await fetch(`${API}/editor/render`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(await videoApiAuthHeaders()) },
         // o payload nasce SEMPRE do doc (editor/serialize.ts) — render e
         // persistência leem a mesma fonte
-        body: JSON.stringify(buildRenderPayload(doc, meta, professional.slug, perfilLogo)),
+        body: JSON.stringify(buildRenderPayload(docRender, meta, professional.slug, perfilLogo)),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Falha ao iniciar a edição");
@@ -2105,7 +2168,7 @@ export default function AdminEditorVideo() {
                   {/* PiP: vídeo sobre o vídeo (Fase F) — comandado pelo relógio
                       mestre; arraste para posicionar. Acima dos stickers e
                       abaixo das legendas, como no motor. */}
-                  {contentRect && pipClips
+                  {contentRect && !faixaOculta("pip") && pipClips
                     .filter((p) => playhead >= p.start && playhead <= p.end)
                     .map((p) => (
                       <video key={p.id}
@@ -2262,27 +2325,27 @@ export default function AdminEditorVideo() {
                     </div>
                     {subsOn && cues.length > 0 && (
                       <div className="flex h-7 items-center gap-1 rounded border bg-emerald-500/10 px-1.5 text-[9px] text-muted-foreground">
-                        <Captions className="h-3 w-3 shrink-0" /> <span className="truncate">Legenda</span>
+                        <Captions className="h-3 w-3 shrink-0" /> <span className="truncate">Legenda</span> {olhoFaixa("subs")}
                       </div>
                     )}
                     {titles.length > 0 && (
                       <div className="flex h-7 items-center gap-1 rounded border bg-amber-500/10 px-1.5 text-[9px] text-muted-foreground">
-                        <Type className="h-3 w-3 shrink-0" /> <span className="truncate">Texto</span>
+                        <Type className="h-3 w-3 shrink-0" /> <span className="truncate">Texto</span> {olhoFaixa("text")}
                       </div>
                     )}
                     {stickers.length > 0 && (
                       <div className="flex h-7 items-center gap-1 rounded border bg-violet-500/10 px-1.5 text-[9px] text-muted-foreground">
-                        <ImageIcon className="h-3 w-3 shrink-0" /> <span className="truncate">Sticker</span>
+                        <ImageIcon className="h-3 w-3 shrink-0" /> <span className="truncate">Sticker</span> {olhoFaixa("sticker")}
                       </div>
                     )}
                     {pipClips.length > 0 && (
                       <div className="flex h-7 items-center gap-1 rounded border bg-rose-500/10 px-1.5 text-[9px] text-muted-foreground">
-                        <Clapperboard className="h-3 w-3 shrink-0" /> <span className="truncate">Vídeo 2</span>
+                        <Clapperboard className="h-3 w-3 shrink-0" /> <span className="truncate">Vídeo 2</span> {olhoFaixa("pip")}
                       </div>
                     )}
                     {audioClips.length > 0 && (
                       <div className="flex h-7 items-center gap-1 rounded border bg-sky-500/10 px-1.5 text-[9px] text-muted-foreground">
-                        <Headphones className="h-3 w-3 shrink-0" /> <span className="truncate">Áudio</span>
+                        <Headphones className="h-3 w-3 shrink-0" /> <span className="truncate">Áudio</span> {olhoFaixa("audio")}
                       </div>
                     )}
                   </div>
@@ -2388,7 +2451,7 @@ export default function AdminEditorVideo() {
                     {/* Faixas (estilo CapCut): legendas, textos, stickers e áudio.
                         Arraste o bloco pra mover no tempo; borda direita estica. */}
                     {subsOn && cues.length > 0 && (
-                      <div className="relative h-7 rounded border bg-emerald-500/5 overflow-hidden">
+                      <div className={`relative h-7 rounded border bg-emerald-500/5 overflow-hidden ${faixaOculta("subs") ? "opacity-40" : ""}`}>
                         {cues.map((c, i) => (
                           <div key={i}
                             className="absolute top-0.5 bottom-0.5 rounded bg-emerald-600/70 border border-emerald-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
@@ -2405,7 +2468,7 @@ export default function AdminEditorVideo() {
                       </div>
                     )}
                     {titles.length > 0 && (
-                      <div className="relative h-7 rounded border bg-amber-500/5 overflow-hidden">
+                      <div className={`relative h-7 rounded border bg-amber-500/5 overflow-hidden ${faixaOculta("text") ? "opacity-40" : ""}`}>
                         {titles.map((t) => (
                           <div key={t.id}
                             className="absolute top-0.5 bottom-0.5 rounded bg-amber-500/70 border border-amber-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
@@ -2422,7 +2485,7 @@ export default function AdminEditorVideo() {
                       </div>
                     )}
                     {stickers.length > 0 && (
-                      <div className="relative h-7 rounded border bg-violet-500/5 overflow-hidden">
+                      <div className={`relative h-7 rounded border bg-violet-500/5 overflow-hidden ${faixaOculta("sticker") ? "opacity-40" : ""}`}>
                         {stickers.map((s) => (
                           <div key={s.id}
                             className="absolute top-0.5 bottom-0.5 rounded bg-violet-500/70 border border-violet-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
@@ -2439,7 +2502,7 @@ export default function AdminEditorVideo() {
                       </div>
                     )}
                     {pipClips.length > 0 && (
-                      <div className="relative h-7 rounded border bg-rose-500/5 overflow-hidden">
+                      <div className={`relative h-7 rounded border bg-rose-500/5 overflow-hidden ${faixaOculta("pip") ? "opacity-40" : ""}`}>
                         {pipClips.map((p) => (
                           <div key={p.id}
                             className="absolute top-0.5 bottom-0.5 rounded bg-rose-500/70 border border-rose-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
@@ -2456,7 +2519,7 @@ export default function AdminEditorVideo() {
                       </div>
                     )}
                     {audioClips.length > 0 && (
-                      <div className="relative h-7 rounded border bg-sky-500/5 overflow-hidden">
+                      <div className={`relative h-7 rounded border bg-sky-500/5 overflow-hidden ${faixaOculta("audio") ? "opacity-40" : ""}`}>
                         {audioClips.map((c) => (
                           <div key={c.id}
                             className="absolute top-0.5 bottom-0.5 rounded bg-sky-500/70 border border-sky-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
@@ -2911,7 +2974,11 @@ export default function AdminEditorVideo() {
                           onPointerDown={checkpoint}
                           onChange={(e) => applyLive((d) => ({ pipClips: d.pipClips.map((x) => (x.id === p.id ? { ...x, opacity: Number(e.target.value) } : x)) }))} />
                       </label>
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive ml-auto"
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground ml-auto"
+                        title="Duplicar este clipe" onClick={() => duplicarPip(p.id)}>
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive"
                         onClick={() => apply((d) => ({ pipClips: d.pipClips.filter((x) => x.id !== p.id) }))}>
                         <Trash2 className="h-3 w-3" />
                       </Button>

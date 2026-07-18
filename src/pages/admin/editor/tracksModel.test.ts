@@ -10,7 +10,7 @@
 import { describe, it, expect } from "vitest";
 import { timelineFinalDe, origToFinal, docFlatToTracks, type VideoClip, type TextClip, type AudioClipT } from "./tracksModel";
 import { emptyDoc, type EditorDoc } from "./documentReducer";
-import { snapshotFromStored } from "./serialize";
+import { snapshotFromStored, aplicarFaixasOcultas } from "./serialize";
 import type { Segment } from "./types";
 
 const seg = (id: number, start: number, end: number, keep: boolean, speed = 1): Segment =>
@@ -196,6 +196,25 @@ describe("PiP de vídeo (Fase F) — faixa 'pip', span contínuo como o áudio",
     expect(c.volume).toBeCloseTo(0.5, 3);
     expect(c.transform.opacidade).toBeCloseTo(0.9, 3);
     expect(c.loop).toBe(false);
+  });
+});
+
+describe("aplicarFaixasOcultas (olhinho) — o que você vê é o que o render faz", () => {
+  it("faixa oculta sai do doc efetivo; conteúdo original fica intacto", () => {
+    const doc: EditorDoc = {
+      ...emptyDoc(),
+      subsOn: true, cues: [{ start: 1, end: 2, text: "olá" }],
+      titles: [{ id: "1", start: 0, end: 2, text: "t", font_id: "bevietnam",
+                 size: "m", color: "#FFF", style: "outline", position: "center" }],
+      trackFlags: { text: { hidden: true }, subs: { hidden: true } },
+    };
+    const efetivo = aplicarFaixasOcultas(doc);
+    expect(efetivo.titles).toHaveLength(0);
+    expect(efetivo.subsOn).toBe(false);
+    expect(doc.titles).toHaveLength(1);   // o guardado não muda
+    expect(doc.cues).toHaveLength(1);
+    // sem flag = passa direto (mesma referência, zero custo)
+    expect(aplicarFaixasOcultas({ ...doc, trackFlags: {} }).titles).toHaveLength(1);
   });
 });
 

@@ -20,7 +20,7 @@ const PASSOS = [
   {
     icone: "🎬",
     titulo: "Bem-vinda ao Editor de Vídeo",
-    texto: "Edite seus vídeos aqui, sem instalar nada. Em 5 telas rápidas eu te mostro o essencial — depois é só criar.",
+    texto: "Um editor multi-faixa completo, direto no navegador — sem instalar nada. Em poucas telas eu te mostro o essencial; depois é só criar.",
   },
   {
     icone: "📁",
@@ -30,16 +30,26 @@ const PASSOS = [
   {
     icone: "✂️",
     titulo: "2. Corte na linha do tempo",
-    texto: "Clique na timeline pra posicionar o cursor, divida e remova os trechos que não quiser. Com pressa? Peça pra IA tirar as pausas e os erros por você.",
+    texto: "Clique na timeline pra posicionar o cursor, divida e remova o que não quiser. Use o zoom (+) pra cortar com precisão — a fita cresce e mostra mais quadros. Com pressa? Peça pra IA tirar as pausas e os erros.",
+  },
+  {
+    icone: "🎞️",
+    titulo: "3. Monte pelas faixas",
+    texto: "Cada conteúdo vira uma FAIXA na timeline: legendas, textos, stickers e áudios são blocos que você arrasta e estica. A barra \"Adicionar:\" cria tudo; o olhinho de cada faixa esconde ela da prévia E do vídeo final — sem apagar nada.",
+  },
+  {
+    icone: "📺",
+    titulo: "4. Vídeo sobre vídeo (PiP)",
+    texto: "\"+ Vídeo (PiP)\" coloca um segundo vídeo em janela sobre o principal — reação, ilustração, antes/depois. Arraste no player pra posicionar; tamanho, transparência e som próprios (ele começa mudo).",
   },
   {
     icone: "🎨",
-    titulo: "3. Deixe com a sua cara",
-    texto: "Legendas automáticas da sua fala (com karaokê!), textos animados, música de fundo, filtros de cor e efeitos. Tudo aparece na tela na hora — o que você vê é o que sai.",
+    titulo: "5. Deixe com a sua cara",
+    texto: "Legendas automáticas da sua fala (com karaokê!), textos animados, música com ducking, filtros de cor e efeitos. Clique no vídeo pra tocar/pausar — o que você vê na prévia é o que sai no final.",
   },
   {
     icone: "📤",
-    titulo: "4. Renderize e exporte",
+    titulo: "6. Renderize e exporte",
     texto: "Clique em Renderizar e salvar. Depois é só exportar na proporção de cada rede — Reels, Feed ou YouTube — na qualidade e no formato que preferir.",
   },
 ];

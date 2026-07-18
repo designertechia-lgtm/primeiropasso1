@@ -1,3 +1,5 @@
+import { supabase } from "@/integrations/supabase/client";
+
 export interface ICalEvent {
   uid: string;
   summary: string;
@@ -167,10 +169,49 @@ export function parseIcal(text: string): ICalEvent[] {
   return events;
 }
 
+const GOOGLE_HOSTS = new Set(["calendar.google.com", "www.google.com"]);
+
+const ERRO_GENERICO =
+  "Não foi possível buscar o calendário. Verifique se o link está correto e público.";
+const ERRO_LINK_ERRADO =
+  'Esse link não é o endereço iCal do Google Agenda. Nas configurações do calendário, copie o "Endereço público no formato iCal" (termina em .ics).';
+const ERRO_NAO_PUBLICO =
+  'O Google não encontrou esse calendário. Verifique se ele está marcado como público e se o link é o "Endereço público no formato iCal".';
+
+// O Google mostra dois links na mesma tela e é comum colarem o de incorporação
+// (/calendar/embed?src=...) no lugar do iCal; quando o calendário é público dá
+// para derivar o .ics a partir do parâmetro src.
+export function normalizeIcalUrl(input: string): string {
+  const trimmed = input.trim();
+  try {
+    const u = new URL(trimmed);
+    const src = u.searchParams.get("src");
+    if (GOOGLE_HOSTS.has(u.hostname) && u.pathname.endsWith("/embed") && src) {
+      return `https://calendar.google.com/calendar/ical/${encodeURIComponent(src)}/public/basic.ics`;
+    }
+  } catch {
+    // não é uma URL válida; a edge devolve invalid_url e caímos na mensagem de link errado
+  }
+  return trimmed;
+}
+
 export async function fetchIcal(icalUrl: string): Promise<ICalEvent[]> {
-  const proxy = `https://corsproxy.io/?url=${encodeURIComponent(icalUrl)}`;
-  const res = await fetch(proxy);
-  if (!res.ok) throw new Error("Não foi possível buscar o calendário. Verifique se o link está correto e público.");
-  const text = await res.text();
+  const url = normalizeIcalUrl(icalUrl);
+  const { data, error } = await supabase.functions.invoke("ical-proxy", { body: { url } });
+  if (error) {
+    let detail: { error?: string; status?: number } = {};
+    try {
+      detail = (await (error as { context?: Response }).context?.json()) ?? {};
+    } catch {
+      // corpo não-JSON: fica a mensagem genérica
+    }
+    if (detail.error === "invalid_url" || detail.error === "host_not_allowed") {
+      throw new Error(ERRO_LINK_ERRADO);
+    }
+    if (detail.status === 404) throw new Error(ERRO_NAO_PUBLICO);
+    throw new Error(ERRO_GENERICO);
+  }
+  const text = String(data ?? "");
+  if (!text.includes("BEGIN:VCALENDAR")) throw new Error(ERRO_LINK_ERRADO);
   return parseIcal(text);
 }

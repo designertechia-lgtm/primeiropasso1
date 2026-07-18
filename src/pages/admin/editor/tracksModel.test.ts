@@ -175,6 +175,30 @@ describe("docFlatToTracks — doc flat v8 → faixas, tempos batendo com o motor
   });
 });
 
+describe("PiP de vídeo (Fase F) — faixa 'pip', span contínuo como o áudio", () => {
+  it("PiP começando em removido: src_in compensa e o span não estica", () => {
+    // pip [2.5,4.0] src_in 1.0: primeiro momento visível = 3.0 (final 2.0);
+    // compensa 0.5 → src_in 1.5; duração da janela (1.5s) SEM esticar no 0,5×
+    const doc: EditorDoc = {
+      ...emptyDoc(),
+      segments: [seg(1, 0, 2, true, 1), seg(2, 2, 3, false), seg(3, 3, 5, true, 0.5)],
+      pipClips: [{ id: "1", edit_id: "pipsrc", name: "reação", natural_dur: 6,
+                   source_url: "", start: 2.5, end: 4.0, src_in: 1.0,
+                   x_pct: 0.7, y_pct: 0.25, scale_pct: 0.35, opacity: 0.9, volume: 0.5 }],
+    };
+    const pip = docFlatToTracks(doc, "fonteA").find((t) => t.id === "pip")!;
+    expect(pip.clips).toHaveLength(1);
+    const c = pip.clips[0] as VideoClip;
+    expect(c.source_id).toBe("pipsrc");
+    expect(c.timeline_start).toBeCloseTo(2.0, 3);
+    expect(c.timeline_end).toBeCloseTo(3.5, 3);      // 1.5s naturais
+    expect(c.src_in).toBeCloseTo(1.5, 3);
+    expect(c.volume).toBeCloseTo(0.5, 3);
+    expect(c.transform.opacidade).toBeCloseTo(0.9, 3);
+    expect(c.loop).toBe(false);
+  });
+});
+
 describe("forward-compat: projeto salvo antes do multi-track não quebra", () => {
   it("doc v2 salvo SEM tracks volta com tracks:[] e o resto intacto", () => {
     // um snapshot v2 gravado hoje (sem os campos novos no doc)

@@ -25,7 +25,11 @@ export const EDITOR_STORAGE_KEY = "pp-editor-video";
 // de docFlatToTracks) e o worker renderiza pelo motor render_tracks, PROVADO
 // equivalente ao v8 em 7/7 casos (frames RMS 0.0, áudio 0,1 dB). Os campos v8
 // continuam no payload: são o FALLBACK automático se o v9 falhar no worker.
-export const EDITOR_CONTRACT_VERSION = 9;
+// v10: PiP de VÍDEO nas faixas (Fase F) — clipes de vídeo sobre o principal,
+// com trim/opacidade/áudio próprio; o fallback v8 NÃO expressa PiP (a rota não
+// cai no v8 quando há faixa "pip" — renderizar sem o vídeo sobreposto calado
+// seria pior que o erro).
+export const EDITOR_CONTRACT_VERSION = 10;
 
 // speed: velocidade do trecho (1 = normal, 0.5 = câmera lenta, 2 = acelerado).
 // Ausente = 1 (retrocompat com projetos salvos antes desta feature).
@@ -61,6 +65,26 @@ export type Title = {
   id: string; start: number; end: number; text: string; font_id: string;
   size: SubSize; color: string; style: SubStyle; position: TitlePos;
   anim_in?: AnimIn; anim_out?: AnimOut; anim_loop?: AnimLoop;
+};
+
+// PiP de VÍDEO (Fase F): um 2º vídeo SOBRE o principal. Tempos na timeline
+// ORIGINAL (como sticker/áudio — o adaptador remapeia); NÃO estica com a
+// velocidade do trecho (tem áudio próprio): vira 1 span contínuo a partir do
+// primeiro momento visível, como os clipes de áudio.
+export type PipClip = {
+  id: string;
+  edit_id: string;        // fonte no worker (draft próprio, como o vídeo principal)
+  name: string;
+  natural_dur: number;    // duração da fonte
+  source_url: string;     // URL re-carregável (galeria) — "" quando foi upload
+  start: number;          // janela na timeline ORIGINAL
+  end: number;
+  src_in: number;         // começa do segundo X da fonte
+  x_pct: number;          // centro na tela (fração)
+  y_pct: number;
+  scale_pct: number;      // fração da largura do vídeo
+  opacity: number;        // 0.2–1
+  volume: number;         // 0 = mudo (padrão: não competir com a voz principal)
 };
 
 export const ANIM_IN_OPTS: { id: AnimIn; label: string }[] = [

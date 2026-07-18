@@ -16,7 +16,7 @@
  *                        um arrasto) para o gesto inteiro virar 1 passo de undo.
  */
 import type {
-  AudioClip, Cue, Segment, Sticker, SubPos, SubSize, SubStyle, Title,
+  AudioClip, Cue, PipClip, Segment, Sticker, SubPos, SubSize, SubStyle, Title,
 } from "./types";
 
 export type EditorDoc = {
@@ -41,6 +41,8 @@ export type EditorDoc = {
   titles: Title[];
   stickers: Sticker[];
   audioClips: AudioClip[];
+  // PiP de vídeo (Fase F): 2º vídeo sobre o principal, timeline ORIGINAL
+  pipClips: PipClip[];
   transition: string;        // chave de TRANSICOES (editor/filtros.ts)
   filtro: string;            // chave de FILTROS (look de cor)
   efeito: string;            // chave de EFEITOS (textura/distorção)
@@ -84,6 +86,7 @@ export const emptyDoc = (): EditorDoc => ({
   titles: [],
   stickers: [],
   audioClips: [],
+  pipClips: [],
   transition: "none",
   filtro: "nenhum",
   efeito: "nenhum",
@@ -137,7 +140,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
             ? [{ id: 1, start: 0, end: action.duration, keep: true }]
             : [],
           cues: [], words: [], subsOn: false,
-          titles: [], stickers: [], audioClips: [],
+          titles: [], stickers: [], audioClips: [], pipClips: [],
         },
         past: [],
       };

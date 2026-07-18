@@ -81,7 +81,7 @@ export default function AdminEditorVideo() {
   const {
     segments, musicId, musicUploadId, musicUploadName, musicVolume,
     originalVolume, fadeOut, fadeIn, denoise, subsOn, cues, words, cueMode, subFont, subSize,
-    subColor, subStyle, subPos, titles, stickers, audioClips, transition,
+    subColor, subStyle, subPos, titles, stickers, audioClips, pipClips, transition,
     filtro, efeito, ducking, punchIn, introOn, introSource, introUploadId,
     introUploadName, introDur, introBg, introEffect, titulo,
   } = doc;
@@ -138,6 +138,9 @@ export default function AdminEditorVideo() {
   const [cutStart, setCutStart] = useState("");   // caixinha FIXA de corte por tempo
   const [cutEnd, setCutEnd] = useState("");
   const [previewEdit, setPreviewEdit] = useState(true);   // play pula trechos removidos
+  // PiP de vídeo (Fase F): diálogo de escolha do 2º vídeo
+  const [pipDialogOpen, setPipDialogOpen] = useState(false);
+  const [pipLoading, setPipLoading] = useState(false);
 
   const [musicas, setMusicas] = useState<{ id: string; label: string }[]>([]);
   const [previewingTrack, setPreviewingTrack] = useState("");
@@ -183,8 +186,10 @@ export default function AdminEditorVideo() {
   const gravTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const metaRef = useRef<EditMeta | null>(null);
   const clipAudiosRef = useRef<Map<string, HTMLAudioElement>>(new Map());
-  const trackDragRef = useRef<{ kind: "sticker" | "audio" | "title" | "cue"; id: string; mode: "move" | "resize"; grab: number } | null>(null);
+  const trackDragRef = useRef<{ kind: "sticker" | "audio" | "title" | "cue" | "pip"; id: string; mode: "move" | "resize"; grab: number } | null>(null);
   const stickerDragRef = useRef<string | null>(null);
+  const pipDragRef = useRef<string | null>(null);
+  const pipVideosRef = useRef<Map<string, HTMLVideoElement>>(new Map());
   const stickerPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const criandoProjetoRef = useRef(false);
@@ -805,6 +810,41 @@ export default function AdminEditorVideo() {
     }
   };
 
+  // ── PiP: vídeo SOBRE o vídeo (Fase F) ─────────────────────────────────────
+  // O 2º vídeo vira um draft próprio no worker (mesmo /editor/carregar do
+  // principal — SEM replace_edit_id, para não descartar a fonte principal) e
+  // entra como clipe no cursor. Som começa MUDO de propósito: o caso comum é
+  // vídeo de reação/ilustração sobre a fala — áudio duplo estraga; ligar o som
+  // é um clique no painel do clipe.
+  const adicionarPip = async (form: FormData, label: string, srcUrl = "") => {
+    if (!meta) return;
+    setPipLoading(true);
+    try {
+      const res = await fetch(`${API}/editor/carregar`, {
+        method: "POST", body: form, headers: await videoApiAuthHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Falha ao carregar o vídeo");
+      const dur = Math.min(5, data.duration);
+      const start = Math.max(0, Math.min(playhead, meta.duration - dur));
+      apply((d) => ({
+        pipClips: [...d.pipClips, {
+          id: newId(), edit_id: data.edit_id, name: label,
+          natural_dur: data.duration, source_url: srcUrl,
+          start, end: Math.min(meta.duration, start + dur),
+          src_in: 0, x_pct: 0.72, y_pct: 0.22, scale_pct: 0.35,
+          opacity: 1, volume: 0,
+        }],
+      }));
+      setPipDialogOpen(false);
+      toast.success("Vídeo sobreposto adicionado no cursor — arraste no player para posicionar. O som dele começa mudo (ajuste no painel).", { duration: 7000 });
+    } catch (e: any) {
+      toast.error(e.message, { duration: 7000 });
+    } finally {
+      setPipLoading(false);
+    }
+  };
+
   // ── projetos salvos ────────────────────────────────────────────────────────
   const abrirProjeto = async (id: number) => {
     if (loadingSource) return;
@@ -931,8 +971,9 @@ export default function AdminEditorVideo() {
     for (const t of titles) pts.push({ t: t.start, dono: `tit${t.id}` }, { t: t.end, dono: `tit${t.id}` });
     if (subsOn) cues.forEach((c, i) =>
       pts.push({ t: c.start, dono: `cue${i}` }, { t: c.end, dono: `cue${i}` }));
+    for (const p of pipClips) pts.push({ t: p.start, dono: `pip${p.id}` }, { t: p.end, dono: `pip${p.id}` });
     return pts;
-  }, [meta, playhead, segments, stickers, audioClips, titles, cues, subsOn]);
+  }, [meta, playhead, segments, stickers, audioClips, titles, cues, subsOn, pipClips]);
 
   /** Cola `t` no ponto notável mais próximo (tolerância de 8px, convertida para
    *  segundos pela escala atual — no zoom a régua fica mais fina, então a
@@ -1454,12 +1495,13 @@ export default function AdminEditorVideo() {
   // checkpoint() no início: o gesto INTEIRO vira 1 passo de Desfazer.
   // "cue" = legenda na timeline (id = ÍNDICE em doc.cues — cue não tem id
   // próprio; o índice é estável durante o gesto, o array não reordena no drag)
-  const onTrackDown = (e: React.PointerEvent, kind: "sticker" | "audio" | "title" | "cue", id: string, mode: "move" | "resize") => {
+  const onTrackDown = (e: React.PointerEvent, kind: "sticker" | "audio" | "title" | "cue" | "pip", id: string, mode: "move" | "resize") => {
     e.stopPropagation();
     e.preventDefault();
     const item = kind === "sticker" ? stickers.find((s) => s.id === id)
       : kind === "audio" ? audioClips.find((c) => c.id === id)
       : kind === "cue" ? cues[Number(id)]
+      : kind === "pip" ? pipClips.find((p) => p.id === id)
       : titles.find((t) => t.id === id);
     if (!item || !meta) return;
     checkpoint();
@@ -1473,12 +1515,13 @@ export default function AdminEditorVideo() {
     const item = d.kind === "sticker" ? stickers.find((s) => s.id === d.id)
       : d.kind === "audio" ? audioClips.find((c) => c.id === d.id)
       : d.kind === "cue" ? cues[Number(d.id)]
+      : d.kind === "pip" ? pipClips.find((p) => p.id === d.id)
       : titles.find((t) => t.id === d.id);
     if (!item) return;
     const t = posFromEvent(e.clientX);
     // snap calculado FORA do reducer (o updater precisa ser puro); o próprio
     // item sai por IDENTIDADE — por valor ele se auto-excluiria ao grudar
-    const eu = [`${d.kind === "sticker" ? "stk" : d.kind === "audio" ? "aud" : d.kind === "cue" ? "cue" : "tit"}${d.id}`];
+    const eu = [`${d.kind === "sticker" ? "stk" : d.kind === "audio" ? "aud" : d.kind === "cue" ? "cue" : d.kind === "pip" ? "pip" : "tit"}${d.id}`];
     let novo: { start: number; end: number };
     let guide: number | null = null;
     if (d.mode === "move") {
@@ -1505,15 +1548,20 @@ export default function AdminEditorVideo() {
     } else {
       const r = calcSnap(t, eu);
       let ne = Math.max(item.start + 0.3, Math.min(meta.duration, r.t));
-      // áudio não estica além do arquivo; sticker/texto podem (loop/tempo em tela)
+      // áudio/PiP não esticam além do arquivo; sticker/texto podem (loop/tela)
       const nat = (item as { natural_dur?: number }).natural_dur;
       if (d.kind === "audio") ne = Math.min(ne, item.start + (nat || 9999));
+      if (d.kind === "pip") {
+        const offset = (item as { src_in?: number }).src_in || 0;
+        ne = Math.min(ne, item.start + Math.max(0.3, (nat || 9999) - offset));
+      }
       guide = Math.abs(ne - r.t) < 1e-6 ? r.guide : null;   // clamp desfez o snap
       novo = { start: item.start, end: ne };
     }
     setSnapGuide(guide);
     if (d.kind === "sticker") applyLive((dd) => ({ stickers: dd.stickers.map((s) => (s.id === d.id ? { ...s, ...novo } : s)) }));
     else if (d.kind === "audio") applyLive((dd) => ({ audioClips: dd.audioClips.map((c) => (c.id === d.id ? { ...c, ...novo } : c)) }));
+    else if (d.kind === "pip") applyLive((dd) => ({ pipClips: dd.pipClips.map((p) => (p.id === d.id ? { ...p, ...novo } : p)) }));
     else if (d.kind === "cue") {
       const idx = Number(d.id);
       applyLive((dd) => {
@@ -1560,6 +1608,28 @@ export default function AdminEditorVideo() {
     }));
   };
   const onStickerPreviewUp = () => { stickerDragRef.current = null; };
+
+  // Arrasto do PiP DENTRO do player (posicionamento visual, como o sticker)
+  const onPipPreviewDown = (e: React.PointerEvent, id: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    checkpoint();
+    pipDragRef.current = id;
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+  };
+  const onPipPreviewMove = (e: React.PointerEvent) => {
+    const id = pipDragRef.current;
+    if (id === null || !videoWrapRef.current || !contentRect) return;
+    const rect = videoWrapRef.current.getBoundingClientRect();
+    const x = (e.clientX - rect.left - contentRect.left) / contentRect.w;
+    const y = (e.clientY - rect.top - contentRect.top) / contentRect.h;
+    applyLive((d) => ({
+      pipClips: d.pipClips.map((p) => (p.id === id
+        ? { ...p, x_pct: Math.max(0, Math.min(1, x)), y_pct: Math.max(0, Math.min(1, y)) }
+        : p)),
+    }));
+  };
+  const onPipPreviewUp = () => { pipDragRef.current = null; };
 
   // meta acessível em callbacks de polling (não pode ler state velho)
   useEffect(() => { metaRef.current = meta; }, [meta]);
@@ -1641,6 +1711,32 @@ export default function AdminEditorVideo() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playhead, audioClips, clock.playing]);
+
+  // Prévia do PiP: o relógio mestre comanda cada vídeo sobreposto (é o pool da
+  // Fase C em ação — mesma tolerância/ritmo dos clipes de áudio: segue o
+  // playhead para não gaguejar; no render ele toca natural)
+  useEffect(() => {
+    for (const p of pipClips) {
+      const el = pipVideosRef.current.get(p.id);
+      if (!el) continue;
+      const naJanela = playhead >= p.start && playhead < p.end;
+      el.volume = Math.max(0, Math.min(1, p.volume));
+      el.muted = p.volume <= 0.01;
+      if (naJanela) {
+        const spSeg = previewEdit
+          ? (segments.find((s) => s.keep && playhead >= s.start && playhead < s.end)?.speed ?? 1)
+          : 1;
+        if (Math.abs(el.playbackRate - spSeg) > 1e-3) el.playbackRate = spSeg;
+        const want = p.src_in + (playhead - p.start);
+        if (Math.abs((el.currentTime || 0) - want) > 0.4) el.currentTime = want;
+        if (clock.playing && el.paused) el.play().catch(() => {});
+        if (!clock.playing && !el.paused) el.pause();
+      } else if (!el.paused) {
+        el.pause();
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playhead, pipClips, clock.playing, previewEdit, segments]);
 
   const activeStickers = meta
     ? stickers.filter((s) => playhead >= s.start && playhead <= s.end)
@@ -2006,6 +2102,33 @@ export default function AdminEditorVideo() {
                         onPointerMove={onStickerPreviewMove} onPointerUp={onStickerPreviewUp} />
                     );
                   })}
+                  {/* PiP: vídeo sobre o vídeo (Fase F) — comandado pelo relógio
+                      mestre; arraste para posicionar. Acima dos stickers e
+                      abaixo das legendas, como no motor. */}
+                  {contentRect && pipClips
+                    .filter((p) => playhead >= p.start && playhead <= p.end)
+                    .map((p) => (
+                      <video key={p.id}
+                        ref={(el) => {
+                          if (el) pipVideosRef.current.set(p.id, el);
+                          else pipVideosRef.current.delete(p.id);
+                        }}
+                        src={p.source_url || `${API}/editor/video/${p.edit_id}`}
+                        muted={p.volume <= 0.01} playsInline preload="auto"
+                        style={{
+                          position: "absolute",
+                          left: contentRect.left + p.x_pct * contentRect.w,
+                          top: contentRect.top + p.y_pct * contentRect.h,
+                          width: contentRect.w * p.scale_pct,
+                          opacity: p.opacity,
+                          transform: "translate(-50%,-50%)",
+                          borderRadius: 6,
+                          cursor: "grab",
+                          touchAction: "none",
+                        }}
+                        onPointerDown={(e) => onPipPreviewDown(e, p.id)}
+                        onPointerMove={onPipPreviewMove} onPointerUp={onPipPreviewUp} />
+                    ))}
                   {/* prévia de legendas/textos/selos: desenhada como o ffmpeg
                       desenha (mesma régua de estilo). Fica ACIMA dos stickers,
                       como no motor, e não intercepta o mouse (o sticker embaixo
@@ -2150,6 +2273,11 @@ export default function AdminEditorVideo() {
                     {stickers.length > 0 && (
                       <div className="flex h-7 items-center gap-1 rounded border bg-violet-500/10 px-1.5 text-[9px] text-muted-foreground">
                         <ImageIcon className="h-3 w-3 shrink-0" /> <span className="truncate">Sticker</span>
+                      </div>
+                    )}
+                    {pipClips.length > 0 && (
+                      <div className="flex h-7 items-center gap-1 rounded border bg-rose-500/10 px-1.5 text-[9px] text-muted-foreground">
+                        <Clapperboard className="h-3 w-3 shrink-0" /> <span className="truncate">Vídeo 2</span>
                       </div>
                     )}
                     {audioClips.length > 0 && (
@@ -2310,6 +2438,23 @@ export default function AdminEditorVideo() {
                         ))}
                       </div>
                     )}
+                    {pipClips.length > 0 && (
+                      <div className="relative h-7 rounded border bg-rose-500/5 overflow-hidden">
+                        {pipClips.map((p) => (
+                          <div key={p.id}
+                            className="absolute top-0.5 bottom-0.5 rounded bg-rose-500/70 border border-rose-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
+                            style={{ left: `${(p.start / meta.duration) * 100}%`, width: `${Math.max(1.2, ((p.end - p.start) / meta.duration) * 100)}%`, touchAction: "none" }}
+                            title={`${p.name} · ${fmt(p.start)}–${fmt(p.end)} — arraste pra mover; borda direita estica`}
+                            onPointerDown={(e) => onTrackDown(e, "pip", p.id, "move")}
+                            onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
+                            <span className="truncate pointer-events-none">▶ {p.name}</span>
+                            <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/40"
+                              style={{ touchAction: "none" }}
+                              onPointerDown={(e) => onTrackDown(e, "pip", p.id, "resize")} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {audioClips.length > 0 && (
                       <div className="relative h-7 rounded border bg-sky-500/5 overflow-hidden">
                         {audioClips.map((c) => (
@@ -2345,11 +2490,59 @@ export default function AdminEditorVideo() {
                     onClick={() => irParaSecao("sec-audio")}><Headphones className="h-3 w-3" /> Narração/efeito</Button>
                   <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1"
                     onClick={() => irParaSecao("sec-musica")}><Music className="h-3 w-3" /> Música</Button>
-                  <Button size="sm" variant="ghost" disabled className="h-6 px-2 text-[10px] gap-1"
-                    title="Vídeo sobre vídeo (PiP) — chega na próxima fase do multi-track">
-                    <Clapperboard className="h-3 w-3" /> + Vídeo (em breve)
+                  <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1 border-rose-300/60"
+                    title="Vídeo SOBRE o vídeo (PiP): um 2º vídeo em janela, com posição e som próprios"
+                    onClick={() => setPipDialogOpen(true)}>
+                    <Clapperboard className="h-3 w-3" /> + Vídeo (PiP)
                   </Button>
                 </div>
+
+                {/* Escolha do 2º vídeo (PiP): galeria ou upload */}
+                {pipDialogOpen && (
+                  <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+                    onClick={() => !pipLoading && setPipDialogOpen(false)}>
+                    <div className="w-full max-w-sm rounded-xl border bg-background p-4 space-y-3 shadow-lg"
+                      onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-2">
+                        <Clapperboard className="h-4 w-4 text-primary" />
+                        <span className="font-semibold text-sm">Vídeo sobre o vídeo (PiP)</span>
+                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0 ml-auto"
+                          disabled={pipLoading} onClick={() => setPipDialogOpen(false)}>✕</Button>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Entra no cursor ({fmt(playhead)}) como uma janela sobre o vídeo —
+                        arraste no player para posicionar; mova/estique na faixa rosa.
+                      </p>
+                      <label className="flex items-center justify-center gap-2 rounded-lg border-2 border-dashed p-2.5 text-xs cursor-pointer hover:border-primary/60 transition">
+                        {pipLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                        Enviar vídeo do computador
+                        <input type="file" className="hidden"
+                          accept="video/mp4,video/quicktime,video/webm,video/x-matroska"
+                          disabled={pipLoading}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) { const fd = new FormData(); fd.append("file", f); adicionarPip(fd, f.name.replace(/\.[^.]+$/, "")); }
+                            e.target.value = "";
+                          }} />
+                      </label>
+                      <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
+                        {mp4Videos.length === 0 && (
+                          <p className="text-xs text-muted-foreground">Sem vídeos na galeria — envie um arquivo acima.</p>
+                        )}
+                        {mp4Videos.map((v: any) => (
+                          <button key={v.id} type="button" disabled={pipLoading}
+                            onClick={() => { const fd = new FormData(); fd.append("video_url", v.embed_url); adicionarPip(fd, v.title || "Vídeo da galeria", v.embed_url); }}
+                            className="w-full flex items-center gap-2 rounded-lg border p-1.5 text-left text-xs hover:border-primary/60 transition">
+                            {v.thumbnail_url
+                              ? <img src={v.thumbnail_url} className="h-10 w-7 rounded object-cover shrink-0" alt="" />
+                              : <div className="h-10 w-7 rounded bg-muted flex items-center justify-center shrink-0"><VideoIcon className="h-3.5 w-3.5" /></div>}
+                            <span className="truncate">{v.title || "Sem título"}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {activeSeg && (
                   <div className="flex items-center gap-2 flex-wrap rounded-lg border bg-muted/30 px-3 py-2 text-xs">
@@ -2675,6 +2868,57 @@ export default function AdminEditorVideo() {
                   </div>
                 ))}
               </div>
+
+              {/* PiP: vídeo sobre o vídeo (Fase F) */}
+              {pipClips.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="font-semibold flex items-center gap-2"><Clapperboard className="h-4 w-4" /> Vídeo sobre o vídeo (PiP)</Label>
+                  {pipClips.map((p) => (
+                    <div key={p.id} className="flex items-center gap-1.5 text-xs flex-wrap rounded border px-2 py-1">
+                      <span className="truncate max-w-32 font-medium">{p.name}</span>
+                      <span className="tabular-nums text-muted-foreground">{fmt(p.start)}–{fmt(p.end)}</span>
+                      <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px] text-muted-foreground"
+                        title="Leva o começo do clipe até o cursor"
+                        onClick={() => apply((d) => ({ pipClips: d.pipClips.map((x) => (x.id === p.id
+                          ? { ...x, start: playhead, end: Math.min(meta.duration, playhead + (x.end - x.start)) } : x)) }))}>
+                        → cursor
+                      </Button>
+                      <label className="flex items-center gap-1" title="Começar do segundo X do vídeo sobreposto">
+                        a partir de
+                        <Input type="number" min={0} step={0.5} max={Math.max(0, p.natural_dur - 0.3)}
+                          value={p.src_in} className="h-7 w-14 text-xs tabular-nums" onFocus={checkpoint}
+                          onChange={(e) => {
+                            if (e.target.value === "") return;
+                            const v = Math.max(0, Math.min(p.natural_dur - 0.3, Number(e.target.value)));
+                            applyLive((d) => ({ pipClips: d.pipClips.map((x) => (x.id === p.id ? { ...x, src_in: v } : x)) }));
+                          }} />s
+                      </label>
+                      <select className="h-7 rounded border bg-background px-1" value={p.scale_pct}
+                        onChange={(e) => apply((d) => ({ pipClips: d.pipClips.map((x) => (x.id === p.id ? { ...x, scale_pct: Number(e.target.value) } : x)) }))}>
+                        <option value={0.25}>Pequeno</option>
+                        <option value={0.35}>Médio</option>
+                        <option value={0.5}>Grande</option>
+                        {![0.25, 0.35, 0.5].includes(p.scale_pct) && <option value={p.scale_pct} disabled>Personalizado</option>}
+                      </select>
+                      <label className="flex items-center gap-1" title="Volume do áudio do vídeo sobreposto (0 = mudo)">
+                        <Volume2 className="h-3.5 w-3.5 text-muted-foreground" />
+                        <input type="range" min={0} max={1} step={0.05} value={p.volume} className="w-14"
+                          onPointerDown={checkpoint}
+                          onChange={(e) => applyLive((d) => ({ pipClips: d.pipClips.map((x) => (x.id === p.id ? { ...x, volume: Number(e.target.value) } : x)) }))} />
+                      </label>
+                      <label className="flex items-center gap-1" title="Opacidade da janela">
+                        <input type="range" min={0.2} max={1} step={0.05} value={p.opacity} className="w-14"
+                          onPointerDown={checkpoint}
+                          onChange={(e) => applyLive((d) => ({ pipClips: d.pipClips.map((x) => (x.id === p.id ? { ...x, opacity: Number(e.target.value) } : x)) }))} />
+                      </label>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive ml-auto"
+                        onClick={() => apply((d) => ({ pipClips: d.pipClips.filter((x) => x.id !== p.id) }))}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Clipes de áudio posicionados */}
               <div className="space-y-2">

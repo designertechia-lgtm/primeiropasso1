@@ -16,7 +16,7 @@
  */
 import { XFADE_DUR } from "./types";
 import type {
-  Segment, Cue, Title, Sticker, AudioClip, SubSize, SubStyle, TitlePos,
+  Segment, Cue, Title, Sticker, AudioClip, PipClip, SubSize, SubStyle, TitlePos,
   AnimIn, AnimOut, AnimLoop,
 } from "./types";
 import type { EditorDoc } from "./documentReducer";
@@ -263,10 +263,37 @@ export function docFlatToTracks(doc: EditorDoc, sourceId: string): Track[] {
     }
   }
 
+  // PiP de VÍDEO (Fase F): como o clipe de áudio (estica=False) — 1 span
+  // contínuo a partir do primeiro momento visível, duração da janela original,
+  // src_in compensa o pedaço que caiu em trecho removido. NÃO estica com a
+  // velocidade (o áudio próprio soaria grave).
+  const userPips: VideoClip[] = [];
+  for (const p of (doc.pipClips ?? []) as PipClip[]) {
+    for (const { seg, finalStart, speed } of segs) {
+      const a = Math.max(p.start, seg.start);
+      const b = Math.min(p.end, seg.end);
+      if (b - a < 0.15) continue;
+      const compensa = Math.round((a - p.start) * 1000) / 1000;
+      const ini = (a - seg.start) / speed + finalStart;
+      userPips.push({
+        id: uid("p", userPips.length), kind: "video", source_id: p.edit_id,
+        src_in: p.src_in + compensa,
+        src_out: p.src_in + compensa + (p.end - p.start),
+        speed: 1, volume: p.volume,
+        timeline_start: ini, timeline_end: ini + (p.end - p.start),
+        transform: { x: p.x_pct, y: p.y_pct, escala: p.scale_pct,
+                     opacidade: p.opacity, giro: 0 },
+        filtro: "nenhum", efeito: "nenhum", loop: false,
+      });
+      break;   // 1 span por clipe (como remap_spans estica=False)
+    }
+  }
+
   const tracks: Track[] = [{ id: "video-base", kind: "video", z: 0, clips: videoBase }];
   if (stickerClips.length) tracks.push({ id: "video-pip", kind: "video", z: 1, clips: stickerClips });
-  if (textClips.length) tracks.push({ id: "text", kind: "text", z: 2, clips: textClips });
-  if (subClips.length) tracks.push({ id: "subs", kind: "text", z: 3, clips: subClips });
+  if (userPips.length) tracks.push({ id: "pip", kind: "video", z: 2, clips: userPips });
+  if (textClips.length) tracks.push({ id: "text", kind: "text", z: 3, clips: textClips });
+  if (subClips.length) tracks.push({ id: "subs", kind: "text", z: 4, clips: subClips });
   if (audioClips.length) tracks.push({ id: "audio", kind: "audio", z: 0, clips: audioClips });
   return tracks;
 }

@@ -25,6 +25,7 @@ function normalizeDoc(d: EditorDoc): EditorDoc {
     stickers: (d.stickers || []).map((s) => (s.id ? { ...s, id: String(s.id) } : { ...s, id: newId() })),
     audioClips: (d.audioClips || []).map((c) => (c.id ? { ...c, id: String(c.id) } : { ...c, id: newId() })),
     pipClips: (d.pipClips || []).map((p) => (p.id ? p : { ...p, id: newId() })),
+    seqClips: (d.seqClips || []).map((c) => (c.id ? c : { ...c, id: newId() })),
   };
 }
 

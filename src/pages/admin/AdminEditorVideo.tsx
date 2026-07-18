@@ -82,7 +82,7 @@ export default function AdminEditorVideo() {
   const {
     segments, musicId, musicUploadId, musicUploadName, musicVolume,
     originalVolume, fadeOut, fadeIn, denoise, subsOn, cues, words, cueMode, subFont, subSize,
-    subColor, subStyle, subPos, titles, stickers, audioClips, pipClips, transition,
+    subColor, subStyle, subPos, titles, stickers, audioClips, pipClips, seqClips, transition,
     filtro, efeito, ducking, punchIn, introOn, introSource, introUploadId,
     introUploadName, introDur, introBg, introEffect, titulo,
   } = doc;
@@ -139,8 +139,8 @@ export default function AdminEditorVideo() {
   const [cutStart, setCutStart] = useState("");   // caixinha FIXA de corte por tempo
   const [cutEnd, setCutEnd] = useState("");
   const [previewEdit, setPreviewEdit] = useState(true);   // play pula trechos removidos
-  // PiP de vídeo (Fase F): diálogo de escolha do 2º vídeo
-  const [pipDialogOpen, setPipDialogOpen] = useState(false);
+  // Diálogo de escolha de um 2º vídeo: "pip" (sobre o vídeo) ou "seq" (no fim)
+  const [dialogVideo, setDialogVideo] = useState<null | "pip" | "seq">(null);
   const [pipLoading, setPipLoading] = useState(false);
 
   const [musicas, setMusicas] = useState<{ id: string; label: string }[]>([]);
@@ -837,8 +837,36 @@ export default function AdminEditorVideo() {
           opacity: 1, volume: 0,
         }],
       }));
-      setPipDialogOpen(false);
+      setDialogVideo(null);
       toast.success("Vídeo sobreposto adicionado no cursor — arraste no player para posicionar. O som dele começa mudo (ajuste no painel).", { duration: 7000 });
+    } catch (e: any) {
+      toast.error(e.message, { duration: 7000 });
+    } finally {
+      setPipLoading(false);
+    }
+  };
+
+  // Vídeo EMENDADO no fim (sequência): draft próprio, entra depois do vídeo
+  // principal na faixa base. A prévia do trecho emendado (como a da capa de
+  // entrada) chega na próxima leva — o RENDER já sai completo.
+  const adicionarSeq = async (form: FormData, label: string, srcUrl = "") => {
+    if (!meta) return;
+    setPipLoading(true);
+    try {
+      const res = await fetch(`${API}/editor/carregar`, {
+        method: "POST", body: form, headers: await videoApiAuthHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Falha ao carregar o vídeo");
+      apply((d) => ({
+        seqClips: [...d.seqClips, {
+          id: newId(), edit_id: data.edit_id, name: label,
+          natural_dur: data.duration, source_url: srcUrl,
+          src_in: 0, src_out: data.duration,
+        }],
+      }));
+      setDialogVideo(null);
+      toast.success("Vídeo emendado no FIM da edição — ajuste o trecho em \"Vídeos em sequência\". O render sai completo; a prévia do trecho emendado chega em breve.", { duration: 8000 });
     } catch (e: any) {
       toast.error(e.message, { duration: 7000 });
     } finally {
@@ -1192,8 +1220,11 @@ export default function AdminEditorVideo() {
   };
 
   const keepSegments = segments.filter((s) => s.keep);
-  // duração REAL: câmera lenta (0,5×) dobra o tempo do trecho, acelerado encurta
-  const finalDuration = keepSegments.reduce((a, s) => a + (s.end - s.start) / (s.speed ?? 1), 0);
+  // duração REAL: câmera lenta (0,5×) dobra o tempo do trecho, acelerado
+  // encurta; vídeos EMENDADOS no fim somam (o desconto do crossfade por
+  // emenda é pequeno e o contador histórico nunca o considerou)
+  const seqDur = seqClips.reduce((a, c) => a + Math.max(0, c.src_out - c.src_in), 0);
+  const finalDuration = keepSegments.reduce((a, s) => a + (s.end - s.start) / (s.speed ?? 1), 0) + seqDur;
 
   // ── cortar com IA ──────────────────────────────────────────────────────────
   const applyAiSegments = (keeps: { start: number; end: number }[]) => {
@@ -1839,17 +1870,21 @@ export default function AdminEditorVideo() {
       // (source_url) e troca o edit_id no doc. Upload local expirado não tem
       // de onde voltar: erro claro em vez de job quebrado.
       let docRender = doc;
-      if (docPrevia.pipClips.length) {
+      const clipesExternos = [
+        ...docPrevia.pipClips.map((x) => ({ ...x, _tipo: "pip" as const })),
+        ...seqClips.map((x) => ({ ...x, _tipo: "seq" as const })),
+      ];
+      if (clipesExternos.length) {
         const trocas = new Map<string, string>();
-        for (const p of docPrevia.pipClips) {
+        for (const p of clipesExternos) {
           try {
             const ping = await fetch(`${API}/editor/video/${p.edit_id}`, { method: "HEAD" });
             if (ping.ok) continue;
           } catch { /* rede — tenta a recarga mesmo assim */ }
           if (!p.source_url) {
-            throw new Error(`O vídeo sobreposto "${p.name}" expirou no servidor — exclua o clipe e envie o arquivo de novo.`);
+            throw new Error(`O vídeo "${p.name}" expirou no servidor — exclua o clipe e envie o arquivo de novo.`);
           }
-          setRenderStep(`Recarregando o vídeo sobreposto "${p.name}"...`);
+          setRenderStep(`Recarregando o vídeo "${p.name}"...`);
           const fd = new FormData();
           fd.append("video_url", p.source_url);
           const r = await fetch(`${API}/editor/carregar`, {
@@ -1857,12 +1892,13 @@ export default function AdminEditorVideo() {
           });
           const d2 = await r.json();
           if (!r.ok) throw new Error(d2.detail || `Não consegui recarregar "${p.name}" da galeria.`);
-          trocas.set(p.id, d2.edit_id);
+          trocas.set(`${p._tipo}:${p.id}`, d2.edit_id);
         }
         if (trocas.size) {
-          const pips = doc.pipClips.map((p) => (trocas.has(p.id) ? { ...p, edit_id: trocas.get(p.id)! } : p));
-          docRender = { ...doc, pipClips: pips };
-          update({ pipClips: pips });   // persiste os ids novos (sem passo de undo)
+          const pips = doc.pipClips.map((p) => (trocas.has(`pip:${p.id}`) ? { ...p, edit_id: trocas.get(`pip:${p.id}`)! } : p));
+          const seqs = doc.seqClips.map((c) => (trocas.has(`seq:${c.id}`) ? { ...c, edit_id: trocas.get(`seq:${c.id}`)! } : c));
+          docRender = { ...doc, pipClips: pips, seqClips: seqs };
+          update({ pipClips: pips, seqClips: seqs });   // persiste os ids novos (sem passo de undo)
         }
       }
       const res = await fetch(`${API}/editor/render`, {
@@ -2555,26 +2591,39 @@ export default function AdminEditorVideo() {
                     onClick={() => irParaSecao("sec-musica")}><Music className="h-3 w-3" /> Música</Button>
                   <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1 border-rose-300/60"
                     title="Vídeo SOBRE o vídeo (PiP): um 2º vídeo em janela, com posição e som próprios"
-                    onClick={() => setPipDialogOpen(true)}>
+                    onClick={() => setDialogVideo("pip")}>
                     <Clapperboard className="h-3 w-3" /> + Vídeo (PiP)
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1"
+                    title="Emendar um vídeo DEPOIS do fim da edição atual (juntar takes, fechar com uma chamada)"
+                    onClick={() => setDialogVideo("seq")}>
+                    <Film className="h-3 w-3" /> + Vídeo no fim
                   </Button>
                 </div>
 
-                {/* Escolha do 2º vídeo (PiP): galeria ou upload */}
-                {pipDialogOpen && (
+                {/* Escolha de um 2º vídeo: PiP (sobre) ou sequência (no fim) */}
+                {dialogVideo && (
                   <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
-                    onClick={() => !pipLoading && setPipDialogOpen(false)}>
+                    onClick={() => !pipLoading && setDialogVideo(null)}>
                     <div className="w-full max-w-sm rounded-xl border bg-background p-4 space-y-3 shadow-lg"
                       onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-2">
-                        <Clapperboard className="h-4 w-4 text-primary" />
-                        <span className="font-semibold text-sm">Vídeo sobre o vídeo (PiP)</span>
+                        {dialogVideo === "pip"
+                          ? <Clapperboard className="h-4 w-4 text-primary" />
+                          : <Film className="h-4 w-4 text-primary" />}
+                        <span className="font-semibold text-sm">
+                          {dialogVideo === "pip" ? "Vídeo sobre o vídeo (PiP)" : "Emendar vídeo no fim"}
+                        </span>
                         <Button size="sm" variant="ghost" className="h-6 w-6 p-0 ml-auto"
-                          disabled={pipLoading} onClick={() => setPipDialogOpen(false)}>✕</Button>
+                          disabled={pipLoading} onClick={() => setDialogVideo(null)}>✕</Button>
                       </div>
                       <p className="text-[11px] text-muted-foreground">
-                        Entra no cursor ({fmt(playhead)}) como uma janela sobre o vídeo —
-                        arraste no player para posicionar; mova/estique na faixa rosa.
+                        {dialogVideo === "pip"
+                          ? <>Entra no cursor ({fmt(playhead)}) como uma janela sobre o vídeo —
+                             arraste no player para posicionar; mova/estique na faixa rosa.</>
+                          : <>Entra DEPOIS do fim da edição atual, emendado na sequência —
+                             bom para juntar takes ou fechar com uma chamada. Ajuste o trecho
+                             usado na seção "Vídeos em sequência".</>}
                       </p>
                       <label className="flex items-center justify-center gap-2 rounded-lg border-2 border-dashed p-2.5 text-xs cursor-pointer hover:border-primary/60 transition">
                         {pipLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
@@ -2584,7 +2633,7 @@ export default function AdminEditorVideo() {
                           disabled={pipLoading}
                           onChange={(e) => {
                             const f = e.target.files?.[0];
-                            if (f) { const fd = new FormData(); fd.append("file", f); adicionarPip(fd, f.name.replace(/\.[^.]+$/, "")); }
+                            if (f) { const fd = new FormData(); fd.append("file", f); (dialogVideo === "pip" ? adicionarPip : adicionarSeq)(fd, f.name.replace(/\.[^.]+$/, "")); }
                             e.target.value = "";
                           }} />
                       </label>
@@ -2594,7 +2643,7 @@ export default function AdminEditorVideo() {
                         )}
                         {mp4Videos.map((v: any) => (
                           <button key={v.id} type="button" disabled={pipLoading}
-                            onClick={() => { const fd = new FormData(); fd.append("video_url", v.embed_url); adicionarPip(fd, v.title || "Vídeo da galeria", v.embed_url); }}
+                            onClick={() => { const fd = new FormData(); fd.append("video_url", v.embed_url); (dialogVideo === "pip" ? adicionarPip : adicionarSeq)(fd, v.title || "Vídeo da galeria", v.embed_url); }}
                             className="w-full flex items-center gap-2 rounded-lg border p-1.5 text-left text-xs hover:border-primary/60 transition">
                             {v.thumbnail_url
                               ? <img src={v.thumbnail_url} className="h-10 w-7 rounded object-cover shrink-0" alt="" />
@@ -2980,6 +3029,65 @@ export default function AdminEditorVideo() {
                       </Button>
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive"
                         onClick={() => apply((d) => ({ pipClips: d.pipClips.filter((x) => x.id !== p.id) }))}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Vídeos EMENDADOS no fim (sequência) */}
+              {seqClips.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="font-semibold flex items-center gap-2"><Film className="h-4 w-4" /> Vídeos em sequência (no fim)</Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Emendados <b>depois</b> do vídeo principal, na ordem abaixo. O render sai completo;
+                    a prévia do trecho emendado chega em breve (como a capa de entrada).
+                  </p>
+                  {seqClips.map((c, i) => (
+                    <div key={c.id} className="flex items-center gap-1.5 text-xs flex-wrap rounded border px-2 py-1">
+                      <span className="text-muted-foreground tabular-nums">{i + 1}º</span>
+                      <span className="truncate max-w-36 font-medium">{c.name}</span>
+                      <label className="flex items-center gap-1" title="Usar a partir do segundo X da fonte">
+                        de
+                        <Input type="number" min={0} step={0.5} max={Math.max(0, c.natural_dur - 0.3)}
+                          value={c.src_in} className="h-7 w-14 text-xs tabular-nums" onFocus={checkpoint}
+                          onChange={(e) => {
+                            if (e.target.value === "") return;
+                            const v = Math.max(0, Math.min(c.natural_dur - 0.3, Number(e.target.value)));
+                            applyLive((d) => ({ seqClips: d.seqClips.map((x) => (x.id === c.id
+                              ? { ...x, src_in: v, src_out: Math.max(v + 0.3, x.src_out) } : x)) }));
+                          }} />
+                      </label>
+                      <label className="flex items-center gap-1" title="Usar até o segundo X da fonte">
+                        até
+                        <Input type="number" min={0.3} step={0.5} max={c.natural_dur}
+                          value={c.src_out} className="h-7 w-14 text-xs tabular-nums" onFocus={checkpoint}
+                          onChange={(e) => {
+                            if (e.target.value === "") return;
+                            const v = Math.max(c.src_in + 0.3, Math.min(c.natural_dur, Number(e.target.value)));
+                            applyLive((d) => ({ seqClips: d.seqClips.map((x) => (x.id === c.id ? { ...x, src_out: v } : x)) }));
+                          }} />s
+                      </label>
+                      <span className="text-muted-foreground tabular-nums">({fmt(Math.max(0, c.src_out - c.src_in))})</span>
+                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0 ml-auto" disabled={i === 0}
+                        title="Mover para antes"
+                        onClick={() => apply((d) => {
+                          const arr = [...d.seqClips];
+                          const j = arr.findIndex((x) => x.id === c.id);
+                          if (j > 0) [arr[j - 1], arr[j]] = [arr[j], arr[j - 1]];
+                          return { seqClips: arr };
+                        })}>↑</Button>
+                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" disabled={i === seqClips.length - 1}
+                        title="Mover para depois"
+                        onClick={() => apply((d) => {
+                          const arr = [...d.seqClips];
+                          const j = arr.findIndex((x) => x.id === c.id);
+                          if (j >= 0 && j < arr.length - 1) [arr[j], arr[j + 1]] = [arr[j + 1], arr[j]];
+                          return { seqClips: arr };
+                        })}>↓</Button>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive"
+                        onClick={() => apply((d) => ({ seqClips: d.seqClips.filter((x) => x.id !== c.id) }))}>
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>

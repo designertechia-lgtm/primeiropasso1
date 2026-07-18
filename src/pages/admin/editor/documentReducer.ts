@@ -16,7 +16,7 @@
  *                        um arrasto) para o gesto inteiro virar 1 passo de undo.
  */
 import type {
-  AudioClip, Cue, PipClip, Segment, Sticker, SubPos, SubSize, SubStyle, Title,
+  AudioClip, Cue, PipClip, Segment, SeqClip, Sticker, SubPos, SubSize, SubStyle, Title,
 } from "./types";
 
 export type EditorDoc = {
@@ -43,6 +43,8 @@ export type EditorDoc = {
   audioClips: AudioClip[];
   // PiP de vídeo (Fase F): 2º vídeo sobre o principal, timeline ORIGINAL
   pipClips: PipClip[];
+  // Vídeos EMENDADOS no fim (Fase F): entram na faixa base depois do principal
+  seqClips: SeqClip[];
   // Ocultar/silenciar FAIXA inteira (Fase F): a faixa oculta sai da prévia E
   // do render (áudio oculto = mudo), sem perder o conteúdo — o olhinho do
   // gutter alterna. Chaves: subs | text | sticker | pip | audio.
@@ -91,6 +93,7 @@ export const emptyDoc = (): EditorDoc => ({
   stickers: [],
   audioClips: [],
   pipClips: [],
+  seqClips: [],
   trackFlags: {},
   transition: "none",
   filtro: "nenhum",
@@ -145,7 +148,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
             ? [{ id: 1, start: 0, end: action.duration, keep: true }]
             : [],
           cues: [], words: [], subsOn: false,
-          titles: [], stickers: [], audioClips: [], pipClips: [],
+          titles: [], stickers: [], audioClips: [], pipClips: [], seqClips: [],
         },
         past: [],
       };

@@ -87,6 +87,20 @@ export type PipClip = {
   volume: number;         // 0 = mudo (padrão: não competir com a voz principal)
 };
 
+// Vídeo em SEQUÊNCIA (Fase F): emendado DEPOIS do vídeo principal editado, na
+// faixa base — padrão da capa de entrada, no fim. v1: trim por clipe; a prévia
+// do trecho emendado (como a da capa) fica para a próxima leva; o render é
+// completo (o motor v9 corta cada clipe da SUA fonte e normaliza ao canvas).
+export type SeqClip = {
+  id: string;
+  edit_id: string;        // fonte no worker (draft próprio)
+  name: string;
+  natural_dur: number;
+  source_url: string;     // URL re-carregável (galeria) — "" quando foi upload
+  src_in: number;         // trim dentro da fonte
+  src_out: number;
+};
+
 export const ANIM_IN_OPTS: { id: AnimIn; label: string }[] = [
   { id: "nenhuma", label: "—" }, { id: "fade", label: "Surgir" },
   { id: "zoom", label: "Zoom" }, { id: "pop", label: "Pop" },

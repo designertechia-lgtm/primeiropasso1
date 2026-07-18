@@ -109,14 +109,17 @@ export type SegFinal = {
  *  implementação da conta — front e (na Fase B) o motor v9 leem daqui. */
 export function timelineFinalDe(
   keep: Segment[], transitionOn: boolean, introDur = 0,
+  extraDurs: number[] = [],
 ): { segs: SegFinal[]; xf: number; totalFinal: number } {
   // duração final de cada trecho, já com a velocidade
   const dur = keep.map((s) => (s.end - s.start) / (s.speed ?? 1));
   // xf clampado ao menor trecho final (espelha video_editor.py:1405). No motor
   // a capa de entrada é um PART: com intro ligada, até 1 trecho só crossfada
   // (parts > 1) — e a intro (>= 1s) nunca é quem clampa (0,9s > XFADE 0,4s).
-  const xf = transitionOn && (keep.length > 1 || introDur > 0)
-    ? Math.min(XFADE_DUR, Math.max(0.1, Math.min(...dur) * 0.9))
+  // extraDurs = vídeos EMENDADOS no fim: também são parts — um emendado curto
+  // clampa o xf de TODAS as emendas, como no motor (min sobre todas as parts).
+  const xf = transitionOn && (keep.length + extraDurs.length > 1 || introDur > 0)
+    ? Math.min(XFADE_DUR, Math.max(0.1, Math.min(...dur, ...extraDurs) * 0.9))
     : 0;
   // a intro consome xf ao emendar com o 1º trecho (video_editor.py:1387)
   const head = Math.max(0, introDur - (xf && introDur ? xf : 0));
@@ -150,7 +153,10 @@ export function origToFinal(t: number, segs: SegFinal[]): number | null {
 export function docFlatToTracks(doc: EditorDoc, sourceId: string): Track[] {
   const keep = doc.segments.filter((s) => s.keep);
   const introDur = doc.introOn ? doc.introDur : 0;
-  const { segs } = timelineFinalDe(keep, doc.transition !== "none", introDur);
+  const seqs = (doc.seqClips ?? []).filter((c) => c.src_out - c.src_in >= 0.15);
+  const { segs, xf, totalFinal } = timelineFinalDe(
+    keep, doc.transition !== "none", introDur,
+    seqs.map((c) => c.src_out - c.src_in));
 
   // faixa base de vídeo (z=0): cada trecho keep vira um VideoClip da fonte única
   const videoBase: VideoClip[] = segs.map(({ seg, finalStart, speed }, i) => ({
@@ -163,6 +169,25 @@ export function docFlatToTracks(doc: EditorDoc, sourceId: string): Track[] {
     filtro: doc.filtro, efeito: doc.efeito,
     transition_in: i > 0 ? doc.transition : undefined,
   }));
+
+  // vídeos EMENDADOS no fim (Fase F): continuam a faixa base depois do último
+  // trecho. Cada emenda desconta xf (o remap não subtraía no ÚLTIMO keep
+  // porque não havia nada depois — agora há). Filtro/efeito/volume globais
+  // valem para eles também (a edição é uma só).
+  let cursorSeq = totalFinal - (seqs.length && xf ? xf : 0);
+  seqs.forEach((c, i) => {
+    const d = c.src_out - c.src_in;
+    videoBase.push({
+      id: uid("q", i), kind: "video", source_id: c.edit_id,
+      src_in: c.src_in, src_out: c.src_out, speed: 1,
+      timeline_start: cursorSeq, timeline_end: cursorSeq + d,
+      volume: doc.originalVolume / 100,
+      transform: { ...TRANSFORM_NEUTRO },
+      filtro: doc.filtro, efeito: doc.efeito,
+      transition_in: doc.transition !== "none" ? doc.transition : undefined,
+    });
+    cursorSeq += d - (i < seqs.length - 1 ? xf : 0);
+  });
 
   // textos e legendas → TextClips (posição já na timeline final), em FAIXAS
   // SEPARADAS: "text" = títulos (estilo por clipe + animações), "subs" =

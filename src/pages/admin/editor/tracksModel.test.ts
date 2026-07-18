@@ -199,6 +199,45 @@ describe("PiP de vídeo (Fase F) — faixa 'pip', span contínuo como o áudio",
   });
 });
 
+describe("vídeos em SEQUÊNCIA (Fase F) — emendados na faixa base", () => {
+  it("seq entra depois do último trecho, descontando o xf da emenda", () => {
+    // keep [0,4]@1 + 2 emendados (3s e 2s) com dissolve: xf = 0.4
+    // seq1 = [4-0.4, 6.6]; seq2 = [3.6+3-0.4, +2]
+    const doc: EditorDoc = {
+      ...emptyDoc(),
+      segments: [seg(1, 0, 4, true, 1)],
+      transition: "dissolve",
+      seqClips: [
+        { id: "a", edit_id: "vidB", name: "take 2", natural_dur: 6,
+          source_url: "", src_in: 1, src_out: 4 },
+        { id: "b", edit_id: "vidC", name: "fecho", natural_dur: 2,
+          source_url: "", src_in: 0, src_out: 2 },
+      ],
+    };
+    const base = docFlatToTracks(doc, "fonteA").find((t) => t.id === "video-base")!;
+    expect(base.clips).toHaveLength(3);
+    const s1 = base.clips[1] as VideoClip;
+    const s2 = base.clips[2] as VideoClip;
+    expect(s1.source_id).toBe("vidB");
+    expect(s1.src_in).toBeCloseTo(1, 3);
+    expect(s1.timeline_start).toBeCloseTo(3.6, 3);   // 4 - xf
+    expect(s1.timeline_end).toBeCloseTo(6.6, 3);
+    expect(s1.transition_in).toBe("dissolve");
+    expect(s2.source_id).toBe("vidC");
+    expect(s2.timeline_start).toBeCloseTo(6.2, 3);   // 3.6 + 3 - xf
+    // corte seco: sem desconto
+    const seco = docFlatToTracks({ ...doc, transition: "none" }, "fonteA")
+      .find((t) => t.id === "video-base")!;
+    expect((seco.clips[1] as VideoClip).timeline_start).toBeCloseTo(4.0, 3);
+  });
+
+  it("emendado CURTO clampa o xf de todas as emendas (como o motor)", () => {
+    // keep 4s + seq de 0.3s: xf = min(0.4, 0.3*0.9) = 0.27
+    const { xf } = timelineFinalDe([seg(1, 0, 4, true, 1)], true, 0, [0.3]);
+    expect(xf).toBeCloseTo(0.27, 3);
+  });
+});
+
 describe("aplicarFaixasOcultas (olhinho) — o que você vê é o que o render faz", () => {
   it("faixa oculta sai do doc efetivo; conteúdo original fica intacto", () => {
     const doc: EditorDoc = {

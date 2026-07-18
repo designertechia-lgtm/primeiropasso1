@@ -948,14 +948,50 @@ export default function AdminEditorVideo() {
   };
 
   // ── relógio mestre da prévia (Fase C do multi-track) ──────────────────────
-  // O tempo vive no relógio (rAF), não mais no <video>: o vídeo é uma FONTE
-  // COMANDADA (playbackRate + seek quando desvia >0,15s). É o motor que rege
-  // N fontes nas próximas fases — e já deixa o cursor/karaokê/sticker fluidos
-  // (60fps vs o intervalo de 120ms de antes).
+  // O tempo vive no relógio (rAF): cada fonte é COMANDADA (playbackRate + seek
+  // quando desvia >0,15s). Com vídeos EMENDADOS, o domínio se estende: os
+  // emendados viram pseudo-trechos depois do principal e o POOL troca de
+  // <video> quando o play cruza a emenda — a prévia toca a edição inteira.
+  const seqDurPrevia = seqClips.reduce((a, c) => a + Math.max(0, c.src_out - c.src_in), 0);
+  // base (início no domínio estendido) de cada emendado, na ordem
+  const basesSeq = useMemo(() => {
+    const bases: number[] = [];
+    let cursor = meta?.duration ?? 0;
+    for (const c of seqClips) {
+      bases.push(cursor);
+      cursor += Math.max(0, c.src_out - c.src_in);
+    }
+    return bases;
+  }, [seqClips, meta?.duration]);
+  const segmentosEstendidos = useMemo(() => {
+    if (!seqClips.length || !meta) return segments;
+    let nid = Math.max(0, ...segments.map((s) => s.id)) + 1;
+    return [
+      ...segments,
+      ...seqClips.map((c, i) => ({
+        id: nid++, start: basesSeq[i],
+        end: basesSeq[i] + Math.max(0, c.src_out - c.src_in),
+        keep: true, speed: 1,
+      })),
+    ];
+  }, [segments, seqClips, basesSeq, meta]);
+  const seqVideosRef = useRef<Map<string, HTMLVideoElement>>(new Map());
   const clock = usePreviewClock({
-    videoRef,
-    duration: meta?.duration ?? 0,
-    segments,
+    // pool: principal em [0, duração]; depois, o emendado da vez
+    fonteEm: (t) => {
+      const dur = meta?.duration ?? 0;
+      if (t < dur || !seqClips.length) return { el: videoRef.current, srcTime: t };
+      for (let i = seqClips.length - 1; i >= 0; i--) {
+        if (t >= basesSeq[i]) {
+          const c = seqClips[i];
+          return { el: seqVideosRef.current.get(c.id) ?? null,
+                   srcTime: c.src_in + (t - basesSeq[i]) };
+        }
+      }
+      return { el: videoRef.current, srcTime: t };
+    },
+    duration: (meta?.duration ?? 0) + seqDurPrevia,
+    segments: segmentosEstendidos,
     previewEdit,
     onTick: setPlayhead,
   });
@@ -963,7 +999,9 @@ export default function AdminEditorVideo() {
   useEffect(() => {
     const v = videoRef.current;
     if (v) v.volume = previewVol;
-  }, [previewVol, previewSrc]);
+    seqVideosRef.current.forEach((el) => { el.volume = previewVol; });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewVol, previewSrc, seqClips.length]);
 
   // ── timeline ───────────────────────────────────────────────────────────────
   const seekTo = (t: number) => clock.seek(t);
@@ -2161,6 +2199,26 @@ export default function AdminEditorVideo() {
                     onClick={clock.toggle}
                     onEnded={clock.pause}
                     onPause={() => clipAudiosRef.current.forEach((el) => el.pause())} />
+                  {/* POOL dos vídeos EMENDADOS: cada um é um <video> oculto que
+                      cobre o player quando o relógio entra na janela dele — a
+                      prévia toca a edição inteira, emendas incluídas */}
+                  {meta && seqClips.map((c, i) => {
+                    const base = basesSeq[i] ?? meta.duration;
+                    const ativo = playhead >= base && playhead < base + Math.max(0, c.src_out - c.src_in);
+                    return (
+                      <video key={c.id}
+                        ref={(el) => {
+                          if (el) seqVideosRef.current.set(c.id, el);
+                          else seqVideosRef.current.delete(c.id);
+                        }}
+                        src={c.source_url || `${API}/editor/video/${c.edit_id}`}
+                        playsInline preload="metadata"
+                        onClick={clock.toggle}
+                        onEnded={clock.pause}
+                        className="absolute inset-0 h-full w-full rounded-lg bg-black object-contain cursor-pointer"
+                        style={{ display: ativo ? "block" : "none" }} />
+                    );
+                  })}
                   {/* convite de play quando parado (decorativo — o clique é no vídeo) */}
                   {!clock.playing && previewSrc && (
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -2251,7 +2309,9 @@ export default function AdminEditorVideo() {
                     title={clock.playing ? "Pausar" : "Tocar"} onClick={clock.toggle}>
                     {clock.playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 ml-0.5" />}
                   </Button>
-                  <span className="tabular-nums">cursor: {fmt(playhead)} / {fmt(meta.duration)}</span>
+                  <span className="tabular-nums" title={seqDurPrevia > 0 ? "Total com os vídeos emendados no fim" : undefined}>
+                    cursor: {fmt(playhead)} / {fmt(meta.duration + seqDurPrevia)}
+                  </span>
                   <label className="flex items-center gap-1 ml-2" title="Volume da prévia">
                     <Volume2 className="h-3.5 w-3.5 text-muted-foreground" />
                     <input type="range" min={0} max={1} step={0.05} value={previewVol}
@@ -2472,7 +2532,7 @@ export default function AdminEditorVideo() {
                           </div>
                         ))}
                         <div className="absolute top-[-4px] bottom-[-4px] w-0.5 bg-primary"
-                          style={{ left: `${(playhead / meta.duration) * 100}%` }}>
+                          style={{ left: `${Math.min(100, (playhead / meta.duration) * 100)}%` }}>
                           <div className="h-2.5 w-2.5 rounded-full bg-primary -translate-x-[45%]" />
                         </div>
                       </div>

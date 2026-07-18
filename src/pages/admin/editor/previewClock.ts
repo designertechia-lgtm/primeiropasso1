@@ -59,7 +59,11 @@ export function avancarPlayhead(
 }
 
 type ClockOpts = {
-  videoRef: React.RefObject<HTMLVideoElement | null>;
+  /** Resolve a FONTE ativa no instante `t` (pool multi-fonte): qual <video>
+   *  mostra esse trecho e em que ponto DELE o relógio está. Com 1 fonte é
+   *  sempre o vídeo principal com srcTime = t; com vídeos emendados, o pool
+   *  troca de elemento quando o play cruza a emenda. */
+  fonteEm: (t: number) => { el: HTMLVideoElement | null; srcTime: number };
   duration: number;
   segments: Segment[];
   previewEdit: boolean;
@@ -84,21 +88,27 @@ export function usePreviewClock(opts: ClockOpts): PreviewClock {
   const optsRef = useRef(opts);
   optsRef.current = opts;
   const playingRef = useRef(false);
+  // fonte ativa da última sincronização — trocar de fonte PAUSA a anterior
+  // (senão as duas tocariam juntas ao cruzar a emenda)
+  const fonteAtualRef = useRef<HTMLVideoElement | null>(null);
 
   const syncFonte = (t: number, sp: number, tocando: boolean) => {
-    const v = optsRef.current.videoRef.current;
-    if (!v) return;
-    if (Math.abs(v.currentTime - t) > 0.15) v.currentTime = t;
-    if (Math.abs(v.playbackRate - sp) > 1e-3) v.playbackRate = sp;
-    if (tocando && v.paused) v.play().catch(() => {});
-    if (!tocando && !v.paused) v.pause();
+    const { el, srcTime } = optsRef.current.fonteEm(t);
+    const anterior = fonteAtualRef.current;
+    if (anterior && anterior !== el && !anterior.paused) anterior.pause();
+    fonteAtualRef.current = el;
+    if (!el) return;
+    if (Math.abs(el.currentTime - srcTime) > 0.15) el.currentTime = srcTime;
+    if (Math.abs(el.playbackRate - sp) > 1e-3) el.playbackRate = sp;
+    if (tocando && el.paused) el.play().catch(() => {});
+    if (!tocando && !el.paused) el.pause();
   };
 
   const parar = () => {
     playingRef.current = false;
     setPlaying(false);
     cancelAnimationFrame(rafRef.current);
-    const v = optsRef.current.videoRef.current;
+    const v = fonteAtualRef.current;
     if (v && !v.paused) v.pause();
   };
 
@@ -138,8 +148,8 @@ export function usePreviewClock(opts: ClockOpts): PreviewClock {
     const clamped = Math.max(0, Math.min(duration || 0, t));
     tRef.current = clamped;
     onTick(clamped);
-    const v = optsRef.current.videoRef.current;
-    if (v) v.currentTime = clamped;
+    // posiciona a fonte ativa (e pausa a anterior, se o seek cruzou a emenda)
+    syncFonte(clamped, 1, playingRef.current);
   };
 
   // aba escondida: pausa de verdade (senão o vídeo tocaria sozinho sem relógio)

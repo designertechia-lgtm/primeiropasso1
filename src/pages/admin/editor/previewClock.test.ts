@@ -50,6 +50,17 @@ describe("avancarPlayhead — o relógio da prévia da edição", () => {
     expect(r.fim).toBe(false);
   });
 
+  it("segmentos ESTENDIDOS: o play cruza do último keep para o vídeo emendado", () => {
+    // main: keep [0,4], resto removido até 10 (duração do principal); o
+    // emendado vira um pseudo-keep em [10,13] — o mesmo salto de trecho
+    // removido leva o relógio direto para a emenda
+    const ext = [seg(1, 0, 4, true, 1), seg(2, 4, 10, false), seg(9, 10, 13, true, 1)];
+    const r = avancarPlayhead(3.99, 0.05, ext, true, 13);
+    expect(r.t).toBeGreaterThanOrEqual(10);
+    expect(r.fim).toBe(false);
+    expect(avancarPlayhead(12.99, 0.1, ext, true, 13).fim).toBe(true);
+  });
+
   it("varrer a timeline inteira visita SÓ os trechos keep, na ordem", () => {
     // simula o play tick a tick e confere que nunca paramos DENTRO de removido
     let t = 0;

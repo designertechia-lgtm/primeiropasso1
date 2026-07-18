@@ -183,7 +183,7 @@ export default function AdminEditorVideo() {
   const gravTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const metaRef = useRef<EditMeta | null>(null);
   const clipAudiosRef = useRef<Map<string, HTMLAudioElement>>(new Map());
-  const trackDragRef = useRef<{ kind: "sticker" | "audio" | "title"; id: string; mode: "move" | "resize"; grab: number } | null>(null);
+  const trackDragRef = useRef<{ kind: "sticker" | "audio" | "title" | "cue"; id: string; mode: "move" | "resize"; grab: number } | null>(null);
   const stickerDragRef = useRef<string | null>(null);
   const stickerPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -898,6 +898,9 @@ export default function AdminEditorVideo() {
 
   // ── timeline ───────────────────────────────────────────────────────────────
   const seekTo = (t: number) => clock.seek(t);
+  // barra "Adicionar" da timeline → rola até a seção que cria aquele conteúdo
+  const irParaSecao = (id: string) =>
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
   const posFromEvent = (clientX: number) => {
     if (!timelineRef.current || !meta) return 0;
     const rect = timelineRef.current.getBoundingClientRect();
@@ -926,8 +929,10 @@ export default function AdminEditorVideo() {
     for (const s of stickers) pts.push({ t: s.start, dono: `stk${s.id}` }, { t: s.end, dono: `stk${s.id}` });
     for (const c of audioClips) pts.push({ t: c.start, dono: `aud${c.id}` }, { t: c.end, dono: `aud${c.id}` });
     for (const t of titles) pts.push({ t: t.start, dono: `tit${t.id}` }, { t: t.end, dono: `tit${t.id}` });
+    if (subsOn) cues.forEach((c, i) =>
+      pts.push({ t: c.start, dono: `cue${i}` }, { t: c.end, dono: `cue${i}` }));
     return pts;
-  }, [meta, playhead, segments, stickers, audioClips, titles]);
+  }, [meta, playhead, segments, stickers, audioClips, titles, cues, subsOn]);
 
   /** Cola `t` no ponto notável mais próximo (tolerância de 8px, convertida para
    *  segundos pela escala atual — no zoom a régua fica mais fina, então a
@@ -1447,11 +1452,14 @@ export default function AdminEditorVideo() {
   // Arrasto dos blocos nas FAIXAS da timeline (mover = mudar início;
   // borda direita = esticar/encurtar). Pointer capture → sem listeners globais.
   // checkpoint() no início: o gesto INTEIRO vira 1 passo de Desfazer.
-  const onTrackDown = (e: React.PointerEvent, kind: "sticker" | "audio" | "title", id: string, mode: "move" | "resize") => {
+  // "cue" = legenda na timeline (id = ÍNDICE em doc.cues — cue não tem id
+  // próprio; o índice é estável durante o gesto, o array não reordena no drag)
+  const onTrackDown = (e: React.PointerEvent, kind: "sticker" | "audio" | "title" | "cue", id: string, mode: "move" | "resize") => {
     e.stopPropagation();
     e.preventDefault();
     const item = kind === "sticker" ? stickers.find((s) => s.id === id)
       : kind === "audio" ? audioClips.find((c) => c.id === id)
+      : kind === "cue" ? cues[Number(id)]
       : titles.find((t) => t.id === id);
     if (!item || !meta) return;
     checkpoint();
@@ -1464,12 +1472,13 @@ export default function AdminEditorVideo() {
     if (e.buttons === 0) { onTrackUp(); return; }   // gesto perdido (nó remontou)
     const item = d.kind === "sticker" ? stickers.find((s) => s.id === d.id)
       : d.kind === "audio" ? audioClips.find((c) => c.id === d.id)
+      : d.kind === "cue" ? cues[Number(d.id)]
       : titles.find((t) => t.id === d.id);
     if (!item) return;
     const t = posFromEvent(e.clientX);
     // snap calculado FORA do reducer (o updater precisa ser puro); o próprio
     // item sai por IDENTIDADE — por valor ele se auto-excluiria ao grudar
-    const eu = [`${d.kind === "sticker" ? "stk" : d.kind === "audio" ? "aud" : "tit"}${d.id}`];
+    const eu = [`${d.kind === "sticker" ? "stk" : d.kind === "audio" ? "aud" : d.kind === "cue" ? "cue" : "tit"}${d.id}`];
     let novo: { start: number; end: number };
     let guide: number | null = null;
     if (d.mode === "move") {
@@ -1505,6 +1514,25 @@ export default function AdminEditorVideo() {
     setSnapGuide(guide);
     if (d.kind === "sticker") applyLive((dd) => ({ stickers: dd.stickers.map((s) => (s.id === d.id ? { ...s, ...novo } : s)) }));
     else if (d.kind === "audio") applyLive((dd) => ({ audioClips: dd.audioClips.map((c) => (c.id === d.id ? { ...c, ...novo } : c)) }));
+    else if (d.kind === "cue") {
+      const idx = Number(d.id);
+      applyLive((dd) => {
+        const cue = dd.cues[idx];
+        if (!cue) return {};
+        // mover a legenda LEVA as palavras do karaokê junto (são tempos
+        // absolutos — sem o shift, o \k dessincronizaria da caixa arrastada)
+        const delta = novo.start - cue.start;
+        return {
+          cues: dd.cues.map((c, i) => (i === idx ? { ...c, ...novo } : c)),
+          words: d.mode === "move" && Math.abs(delta) > 1e-6
+            ? dd.words.map((w) => (
+                w.start >= cue.start - 0.01 && w.end <= cue.end + 0.01
+                  ? { ...w, start: w.start + delta, end: w.end + delta }
+                  : w))
+            : dd.words,
+        };
+      });
+    }
     else applyLive((dd) => ({ titles: dd.titles.map((x) => (x.id === d.id ? { ...x, ...novo } : x)) }));
   };
   const onTrackUp = () => { trackDragRef.current = null; setSnapGuide(null); };
@@ -1855,7 +1883,7 @@ export default function AdminEditorVideo() {
         {/* Trilha sonora */}
         <Card>
           <CardContent className="pt-5 space-y-4">
-            <Label className="font-semibold flex items-center gap-2"><Music className="h-4 w-4" /> Trilha sonora</Label>
+            <Label id="sec-musica" className="font-semibold flex items-center gap-2"><Music className="h-4 w-4" /> Trilha sonora</Label>
             <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
               <button type="button"
                 onClick={() => patch({ musicId: "", musicUploadId: "", musicUploadName: "" })}
@@ -2098,6 +2126,38 @@ export default function AdminEditorVideo() {
                   </label>
                 </div>
 
+                {/* Timeline multi-faixa (Fase E): gutter de CABEÇALHOS à esquerda
+                    (fora do scroll — não some no zoom) + faixas à direita. A
+                    ordem/condições do gutter ESPELHAM as faixas: régua, fita de
+                    vídeo, legendas, textos, stickers, áudio. */}
+                <div className="grid grid-cols-[56px_minmax(0,1fr)] gap-1">
+                  <div className="space-y-1">
+                    <div className="h-4" /> {/* espaço da régua */}
+                    <div className="flex items-center gap-1 rounded border bg-muted/40 px-1.5 text-[9px] text-muted-foreground transition-[height] duration-200"
+                      style={{ height: alturaFita }}>
+                      <Clapperboard className="h-3 w-3 shrink-0" /> <span className="truncate">Vídeo</span>
+                    </div>
+                    {subsOn && cues.length > 0 && (
+                      <div className="flex h-7 items-center gap-1 rounded border bg-emerald-500/10 px-1.5 text-[9px] text-muted-foreground">
+                        <Captions className="h-3 w-3 shrink-0" /> <span className="truncate">Legenda</span>
+                      </div>
+                    )}
+                    {titles.length > 0 && (
+                      <div className="flex h-7 items-center gap-1 rounded border bg-amber-500/10 px-1.5 text-[9px] text-muted-foreground">
+                        <Type className="h-3 w-3 shrink-0" /> <span className="truncate">Texto</span>
+                      </div>
+                    )}
+                    {stickers.length > 0 && (
+                      <div className="flex h-7 items-center gap-1 rounded border bg-violet-500/10 px-1.5 text-[9px] text-muted-foreground">
+                        <ImageIcon className="h-3 w-3 shrink-0" /> <span className="truncate">Sticker</span>
+                      </div>
+                    )}
+                    {audioClips.length > 0 && (
+                      <div className="flex h-7 items-center gap-1 rounded border bg-sky-500/10 px-1.5 text-[9px] text-muted-foreground">
+                        <Headphones className="h-3 w-3 shrink-0" /> <span className="truncate">Áudio</span>
+                      </div>
+                    )}
+                  </div>
                 <div ref={scrollRef} onScroll={pedirJanelaThumbs} className="overflow-x-auto overflow-y-hidden pb-1">
                   <div className="relative space-y-1" style={{ width: `${zoom * 100}%` }}>
                     {/* régua */}
@@ -2197,8 +2257,25 @@ export default function AdminEditorVideo() {
                         style={{ left: `${(snapGuide / meta.duration) * 100}%` }} />
                     )}
 
-                    {/* Faixas (estilo CapCut): textos, stickers e clipes de áudio.
+                    {/* Faixas (estilo CapCut): legendas, textos, stickers e áudio.
                         Arraste o bloco pra mover no tempo; borda direita estica. */}
+                    {subsOn && cues.length > 0 && (
+                      <div className="relative h-7 rounded border bg-emerald-500/5 overflow-hidden">
+                        {cues.map((c, i) => (
+                          <div key={i}
+                            className="absolute top-0.5 bottom-0.5 rounded bg-emerald-600/70 border border-emerald-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
+                            style={{ left: `${(c.start / meta.duration) * 100}%`, width: `${Math.max(1.2, ((c.end - c.start) / meta.duration) * 100)}%`, touchAction: "none" }}
+                            title={`${c.text} · ${fmt(c.start)}–${fmt(c.end)} — arraste pra mover; borda direita estica`}
+                            onPointerDown={(e) => onTrackDown(e, "cue", String(i), "move")}
+                            onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
+                            <span className="truncate pointer-events-none">{c.text || "(legenda)"}</span>
+                            <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/40"
+                              style={{ touchAction: "none" }}
+                              onPointerDown={(e) => onTrackDown(e, "cue", String(i), "resize")} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {titles.length > 0 && (
                       <div className="relative h-7 rounded border bg-amber-500/5 overflow-hidden">
                         {titles.map((t) => (
@@ -2251,6 +2328,27 @@ export default function AdminEditorVideo() {
                       </div>
                     )}
                   </div>
+                </div>
+                </div>
+
+                {/* Adicionar conteúdo às faixas — a resposta de "como adiciono
+                    uma trilha": cada tipo leva à seção que o cria */}
+                <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                  <span className="text-muted-foreground">Adicionar:</span>
+                  <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1"
+                    onClick={() => irParaSecao("sec-legendas")}><Captions className="h-3 w-3" /> Legendas</Button>
+                  <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1"
+                    onClick={() => irParaSecao("sec-textos")}><Type className="h-3 w-3" /> Texto</Button>
+                  <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1"
+                    onClick={() => irParaSecao("sec-stickers")}><ImageIcon className="h-3 w-3" /> Sticker</Button>
+                  <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1"
+                    onClick={() => irParaSecao("sec-audio")}><Headphones className="h-3 w-3" /> Narração/efeito</Button>
+                  <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1"
+                    onClick={() => irParaSecao("sec-musica")}><Music className="h-3 w-3" /> Música</Button>
+                  <Button size="sm" variant="ghost" disabled className="h-6 px-2 text-[10px] gap-1"
+                    title="Vídeo sobre vídeo (PiP) — chega na próxima fase do multi-track">
+                    <Clapperboard className="h-3 w-3" /> + Vídeo (em breve)
+                  </Button>
                 </div>
 
                 {activeSeg && (
@@ -2465,7 +2563,7 @@ export default function AdminEditorVideo() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
               {/* Stickers */}
               <div className="space-y-2">
-                <Label className="font-semibold flex items-center gap-2"><ImageIcon className="h-4 w-4" /> Stickers e sobreposições</Label>
+                <Label id="sec-stickers" className="font-semibold flex items-center gap-2"><ImageIcon className="h-4 w-4" /> Stickers e sobreposições</Label>
                 <p className="text-[11px] text-muted-foreground">
                   Imagem, GIF animado ou WebM com fundo transparente sobre o vídeo (ex.: um gatinho
                   andando enquanto você fala). Entra no cursor; mova/estique na <b>faixa roxa</b> da
@@ -2580,7 +2678,7 @@ export default function AdminEditorVideo() {
 
               {/* Clipes de áudio posicionados */}
               <div className="space-y-2">
-                <Label className="font-semibold flex items-center gap-2"><Headphones className="h-4 w-4" /> Efeitos sonoros e narrações</Label>
+                <Label id="sec-audio" className="font-semibold flex items-center gap-2"><Headphones className="h-4 w-4" /> Efeitos sonoros e narrações</Label>
                 <p className="text-[11px] text-muted-foreground">
                   Áudio que toca num <b>ponto exato</b> do vídeo (efeito, vinheta, narração) — além da
                   trilha global. Entra no cursor; mova/estique na <b>faixa azul</b> da timeline.
@@ -2658,7 +2756,7 @@ export default function AdminEditorVideo() {
         <Card>
           <CardContent className="pt-5 space-y-4">
             <div className="flex items-center gap-2 flex-wrap">
-              <Label className="font-semibold flex items-center gap-2"><Captions className="h-4 w-4" /> Legendas</Label>
+              <Label id="sec-legendas" className="font-semibold flex items-center gap-2"><Captions className="h-4 w-4" /> Legendas</Label>
               <Button size="sm" variant="outline" className="h-7 gap-1" disabled={transcribing} onClick={gerarLegendas}>
                 {transcribing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
                 {cues.length ? "Gerar de novo da fala" : "Gerar legendas da fala"}
@@ -2740,7 +2838,7 @@ export default function AdminEditorVideo() {
 
             {/* Textos/títulos manuais */}
             <div className="border-t pt-3 space-y-2">
-              <Label className="font-semibold text-sm flex items-center gap-1.5"><Type className="h-3.5 w-3.5" /> Textos no vídeo</Label>
+              <Label id="sec-textos" className="font-semibold text-sm flex items-center gap-1.5"><Type className="h-3.5 w-3.5" /> Textos no vídeo</Label>
               <p className="text-[11px] text-muted-foreground">
                 Dica: <b>|</b> separa título e subtítulo — a 1ª linha sai grande e o resto menor,
                 automático. Com posição <b>Canto esq. (selo)</b> + estilo <b>Caixa</b>:

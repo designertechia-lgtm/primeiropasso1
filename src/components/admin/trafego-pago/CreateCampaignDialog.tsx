@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog,
@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Sparkles, Loader2, Coins, AlertTriangle } from "lucide-react";
+import { Sparkles, Loader2, Coins, AlertTriangle, Wand2 } from "lucide-react";
 import { CAMPAIGN_COST, OBJECTIVE_LABEL } from "./types";
 
 interface CreateCampaignDialogProps {
@@ -40,6 +40,7 @@ export default function CreateCampaignDialog({
   platform = "google_ads",
 }: CreateCampaignDialogProps) {
   const isMeta = platform === "meta_ads";
+  const navigate = useNavigate();
   const [servico, setServico] = useState("");
   const [cidade, setCidade] = useState("");
   const [raioKm, setRaioKm] = useState("20");
@@ -50,13 +51,53 @@ export default function CreateCampaignDialog({
   const [diferencial, setDiferencial] = useState("");
   const [publico, setPublico] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggested, setSuggested] = useState(false);
 
   const canAfford = creditBalance >= CAMPAIGN_COST;
   const mensal = Number(orcamentoMensal) || 0;
   const dailyBudget = mensal > 0 ? +(mensal / 30.4).toFixed(2) : 0;
   const periodInvalid = !!startDate && !!endDate && endDate < startDate;
   const canSubmit =
-    canAfford && servico.trim() && cidade.trim() && mensal > 0 && !periodInvalid && !generating;
+    canAfford && servico.trim() && cidade.trim() && mensal > 0 && !periodInvalid && !generating && !suggesting;
+
+  // "Criar com IA": a edge lê o DNA da Marca do profissional e devolve o brief
+  // pronto (grátis — o débito de créditos continua só na geração da campanha).
+  async function handleSuggest() {
+    if (suggesting || generating) return;
+    setSuggesting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("ads-campaign-generator", {
+        body: { action: "suggest_brief", platform },
+      });
+      if (error) throw error;
+      if (data?.error === "sem_dna") {
+        toast.info("Complete seu DNA da Marca primeiro", {
+          description: "A IA usa o DNA da Marca para montar a campanha personalizada.",
+          action: { label: "Abrir DNA", onClick: () => navigate("/admin/landing?tab=dna") },
+        });
+        return;
+      }
+      if (data?.error) throw new Error(data.mensagem ?? data.error);
+
+      const b = data?.brief ?? {};
+      if (b.servico) setServico(String(b.servico));
+      if (b.cidade) setCidade(String(b.cidade));
+      if (b.raio_km) setRaioKm(String(b.raio_km));
+      if (b.orcamento_mensal) setOrcamentoMensal(String(b.orcamento_mensal));
+      if (!isMeta && b.objetivo && OBJECTIVE_LABEL[b.objetivo]) setObjective(String(b.objetivo));
+      if (b.diferencial) setDiferencial(String(b.diferencial));
+      if (b.publico) setPublico(String(b.publico));
+      setSuggested(true);
+      toast.success("Brief preenchido com seu DNA da Marca!", {
+        description: "Revise o orçamento e ajuste o que quiser antes de gerar.",
+      });
+    } catch (e: any) {
+      toast.error("Erro ao criar com IA", { description: e?.message });
+    } finally {
+      setSuggesting(false);
+    }
+  }
 
   async function handleGenerate() {
     if (!canSubmit) return;
@@ -99,7 +140,7 @@ export default function CreateCampaignDialog({
   function resetForm() {
     setServico(""); setCidade(""); setRaioKm("20"); setOrcamentoMensal("");
     setObjective("leads"); setStartDate(""); setEndDate("");
-    setDiferencial(""); setPublico("");
+    setDiferencial(""); setPublico(""); setSuggested(false);
   }
 
   return (
@@ -141,6 +182,40 @@ export default function CreateCampaignDialog({
           )}
         </div>
 
+        {/* Criar com IA: preenche o brief a partir do DNA da Marca (grátis) */}
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">
+              {suggested ? "Brief preenchido pela IA" : "Deixa a IA montar pra você"}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {suggested
+                ? "Revise o orçamento e ajuste o que quiser antes de gerar."
+                : "Preencho tudo com base no seu DNA da Marca. Grátis."}
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant={suggested ? "outline" : "default"}
+            className="gap-1.5 shrink-0"
+            onClick={handleSuggest}
+            disabled={suggesting || generating}
+          >
+            {suggesting ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Criando…
+              </>
+            ) : (
+              <>
+                <Wand2 className="h-3.5 w-3.5" />
+                {suggested ? "Refazer com IA" : "Criar com IA"}
+              </>
+            )}
+          </Button>
+        </div>
+
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label htmlFor="cc-servico">Serviço principal *</Label>
@@ -149,7 +224,7 @@ export default function CreateCampaignDialog({
               placeholder='Ex.: "terapia de casal", "psicoterapia infantil"'
               value={servico}
               onChange={(e) => setServico(e.target.value)}
-              disabled={generating}
+              disabled={generating || suggesting}
             />
           </div>
 
@@ -204,7 +279,7 @@ export default function CreateCampaignDialog({
                   Click-to-WhatsApp
                 </p>
               ) : (
-                <Select value={objective} onValueChange={setObjective} disabled={generating}>
+                <Select value={objective} onValueChange={setObjective} disabled={generating || suggesting}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {Object.entries(OBJECTIVE_LABEL).map(([value, label]) => (
@@ -254,7 +329,7 @@ export default function CreateCampaignDialog({
               value={diferencial}
               onChange={(e) => setDiferencial(e.target.value)}
               className="resize-none min-h-[3.5rem]"
-              disabled={generating}
+              disabled={generating || suggesting}
             />
           </div>
 
@@ -265,7 +340,7 @@ export default function CreateCampaignDialog({
               placeholder="Ex.: pais de crianças com TEA, casais em crise…"
               value={publico}
               onChange={(e) => setPublico(e.target.value)}
-              disabled={generating}
+              disabled={generating || suggesting}
             />
           </div>
         </div>

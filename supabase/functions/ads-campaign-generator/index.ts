@@ -17,6 +17,7 @@ const CORS = {
 }
 
 const CLAUDE_MODEL  = "claude-sonnet-4-6"
+const HAIKU_MODEL   = "claude-haiku-4-5" // sugestão de brief ("Criar com IA") — barata e rápida
 const CLAUDE_URL    = "https://api.anthropic.com/v1/messages"
 const SERVICE_KEY   = "campanha_ads"
 const UNITS         = 1 // 1 campanha = 10 créditos (conforme service_pricing)
@@ -234,7 +235,16 @@ const META_OUTPUT_SCHEMA = {
   required: ["campaign_name", "ad_sets", "creative_briefs"],
 }
 
-function buildMetaPrompt(brief: Record<string, any>): string {
+// Bloco de DNA anexado aos prompts de geração quando o profissional tem DNA da Marca
+function dnaBlock(dnaSection: string): string {
+  if (!dnaSection) return ""
+  return `
+
+DNA DA MARCA DO PROFISSIONAL (personalize títulos, descrições e ângulos com a voz, os diferenciais e a persona REAIS abaixo; nunca invente credenciais):
+${dnaSection}`
+}
+
+function buildMetaPrompt(brief: Record<string, any>, dnaSection = ""): string {
   return `Você é especialista sênior em Meta Ads (Facebook/Instagram) para profissionais de saúde no Brasil.
 Gere uma campanha Click-to-WhatsApp completa: o anúncio abre conversa direto no WhatsApp do profissional.
 
@@ -251,7 +261,7 @@ REGRAS OBRIGATÓRIAS:
 3. CTA padrão SEND_MESSAGE (Click-to-WhatsApp); use BOOK_NOW só se fizer mais sentido pro ângulo.
 4. Briefs de criativo: vídeo 9:16 de 15-30s (gancho nos 3 primeiros segundos), carrossel de 5-7 cards com narrativa progressiva e estilo visual CONSISTENTE, imagem estática 1:1.
 5. Tom: profissional, acolhedor, linguagem simples. NUNCA prometa cura/resultado (Resolução CFM 1974/2011). Sem sensacionalismo — políticas de saúde do Meta são rígidas: nada de "você sofre de X?", prefira "para quem busca Y".
-6. Tudo em português brasileiro.`
+6. Tudo em português brasileiro.${dnaBlock(dnaSection)}`
 }
 
 function sanitizeMetaCampaign(raw: any): any {
@@ -273,7 +283,7 @@ function sanitizeMetaCampaign(raw: any): any {
 // =============================================
 // Prompt do gerador (system)
 // =============================================
-function buildPrompt(brief: Record<string, any>, landingUrl: string): string {
+function buildPrompt(brief: Record<string, any>, landingUrl: string, dnaSection = ""): string {
   return `Você é um especialista certificado em Google Ads para profissionais de saúde.
 Gere uma campanha de pesquisa (Search) completa, pronta para importar no Google Ads Editor.
 
@@ -296,7 +306,7 @@ REGRAS OBRIGATÓRIAS:
 7. Negativos globais obrigatórios (inclua todos): ${NEGATIVE_SEED.map((n) => `"${n}"`).join(", ")}.
 8. URLs dos sitelinks: use a URL de destino base fornecida (mantém a atribuição UTM).
 9. Tom: profissional e acolhedor; nunca prometa cura ou resultados garantidos (Resolução CFM 1974/2011).
-10. ENTREGUE TUDO em português brasileiro.`
+10. ENTREGUE TUDO em português brasileiro.${dnaBlock(dnaSection)}`
 }
 
 // =============================================
@@ -333,6 +343,82 @@ function sanitizeCampaign(raw: any, landingUrl: string): any {
 }
 
 // =============================================
+// DNA da Marca — contexto compartilhado entre a sugestão de brief
+// ("Criar com IA") e a personalização da campanha gerada
+// =============================================
+// Seções do brand_bible mais úteis para anúncios (ordem de prioridade)
+const DNA_BB_KEYS = ["posicionamento", "persona", "vilao", "diferenciacao", "mensagem", "voz_tom", "oferta"]
+// Respostas do onboarding /bem-vindo (professionals.dna_inputs)
+const DNA_INPUT_KEYS = ["servicos", "publico_alvo", "transformacao", "diferenciais", "metodo", "tom", "anos_experiencia"]
+const DNA_SECTION_MAX = 600
+const DNA_TOTAL_MAX   = 4000
+
+function buildDnaSection(prof: Record<string, any>): string {
+  const bb  = prof.brand_bible ?? {}
+  const dna = prof.dna_inputs ?? {}
+  const parts: string[] = []
+  for (const k of DNA_BB_KEYS) {
+    const v = bb?.[k]
+    if (typeof v === "string" && v.trim()) parts.push(`### ${k}\n${trunc(v.trim(), DNA_SECTION_MAX)}`)
+  }
+  const inputs: string[] = []
+  for (const k of DNA_INPUT_KEYS) {
+    const v = dna?.[k]
+    if (v != null && String(v).trim()) inputs.push(`- ${k}: ${trunc(String(v).trim(), 400)}`)
+  }
+  if (inputs.length) parts.push(`### respostas do onboarding\n${inputs.join("\n")}`)
+  if (!parts.length) return "" // sem DNA nenhum — chamador decide o fallback
+  const nome = prof.full_name ? `Profissional: ${prof.full_name}${prof.category ? ` (${prof.category})` : ""}\n\n` : ""
+  return trunc(nome + parts.join("\n\n"), DNA_TOTAL_MAX)
+}
+
+// =============================================
+// "Criar com IA" — sugestão de brief a partir do DNA (GRÁTIS, sem débito)
+// =============================================
+const SUGGEST_SCHEMA = {
+  type: "object",
+  properties: {
+    servico: {
+      type: "string",
+      description: 'Serviço principal, curto como um termo de busca (2-4 palavras). Ex.: "terapia de casal"',
+    },
+    cidade: {
+      type: "string",
+      description: "Cidade de atuação SE citada nos dados; string vazia se não houver",
+    },
+    raio_km: { type: "number", description: "Raio de alcance em km (10 a 50; 20 é um bom padrão)" },
+    orcamento_mensal: {
+      type: "number",
+      description: "Orçamento mensal sugerido em R$ (valor realista pro nicho, 300-1000; 600 é um bom padrão)",
+    },
+    objetivo: { type: "string", enum: ["leads", "agendamentos", "whatsapp", "trafego_landing"] },
+    diferencial: { type: "string", description: "1-2 frases com os diferenciais REAIS do profissional" },
+    publico: { type: "string", description: 'Público-alvo em poucas palavras. Ex.: "casais em crise"' },
+  },
+  required: ["servico", "raio_km", "orcamento_mensal", "objetivo", "diferencial", "publico"],
+}
+
+function buildSuggestPrompt(dnaSection: string, platform: string): string {
+  const alvo = platform === "meta_ads"
+    ? "Meta Ads Click-to-WhatsApp (Instagram/Facebook)"
+    : "Google Ads de pesquisa (Search)"
+  return `Você é especialista em tráfego pago para profissionais de saúde no Brasil.
+Preencha o brief de uma campanha ${alvo} para o profissional abaixo, usando SOMENTE os dados reais dele.
+
+${dnaSection}
+
+REGRAS:
+1. servico: o serviço mais central da atuação, curto como um termo de busca (ex.: "terapia de casal").
+2. cidade: apenas se os dados citarem cidade/região de atuação; caso contrário devolva "" (o profissional preenche).
+3. raio_km: 10 a 50 (20 é um bom padrão).
+4. orcamento_mensal: valor realista em R$ para começar no nicho (300 a 1000; 600 é um bom padrão). É gasto de mídia — o profissional confirma antes de gerar.
+5. objetivo: "whatsapp" se o caminho de conversão é conversa no WhatsApp; senão "leads" ou "agendamentos", conforme a oferta.
+6. diferencial: 1-2 frases com diferenciais REAIS (nunca invente credenciais, números ou formações).
+7. publico: público-alvo em poucas palavras (ex.: "pais de crianças com TEA").
+8. Tudo em português brasileiro.`
+}
+
+// =============================================
 // MAIN HANDLER
 // =============================================
 serve(async (req) => {
@@ -358,16 +444,57 @@ serve(async (req) => {
 
     const { data: professional } = await supabaseAdmin
       .from("professionals")
-      .select("id, slug")
+      .select("id, slug, full_name, category, brand_bible, dna_inputs")
       .eq("user_id", userData.user.id)
       .maybeSingle()
     if (!professional) return json({ error: "professional_not_found" }, 404)
 
     const professionalId: string = professional.id
     const slug: string = professional.slug ?? ""
+    const dnaSection = buildDnaSection(professional as Record<string, any>)
 
     // ── 2. Payload ───────────────────────────────────────────────────────────
     const body = await req.json()
+
+    // ── 2b. Ação "Criar com IA": sugere o brief a partir do DNA da Marca.
+    //        GRÁTIS (sem débito de créditos) — o débito continua só na geração. ──
+    if (body.action === "suggest_brief") {
+      if (!dnaSection) {
+        // 200 de propósito: estado esperado (o front orienta a preencher o DNA)
+        return json({ error: "sem_dna", mensagem: "Preencha o DNA da Marca para a IA montar o brief." })
+      }
+      const suggestPlatform = (body.platform ?? "google_ads").toString()
+      const suggestRes = await fetch(CLAUDE_URL, {
+        method: "POST",
+        headers: {
+          "x-api-key": anthropicKey,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        signal: AbortSignal.timeout(25_000), // fetch sem timeout trava a edge
+        body: JSON.stringify({
+          model: HAIKU_MODEL,
+          max_tokens: 1024,
+          tools: [{
+            name: "sugerir_brief",
+            description: "Retorna o brief sugerido da campanha no formato estruturado.",
+            input_schema: SUGGEST_SCHEMA,
+          }],
+          tool_choice: { type: "tool", name: "sugerir_brief" },
+          messages: [{ role: "user", content: buildSuggestPrompt(dnaSection, suggestPlatform) }],
+        }),
+      })
+      if (!suggestRes.ok) {
+        const errText = await suggestRes.text()
+        console.error("[ads-campaign-generator] suggest_brief Anthropic error:", errText)
+        return json({ error: "falha_na_sugestao_ia" }, 500)
+      }
+      const suggestData = await suggestRes.json()
+      const suggestBlock = suggestData.content?.find((b: any) => b.type === "tool_use" && b.name === "sugerir_brief")
+      if (!suggestBlock?.input) return json({ error: "ia_nao_retornou_brief" }, 500)
+      console.log(`[ads-campaign-generator] suggest_brief ok para ${professionalId}`)
+      return json({ brief: suggestBlock.input })
+    }
     const brief: Record<string, any> = body.brief ?? {}
     const dailyBudget: number = Number(body.daily_budget_brl)
     const maxDailyBudget: number = Number(body.max_daily_budget_brl ?? dailyBudget * 1.25)
@@ -417,7 +544,7 @@ serve(async (req) => {
     // ── 5. Gera campanha com Anthropic (1 chamada, structured output via tool forced) ──
     const isMeta = platform === "meta_ads"
     console.log(`[ads-campaign-generator] Gerando campanha ${platform} para ${professionalId}`)
-    const prompt = isMeta ? buildMetaPrompt(brief) : buildPrompt(brief, landingUrl)
+    const prompt = isMeta ? buildMetaPrompt(brief, dnaSection) : buildPrompt(brief, landingUrl, dnaSection)
 
     const anthropicRes = await fetch(CLAUDE_URL, {
       method: "POST",

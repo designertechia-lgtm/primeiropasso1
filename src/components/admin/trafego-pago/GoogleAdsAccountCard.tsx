@@ -110,6 +110,7 @@ export default function GoogleAdsAccountCard() {
                 >
                   {busy === "convite" ? "Enviando…" : conta.invited_email ? "Reenviar convite" : "Enviar convite"}
                 </button>
+                {" "}Assim que aceitar, volte aqui pro aplicativo pra seguir com o passo 2.
               </span>
             </li>
             <li className="flex items-start gap-2">
@@ -118,8 +119,11 @@ export default function GoogleAdsAccountCard() {
                 <span className="font-medium text-foreground">2. Cadastre seu cartão</span> em{" "}
                 <a href="https://ads.google.com" target="_blank" rel="noreferrer" className="underline inline-flex items-center gap-0.5">
                   ads.google.com <ExternalLink className="h-3 w-3" />
-                </a>{" "}
-                → Faturamento. O pagamento da mídia vai direto pro Google, no seu cartão — a plataforma nunca acessa esse valor.
+                </a>
+                : acesse sua conta e vá em <span className="font-medium text-foreground">Menu lateral → Faturamento</span>.
+                O pagamento da mídia vai direto pro Google, no seu cartão — a plataforma nunca acessa esse valor.
+                Quando terminar, volte aqui pro aplicativo e clique em{" "}
+                <span className="font-medium text-foreground">"Já cadastrei o cartão"</span> pra ativar sua conta.
               </span>
             </li>
           </ol>

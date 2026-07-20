@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 import {
   Facebook,
   CheckCircle2,
@@ -18,6 +19,7 @@ import {
   Plus,
   List,
   CalendarDays,
+  Sparkles,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -48,11 +50,13 @@ function useMetaCampaigns(professionalId: string | undefined) {
 // ── Componente principal ───────────────────────────────────
 interface MetaAdsTabProps {
   creditBalance: number;
+  /** Gate progressivo: sem DNA da Marca não cria campanha (a edge também recusa). */
+  dnaOk?: boolean;
 }
 
 type ViewMode = "list" | "calendar";
 
-export default function MetaAdsTab({ creditBalance }: MetaAdsTabProps) {
+export default function MetaAdsTab({ creditBalance, dnaOk = true }: MetaAdsTabProps) {
   const { data: professional } = useProfessional();
   const qc = useQueryClient();
   const { data: campaigns = [], isLoading } = useMetaCampaigns(professional?.id);
@@ -68,7 +72,9 @@ export default function MetaAdsTab({ creditBalance }: MetaAdsTabProps) {
     setExpandedCampaign(campaignId);
   }
 
-  if (isLoading) {
+  // `!professional` cobre o load inicial: a query de campanhas fica disabled (isLoading=false
+  // no react-query v5) e sem este guard o EmptyState piscaria antes dos dados chegarem.
+  if (isLoading || !professional) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -79,7 +85,7 @@ export default function MetaAdsTab({ creditBalance }: MetaAdsTabProps) {
   return (
     <div className="space-y-3">
       {campaigns.length === 0 ? (
-        <EmptyState creditBalance={creditBalance} onCreate={() => setCreateOpen(true)} />
+        <EmptyState creditBalance={creditBalance} dnaOk={dnaOk} onCreate={() => setCreateOpen(true)} />
       ) : (
         <>
           {/* Toolbar: contagem + toggle de visão + criar */}
@@ -112,7 +118,7 @@ export default function MetaAdsTab({ creditBalance }: MetaAdsTabProps) {
                   Calendário
                 </button>
               </div>
-              <Button size="sm" className="gap-1.5" onClick={() => setCreateOpen(true)}>
+              <Button size="sm" className="gap-1.5" onClick={() => setCreateOpen(true)} disabled={!dnaOk}>
                 <Plus className="h-3.5 w-3.5" />
                 Criar campanha
               </Button>
@@ -156,8 +162,31 @@ export default function MetaAdsTab({ creditBalance }: MetaAdsTabProps) {
 }
 
 // ── Empty State ────────────────────────────────────────────
-function EmptyState({ creditBalance, onCreate }: { creditBalance: number; onCreate: () => void }) {
+function EmptyState({ creditBalance, dnaOk, onCreate }: { creditBalance: number; dnaOk: boolean; onCreate: () => void }) {
+  const navigate = useNavigate();
   const canAfford = creditBalance >= CAMPAIGN_COST;
+
+  // Sem DNA: o próximo passo real é criar o DNA, não abrir o dialog (que a edge recusaria).
+  if (!dnaOk) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center space-y-6 max-w-md mx-auto">
+        <div className="w-20 h-20 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+          <Facebook className="h-10 w-10 text-blue-600" />
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-xl font-semibold">Comece pelo seu DNA da Marca</h3>
+          <p className="text-muted-foreground text-sm">
+            As campanhas são geradas a partir do DNA — posicionamento, público e voz. Com ele pronto,
+            a IA monta anúncios que soam como você.
+          </p>
+        </div>
+        <Button className="gap-2" onClick={() => navigate("/admin/landing?tab=dna")}>
+          <Sparkles className="h-4 w-4" />
+          Criar meu DNA da Marca
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center space-y-6 max-w-md mx-auto">

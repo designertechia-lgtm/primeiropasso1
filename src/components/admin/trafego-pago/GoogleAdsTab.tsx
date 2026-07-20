@@ -56,11 +56,13 @@ function useCampaigns(professionalId: string | undefined) {
 // ── Componente principal ───────────────────────────────────
 interface GoogleAdsTabProps {
   creditBalance: number;
+  /** Gate progressivo: sem DNA da Marca não cria campanha (a edge também recusa). */
+  dnaOk?: boolean;
 }
 
 type ViewMode = "list" | "calendar";
 
-export default function GoogleAdsTab({ creditBalance }: GoogleAdsTabProps) {
+export default function GoogleAdsTab({ creditBalance, dnaOk = true }: GoogleAdsTabProps) {
   const { data: professional } = useProfessional();
   const qc = useQueryClient();
   const { data: campaigns = [], isLoading } = useCampaigns(professional?.id);
@@ -76,7 +78,9 @@ export default function GoogleAdsTab({ creditBalance }: GoogleAdsTabProps) {
     setExpandedCampaign(campaignId);
   }
 
-  if (isLoading) {
+  // `!professional` cobre o load inicial: a query de campanhas fica disabled (isLoading=false
+  // no react-query v5) e sem este guard o EmptyState piscaria antes dos dados chegarem.
+  if (isLoading || !professional) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -89,7 +93,7 @@ export default function GoogleAdsTab({ creditBalance }: GoogleAdsTabProps) {
       <GoogleAdsAccountCard />
 
       {campaigns.length === 0 ? (
-        <EmptyState creditBalance={creditBalance} onCreate={() => setCreateOpen(true)} />
+        <EmptyState creditBalance={creditBalance} dnaOk={dnaOk} onCreate={() => setCreateOpen(true)} />
       ) : (
         <>
           {/* Toolbar: contagem + toggle de visão + criar */}
@@ -122,7 +126,7 @@ export default function GoogleAdsTab({ creditBalance }: GoogleAdsTabProps) {
                   Calendário
                 </button>
               </div>
-              <Button size="sm" className="gap-1.5" onClick={() => setCreateOpen(true)}>
+              <Button size="sm" className="gap-1.5" onClick={() => setCreateOpen(true)} disabled={!dnaOk}>
                 <Plus className="h-3.5 w-3.5" />
                 Criar campanha
               </Button>
@@ -165,9 +169,31 @@ export default function GoogleAdsTab({ creditBalance }: GoogleAdsTabProps) {
 }
 
 // ── Empty State ────────────────────────────────────────────
-function EmptyState({ creditBalance, onCreate }: { creditBalance: number; onCreate: () => void }) {
+function EmptyState({ creditBalance, dnaOk, onCreate }: { creditBalance: number; dnaOk: boolean; onCreate: () => void }) {
   const navigate = useNavigate();
   const canAfford = creditBalance >= CAMPAIGN_COST;
+
+  // Sem DNA: o próximo passo real é criar o DNA, não abrir o dialog (que a edge recusaria).
+  if (!dnaOk) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center space-y-6 max-w-md mx-auto">
+        <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
+          <TrendingUp className="h-10 w-10 text-primary" />
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-xl font-semibold">Comece pelo seu DNA da Marca</h3>
+          <p className="text-muted-foreground text-sm">
+            As campanhas são geradas a partir do DNA — posicionamento, público e voz. Com ele pronto,
+            a IA monta anúncios que soam como você.
+          </p>
+        </div>
+        <Button className="gap-2" onClick={() => navigate("/admin/landing?tab=dna")}>
+          <Sparkles className="h-4 w-4" />
+          Criar meu DNA da Marca
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center space-y-6 max-w-md mx-auto">

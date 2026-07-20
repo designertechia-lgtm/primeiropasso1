@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Sparkles, Loader2, Wand2, FileDown } from "lucide-react";
+import { Sparkles, Loader2, Wand2, FileDown, ClipboardList } from "lucide-react";
 import { InfoHint } from "@/components/ui/InfoHint";
+import { formMissing, hasDna } from "@/lib/onboardingGate";
 
 // Aba "DNA da Marca" do editor da landing. Fonte única da marca do profissional (11 seções,
 // modelo Daiane). Autossuficiente (grava em professionals.brand_bible). A IA gera um rascunho a
@@ -257,9 +258,19 @@ export default function BrandDnaEditorTab({ expanded = false }: { expanded?: boo
   const rebuildMarkdown = (secs: Record<string, string>) =>
     DNA_SECTIONS.map((s) => `## ${s.label}\n\n${(secs[s.key] || "").trim()}`).join("\n\n");
 
+  // Gate do formulário SÓ na PRIMEIRA geração: sem os insumos mínimos o DNA sai genérico
+  // (a edge recusa também — este aviso é só a versão amigável; a verdade é o servidor).
+  // Quem JÁ TEM DNA salvo (base anterior ao formulário, ex. dna_inputs vazio) regenera livre —
+  // travar a regeneração seria regressão para toda a base antiga. Critério em lib/onboardingGate.
+  const faltamNoFormulario = hasDna(p) ? [] : formMissing(p);
+
   const generate = () => {
-    if (!p.full_name || (p.approaches || []).length === 0) {
-      toast.error("Complete seu perfil primeiro", { description: "Precisa de nome e abordagens (aba Sobre / Meu Perfil) para gerar." });
+    if (faltamNoFormulario.length > 0) {
+      toast.error("Preencha o formulário guiado primeiro", {
+        description: `Para um DNA fiel, faltam: ${faltamNoFormulario.join(", ")}. Leva poucos minutos.`,
+        action: { label: "Preencher", onClick: () => navigate("/bem-vindo") },
+        duration: 10000,
+      });
       return;
     }
     if (dnaJob.running) return;
@@ -348,7 +359,25 @@ export default function BrandDnaEditorTab({ expanded = false }: { expanded?: boo
         </InfoHint>
       </div>
 
-      <Button onClick={generate} disabled={generating} className="w-full gap-2">
+      {faltamNoFormulario.length > 0 && (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 text-xs leading-relaxed">
+          <p className="font-medium text-foreground flex items-center gap-1.5">
+            <ClipboardList className="h-3.5 w-3.5 text-primary" /> Antes de gerar, preencha o formulário guiado
+          </p>
+          <p className="text-muted-foreground mt-0.5">
+            O DNA é criado a partir das suas respostas — sem elas, sai genérico. Faltam: {faltamNoFormulario.join(", ")}.
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate("/bem-vindo")}
+            className="mt-1.5 font-medium text-primary underline underline-offset-2 hover:opacity-80"
+          >
+            Preencher agora (leva poucos minutos)
+          </button>
+        </div>
+      )}
+
+      <Button onClick={generate} disabled={generating || faltamNoFormulario.length > 0} className="w-full gap-2">
         {generating
           ? <><Loader2 className="h-4 w-4 animate-spin" /> Gerando… pode levar ~1 min</>
           : <><Sparkles className="h-4 w-4" /> {hasContent ? "Gerar novo rascunho com IA" : "Gerar meu DNA com IA"}</>}

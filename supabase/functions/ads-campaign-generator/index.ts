@@ -453,15 +453,23 @@ serve(async (req) => {
     const slug: string = professional.slug ?? ""
     const dnaSection = buildDnaSection(professional as Record<string, any>)
 
+    // Critério ÚNICO de "tem DNA" (espelho de hasDna em src/lib/onboardingGate.ts): brand_bible
+    // com alguma seção preenchida. Vale para o suggest_brief E para a geração paga — antes o
+    // suggest_brief aceitava dna_inputs sozinho e a geração recusava, dando sinal contraditório
+    // ("a IA montou o brief pelo meu DNA, mas diz que não tenho DNA").
+    const bbGate: Record<string, any> = (professional as any).brand_bible ?? {}
+    const temDna = Object.entries(bbGate).some(([k, v]) =>
+      k !== "markdown" && k !== "_meta" && typeof v === "string" && v.trim() !== "")
+
     // ── 2. Payload ───────────────────────────────────────────────────────────
     const body = await req.json()
 
     // ── 2b. Ação "Criar com IA": sugere o brief a partir do DNA da Marca.
     //        GRÁTIS (sem débito de créditos) — o débito continua só na geração. ──
     if (body.action === "suggest_brief") {
-      if (!dnaSection) {
-        // 200 de propósito: estado esperado (o front orienta a preencher o DNA)
-        return json({ error: "sem_dna", mensagem: "Preencha o DNA da Marca para a IA montar o brief." })
+      if (!temDna || !dnaSection) {
+        // 200 de propósito: estado esperado (o front orienta a criar o DNA)
+        return json({ error: "sem_dna", mensagem: "Crie seu DNA da Marca para a IA montar o brief." })
       }
       const suggestPlatform = (body.platform ?? "google_ads").toString()
       const suggestRes = await fetch(CLAUDE_URL, {
@@ -495,6 +503,16 @@ serve(async (req) => {
       console.log(`[ads-campaign-generator] suggest_brief ok para ${professionalId}`)
       return json({ brief: suggestBlock.input })
     }
+    // ── 2c. Gate de DNA na geração PAGA (mesmo temDna do suggest_brief): campanha nasce do DNA
+    //        da Marca. Antes, gerava e DEBITAVA 10 créditos mesmo sem DNA nenhum (o dnaSection
+    //        vazio só empobrecia o prompt em silêncio). 200 de propósito: o front orienta. ──
+    if (!temDna) {
+      return json({
+        error: "sem_dna",
+        mensagem: "Crie seu DNA da Marca antes de gerar campanhas — é dele que a IA tira o posicionamento e a copy. Vá em Landing → DNA.",
+      })
+    }
+
     const brief: Record<string, any> = body.brief ?? {}
     const dailyBudget: number = Number(body.daily_budget_brl)
     const maxDailyBudget: number = Number(body.max_daily_budget_brl ?? dailyBudget * 1.25)

@@ -3,8 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useProfessional } from "@/hooks/useProfessional";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Video, Users, TrendingUp, AlertCircle, RefreshCw, CheckCircle2, Circle, ArrowRight, Sparkles } from "lucide-react";
+import { FileText, Video, Users, TrendingUp, AlertCircle, RefreshCw, CheckCircle2, Circle, ArrowRight, Sparkles, Lock } from "lucide-react";
 import { Link } from "react-router-dom";
+import { formOk, hasDna } from "@/lib/onboardingGate";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis } from "recharts";
 import { format, subMonths, startOfMonth, parseISO, addMonths } from "date-fns";
@@ -46,20 +47,24 @@ export default function AdminDashboard() {
   const { data: stats, isError: statsError, refetch: refetchStats } = useQuery({
     queryKey: ["dashboard-stats", professional?.id],
     queryFn: async () => {
-      const [articles, videos, availability] = await Promise.all([
+      const [articles, videos, availability, adsCampaigns] = await Promise.all([
         supabase.from("articles").select("id", { count: "exact", head: true }).eq("professional_id", professional!.id),
         supabase.from("videos").select("id", { count: "exact", head: true }).eq("professional_id", professional!.id),
         // Horários de atendimento definidos = agenda configurada (passo do checklist de onboarding).
         supabase.from("availability").select("id", { count: "exact", head: true }).eq("professional_id", professional!.id),
+        // Primeira campanha criada = etapa final da jornada guiada.
+        supabase.from("ads_campaigns" as any).select("id", { count: "exact", head: true }).eq("professional_id", professional!.id).neq("status", "archived"),
       ]);
       // Propaga erro para o react-query (senão o card zera em silêncio — auditoria A6).
       if (articles.error) throw articles.error;
       if (videos.error) throw videos.error;
       if (availability.error) throw availability.error;
+      if (adsCampaigns.error) throw adsCampaigns.error;
       return {
         articles: articles.count ?? 0,
         videos: videos.count ?? 0,
         availabilityCount: availability.count ?? 0,
+        adsCampaigns: adsCampaigns.count ?? 0,
       };
     },
     enabled: !!professional?.id,
@@ -171,19 +176,30 @@ export default function AdminDashboard() {
 
   const metricsError = statsError || leadsError || appointmentsError;
 
-  // Checklist de onboarding: 6 passos derivados do próprio perfil + contagens já buscadas
-  // (sem tabela nova). Some sozinho quando 6/6. Ver auditoria §5 e o plano (Fase 3).
+  // Checklist de onboarding derivado do próprio perfil + contagens já buscadas (sem tabela nova).
+  // A JORNADA é sequencial com cadeado (gating progressivo: Formulário → DNA → Landing/Campanha —
+  // critério em lib/onboardingGate, o mesmo que as edges aplicam); os demais passos são livres.
+  // Some sozinho quando tudo feito.
   const pro = professional as any;
-  const onboardingSteps = [
-    { done: !!(pro.photo_url && pro.full_name && (pro.approaches?.length ?? 0) > 0), label: "Complete seu perfil", to: "/admin/perfil" },
+  const formularioOk = formOk(pro);
+  const dnaOk = hasDna(pro);
+  // `lockHint` é só uma DICA visual (o passo continua clicável): a landing/campanha têm o próprio
+  // EmptyState explicando o pré-requisito, e a edição manual da landing é intencionalmente livre —
+  // por isso nada aqui é uma trava dura. `optional`: não precisa estar feito pro card sumir
+  // (campanha custa 10 créditos + verba; exigi-la deixaria o card fixo pra sempre).
+  type OnboardingStep = { done: boolean; label: string; to: string; lockHint?: string; optional?: boolean };
+  const onboardingSteps: OnboardingStep[] = [
+    { done: formularioOk, label: "Preencha o formulário guiado", to: "/bem-vindo" },
+    { done: dnaOk, lockHint: formularioOk ? undefined : "conclua o formulário", label: "Crie seu DNA da Marca", to: "/admin/landing?tab=dna" },
+    { done: !!pro.landing_published, label: "Publique sua página", to: "/admin/landing" },
+    { done: (stats?.adsCampaigns ?? 0) > 0, lockHint: dnaOk ? undefined : "crie o DNA antes", label: "Crie sua primeira campanha", to: "/admin/trafego-pago", optional: true },
     { done: !!pro.whatsapp, label: "Informe seu WhatsApp", to: "/admin/perfil" },
     { done: !!(pro.price_max || pro.price_first_session), label: "Defina seus valores", to: "/admin/perfil" },
-    { done: !!(pro.slug && (pro.hero_title || pro.bio)), label: "Publique sua página", to: "/admin/landing" },
     { done: (stats?.availabilityCount ?? 0) > 0, label: "Configure sua agenda", to: "/admin/agenda" },
     { done: (stats?.articles ?? 0) > 0 || (stats?.videos ?? 0) > 0, label: "Crie seu primeiro conteúdo", to: "/admin/artigos" },
   ];
   const doneCount = onboardingSteps.filter((s) => s.done).length;
-  const onboardingComplete = doneCount >= onboardingSteps.length;
+  const onboardingComplete = onboardingSteps.every((s) => s.done || s.optional);
 
   return (
     <div className="space-y-6">
@@ -207,22 +223,31 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent className="pt-0">
             <ul className="divide-y divide-border/60">
-              {onboardingSteps.map((step) => (
-                <li key={step.label}>
-                  <Link
-                    to={step.to}
-                    className="flex items-center gap-3 py-2.5 text-sm transition-colors hover:text-primary"
-                  >
-                    {step.done
-                      ? <CheckCircle2 className="h-5 w-5 flex-shrink-0 text-primary" />
-                      : <Circle className="h-5 w-5 flex-shrink-0 text-muted-foreground/40" />}
-                    <span className={step.done ? "flex-1 text-muted-foreground line-through" : "flex-1 font-medium text-foreground"}>
-                      {step.label}
-                    </span>
-                    {!step.done && <ArrowRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />}
-                  </Link>
-                </li>
-              ))}
+              {onboardingSteps.map((step) => {
+                const showHint = !!step.lockHint && !step.done;
+                return (
+                  <li key={step.label}>
+                    {/* Sempre navegável: a dica (lockHint) só orienta a ordem; a tela de destino
+                        tem seu próprio EmptyState/banner explicando o pré-requisito. */}
+                    <Link
+                      to={step.to}
+                      className="flex items-center gap-3 py-2.5 text-sm transition-colors hover:text-primary"
+                    >
+                      {step.done
+                        ? <CheckCircle2 className="h-5 w-5 flex-shrink-0 text-primary" />
+                        : showHint
+                          ? <Lock className="h-5 w-5 flex-shrink-0 text-muted-foreground/40" />
+                          : <Circle className="h-5 w-5 flex-shrink-0 text-muted-foreground/40" />}
+                      <span className={step.done ? "flex-1 text-muted-foreground line-through" : "flex-1 font-medium text-foreground"}>
+                        {step.label}
+                      </span>
+                      {showHint
+                        ? <span className="text-[11px] whitespace-nowrap text-muted-foreground/60">{step.lockHint}</span>
+                        : !step.done && <ArrowRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />}
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
             {/* Atalho para quem pulou o onboarding no cadastro: reabre o formulário guiado, que
                 preenche de uma vez os campos que os passos acima verificam + o DNA. */}

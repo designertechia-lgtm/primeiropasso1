@@ -123,6 +123,13 @@ export default function CreateCampaignDialog({
         },
       });
       if (error) throw error;
+      if (data?.error === "sem_dna") {
+        toast.info("Crie seu DNA da Marca primeiro", {
+          description: data.mensagem ?? "As campanhas são geradas a partir do seu DNA da Marca.",
+          action: { label: "Abrir DNA", onClick: () => navigate("/admin/landing?tab=dna") },
+        });
+        return;
+      }
       if (data?.error) throw new Error(data.mensagem ?? data.error);
 
       toast.success(`Campanha "${data.campaign_name}" criada!`, {

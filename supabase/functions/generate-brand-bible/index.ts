@@ -33,17 +33,22 @@ async function isServiceRole(token: string): Promise<boolean> {
   }
 }
 
-async function requireCaller(req: Request): Promise<Response | null> {
+// Devolve o userId quando o caller é usuário logado (para o gate consultar o REGISTRO dele no
+// banco); null para service role. `block` preenchido = 401 pronto pra retornar.
+async function requireCaller(req: Request): Promise<{ block: Response | null; userId: string | null }> {
   const token = (req.headers.get("Authorization") ?? "").replace("Bearer ", "");
   if (token) {
     const anonClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!);
     const { data: { user }, error } = await anonClient.auth.getUser(token);
-    if (!error && user) return null;
-    if (await isServiceRole(token)) return null;
+    if (!error && user) return { block: null, userId: user.id };
+    if (await isServiceRole(token)) return { block: null, userId: null };
   }
-  return new Response(JSON.stringify({ error: "Faça login para gerar o DNA da Marca." }), {
-    status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+  return {
+    block: new Response(JSON.stringify({ error: "Faça login para gerar o DNA da Marca." }), {
+      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    }),
+    userId: null,
+  };
 }
 
 const CLAUDE_URL = "https://api.anthropic.com/v1/messages";
@@ -172,7 +177,7 @@ async function callClaudeWithRetry(prompt: string, apiKey: string, subset: typeo
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
-    const unauthorized = await requireCaller(req);
+    const { block: unauthorized, userId } = await requireCaller(req);
     if (unauthorized) return unauthorized;
 
     const { profile } = await req.json() as { profile: any };
@@ -184,6 +189,53 @@ Deno.serve(async (req) => {
     }
 
     const p = profile ?? {};
+
+    // Gate do formulário (mesmo critério do front — src/lib/onboardingGate.ts): sem os insumos
+    // mínimos a ficha sai vazia e o DNA genérico. Regras:
+    //  - a verdade é o REGISTRO no banco (payload é forjável e pode vir de bundle velho em cache);
+    //    o `profile` do body segue sendo apenas o insumo da geração;
+    //  - gate SÓ na PRIMEIRA geração — quem já tem brand_bible com conteúdo regenera livre
+    //    (a base antiga não tem dna_inputs e não pode ser travada);
+    //  - category "outro" sem texto livre NÃO conta como profissão.
+    // Campo `error` legível: o front mostra direto. Service role (sem user) valida o payload.
+    const vazio = (x: unknown) => !String(x ?? "").trim();
+    const faltam: string[] = [];
+    if (userId) {
+      const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      const { data: prof } = await admin
+        .from("professionals")
+        .select("category, category_custom, approaches, dna_inputs, brand_bible")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (prof) {
+        const bb = (prof as any).brand_bible ?? {};
+        const jaTemDna = Object.entries(bb).some(([k, v]) =>
+          k !== "markdown" && k !== "_meta" && typeof v === "string" && (v as string).trim() !== "");
+        if (!jaTemDna) {
+          const dna = (prof as any).dna_inputs ?? {};
+          const temProfissao = !vazio((prof as any).category_custom) ||
+            ((prof as any).category && (prof as any).category !== "outro");
+          if (!temProfissao) faltam.push("profissão");
+          if (!(Array.isArray((prof as any).approaches) && (prof as any).approaches.length > 0)) faltam.push("abordagens");
+          if (vazio(dna?.publico_alvo)) faltam.push("público-alvo");
+          if (vazio(dna?.transformacao)) faltam.push("transformação");
+        }
+      }
+    } else {
+      const profissaoPayload = String(p.profissao ?? "").trim().toLowerCase();
+      if (!profissaoPayload || profissaoPayload === "outro") faltam.push("profissão");
+      if (vazio(p.formacao_abordagens) && vazio(p.especialidade)) faltam.push("abordagens");
+      if (vazio(p.publico_alvo)) faltam.push("público-alvo");
+      if (vazio(p.transformacao)) faltam.push("transformação");
+    }
+    if (faltam.length > 0) {
+      return new Response(JSON.stringify({
+        code: "sem_formulario",
+        faltam,
+        error: `Preencha o formulário guiado (/bem-vindo) antes de gerar o DNA — faltam: ${faltam.join(", ")}.`,
+      }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const mid = 6; // grupo A: seções 1–6, grupo B: 7–11
     const [a, b] = await Promise.all([
       callClaudeWithRetry(buildPrompt(p, SECTIONS.slice(0, mid)), apiKey, SECTIONS.slice(0, mid)),

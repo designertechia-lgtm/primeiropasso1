@@ -26,12 +26,21 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Leaf, ArrowRight, ArrowLeft, Check, X, Plus, Sparkles } from "lucide-react";
+import { Leaf, ArrowRight, ArrowLeft, Check, X, Plus, Sparkles, Wand2, Loader2, Copy } from "lucide-react";
 import ApproachesEditor from "@/components/admin/ApproachesEditor";
 import ImageUpload from "@/components/dashboard/ImageUpload";
+import { formMissing } from "@/lib/onboardingGate";
 
 const DRAFT_KEY = "pp_onboarding_draft";
+
+// Pedido pronto que o profissional copia e manda pra IA que já usa (ChatGPT etc.) — a resposta
+// dela é o que o "Importar de outra IA" lê. Pedir os campos na ordem do formulário melhora o parse.
+const IMPORT_PROMPT =
+  "Resuma tudo o que você sabe sobre mim e o meu trabalho, em texto corrido: minha profissão, " +
+  "tempo de atuação, abordagens e técnicas que uso, quem é o meu público, as dores que eu atendo, " +
+  "a transformação que entrego, meu método, meus diferenciais, meus serviços e meu tom de comunicação.";
 
 // Formato do rascunho (tudo string/array simples — serializa direto em localStorage).
 interface Draft {
@@ -89,6 +98,54 @@ const CATEGORIA_LABEL: Record<string, string> = {
   psicologo: "Psicólogo(a)", terapeuta: "Terapeuta", psiquiatra: "Psiquiatra",
 };
 
+// Aplica o perfil importado no rascunho SEM sobrescrever o que o usuário já digitou:
+// campo de texto só é preenchido se estava vazio; listas viram união (nada é removido).
+// `added` = quantas informações novas entraram (0 = texto não trouxe nada além do que já havia).
+function mergeImport(prev: Draft, perfil: any): { next: Draft; added: number } {
+  let added = 0;
+  const fillStr = (cur: string, val: any): string => {
+    const v = String(val ?? "").trim();
+    if (!v || cur.trim()) return cur;
+    added++;
+    return v;
+  };
+  const mergeList = (cur: string[], vals: any): string[] => {
+    const list = Array.isArray(vals) ? vals.map((x) => String(x ?? "").trim()).filter(Boolean) : [];
+    const novas = list.filter((x) => !cur.includes(x));
+    added += novas.length;
+    return novas.length ? [...cur, ...novas] : cur;
+  };
+  const next: Draft = {
+    ...prev,
+    categoryCustom: fillStr(prev.categoryCustom, perfil?.profissao),
+    anosExperiencia: fillStr(prev.anosExperiencia, perfil?.anos_experiencia),
+    approaches: mergeList(prev.approaches, perfil?.abordagens),
+    publicoAlvo: fillStr(prev.publicoAlvo, perfil?.publico_alvo),
+    dores: mergeList(prev.dores, perfil?.dores),
+    transformacao: fillStr(prev.transformacao, perfil?.transformacao),
+    metodo: fillStr(prev.metodo, perfil?.metodo),
+    diferenciais: fillStr(prev.diferenciais, perfil?.diferenciais),
+    servicos: fillStr(prev.servicos, perfil?.servicos),
+    bio: fillStr(prev.bio, perfil?.bio),
+    tom: fillStr(prev.tom, perfil?.tom),
+  };
+  return { next, added };
+}
+
+// Chama a edge onboarding-assist extraindo a mensagem amigável do corpo mesmo em non-2xx —
+// FunctionsHttpError esconde o corpo em error.context e o message vira um genérico em inglês
+// (mesmo padrão do invokeFn do BrandDnaEditorTab).
+async function invokeAssist(body: Record<string, unknown>): Promise<any> {
+  const { data, error } = await supabase.functions.invoke("onboarding-assist", { body });
+  if (error) {
+    const detail = (error as any)?.context
+      ? await (error as any).context.json().then((j: any) => j?.mensagem ?? j?.error).catch(() => null)
+      : null;
+    throw new Error(detail ?? error.message ?? "Erro no assistente.");
+  }
+  return data;
+}
+
 export default function OnboardingWelcome() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -135,8 +192,22 @@ export default function OnboardingWelcome() {
       } : {}),
     };
     try {
+      // Rascunho local NÃO sobrepõe o banco: só preenche o que o banco não tem. Um draft de dias
+      // atrás (página aberta e abandonada) regravaria bio/preços/foto antigos por cima do que o
+      // profissional editou depois em Meu Perfil — e o gating agora traz usuários antigos pra cá.
       const raw = localStorage.getItem(DRAFT_KEY);
-      if (raw) base = { ...base, ...JSON.parse(raw) };
+      if (raw) {
+        const draft = JSON.parse(raw) as Partial<Draft>;
+        (Object.keys(EMPTY) as (keyof Draft)[]).forEach((k) => {
+          const dv = draft[k];
+          if (dv == null) return;
+          const bv = base[k];
+          const baseVazio = Array.isArray(bv) ? bv.length === 0 : String(bv ?? "").trim() === "";
+          if (baseVazio) (base as any)[k] = dv;
+        });
+        // Campos com default local: banco NULL vira default na base — nesses o rascunho ainda vale.
+        if (!p.attendance_mode && typeof draft.attendanceMode === "string") base.attendanceMode = draft.attendanceMode;
+      }
     } catch { /* rascunho corrompido — ignora e usa o do banco */ }
     setD(base);
     setHydrated(true);
@@ -149,6 +220,109 @@ export default function OnboardingWelcome() {
   }, [d, hydrated]);
 
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((prev) => ({ ...prev, [k]: v }));
+
+  // ── Assistente de IA (edge onboarding-assist — grátis, sem débito) ──
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggesting, setSuggesting] = useState(false);
+  const [generatingBio, setGeneratingBio] = useState(false);
+  // Sugestões ainda não adotadas (clicar numa chip a adiciona em approaches e ela some daqui).
+  const pendingSuggestions = suggestions.filter((s) => !d.approaches.includes(s));
+
+  const copyPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(IMPORT_PROMPT);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      toast.info("Não consegui copiar sozinho", { description: "Selecione o texto do pedido e copie manualmente." });
+    }
+  };
+
+  const handleImport = async () => {
+    if (importing) return;
+    setImporting(true);
+    try {
+      const data = await invokeAssist({ action: "parse_persona", texto: importText });
+      if (data?.error) {
+        toast.error("Não deu para importar", { description: data.mensagem ?? data.error });
+        return;
+      }
+      const { next, added } = mergeImport(d, data?.perfil ?? {});
+      if (added === 0) {
+        toast.info("Nada novo para preencher", { description: "O texto não trouxe informações além das que você já preencheu." });
+        return;
+      }
+      setD(next);
+      setImportOpen(false);
+      setImportText("");
+      toast.success(`${added} informaç${added > 1 ? "ões preenchidas" : "ão preenchida"}!`, {
+        description: "Revise cada passo — só o que estava vazio foi preenchido, e dá pra ajustar tudo.",
+        duration: 8000,
+      });
+    } catch (e: any) {
+      toast.error("Erro ao importar", { description: e?.message ?? String(e) });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const suggestApproaches = async () => {
+    if (suggesting) return;
+    const profissao = d.categoryCustom.trim();
+    if (!profissao) {
+      toast.info("Digite sua profissão primeiro", { description: "As sugestões de abordagens partem dela." });
+      return;
+    }
+    setSuggesting(true);
+    try {
+      const data = await invokeAssist({ action: "suggest_approaches", profissao });
+      if (data?.error) {
+        toast.error("Não deu para sugerir", { description: data.mensagem ?? data.error });
+        return;
+      }
+      const novas = (data?.abordagens ?? []).filter((a: string) => !d.approaches.includes(a));
+      if (novas.length === 0) {
+        toast.info("Sem sugestões novas", { description: "Você já adicionou as abordagens comuns dessa área." });
+        return;
+      }
+      setSuggestions(novas);
+    } catch (e: any) {
+      toast.error("Erro ao sugerir abordagens", { description: e?.message ?? String(e) });
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
+  const suggestBio = async () => {
+    if (generatingBio) return;
+    setGeneratingBio(true);
+    try {
+      const data = await invokeAssist({
+        action: "suggest_bio",
+        draft: {
+          profissao: d.categoryCustom, anos_experiencia: d.anosExperiencia, abordagens: d.approaches,
+          publico_alvo: d.publicoAlvo, dores: d.dores, transformacao: d.transformacao,
+          diferenciais: d.diferenciais, servicos: d.servicos, tom: d.tom,
+        },
+      });
+      if (data?.error) {
+        toast.error("Não deu para criar a bio", { description: data.mensagem ?? data.error });
+        return;
+      }
+      if (data?.bio) {
+        set("bio", data.bio);
+        toast.success("Bio criada a partir das suas respostas!", { description: "Edite à vontade — a página é sua." });
+      }
+    } catch (e: any) {
+      toast.error("Erro ao criar a bio", { description: e?.message ?? String(e) });
+    } finally {
+      setGeneratingBio(false);
+    }
+  };
 
   const toNumber = (s: string): number | null => {
     const n = parseFloat(String(s).replace(",", "."));
@@ -215,17 +389,26 @@ export default function OnboardingWelcome() {
     const ok = await persist();
     setSaving(false);
     if (!ok) return;
-    const temAbordagens = d.approaches.length > 0;
-    // Oferece gerar o DNA (não dispara sozinho — é operação cara). Só faz sentido se há abordagens,
-    // que é o gate real do gerador.
-    if (temAbordagens) {
+    // Convite coerente com o gate REAL do gerador (lib/onboardingGate, o mesmo do botão e da
+    // edge): só oferece "Gerar DNA" quando o que foi salvo destrava o botão de verdade —
+    // convidar para uma porta trancada frustra. Senão, diz exatamente o que falta.
+    const faltamProDna = formMissing({
+      category: derivarCategoria(d.categoryCustom.trim()),
+      category_custom: d.categoryCustom,
+      approaches: d.approaches,
+      dna_inputs: { publico_alvo: d.publicoAlvo, transformacao: d.transformacao },
+    });
+    if (faltamProDna.length === 0) {
       toast.success("Perfil pronto! Que tal gerar seu DNA da Marca agora?", {
         description: "A IA cria a base da sua marca a partir do que você respondeu.",
         action: { label: "Gerar DNA", onClick: () => navigate("/admin/landing?tab=dna") },
         duration: 12000,
       });
     } else {
-      toast.success("Tudo salvo! Bem-vindo(a).");
+      toast.success("Tudo salvo! Bem-vindo(a).", {
+        description: `Para gerar seu DNA da Marca depois, falta preencher: ${faltamProDna.join(", ")}.`,
+        duration: 10000,
+      });
     }
     navigate("/admin", { replace: true });
   };
@@ -273,6 +456,20 @@ export default function OnboardingWelcome() {
           <CardContent className="p-6 space-y-5">
             {step === 1 && (
               <>
+                {/* Quem já usa ChatGPT tem a própria "persona" pronta lá — cola e o formulário
+                    se preenche (só campos vazios; nada do que foi digitado é sobrescrito). */}
+                <button
+                  type="button"
+                  onClick={() => setImportOpen(true)}
+                  className="w-full flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 text-left transition-colors hover:bg-primary/10"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">Já usa ChatGPT ou outra IA?</p>
+                    <p className="text-xs text-muted-foreground">Importe o que ela sabe sobre você e o formulário se preenche sozinho. Grátis.</p>
+                  </div>
+                  <Wand2 className="h-4 w-4 shrink-0 text-primary" />
+                </button>
+
                 <FieldBlock label="Qual é a sua profissão ou atividade?" hint="Escreva do seu jeito. Ex: Psicóloga clínica, Nutricionista esportivo, Coach financeiro, Engenharia de IA aplicada.">
                   <Input
                     placeholder="Ex: Psicóloga clínica · Nutricionista esportivo · Engenharia de IA aplicada"
@@ -287,6 +484,34 @@ export default function OnboardingWelcome() {
 
                 <FieldBlock label="Suas abordagens, técnicas ou especialidades" hint="É o que dá personalidade ao seu DNA e aos textos. Ex: TCC, Psicanálise, Mindfulness.">
                   <ApproachesEditor value={d.approaches} onChange={(v) => set("approaches", v)} />
+                  <div className="mt-2 space-y-2">
+                    {/* Sugestões, não afirmação: a IA lista o que é comum na área digitada e o
+                        profissional CLICA no que é verdade sobre ele. */}
+                    <Button
+                      type="button" variant="ghost" size="sm"
+                      className="h-8 gap-1.5 px-2 text-primary"
+                      onClick={suggestApproaches}
+                      disabled={suggesting}
+                    >
+                      {suggesting
+                        ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Buscando…</>
+                        : <><Sparkles className="h-3.5 w-3.5" /> Sugerir abordagens comuns da minha área</>}
+                    </Button>
+                    {pendingSuggestions.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {pendingSuggestions.map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => set("approaches", [...d.approaches, s])}
+                            className="inline-flex items-center gap-1 rounded-full border border-dashed border-primary/40 px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary"
+                          >
+                            <Plus className="h-3 w-3" /> {s}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </FieldBlock>
               </>
             )}
@@ -353,6 +578,17 @@ export default function OnboardingWelcome() {
               <>
                 <FieldBlock label="Uma bio curta sobre você" hint="Aparece na sua página e ajuda o Axel a te apresentar. 2-4 frases.">
                   <Textarea rows={4} placeholder="Ex: Sou psicóloga há 10 anos, especialista em ansiedade. Acredito num acompanhamento próximo e sem julgamentos…" value={d.bio} onChange={(e) => set("bio", e.target.value)} />
+                  {/* Aqui a IA TEM matéria-prima (passos 1-4) — diferente da profissão, que é fato. */}
+                  <Button
+                    type="button" variant="ghost" size="sm"
+                    className="mt-1.5 h-8 gap-1.5 px-2 text-primary"
+                    onClick={suggestBio}
+                    disabled={generatingBio}
+                  >
+                    {generatingBio
+                      ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Criando…</>
+                      : <><Wand2 className="h-3.5 w-3.5" /> {d.bio.trim() ? "Refazer com IA" : "Criar com IA"} usando o que você respondeu</>}
+                  </Button>
                 </FieldBlock>
 
                 <FieldBlock label="Como você quer soar?" hint="O tom da sua comunicação. Ex: acolhedor e caloroso · direto e técnico · leve e bem-humorado.">
@@ -403,6 +639,45 @@ export default function OnboardingWelcome() {
         <p className="mt-4 text-center text-xs text-muted-foreground flex items-center justify-center gap-1">
           <Sparkles className="h-3 w-3" /> Tudo o que você responder aqui pode ser editado depois em Meu Perfil e no editor da Landing.
         </p>
+
+        {/* Importar de outra IA: pedido pronto pra copiar + cole da resposta */}
+        <Dialog open={importOpen} onOpenChange={(o) => { if (!importing) setImportOpen(o); }}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Wand2 className="h-5 w-5 text-primary" /> Importar de outra IA
+              </DialogTitle>
+              <DialogDescription>
+                Peça um resumo sobre você à IA que você já usa (ChatGPT, Gemini…), cole a resposta aqui e o
+                formulário se preenche. Nada do que você já digitou é sobrescrito.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="rounded-lg border bg-muted/40 p-3 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">1. Copie e envie este pedido para a sua IA:</p>
+                <p className="text-sm leading-relaxed">“{IMPORT_PROMPT}”</p>
+                <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={copyPrompt}>
+                  {copied ? <><Check className="h-3.5 w-3.5" /> Copiado!</> : <><Copy className="h-3.5 w-3.5" /> Copiar pedido</>}
+                </Button>
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground">2. Cole a resposta dela aqui:</p>
+                <Textarea
+                  rows={7}
+                  placeholder="Cole aqui o resumo que a IA fez sobre você e o seu trabalho…"
+                  value={importText}
+                  onChange={(e) => setImportText(e.target.value)}
+                  disabled={importing}
+                />
+              </div>
+              <Button className="w-full gap-2" onClick={handleImport} disabled={importing || importText.trim().length < 40}>
+                {importing
+                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Lendo e preenchendo…</>
+                  : <><Sparkles className="h-4 w-4" /> Preencher formulário</>}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

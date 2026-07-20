@@ -306,7 +306,7 @@ const tools = [
   {
     name: "criar_campanha_ads",
     description:
-      "Gera uma campanha Google Ads completa (rascunho) com IA. SOMENTE CHAME depois que o profissional confirmar EXPLICITAMENTE o brief completo (serviço, cidade, orçamento e diferencial) E autorizar a geração. Consome CRÉDITOS (10 por campanha) — mostre o custo e peça confirmação antes de chamar. Inclui gate de saldo: se insuficiente, retorna erro e orienta a recarregar.",
+      "Gera uma campanha Google Ads completa (rascunho) com IA. EXIGE o DNA da Marca criado (sem ele retorna erro sem_dna — oriente a criar o DNA em Landing → DNA primeiro). SOMENTE CHAME depois que o profissional confirmar EXPLICITAMENTE o brief completo (serviço, cidade, orçamento e diferencial) E autorizar a geração. Consome CRÉDITOS (10 por campanha) — mostre o custo e peça confirmação antes de chamar. Inclui gate de saldo: se insuficiente, retorna erro e orienta a recarregar.",
     input_schema: {
       type: "object",
       properties: {
@@ -553,7 +553,7 @@ function buildSystemPrompt(opts: {
     // Receita só das etapas PENDENTES: quem já concluiu não paga o texto no prompt.
     const RECEITA: Record<string, string> = {
       perfil: `PERFIL — colete e grave pelo chat: nome/atividade/telefone/modalidade/valores via \`salvar_dado_cadastro\`; bio via \`sugerir_dados_perfil\` → mostrar → confirmar → \`atualizar_perfil\`. A FOTO é na tela: \`abrir_pagina('/admin/perfil')\`.`,
-      dna: `DNA DA MARCA — a identidade da marca dele em 11 seções (essência, posicionamento, persona, voz...); personaliza landing, conteúdo e campanhas. A geração é NA TELA: \`abrir_pagina('/admin/landing?tab=dna')\` → botão "Gerar meu DNA com IA" → ele revisa e SALVA. Perfil e bio prontos deixam o DNA muito mais rico (por isso vem depois). Passo a passo: \`consultar_secao('dna-marca')\`.`,
+      dna: `DNA DA MARCA — a identidade da marca dele em 11 seções (essência, posicionamento, persona, voz...); personaliza landing, conteúdo e campanhas. PRÉ-REQUISITO: o botão de gerar só habilita depois do formulário guiado /bem-vindo (profissão, abordagens, público-alvo e transformação) — se ele ainda não preencheu, oriente a começar por lá: \`abrir_pagina('/bem-vindo')\` (leva poucos minutos e dá pra importar de outra IA). Com o formulário ok, a geração é NA TELA: \`abrir_pagina('/admin/landing?tab=dna')\` → botão "Gerar meu DNA com IA" → ele revisa e SALVA. Passo a passo: \`consultar_secao('dna-marca')\`.`,
       landing: `LANDING PAGE — ofereça montar pelo chat: \`gerar_landing\` cria os textos de uma vez (mostre e peça confirmação antes de aplicar); ajuste fino com \`sugerir_dados_perfil\`/\`atualizar_perfil\`; foto/cores/seções na tela: \`abrir_pagina('/admin/landing')\`. ${publicUrlLinha}`,
       campanha: `CAMPANHA — pelo chat com \`criar_campanha_ads\` (Google; 10 créditos — confirme o custo ANTES) ou pela tela \`abrir_pagina('/admin/trafego-pago')\` (Meta é pela tela, ?tab=meta). Siga as regras do bloco TRÁFEGO PAGO.`,
       video: `VÍDEO — pelo chat com \`preparar_video\` (roteiro grátis; créditos só quando ele confirmar a geração no estúdio). Apresente os 3 moldes do bloco CRIAÇÃO DE VÍDEO. Estúdio manual: \`abrir_pagina('/admin/redes-sociais?tab=videos')\`.`,
@@ -2172,6 +2172,27 @@ async function handleToolCall(
   }
 
   if (toolName === "criar_campanha_ads") {
+    // Dados do profissional (slug para UTM + DNA para o gate e o prompt).
+    const { data: profData } = await supabaseAdmin
+      .from("professionals")
+      .select("slug, brand_bible")
+      .eq("id", professionalId)
+      .maybeSingle()
+    const slug: string = (profData as any)?.slug ?? ""
+
+    // Gate progressivo (mesmo critério da edge ads-campaign-generator): campanha nasce do DNA
+    // da Marca — sem ele, nem gera nem debita. Vem ANTES do gate de créditos: senão o usuário
+    // sem DNA é mandado comprar créditos e só depois descobre que o pré-requisito real é o DNA.
+    const bbAds: Record<string, unknown> = (profData as any)?.brand_bible ?? {}
+    const temDna = Object.entries(bbAds).some(([k, v]) =>
+      k !== "markdown" && k !== "_meta" && typeof v === "string" && (v as string).trim() !== "")
+    if (!temDna) {
+      return {
+        erro: "sem_dna",
+        instrucao: "As campanhas são geradas a partir do DNA da Marca, e ele ainda não existe. Explique isso, oriente a criar o DNA (chame abrir_pagina('/admin/landing?tab=dna')) e, se ele ainda não preencheu o formulário guiado /bem-vindo, sugira começar por ele. NÃO tente gerar a campanha sem o DNA.",
+      }
+    }
+
     // Gate de créditos (view credit_balance SINGULAR)
     const { data: balRow } = await supabaseAdmin
       .from("credit_balance")
@@ -2189,13 +2210,13 @@ async function handleToolCall(
       }
     }
 
-    // Dados do profissional (slug para UTM)
-    const { data: profData } = await supabaseAdmin
-      .from("professionals")
-      .select("slug")
-      .eq("id", professionalId)
-      .maybeSingle()
-    const slug: string = (profData as any)?.slug ?? ""
+    // DNA no prompt da geração: mesmas seções que a edge ads-campaign-generator prioriza.
+    const dnaSection = ["posicionamento", "persona", "vilao", "diferenciacao", "mensagem", "voz_tom", "oferta"]
+      .map((k) => {
+        const v = (bbAds as any)[k]
+        return typeof v === "string" && v.trim() ? `### ${k}\n${v.trim().slice(0, 600)}` : ""
+      })
+      .filter(Boolean).join("\n\n").slice(0, 4000)
 
     const servico:  string  = (args.servico  || "").toString()
     const cidade:   string  = (args.cidade   || "").toString()
@@ -2251,7 +2272,10 @@ BRIEF:
 - Diferencial: ${diferencial || "não informado"}
 - Público: ${publico}
 - URL de destino: ${landingUrl}
-
+${dnaSection ? `
+DNA DA MARCA (use para posicionamento, público e voz — os anúncios devem soar como o profissional):
+${dnaSection}
+` : ""}
 REGRAS:
 1. Títulos RSA: máx 30 chars cada (inclua cidade e serviço em ≥2).
 2. Descrições RSA: máx 90 chars (CTA claro em ≥1).

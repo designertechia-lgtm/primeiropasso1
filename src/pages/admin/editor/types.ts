@@ -85,6 +85,8 @@ export type PipClip = {
   scale_pct: number;      // fração da largura do vídeo
   opacity: number;        // 0.2–1
   volume: number;         // 0 = mudo (padrão: não competir com a voz principal)
+  /** entrada/saída suave (fade 0,25s). Ausente = true (docs antigos). */
+  fade?: boolean;
 };
 
 // Vídeo em SEQUÊNCIA (Fase F): emendado DEPOIS do vídeo principal editado, na

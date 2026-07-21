@@ -42,7 +42,7 @@ import {
   CheckCircle2, AlertCircle, Video as VideoIcon, Captions, Wand2, RotateCcw,
   FolderOpen, Copy, Plus, Minus, Palette, Sparkles, Mic, Square, HelpCircle,
   Image as ImageIcon, Headphones, Volume2, Magnet, Download, Type, Clapperboard,
-  Repeat, LogIn, LogOut, Check, Eye, EyeOff,
+  Repeat, LogIn, LogOut, Check, Eye, EyeOff, Maximize2, Minimize2,
 } from "lucide-react";
 import { videoApiAuthHeaders } from "@/lib/videoApi";
 import {
@@ -142,6 +142,9 @@ export default function AdminEditorVideo() {
   // Diálogo de escolha de um 2º vídeo: "pip" (sobre o vídeo) ou "seq" (no fim)
   const [dialogVideo, setDialogVideo] = useState<null | "pip" | "seq">(null);
   const [pipLoading, setPipLoading] = useState(false);
+  // player: indicador de fonte carregando/travada + tela cheia
+  const [videoCarregando, setVideoCarregando] = useState(false);
+  const [isFull, setIsFull] = useState(false);
 
   const [musicas, setMusicas] = useState<{ id: string; label: string }[]>([]);
   const [previewingTrack, setPreviewingTrack] = useState("");
@@ -190,6 +193,7 @@ export default function AdminEditorVideo() {
   const trackDragRef = useRef<{ kind: "sticker" | "audio" | "title" | "cue" | "pip"; id: string; mode: "move" | "resize"; grab: number } | null>(null);
   const stickerDragRef = useRef<string | null>(null);
   const pipDragRef = useRef<string | null>(null);
+  const pipResizeRef = useRef<{ id: string; startX: number; startW: number } | null>(null);
   const pipVideosRef = useRef<Map<string, HTMLVideoElement>>(new Map());
   const stickerPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1003,6 +1007,19 @@ export default function AdminEditorVideo() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewVol, previewSrc, seqClips.length]);
 
+  // Tela cheia do PLAYER (wrapper inteiro: overlays/legendas/PiP vão juntos;
+  // o contentRect re-mede sozinho via ResizeObserver)
+  useEffect(() => {
+    const h = () => setIsFull(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", h);
+    return () => document.removeEventListener("fullscreenchange", h);
+  }, []);
+  const alternarTelaCheia = () => {
+    if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
+    videoWrapRef.current?.requestFullscreen().catch(() =>
+      toast.error("Tela cheia não suportada neste navegador."));
+  };
+
   // ── timeline ───────────────────────────────────────────────────────────────
   const seekTo = (t: number) => clock.seek(t);
   // barra "Adicionar" da timeline → rola até a seção que cria aquele conteúdo
@@ -1731,6 +1748,27 @@ export default function AdminEditorVideo() {
   };
   const onPipPreviewUp = () => { pipDragRef.current = null; };
 
+  // Redimensionar o PiP pelo CANTO da janela (escala livre — o select de
+  // tamanho vira atalho; observação do Carlos: ajustar direto no player)
+  const onPipResizeDown = (e: React.PointerEvent, id: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const clip = pipClips.find((x) => x.id === id);
+    if (!clip || !contentRect) return;
+    checkpoint();
+    pipResizeRef.current = { id, startX: e.clientX, startW: contentRect.w * clip.scale_pct };
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+  };
+  const onPipResizeMove = (e: React.PointerEvent) => {
+    const d = pipResizeRef.current;
+    if (!d || !contentRect) return;
+    if (e.buttons === 0) { pipResizeRef.current = null; return; }
+    const w = Math.max(24, d.startW + (e.clientX - d.startX));
+    const scale = Math.max(0.1, Math.min(0.85, w / contentRect.w));
+    applyLive((dd) => ({ pipClips: dd.pipClips.map((x) => (x.id === d.id ? { ...x, scale_pct: scale } : x)) }));
+  };
+  const onPipResizeUp = () => { pipResizeRef.current = null; };
+
   // meta acessível em callbacks de polling (não pode ler state velho)
   useEffect(() => { metaRef.current = meta; }, [meta]);
 
@@ -2194,11 +2232,39 @@ export default function AdminEditorVideo() {
                       SEM controles nativos (Fase C): o relógio mestre rege a
                       prévia — clicar no vídeo toca/pausa. */}
                   <video ref={videoRef} src={previewSrc} playsInline
-                    className="w-full max-h-72 rounded-lg bg-black cursor-pointer"
+                    className={isFull
+                      ? "h-full w-full bg-black cursor-pointer object-contain"
+                      : "w-full max-h-72 rounded-lg bg-black cursor-pointer"}
                     style={{ filter: filtroCss(filtro) }}
                     onClick={clock.toggle}
                     onEnded={clock.pause}
-                    onPause={() => clipAudiosRef.current.forEach((el) => el.pause())} />
+                    onPause={() => clipAudiosRef.current.forEach((el) => el.pause())}
+                    onLoadStart={() => setVideoCarregando(true)}
+                    onWaiting={() => setVideoCarregando(true)}
+                    onCanPlay={() => setVideoCarregando(false)}
+                    onPlaying={() => setVideoCarregando(false)}
+                    onError={() => {
+                      // a CDN da galeria expira — cai na rota do worker, que
+                      // restaura o arquivo do Storage sozinha (era a TELA PRETA
+                      // com o cursor andando: o relógio não depende do vídeo)
+                      if (!meta) return;
+                      const rotaWorker = `${API}/editor/video/${meta.edit_id}`;
+                      if (previewSrc && previewSrc !== rotaWorker) {
+                        console.warn("[editor] preview falhou — trocando para a rota do worker");
+                        setPreviewSrc(rotaWorker);
+                      } else {
+                        setVideoCarregando(false);
+                        toast.error("Não consegui carregar o vídeo da prévia — recarregue a página; se persistir, reenvie o arquivo.", { duration: 8000 });
+                      }
+                    }} />
+                  {/* fonte carregando/travada: sem isto era tela preta muda */}
+                  {videoCarregando && previewSrc && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="flex items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 text-xs text-white">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> carregando o vídeo…
+                      </div>
+                    </div>
+                  )}
                   {/* POOL dos vídeos EMENDADOS: cada um é um <video> oculto que
                       cobre o player quando o relógio entra na janela dele — a
                       prévia toca a edição inteira, emendas incluídas */}
@@ -2265,26 +2331,35 @@ export default function AdminEditorVideo() {
                   {contentRect && !faixaOculta("pip") && pipClips
                     .filter((p) => playhead >= p.start && playhead <= p.end)
                     .map((p) => (
-                      <video key={p.id}
-                        ref={(el) => {
-                          if (el) pipVideosRef.current.set(p.id, el);
-                          else pipVideosRef.current.delete(p.id);
-                        }}
-                        src={p.source_url || `${API}/editor/video/${p.edit_id}`}
-                        muted={p.volume <= 0.01} playsInline preload="auto"
+                      <div key={p.id}
                         style={{
                           position: "absolute",
                           left: contentRect.left + p.x_pct * contentRect.w,
                           top: contentRect.top + p.y_pct * contentRect.h,
                           width: contentRect.w * p.scale_pct,
-                          opacity: p.opacity,
                           transform: "translate(-50%,-50%)",
-                          borderRadius: 6,
                           cursor: "grab",
                           touchAction: "none",
                         }}
                         onPointerDown={(e) => onPipPreviewDown(e, p.id)}
-                        onPointerMove={onPipPreviewMove} onPointerUp={onPipPreviewUp} />
+                        onPointerMove={(e) => { onPipPreviewMove(e); onPipResizeMove(e); }}
+                        onPointerUp={() => { onPipPreviewUp(); onPipResizeUp(); }}>
+                        <video
+                          ref={(el) => {
+                            if (el) pipVideosRef.current.set(p.id, el);
+                            else pipVideosRef.current.delete(p.id);
+                          }}
+                          src={p.source_url || `${API}/editor/video/${p.edit_id}`}
+                          muted={p.volume <= 0.01} playsInline preload="auto"
+                          className="pointer-events-none w-full rounded-md"
+                          style={{ opacity: p.opacity }} />
+                        {/* alça do canto: redimensiona a janela direto no player */}
+                        <div
+                          className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-sm border border-white bg-primary cursor-nwse-resize"
+                          title="Arraste para mudar o tamanho da janela"
+                          style={{ touchAction: "none" }}
+                          onPointerDown={(e) => onPipResizeDown(e, p.id)} />
+                      </div>
                     ))}
                   {/* prévia de legendas/textos/selos: desenhada como o ffmpeg
                       desenha (mesma régua de estilo). Fica ACIMA dos stickers,
@@ -2317,6 +2392,10 @@ export default function AdminEditorVideo() {
                     <input type="range" min={0} max={1} step={0.05} value={previewVol}
                       onChange={(e) => setPreviewVol(Number(e.target.value))} className="w-16" />
                   </label>
+                  <Button size="sm" variant="outline" className="h-7 w-7 p-0"
+                    title={isFull ? "Sair da tela cheia" : "Expandir (tela cheia)"} onClick={alternarTelaCheia}>
+                    {isFull ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+                  </Button>
                   <span className="ml-auto text-muted-foreground">{meta.width}x{meta.height}</span>
                 </div>
               </div>
@@ -3082,6 +3161,12 @@ export default function AdminEditorVideo() {
                         <input type="range" min={0.2} max={1} step={0.05} value={p.opacity} className="w-14"
                           onPointerDown={checkpoint}
                           onChange={(e) => applyLive((d) => ({ pipClips: d.pipClips.map((x) => (x.id === p.id ? { ...x, opacity: Number(e.target.value) } : x)) }))} />
+                      </label>
+                      <label className="flex items-center gap-1 cursor-pointer"
+                        title="Transição da janela: entrada/saída suave (fade) ou corte seco">
+                        <input type="checkbox" checked={p.fade ?? true}
+                          onChange={(e) => apply((d) => ({ pipClips: d.pipClips.map((x) => (x.id === p.id ? { ...x, fade: e.target.checked } : x)) }))} />
+                        suave
                       </label>
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground ml-auto"
                         title="Duplicar este clipe" onClick={() => duplicarPip(p.id)}>

@@ -50,6 +50,8 @@ export type VideoClip = ClipBase & {
   // v9 usa para reproduzir o overlay do v8 tal e qual
   movement?: string;
   loop?: boolean;
+  // PiP: entrada/saída suave (fade 0,25s); ausente = true
+  fade?: boolean;
 };
 
 export type AudioClipT = ClipBase & {
@@ -309,6 +311,7 @@ export function docFlatToTracks(doc: EditorDoc, sourceId: string): Track[] {
         transform: { x: p.x_pct, y: p.y_pct, escala: p.scale_pct,
                      opacidade: p.opacity, giro: 0 },
         filtro: "nenhum", efeito: "nenhum", loop: false,
+        fade: p.fade ?? true,
       });
       break;   // 1 span por clipe (como remap_spans estica=False)
     }

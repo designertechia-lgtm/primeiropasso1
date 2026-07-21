@@ -39,7 +39,7 @@ serve(async (req) => {
 
     let { data: pro, error: proError } = await supabaseAdmin
       .from('professionals')
-      .select('id, evolution_instance_name')
+      .select('id, evolution_instance_name, whatsapp_channel')
       .eq('user_id', user.id)
       .maybeSingle()
 
@@ -52,7 +52,7 @@ serve(async (req) => {
       const { data: newPro, error: insertError } = await supabaseAdmin
         .from('professionals')
         .insert({ user_id: user.id, slug: 'designertech' })
-        .select('id, evolution_instance_name')
+        .select('id, evolution_instance_name, whatsapp_channel')
         .single()
 
       if (insertError) {
@@ -65,7 +65,7 @@ serve(async (req) => {
       throw new Error(`Nenhum perfil de profissional encontrado para o usuário: ${user.id}`)
     }
 
-    const { action, number } = await req.json()
+    const { action, number, to, message } = await req.json()
     const evoUrl = Deno.env.get('EVOLUTION_API_URL')
     const evoKey = Deno.env.get('EVOLUTION_API_KEY')
 
@@ -78,11 +78,82 @@ serve(async (req) => {
       'Content-Type': 'application/json'
     }
 
+    // ── action: send — envio manual do painel (campo "Digite sua mensagem"), roteado
+    // pelo canal do profissional (Evolution x Cloud API oficial). O caller garante que
+    // o agente está desligado pro lead; aqui só entregamos o texto.
+    if (action === 'send') {
+      const toNum = ((to || '') as string).split('@')[0].split(':')[0].replace(/\D/g, '')
+      const text = ((message || '') as string).trim()
+      if (!toNum || !text) {
+        return new Response(JSON.stringify({ error: 'to e message obrigatórios' }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      if ((pro as any).whatsapp_channel === 'cloud') {
+        const { data: acc } = await supabaseAdmin
+          .from('whatsapp_cloud_accounts')
+          .select('phone_number_id, access_token')
+          .eq('professional_id', pro.id)
+          .eq('status', 'active')
+          .maybeSingle()
+        if (acc?.phone_number_id && acc?.access_token) {
+          const res = await fetch(`https://graph.facebook.com/v21.0/${acc.phone_number_id}/messages`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${acc.access_token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messaging_product: 'whatsapp', to: toNum, type: 'text', text: { body: text } }),
+          })
+          if (!res.ok) {
+            const err = (await res.text().catch(() => '')).slice(0, 200)
+            console.error(`[proxy send][cloud] ${res.status}: ${err}`)
+            return new Response(JSON.stringify({ error: `cloud_send_failed_${res.status}` }), {
+              status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            })
+          }
+          return new Response(JSON.stringify({ status: 'sent' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+        }
+        // canal cloud sem conta ativa → degrada pra Evolution abaixo
+      }
+
+      if (!pro.evolution_instance_name) {
+        return new Response(JSON.stringify({ error: 'whatsapp_nao_conectado' }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      const res = await fetch(`${evoUrl}/message/sendText/${pro.evolution_instance_name}`, {
+        method: 'POST',
+        headers: evoHeaders,
+        body: JSON.stringify({ number: toNum, text }),
+      })
+      if (!res.ok) {
+        const err = (await res.text().catch(() => '')).slice(0, 200)
+        console.error(`[proxy send][evolution] ${res.status}: ${err}`)
+        return new Response(JSON.stringify({ error: `evolution_send_failed_${res.status}` }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      return new Response(JSON.stringify({ status: 'sent' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+
     if (action === 'status') {
+      // Canal cloud: sem instância/QR. Conta ativa = 'open' (o front usa esse status pra
+      // liberar o envio manual do painel). Sem conta ativa, degrada pro fluxo Evolution.
+      if ((pro as any).whatsapp_channel === 'cloud') {
+        const { data: acc } = await supabaseAdmin
+          .from('whatsapp_cloud_accounts')
+          .select('phone_number_id, display_number')
+          .eq('professional_id', pro.id)
+          .eq('status', 'active')
+          .maybeSingle()
+        if (acc?.phone_number_id) {
+          return new Response(JSON.stringify({ status: 'open', channel: 'cloud', number: acc.display_number || null }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+        }
+      }
+
       if (!pro.evolution_instance_name) {
         return new Response(JSON.stringify({ status: 'not_created' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
       }
-      
+
       const res = await fetch(`${evoUrl}/instance/connectionState/${pro.evolution_instance_name}`, {
         headers: evoHeaders
       });

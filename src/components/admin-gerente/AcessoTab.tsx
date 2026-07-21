@@ -23,6 +23,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
+import WhatsAppCloudCard from "./WhatsAppCloudCard";
 
 const AVAILABLE_SCOPES = [
   { id: 'view', label: 'Visualizacao' },
@@ -237,8 +238,8 @@ export default function AcessoTab() {
                 </div>
               </div>
 
-              <Button 
-                className="w-full mt-4" 
+              <Button
+                className="w-full mt-4"
                 onClick={handleGrant}
                 disabled={isAdding}
               >
@@ -248,6 +249,9 @@ export default function AcessoTab() {
           </Card>
         </div>
       </div>
+
+      {/* Canal de WhatsApp por profissional (Evolution x Cloud API oficial) */}
+      <WhatsAppCloudCard />
     </div>
   );
 }

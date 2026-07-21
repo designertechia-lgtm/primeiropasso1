@@ -189,7 +189,69 @@ function evoEnv() {
   }
 }
 
+// ── Canal de envio: Evolution (Baileys) x Cloud API oficial da Meta ──────────
+// O canal é escolhido por profissional (professionals.whatsapp_channel); número
+// registrado na Meta fica em whatsapp_cloud_accounts (status=active). Sem conta
+// ativa, o canal degrada para Evolution — nunca deixa de tentar enviar.
+// Cache module-level: um turno faz vários envios seguidos da mesma instância.
+const GRAPH_URL = 'https://graph.facebook.com/v21.0'
+type WaChannel = { channel: 'evolution' | 'cloud'; phoneNumberId?: string; accessToken?: string }
+const _waChannelCache = new Map<string, { at: number; ch: WaChannel }>()
+async function waChannel(instanceName: string): Promise<WaChannel> {
+  const hit = _waChannelCache.get(instanceName)
+  if (hit && Date.now() - hit.at < 60_000) return hit.ch
+  const fallback: WaChannel = { channel: 'evolution' }
+  try {
+    const sUrl = Deno.env.get('SUPABASE_URL')
+    const sKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    if (!sUrl || !sKey || !instanceName) return fallback
+    const h = { apikey: sKey, Authorization: `Bearer ${sKey}` }
+    // timeout curto (3s): um PostgREST pendurado NÃO pode travar o turno do agente.
+    const pr = await fetch(`${sUrl}/rest/v1/professionals?evolution_instance_name=eq.${encodeURIComponent(instanceName)}&select=id,whatsapp_channel&limit=1`, { headers: h, signal: AbortSignal.timeout(3000) })
+    // Falha transitória degrada pra evolution SÓ neste turno (não cacheia o fallback).
+    if (!pr.ok) return fallback
+    const pro = (await pr.json().catch(() => []))?.[0]
+    if (!pro || pro.whatsapp_channel !== 'cloud') {
+      _waChannelCache.set(instanceName, { at: Date.now(), ch: fallback })
+      return fallback
+    }
+    const ar = await fetch(`${sUrl}/rest/v1/whatsapp_cloud_accounts?professional_id=eq.${pro.id}&status=eq.active&select=phone_number_id,access_token&limit=1`, { headers: h, signal: AbortSignal.timeout(3000) })
+    if (!ar.ok) return fallback
+    const acc = (await ar.json().catch(() => []))?.[0]
+    const ch: WaChannel = acc?.phone_number_id && acc?.access_token
+      ? { channel: 'cloud', phoneNumberId: acc.phone_number_id, accessToken: acc.access_token }
+      : fallback
+    _waChannelCache.set(instanceName, { at: Date.now(), ch })
+    return ch
+  } catch (e: any) {
+    console.error('[waChannel] resolucao falhou (fallback evolution):', e?.message)
+    return fallback
+  }
+}
+
+// Envio de texto pela Graph API. `to` aceita remoteJid ou número cru — normaliza pra dígitos.
+async function cloudSendText(ch: WaChannel, to: string, text: string): Promise<boolean> {
+  try {
+    const num = to.split('@')[0].split(':')[0].replace(/\D/g, '')
+    const res = await fetch(`${GRAPH_URL}/${ch.phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${ch.accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messaging_product: 'whatsapp', to: num, type: 'text', text: { body: text } }),
+    })
+    if (!res.ok) console.error(`[cloud send] ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`)
+    return res.ok
+  } catch (e: any) {
+    console.error('[cloud send] err', e?.message)
+    return false
+  }
+}
+
 async function sendText(instanceName: string, remoteJid: string, text: string) {
+  const ch = await waChannel(instanceName)
+  if (ch.channel === 'cloud') {
+    await cloudSendText(ch, remoteJid, text)
+    return
+  }
   const { url, key } = evoEnv()
   if (!url || !key || !instanceName) return
   try {
@@ -208,6 +270,14 @@ async function sendButtons(
   remoteJid: string,
   opts: { title: string; description: string; footer?: string; buttons: Array<{ displayText: string; id: string }> },
 ): Promise<boolean> {
+  // Canal cloud: sem sendButtons da Evolution — vai direto ao fallback texto
+  // numerado (mesmo caminho do erro; parseChoice resolve "1/2/3" via offered_*).
+  const chB = await waChannel(instanceName)
+  if (chB.channel === 'cloud') {
+    const fb = `${opts.title}\n\n${opts.buttons.map((b, i) => `${i + 1}️⃣ ${b.displayText}`).join('\n')}\n\nResponda com o número da opção.`
+    await cloudSendText(chB, remoteJid, fb)
+    return false
+  }
   const { url, key } = evoEnv()
   if (!url || !key || !instanceName) { console.error('[scheduler] evo cfg missing'); return false }
   const body = {
@@ -243,6 +313,14 @@ async function sendList(
   remoteJid: string,
   opts: { title: string; description: string; buttonText?: string; footerText?: string; sections: Array<{ title: string; rows: Array<{ title: string; description?: string; rowId: string }> }> },
 ): Promise<boolean> {
+  // Canal cloud: sem sendList da Evolution — fallback texto numerado direto.
+  const chL = await waChannel(instanceName)
+  if (chL.channel === 'cloud') {
+    const rows = opts.sections.flatMap((s) => s.rows)
+    const fb = `${opts.title}\n\n${rows.map((r, i) => `${i + 1}️⃣ ${r.title}`).join('\n')}\n\nResponda com o número da opção.`
+    await cloudSendText(chL, remoteJid, fb)
+    return false
+  }
   const { url, key } = evoEnv()
   if (!url || !key || !instanceName) { console.error('[scheduler] evo cfg missing'); return false }
   const body = {
@@ -1815,6 +1893,8 @@ async function callDeepSeek(
 // SEND PRESENCE (DIGITANDO)
 // =============================================
 async function sendWhatsAppPresence(instanceName: string, remoteJid: string, presence: 'composing' | 'recording' | 'paused') {
+  // Presence é recurso da Evolution; no canal cloud é no-op.
+  if ((await waChannel(instanceName)).channel === 'cloud') return
   const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
   const evoKey = Deno.env.get('EVOLUTION_API_KEY')
   if (!evoUrl || !evoKey || !instanceName) return
@@ -1877,6 +1957,17 @@ function limparParaLocucao(texto: string): string {
 }
 
 async function sendWhatsAppMessage(instanceName: string, remoteJid: string, text: string) {
+  // Canal cloud: mesma quebra em parágrafos, entrega pela Graph API.
+  const ch = await waChannel(instanceName)
+  if (ch.channel === 'cloud') {
+    const parags = text.split(/\n\s*\n/).filter(p => p.trim().length > 0)
+    for (const p of parags) {
+      console.log(`[WhatsApp][cloud] Sending to ${remoteJid} via ${ch.phoneNumberId}...`)
+      await cloudSendText(ch, remoteJid, p.trim())
+      if (parags.length > 1) await new Promise(r => setTimeout(r, 1000))
+    }
+    return
+  }
   const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
   const evoKey = Deno.env.get('EVOLUTION_API_KEY')
   if (!evoUrl || !evoKey || !instanceName) {
@@ -2211,7 +2302,11 @@ serve(async (req) => {
       // Qualquer falha (sem voz, TTS, formato) cai pra texto — o lead nunca fica sem resposta.
       const voiceId = (professional as any).elevenlabs_voice_id
       let sentAsAudio = false
-      if (wantsAudio && voiceId) {
+      // Canal cloud: MVP é texto-só — pula o TTS inteiro (não gasta ElevenLabs à toa).
+      const chAudio = wantsAudio && voiceId ? await waChannel(instance_name) : null
+      if (chAudio?.channel === 'cloud') {
+        console.log('[Audio] canal cloud — [[audio]] ignorado, resposta vai em texto (MVP)')
+      } else if (wantsAudio && voiceId) {
         console.log(`[Audio] Resposta marcada como áudio — gerando voz clonada (${voiceId})...`)
         await sendWhatsAppPresence(instance_name, remote_jid, 'recording')
         const audio = await generateClonedAudio(limparParaLocucao(textoCru), voiceId)

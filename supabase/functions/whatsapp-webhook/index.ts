@@ -16,6 +16,83 @@ const SITE_GREETINGS = [SITE_GREETING, DEFAULT_CTA_MESSAGE]
 // (parseUserIntent + tipo ParsedIntent removidos em 17/06 — eram usados só pelo
 //  roteamento determinístico, descontinuado. Agendamento agora é todo no agente.)
 
+// ── Canal de envio: Evolution (Baileys) x Cloud API oficial da Meta (20/07) ──
+// Escolha por profissional em professionals.whatsapp_channel; conta da Meta em
+// whatsapp_cloud_accounts (status=active). Sem conta ativa → degrada p/ Evolution.
+const GRAPH_URL = 'https://graph.facebook.com/v21.0'
+type WaChannel = { channel: 'evolution' | 'cloud'; phoneNumberId?: string; accessToken?: string }
+const _waChannelCache = new Map<string, { at: number; ch: WaChannel }>()
+async function waChannel(instanceName: string): Promise<WaChannel> {
+  const hit = _waChannelCache.get(instanceName)
+  if (hit && Date.now() - hit.at < 60_000) return hit.ch
+  const fallback: WaChannel = { channel: 'evolution' }
+  try {
+    const sUrl = Deno.env.get('SUPABASE_URL')
+    const sKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    if (!sUrl || !sKey || !instanceName) return fallback
+    const h = { apikey: sKey, Authorization: `Bearer ${sKey}` }
+    // timeout curto (3s): sem isso um PostgREST pendurado travaria o handler ANTES do
+    // AbortController de envio, e a Evolution/Meta re-tentaria o webhook (duplicação).
+    const pr = await fetch(`${sUrl}/rest/v1/professionals?evolution_instance_name=eq.${encodeURIComponent(instanceName)}&select=id,whatsapp_channel&limit=1`, { headers: h, signal: AbortSignal.timeout(3000) })
+    // Falha transitória (5xx/rede) NÃO é cacheada como 'evolution' — senão mascararia
+    // o canal cloud por 60s. Degrada pra evolution SÓ neste turno.
+    if (!pr.ok) return fallback
+    const pro = (await pr.json().catch(() => []))?.[0]
+    if (!pro || pro.whatsapp_channel !== 'cloud') {
+      _waChannelCache.set(instanceName, { at: Date.now(), ch: fallback })
+      return fallback
+    }
+    const ar = await fetch(`${sUrl}/rest/v1/whatsapp_cloud_accounts?professional_id=eq.${pro.id}&status=eq.active&select=phone_number_id,access_token&limit=1`, { headers: h, signal: AbortSignal.timeout(3000) })
+    if (!ar.ok) return fallback
+    const acc = (await ar.json().catch(() => []))?.[0]
+    const ch: WaChannel = acc?.phone_number_id && acc?.access_token
+      ? { channel: 'cloud', phoneNumberId: acc.phone_number_id, accessToken: acc.access_token }
+      : fallback
+    _waChannelCache.set(instanceName, { at: Date.now(), ch })
+    return ch
+  } catch (e: any) {
+    console.error('[waChannel] resolucao falhou (fallback evolution):', e?.message)
+    return fallback
+  }
+}
+
+// Envio de texto roteado pelo canal. `to` aceita remoteJid ou dígitos. Timeout best-effort
+// (um envio travado NÃO pode pendurar o handler — a Evolution/Meta re-tenta e duplica).
+// Retorna true se o transporte aceitou.
+async function sendTextByChannel(instanceName: string, to: string, text: string, timeoutMs = 8000): Promise<boolean> {
+  const ch = await waChannel(instanceName)
+  const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+  try {
+    if (ch.channel === 'cloud') {
+      const num = to.split('@')[0].split(':')[0].replace(/\D/g, '')
+      const res = await fetch(`${GRAPH_URL}/${ch.phoneNumberId}/messages`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ch.accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messaging_product: 'whatsapp', to: num, type: 'text', text: { body: text } }),
+        signal: ctrl.signal,
+      })
+      if (!res.ok) console.error(`[cloud send] ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`)
+      return res.ok
+    }
+    const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
+    const evoKey = Deno.env.get('EVOLUTION_API_KEY')
+    if (!evoUrl || !evoKey || !instanceName) return false
+    const res = await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
+      method: 'POST',
+      headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number: to, text }),
+      signal: ctrl.signal,
+    })
+    if (!res.ok) console.error(`[evo send] ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`)
+    return res.ok
+  } catch (e: any) {
+    console.error('[sendTextByChannel] err:', e?.message)
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 // === Guardrail de crise + alerta ao profissional (22/06) ===
 // Detecta sinais de risco (ideação suicida / autolesão / desejo de morte). PRÓ-RECALL: o custo
 // de um falso-positivo é leve (acolhimento + alerta, revisado pela humana); o de um falso-negativo
@@ -33,24 +110,13 @@ function detectCrisisSignal(raw: string): boolean {
 async function alertarProfissional(instanceName: string, ownerWhatsapp: string, texto: string): Promise<boolean> {
   const num = (ownerWhatsapp || '').replace(/\D/g, '')
   if (!num) { console.log('[alertarProfissional] sem owner_whatsapp — alerta NÃO enviado'); return false }
-  const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
-  const evoKey = Deno.env.get('EVOLUTION_API_KEY')
-  if (!evoUrl || !evoKey || !instanceName) return false
-  const ctrl = new AbortController(); const to = setTimeout(() => ctrl.abort(), 8000)
   try {
-    const r = await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
-      method: 'POST',
-      headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ number: num, text: texto }),
-      signal: ctrl.signal,
-    })
-    if (!r.ok) { console.error(`[alertarProfissional] Evolution ${r.status} (poss. self-send / nº inválido / instância off)`); return false }
+    const r = await sendTextByChannel(instanceName, num, texto)
+    if (!r) { console.error('[alertarProfissional] transporte recusou (poss. self-send / nº inválido / instância off / fora da janela 24h no cloud)'); return false }
     return true
   } catch (e) {
     console.error('[alertarProfissional] falha:', (e as any)?.message)
     return false
-  } finally {
-    clearTimeout(to)
   }
 }
 
@@ -71,6 +137,8 @@ function formatPhoneNumber(remoteJid: string): string {
  * Envia indicador "digitando" para o WhatsApp via Evolution API
  */
 async function sendPresence(instanceName: string, remoteJid: string) {
+  // Presence é recurso da Evolution; no canal cloud é no-op.
+  if ((await waChannel(instanceName)).channel === 'cloud') return
   const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
   const evoKey = Deno.env.get('EVOLUTION_API_KEY')
   if (!evoUrl || !evoKey || !instanceName) return
@@ -85,14 +153,22 @@ async function sendPresence(instanceName: string, remoteJid: string) {
  * Envia menu de botões via Evolution API com as opções iniciais
  */
 async function sendOptionsMenu(instanceName: string, remoteJid: string, professionalName: string) {
+  const proLabel = professionalName ? `Conversar com ${professionalName}` : 'Conversar com profissional'
+
+  // Canal cloud: sem sendButtons — direto o texto numerado (mesmo fallback de sempre).
+  const chMenu = await waChannel(instanceName)
+  if (chMenu.channel === 'cloud') {
+    const fallback = `Como posso te ajudar? 😊\n\n1️⃣ ${proLabel}\n2️⃣ Conferir agenda\n3️⃣ Agendar um horário\n4️⃣ Tirar dúvidas\n\nResponda com o número da opção desejada.`
+    await sendTextByChannel(instanceName, remoteJid, fallback)
+    return
+  }
+
   const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
   const evoKey = Deno.env.get('EVOLUTION_API_KEY')
   if (!evoUrl || !evoKey || !instanceName) {
     console.error('[Options Menu] Missing Evo config')
     return
   }
-
-  const proLabel = professionalName ? `Conversar com ${professionalName}` : 'Conversar com profissional'
 
   const body = {
     number: remoteJid,
@@ -121,11 +197,7 @@ async function sendOptionsMenu(instanceName: string, remoteJid: string, professi
   if (!res.ok) {
     console.log('[Options Menu] Botões falharam, enviando texto numerado como fallback')
     const fallback = `Como posso te ajudar? 😊\n\n1️⃣ ${proLabel}\n2️⃣ Conferir agenda\n3️⃣ Agendar um horário\n4️⃣ Tirar dúvidas\n\nResponda com o número da opção desejada.`
-    await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
-      method: 'POST',
-      headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ number: remoteJid, text: fallback }),
-    })
+    await sendTextByChannel(instanceName, remoteJid, fallback)
   }
 }
 
@@ -276,18 +348,10 @@ serve(async (req) => {
         }
 
         // Envia confirmação discreta no chat (mensagem aparece no celular do profissional)
-        const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
-        const evoKey = Deno.env.get('EVOLUTION_API_KEY')
-        if (evoUrl && evoKey) {
-          try {
-            await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
-              method: 'POST',
-              headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ number: remoteJidRaw, text: actionMsg }),
-            })
-          } catch (e: any) {
-            console.error('[WEBHOOK] Erro ao enviar confirmação de comando:', e.message)
-          }
+        try {
+          await sendTextByChannel(instanceName, remoteJidRaw, actionMsg)
+        } catch (e: any) {
+          console.error('[WEBHOOK] Erro ao enviar confirmação de comando:', e.message)
         }
 
         return new Response(JSON.stringify({ success: true, action: 'cmd_executed', cmd: lowerCmd, agent_enabled: newEnabled }), {
@@ -373,22 +437,11 @@ serve(async (req) => {
 
     if (!messageText.trim()) {
       console.log(`[WEBHOOK] ⚠️ Sem conteúdo de texto (áudio/imagem/etc)`)
-      // B4: não fica em silêncio — avisa que por enquanto só lê texto (Evolution best-effort).
-      const evoUrlNT = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
-      const evoKeyNT = Deno.env.get('EVOLUTION_API_KEY')
+      // B4: não fica em silêncio — avisa que por enquanto só lê texto (best-effort, timeout interno).
       const instNT = body.instance || body.instanceName || ''
       const numNT = (key?.remoteJid || '').split('@')[0].split(':')[0].replace(/\D/g, '')
-      if (evoUrlNT && evoKeyNT && instNT && numNT) {
-        // timeout 8s: sem isso, um sendText travado pendura o handler → a Evolution re-tenta e duplica.
-        const ctrlNT = new AbortController(); const toNT = setTimeout(() => ctrlNT.abort(), 8000)
-        try {
-          await fetch(`${evoUrlNT}/message/sendText/${instNT}`, {
-            method: 'POST', headers: { 'apikey': evoKeyNT, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ number: numNT, text: 'Por enquanto eu só consigo ler mensagens de texto por aqui 🙂 Pode me escrever o que você precisa?' }),
-            signal: ctrlNT.signal,
-          })
-        } catch (e) { console.error('[WEBHOOK] B4 aviso não-texto falhou:', (e as any)?.message) }
-        finally { clearTimeout(toNT) }
+      if (instNT && numNT) {
+        await sendTextByChannel(instNT, numNT, 'Por enquanto eu só consigo ler mensagens de texto por aqui 🙂 Pode me escrever o que você precisa?')
       }
       return new Response(JSON.stringify({ ignored: true, reason: 'no_text_replied', type: Object.keys(message || {})[0] || 'unknown' }), {
         status: 200,
@@ -637,16 +690,8 @@ serve(async (req) => {
       console.log(`[CRISE] sinal de risco detectado — lead ${leadId}`)
       const proFirstC = ((professional as any).full_name || 'a profissional').split(' ')[0]
       const acolhimento = `Sinto muito que você esteja passando por isso. O que você sente importa, e você não está sozinho(a). 💛\n\nQuero te passar um apoio que pode te acolher agora mesmo:\n• CVV – Centro de Valorização da Vida: ligue 188 (24h, gratuito e sigiloso) ou converse em cvv.org.br\n• Se o risco for iminente, ligue 192 (SAMU) ou procure o pronto-socorro mais próximo.\n\nJá estou avisando ${proFirstC} pra te dar atenção pessoal. Você não precisa passar por isso sozinho(a).`
-      // 1. acolhe o lead (texto fixo, não passa pelo LLM) — best-effort com timeout
-      const evoUrlC = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
-      const evoKeyC = Deno.env.get('EVOLUTION_API_KEY')
-      if (evoUrlC && evoKeyC) {
-        const ctrlA = new AbortController(); const toA = setTimeout(() => ctrlA.abort(), 8000)
-        await fetch(`${evoUrlC}/message/sendText/${instanceName}`, {
-          method: 'POST', headers: { 'apikey': evoKeyC, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ number: remoteJid, text: acolhimento }), signal: ctrlA.signal,
-        }).catch(() => {}).finally(() => clearTimeout(toA))
-      }
+      // 1. acolhe o lead (texto fixo, não passa pelo LLM) — best-effort com timeout interno
+      await sendTextByChannel(instanceName, remoteJid, acolhimento).catch(() => {})
       // 2. ALERTA o profissional no número autorizado (sabe se ENTREGOU)
       const ownerWaC = ((professional as any).agent_preferences || {}).owner_whatsapp || ''
       const alertaOk = await alertarProfissional(instanceName, ownerWaC, `Oi ${proFirstC}, aqui é o Axel 👋 Pausei o atendimento de ${pushName} (${formattedNumber}): a mensagem teve *sinais de risco/crise*. Já enviei os canais de apoio (CVV 188 / SAMU 192) e pausei o automático. Recomendo falar com a pessoa pessoalmente.\n\nMensagem do contato: "${messageText.slice(0, 200)}"`)
@@ -707,15 +752,7 @@ serve(async (req) => {
         console.error('[Triagem] Erro ao chamar agente — fallback recado de relacionamento:', e.message)
         const proFirst = (professional.full_name || 'o profissional').split(' ')[0]
         const recado = `Oi! 💛 Sua mensagem chegou e ${proFirst} te responde por aqui assim que puder.`
-        const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
-        const evoKey = Deno.env.get('EVOLUTION_API_KEY')
-        if (evoUrl && evoKey && instanceName) {
-          await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
-            method: 'POST',
-            headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ number: remoteJid, text: recado }),
-          }).catch(() => {})
-        }
+        await sendTextByChannel(instanceName, remoteJid, recado).catch(() => {})
         await supabaseAdmin.from('chat_messages').insert({ lead_id: leadId, role: 'assistant', content: recado, processed: true })
         await supabaseAdmin.from('chat_messages').update({ processed: true }).eq('lead_id', leadId).eq('processed', false)
         return new Response(JSON.stringify({ success: true, action: 'relationship_mode_greeting_fallback' }), {
@@ -809,17 +846,11 @@ serve(async (req) => {
 
           // Pra Confirmar/Cancelar: responde direto e encerra (sem invocar agente)
           if (replyText) {
-            const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
-            const evoKey = Deno.env.get('EVOLUTION_API_KEY')
-            if (evoUrl && evoKey && instName) {
+            if (instName) {
               try {
-                await fetch(`${evoUrl}/message/sendText/${instName}`, {
-                  method: 'POST',
-                  headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ number: remoteJid, text: replyText }),
-                })
+                await sendTextByChannel(instName, remoteJid, replyText)
               } catch (e: any) {
-                console.error('[reminder-response] Erro Evolution:', e.message)
+                console.error('[reminder-response] Erro no envio:', e.message)
               }
             }
             // Grava resposta no histórico e marca msg do user como processed
@@ -896,16 +927,7 @@ serve(async (req) => {
             await alertarProfissional(instanceName, ownerWaH, `Oi ${proFirstH}, aqui é o Axel 👋 ${pushName} (${formattedNumber}) pediu pra falar com uma pessoa. Pausei o atendimento — é com você agora 🙂`)
           }
           await sendPresence(instanceName, remoteJid)
-          const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
-          const evoKey = Deno.env.get('EVOLUTION_API_KEY')
-          await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
-            method: 'POST',
-            headers: { 'apikey': evoKey ?? '', 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              number: remoteJid,
-              text: 'Estou em atendimento logo retornarei sua mensagem',
-            }),
-          })
+          await sendTextByChannel(instanceName, remoteJid, 'Estou em atendimento logo retornarei sua mensagem')
           // Marca tudo como processed (já foi cuidado)
           await supabaseAdmin
             .from('chat_messages')
@@ -982,13 +1004,10 @@ serve(async (req) => {
       console.log(`[FLUXO] satisfação nota=${nota} appt=${apptId || '-'}`)
       const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
       const evoKey = Deno.env.get('EVOLUTION_API_KEY')
+      const chSat = await waChannel(instanceName)
       const sendText = async (text: string) => {
-        if (!evoUrl || !evoKey) return
-        await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
-          method: 'POST',
-          headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ number: remoteJid, text }),
-        }).catch((e: any) => console.error('[satisfação] envio erro:', e.message))
+        await sendTextByChannel(instanceName, remoteJid, text)
+          .catch((e: any) => console.error('[satisfação] envio erro:', e.message))
       }
 
       if (nota === 'skip') {
@@ -1012,7 +1031,8 @@ serve(async (req) => {
         ? 'Obrigado pela sinceridade! Vou passar seu retorno pro profissional. 🙏'
         : 'Que bom que você gostou! 😊'
       let sentOk = false
-      if (evoUrl && evoKey) {
+      // Canal cloud: sem sendButtons — o fallback texto logo abaixo cobre.
+      if (evoUrl && evoKey && chSat.channel !== 'cloud') {
         try {
           const res = await fetch(`${evoUrl}/message/sendButtons/${instanceName}`, {
             method: 'POST',
@@ -1182,15 +1202,7 @@ serve(async (req) => {
         // Falhou 2x E nada gravado → nunca deixar o lead no vácuo. Não insiste (sai do drain).
         const proFirst = (professional.full_name || 'o profissional').split(' ')[0]
         const recado = `Oi! 💛 Sua mensagem chegou. Já já retomo por aqui — ${proFirst} também acompanha. 🙂`
-        const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
-        const evoKey = Deno.env.get('EVOLUTION_API_KEY')
-        if (evoUrl && evoKey && instanceName) {
-          await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
-            method: 'POST',
-            headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ number: remoteJid, text: recado }),
-          }).catch(() => {})
-        }
+        await sendTextByChannel(instanceName, remoteJid, recado).catch(() => {})
         await supabaseAdmin.from('chat_messages').insert({ lead_id: leadId, role: 'assistant', content: recado, processed: true })
         console.warn(`[WEBHOOK] ⚠️ agente falhou 2x — fallback gentil enviado (lead ${leadId})`)
         lastOutcome = { success: false, fallback: true }

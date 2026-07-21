@@ -16,6 +16,31 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// ── Canal de envio: Evolution x Cloud API oficial (20/07) — resolve pela instância
+// emissora (professionals.whatsapp_channel + whatsapp_cloud_accounts ativa).
+// Aviso de renovação INICIA conversa: no cloud fora da janela de 24h a Meta recusa
+// texto livre (template utility é a Fase 2 dos crons); a recusa fica logada.
+const GRAPH_URL = "https://graph.facebook.com/v21.0";
+type WaChannel = { channel: "evolution" | "cloud"; phoneNumberId?: string; accessToken?: string };
+async function waChannel(instanceName: string): Promise<WaChannel> {
+  const fallback: WaChannel = { channel: "evolution" };
+  try {
+    const sUrl = Deno.env.get("SUPABASE_URL");
+    const sKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!sUrl || !sKey || !instanceName) return fallback;
+    const h = { apikey: sKey, Authorization: `Bearer ${sKey}` };
+    const pr = await fetch(`${sUrl}/rest/v1/professionals?evolution_instance_name=eq.${encodeURIComponent(instanceName)}&select=id,whatsapp_channel&limit=1`, { headers: h, signal: AbortSignal.timeout(3000) });
+    if (!pr.ok) return fallback;
+    const pro = (await pr.json().catch(() => []))?.[0];
+    if (!pro || pro.whatsapp_channel !== "cloud") return fallback;
+    const ar = await fetch(`${sUrl}/rest/v1/whatsapp_cloud_accounts?professional_id=eq.${pro.id}&status=eq.active&select=phone_number_id,access_token&limit=1`, { headers: h, signal: AbortSignal.timeout(3000) });
+    const acc = ar.ok ? (await ar.json().catch(() => []))?.[0] : null;
+    return acc?.phone_number_id && acc?.access_token
+      ? { channel: "cloud", phoneNumberId: acc.phone_number_id, accessToken: acc.access_token }
+      : fallback;
+  } catch { return fallback; }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -88,29 +113,42 @@ serve(async (req) => {
       `Pague em 1 clique pelo PIX:\n${checkoutUrl}\n\n` +
       `É só escanear o QR ou usar o Copia-e-Cola. Qualquer dúvida, é só responder aqui. 🙌`;
 
-    // 4. Envia via Evolution API
-    const evoUrl = Deno.env.get("EVOLUTION_API_URL");
-    const evoKey = Deno.env.get("EVOLUTION_API_KEY");
-    if (!evoUrl || !evoKey) {
-      throw new Error("Evolution API não configurada");
-    }
-
+    // 4. Envia pelo canal da instância emissora (Evolution ou Cloud API)
     // Normaliza número (remove tudo que não é dígito; assume Brasil 55 se < 13)
     const digits = whatsapp.replace(/\D/g, "");
     const number = digits.startsWith("55") ? digits : `55${digits}`;
 
-    const sendRes = await fetch(`${evoUrl}/message/sendText/${ownerInstance}`, {
-      method: "POST",
-      headers: {
-        apikey: evoKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ number, text: message }),
-    });
+    const ch = await waChannel(ownerInstance);
+    let sendOk = false;
+    let sendErr = "";
+    if (ch.channel === "cloud") {
+      const res = await fetch(`${GRAPH_URL}/${ch.phoneNumberId}/messages`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${ch.accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ messaging_product: "whatsapp", to: number, type: "text", text: { body: message } }),
+      });
+      sendOk = res.ok;
+      if (!res.ok) sendErr = `cloud ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`;
+    } else {
+      const evoUrl = Deno.env.get("EVOLUTION_API_URL");
+      const evoKey = Deno.env.get("EVOLUTION_API_KEY");
+      if (!evoUrl || !evoKey) {
+        throw new Error("Evolution API não configurada");
+      }
+      const sendRes = await fetch(`${evoUrl}/message/sendText/${ownerInstance}`, {
+        method: "POST",
+        headers: {
+          apikey: evoKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ number, text: message }),
+      });
+      sendOk = sendRes.ok;
+      if (!sendRes.ok) sendErr = `Evolution sendText ${sendRes.status}: ${await sendRes.text()}`;
+    }
 
-    if (!sendRes.ok) {
-      const errBody = await sendRes.text();
-      throw new Error(`Evolution sendText ${sendRes.status}: ${errBody}`);
+    if (!sendOk) {
+      throw new Error(sendErr || "envio falhou");
     }
 
     return new Response(

@@ -8,9 +8,35 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useEvolutionInstance } from "@/hooks/useEvolutionInstance";
-import { Smartphone, QrCode, LogOut, Loader2, CheckCircle2 } from "lucide-react";
+import { Smartphone, QrCode, LogOut, Loader2, CheckCircle2, Cloud } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatPhoneIntl } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+
+// Canal Cloud API oficial: quando o profissional está na API oficial da Meta
+// (whatsapp_channel='cloud', configurado pelo suporte), o dialog mostra o status
+// da conexão oficial — não há QR nem instância pra manter.
+function useCloudChannelStatus() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ["wa-cloud-status", user?.id],
+    enabled: !!user?.id,
+    queryFn: async (): Promise<{ channel: string; cloud: any } | null> => {
+      const { data: pro } = await supabase
+        .from("professionals" as any)
+        .select("whatsapp_channel")
+        .eq("user_id", user!.id)
+        .maybeSingle();
+      const channel = (pro as any)?.whatsapp_channel || "evolution";
+      if (channel !== "cloud") return { channel, cloud: null };
+      const { data: cloud } = await supabase.rpc("owner_whatsapp_cloud_status" as any);
+      return { channel, cloud };
+    },
+    staleTime: 30_000,
+  });
+}
 
 interface EvolutionConnectDialogProps {
   open: boolean;
@@ -25,6 +51,8 @@ export function EvolutionConnectDialog({
 }: EvolutionConnectDialogProps) {
   const { status, connectQr, createInstance, logoutInstance } = useEvolutionInstance();
   const { toast } = useToast();
+  const cloudStatus = useCloudChannelStatus();
+  const isCloudChannel = cloudStatus.data?.channel === "cloud";
 
   const handleCreate = () => {
     createInstance.mutate(undefined, {
@@ -63,7 +91,7 @@ export function EvolutionConnectDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Smartphone className="h-5 w-5" />
-            Conexão WhatsApp (Evolution)
+            {isCloudChannel ? "Conexão WhatsApp (API Oficial)" : "Conexão WhatsApp (Evolution)"}
           </DialogTitle>
           <DialogDescription>
             Conecte o seu número de WhatsApp para que o Agente IA possa responder os leads.
@@ -71,7 +99,33 @@ export function EvolutionConnectDialog({
         </DialogHeader>
 
         <div className="flex flex-col items-center justify-center p-6 space-y-6">
-          {status.isLoading ? (
+          {isCloudChannel ? (
+            <div className="flex flex-col items-center gap-4 text-center">
+              <div className="bg-green-100 p-4 rounded-full text-green-600">
+                <Cloud className="h-10 w-10" />
+              </div>
+              <div>
+                <h4 className="font-medium text-foreground">WhatsApp Oficial ativo</h4>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Seu número está conectado pela API oficial da Meta — sem QR Code, sem celular
+                  ligado, sem risco de desconexão. O Agente IA responde por ela.
+                </p>
+              </div>
+              {cloudStatus.data?.cloud?.display_number && (
+                <div className="flex items-center gap-3 rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3">
+                  <div className="rounded-lg bg-green-500/15 p-2 text-green-600">
+                    <Smartphone className="h-5 w-5" />
+                  </div>
+                  <p className="text-base font-semibold text-foreground leading-tight">
+                    {cloudStatus.data.cloud.display_number}
+                  </p>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Pra alterar essa conexão, fale com o suporte.
+              </p>
+            </div>
+          ) : status.isLoading ? (
             <div className="flex flex-col items-center gap-2 text-muted-foreground">
               <Loader2 className="h-8 w-8 animate-spin" />
               <p className="text-sm">Verificando status...</p>

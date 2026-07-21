@@ -67,6 +67,48 @@ async function findAccount(phoneNumberId: string): Promise<{ professional_id: st
   return Array.isArray(rows) && rows[0] ? rows[0] : null;
 }
 
+// FASE 2: traduz a mensagem da Meta pro formato messages.upsert (estilo Evolution) e
+// entrega ao whatsapp-webhook — o pipeline inteiro (lead/dedup/triagem/debounce/lock/
+// crise/agente) é reaproveitado sem duplicação. O envio da resposta é decidido lá
+// pelo canal do profissional (professionals.whatsapp_channel = 'cloud' → Graph API).
+async function forwardToPipeline(professionalId: string, msg: any, from: string, text: string, pushName: string): Promise<void> {
+  // instance é a CHAVE de lookup do professional no pipeline — usa o evolution_instance_name.
+  const res = await fetchT(
+    `${SUPABASE_URL}/rest/v1/professionals?id=eq.${professionalId}&select=evolution_instance_name&limit=1`,
+    { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
+  );
+  const pro = res.ok ? (await res.json().catch(() => []))?.[0] : null;
+  const instanceName = pro?.evolution_instance_name;
+  if (!instanceName) {
+    console.error(`[cloud→pipeline] professional ${professionalId} sem evolution_instance_name — mensagem descartada`);
+    return;
+  }
+
+  const payload = {
+    event: "messages.upsert",
+    instance: instanceName,
+    data: {
+      key: {
+        remoteJid: `${from}@s.whatsapp.net`,
+        fromMe: false,
+        id: msg?.id || "", // wamid da Meta → provider_message_id (dedup B5 do pipeline)
+      },
+      pushName: pushName || "Visitante",
+      message: { conversation: text },
+    },
+  };
+
+  const secret = Deno.env.get("WHATSAPP_WEBHOOK_SECRET") || "";
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (secret) headers["x-webhook-secret"] = secret;
+
+  // O pipeline leva 10-40s (debounce + LLM). Timeout largo; quem chama usa waitUntil.
+  const r = await fetchT(`${SUPABASE_URL}/functions/v1/whatsapp-webhook`, {
+    method: "POST", headers, body: JSON.stringify(payload),
+  }, 90000);
+  console.log(`[cloud→pipeline] webhook respondeu ${r.status}`);
+}
+
 async function sendText(phoneNumberId: string, token: string, to: string, body: string): Promise<void> {
   const res = await fetchT(`${GRAPH}/${phoneNumberId}/messages`, {
     method: "POST",
@@ -127,20 +169,34 @@ Deno.serve(async (req) => {
       return jsonOk({ ignored: true, reason: "no_text", type: msg.type });
     }
 
-    // Identifica o profissional dono deste número (Fase 2 usa isso pra rotear ao Axel).
+    // Identifica o profissional dono deste número.
     const account = await findAccount(phoneNumberId);
-    const token = account?.access_token || FALLBACK_TOKEN;
 
-    if (!token) {
-      console.error(`[whatsapp-cloud-webhook] sem token para phone_number_id=${phoneNumberId}`);
-      return jsonOk({ ignored: true, reason: "no_token", phoneNumberId });
+    // ── FASE 2: conta cadastrada → pipeline real do Axel (via adapter). Responde 200
+    // JÁ (a Meta re-tenta em timeout) e processa em background com waitUntil.
+    if (account) {
+      const contactName: string = value?.contacts?.[0]?.profile?.name || "";
+      const task = forwardToPipeline(account.professional_id, msg, from, text, contactName)
+        .catch((e) => console.error("[cloud→pipeline] falhou:", e?.message));
+      // @ts-ignore EdgeRuntime é global no runtime do Supabase Edge
+      if (typeof EdgeRuntime !== "undefined" && (EdgeRuntime as any)?.waitUntil) {
+        // @ts-ignore
+        ;(EdgeRuntime as any).waitUntil(task);
+      } else {
+        await task;
+      }
+      return jsonOk({ ok: true, routed: "pipeline", phoneNumberId, from });
     }
 
-    // ── FASE 1: ECO (prova receber+enviar pela API oficial) ──
-    // Fase 2 troca esta linha por: normalizar payload → chamar whatsapp-agent (cérebro do Axel).
-    await sendText(phoneNumberId, token, from, `🟢 Recebi pela API oficial do WhatsApp: "${text}"`);
+    // ── Sem conta cadastrada: modo TESTE (eco) com o token de fallback — permite
+    // validar o setup da Meta (webhook + número de teste) antes de cadastrar a conta.
+    if (!FALLBACK_TOKEN) {
+      console.error(`[whatsapp-cloud-webhook] sem conta e sem token para phone_number_id=${phoneNumberId}`);
+      return jsonOk({ ignored: true, reason: "no_token", phoneNumberId });
+    }
+    await sendText(phoneNumberId, FALLBACK_TOKEN, from, `🟢 Recebi pela API oficial do WhatsApp: "${text}"`);
 
-    return jsonOk({ ok: true, phoneNumberId, from, hasAccount: !!account });
+    return jsonOk({ ok: true, routed: "echo", phoneNumberId, from });
   } catch (e) {
     console.error("[whatsapp-cloud-webhook]", e);
     return jsonOk({ error: String(e) }); // 200 mesmo em erro: evita re-tentativa em loop da Meta

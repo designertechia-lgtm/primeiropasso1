@@ -17,6 +17,57 @@ const corsHeaders = {
 
 const DAY_NAMES = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado']
 
+// ── Canal de envio: Evolution x Cloud API oficial (20/07) ──
+// ATENÇÃO (janela de 24h): lembrete INICIA conversa — no canal cloud, fora da janela,
+// a Meta recusa mensagens de texto livres (exige template aprovado). O erro fica logado
+// e o lembrete conta como não-entregue. Templates utility são a Fase 2 dos crons.
+const GRAPH_URL = 'https://graph.facebook.com/v21.0'
+type WaChannel = { channel: 'evolution' | 'cloud'; phoneNumberId?: string; accessToken?: string }
+async function waChannel(instanceName: string): Promise<WaChannel> {
+  const fallback: WaChannel = { channel: 'evolution' }
+  try {
+    const sUrl = Deno.env.get('SUPABASE_URL')
+    const sKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    if (!sUrl || !sKey || !instanceName) return fallback
+    const h = { apikey: sKey, Authorization: `Bearer ${sKey}` }
+    const pr = await fetch(`${sUrl}/rest/v1/professionals?evolution_instance_name=eq.${encodeURIComponent(instanceName)}&select=id,whatsapp_channel&limit=1`, { headers: h, signal: AbortSignal.timeout(3000) })
+    if (!pr.ok) return fallback
+    const pro = (await pr.json().catch(() => []))?.[0]
+    if (!pro || pro.whatsapp_channel !== 'cloud') return fallback
+    const ar = await fetch(`${sUrl}/rest/v1/whatsapp_cloud_accounts?professional_id=eq.${pro.id}&status=eq.active&select=phone_number_id,access_token&limit=1`, { headers: h, signal: AbortSignal.timeout(3000) })
+    const acc = ar.ok ? (await ar.json().catch(() => []))?.[0] : null
+    return acc?.phone_number_id && acc?.access_token
+      ? { channel: 'cloud', phoneNumberId: acc.phone_number_id, accessToken: acc.access_token }
+      : fallback
+  } catch { return fallback }
+}
+async function sendTextByChannel(ch: WaChannel, instanceName: string, to: string, text: string): Promise<boolean> {
+  try {
+    if (ch.channel === 'cloud') {
+      const num = to.split('@')[0].split(':')[0].replace(/\D/g, '')
+      const res = await fetch(`${GRAPH_URL}/${ch.phoneNumberId}/messages`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ch.accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messaging_product: 'whatsapp', to: num, type: 'text', text: { body: text } }),
+      })
+      if (!res.ok) console.error(`[cloud send] ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`)
+      return res.ok
+    }
+    const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
+    const evoKey = Deno.env.get('EVOLUTION_API_KEY')
+    if (!evoUrl || !evoKey || !instanceName) return false
+    const res = await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
+      method: 'POST',
+      headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number: to, text }),
+    })
+    return res.ok
+  } catch (e: any) {
+    console.error('[sendTextByChannel] err:', e?.message)
+    return false
+  }
+}
+
 function formatDateBR(iso: string): string {
   const d = new Date(iso + 'T00:00:00')
   const dow = DAY_NAMES[d.getDay()]
@@ -106,7 +157,8 @@ serve(async (req) => {
 
     const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
     const evoKey = Deno.env.get('EVOLUTION_API_KEY')
-    if (!evoUrl || !evoKey || !instanceName) {
+    const chRem = await waChannel(instanceName)
+    if (chRem.channel === 'evolution' && (!evoUrl || !evoKey || !instanceName)) {
       throw new Error('Evolution config ausente')
     }
 
@@ -117,9 +169,12 @@ serve(async (req) => {
       const title = `Oi ${leadName}! Lembrete: amanhã, ${dataLabel} às ${hora}, com ${proName}.`
       const description = 'Confirma sua presença?'
       try {
-        const res = await fetch(`${evoUrl}/message/sendButtons/${instanceName}`, {
+        // Canal cloud: sem sendButtons — direto o texto (respostas *Confirmar/Remarcar/Cancelar* já são tratadas).
+        const res = chRem.channel === 'cloud'
+          ? { ok: false } as Response
+          : await fetch(`${evoUrl}/message/sendButtons/${instanceName}`, {
           method: 'POST',
-          headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
+          headers: { 'apikey': evoKey!, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             number: remoteJid,
             title,
@@ -134,17 +189,12 @@ serve(async (req) => {
         })
         sentOk = res.ok
         if (!res.ok) {
-          // Fallback texto
+          // Fallback texto (também o caminho padrão do canal cloud)
           const fallback = `${title}\n\nResponda:\n• *Confirmar* — está mantido\n• *Remarcar* — preciso mudar\n• *Cancelar* — não vou poder`
-          await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
-            method: 'POST',
-            headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ number: remoteJid, text: fallback }),
-          })
-          sentOk = true
+          sentOk = await sendTextByChannel(chRem, instanceName, remoteJid, fallback)
         }
       } catch (e: any) {
-        console.error('[reminder 24h] Evolution erro:', e.message)
+        console.error('[reminder 24h] envio erro:', e.message)
       }
 
       // Grava também no histórico do chat
@@ -158,14 +208,9 @@ serve(async (req) => {
       // Lembrete final, sem botões — só texto
       const text = `${leadName}, em 1h te encontro: ${dataLabel} às ${hora}. Até daqui a pouco 🙌`
       try {
-        const res = await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
-          method: 'POST',
-          headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ number: remoteJid, text }),
-        })
-        sentOk = res.ok
+        sentOk = await sendTextByChannel(chRem, instanceName, remoteJid, text)
       } catch (e: any) {
-        console.error('[reminder 1h] Evolution erro:', e.message)
+        console.error('[reminder 1h] envio erro:', e.message)
       }
       await supabaseAdmin.from('chat_messages').insert({
         lead_id: lead.id,

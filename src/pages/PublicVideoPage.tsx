@@ -9,12 +9,15 @@ import { supabase } from "@/integrations/supabase/client";
 
 // Catálogo de vídeos compartilháveis (slug -> arquivo no bucket `videos` + textos).
 // Adicionar aqui novos vídeos conforme forem publicados.
+// `ver` = cache-buster: incrementar quando o arquivo do vídeo for sobrescrito no
+// bucket (o CDN do Supabase cacheia a URL pública por ~1h; ?v= força a versão nova).
 const VIDEOS: Record<
   string,
-  { file: string; title: string; subtitle: string; cta: string }
+  { file: string; ver: number; title: string; subtitle: string; cta: string }
 > = {
   tour: {
     file: "tour-primeiro-passo.mp4",
+    ver: 2,
     title: "Conheça o Primeiro Passo",
     subtitle:
       "Do primeiro passo ao cliente atendido: sua marca, sua página, seu conteúdo, sua agenda e um agente de IA — tudo numa plataforma só.",
@@ -45,8 +48,9 @@ export default function PublicVideoPage() {
     );
   }
 
-  const publicUrl = supabase.storage.from("videos").getPublicUrl(video.file).data
+  const baseUrl = supabase.storage.from("videos").getPublicUrl(video.file).data
     .publicUrl;
+  const publicUrl = `${baseUrl}?v=${video.ver}`;
 
   return (
     <div className="min-h-screen bg-background text-foreground">

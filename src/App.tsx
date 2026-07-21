@@ -21,6 +21,7 @@ import ProductsListPage from "./pages/ProductsListPage.tsx";
 import OrderStatusPage from "./pages/OrderStatusPage.tsx";
 import VideosListPage from "./pages/VideosListPage.tsx";
 import VideoPage from "./pages/VideoPage.tsx";
+import PublicVideoPage from "./pages/PublicVideoPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import DashboardLayout from "./components/dashboard/DashboardLayout.tsx";
 import PatientLayout from "./components/dashboard/PatientLayout.tsx";
@@ -133,6 +134,9 @@ const App = () => (
             <Route path="/admin-proprietario" element={<Navigate to="/admin-gerente" replace />} />
 
             <Route path="/politica-privacidade" element={<PoliticaPrivacidade />} />
+
+            {/* Vídeos públicos compartilháveis (ex.: /v/tour) — 2 segmentos, não colide com /:slug */}
+            <Route path="/v/:videoSlug" element={<PublicVideoPage />} />
 
             {/* Dynamic professional landing page - MUST be last before catch-all */}
             <Route path="/pedido/:token" element={<OrderStatusPage />} />

@@ -22,7 +22,7 @@ import {
   Zap, Crown, Star, Minus, Triangle,
   Heart, BookOpenCheck, Flame, TrendingUp,
   Copy, Scissors, Download, Share2, Search, RefreshCw,
-  Instagram, Youtube, Linkedin, Facebook, Clapperboard, Drama,
+  Instagram, Youtube, Linkedin, Facebook, Drama,
 } from "lucide-react";
 
 function TikTokIcon({ className }: { className?: string }) {
@@ -35,9 +35,9 @@ function TikTokIcon({ className }: { className?: string }) {
 
 import { videoApiAuthHeaders } from "@/lib/videoApi";
 import EstudioCenas from "@/components/admin/EstudioCenas";
+import { STORAGE_KEY } from "@/lib/criarVideoDraft";
 
 const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
-const STORAGE_KEY = "pp-criar-video";
 
 // Plataforma escolhida no Step 1 → formato técnico recomendado no Step 2.
 // O usuário pode sobrescrever; um aviso aparece se divergir do recomendado.
@@ -100,7 +100,7 @@ type Slide     = {
 };
 // Clipe de vídeo real (Pexels/Pixabay) sugerido/escolhido para um slide
 type ClipInfo = { url: string; thumb: string; duration: number; source: string };
-type Script    = {
+export type Script = {
   titulo: string;
   narracao: string;
   narracao_completa?: string;
@@ -332,11 +332,6 @@ export default function AdminEstudioViral() {
   // Personagem/avatar — cena de ABERTURA do vídeo (Premium/Pro, herdado do Estúdio Viral)
   const [avatars, setAvatars] = useState<{ id: string; name: string; photo_url: string | null }[]>([]);
   const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(null);
-  // Vídeo de referência: replica a ESTRUTURA de um viral com o conteúdo do profissional
-  const [refFile, setRefFile] = useState<File | null>(null);
-  const [refUrl, setRefUrl] = useState("");   // link YouTube/TikTok/Instagram (alternativa ao upload)
-  const [refTema, setRefTema] = useState("");
-  const [refAnalyzing, setRefAnalyzing] = useState(false);
   // Cenas do vídeo: clipe real sugerido/escolhido por slide (preview + troca)
   const [previewClips, setPreviewClips] = useState<(ClipInfo | null)[]>([]);
   // Aba Cenas (Premium/PRO): tipo escolhido POR CENA — ausente = "auto" (clipe
@@ -352,7 +347,7 @@ export default function AdminEstudioViral() {
   // Caminho de criação nos tiers pagos (Carlos 07/07: "2 botões de criar"
   // confundia): "rapido" = fluxo automático (Gerar Vídeo) | "estudio" =
   // Estúdio de Cenas (cena a cena; o botão de criar é o Montar de lá).
-  const [creationPath, setCreationPath] = useState<"rapido" | "estudio">("rapido");
+  const [creationPath, setCreationPath] = useState<"rapido" | "estudio">(saved?.creationPath ?? "rapido");
   const [sceneAvatarIds, setSceneAvatarIds] = useState<Record<number, string>>({});
   const queryClient = useQueryClient();
   const [imageMode, setImageMode]     = useState<"auto" | "custom" | "ia">(saved?.imageMode ?? "auto");
@@ -448,11 +443,11 @@ export default function AdminEstudioViral() {
     try {
       const persistedJobStatus = jobStatus.status === "loading" ? { status: "idle" } : jobStatus;
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        step, objetivo, tom, formato, duracaoAlvo, plataformaAlvo, script, videoModel, estiloIA, voiceMode, edgeVoice, format, formatTouched, imageMode, visualStyle, imageStyle,
+        step, objetivo, tom, formato, duracaoAlvo, plataformaAlvo, script, videoModel, estiloIA, voiceMode, edgeVoice, format, formatTouched, imageMode, visualStyle, imageStyle, creationPath,
         jobStatus: persistedJobStatus, activeJobId, draftId,
       }));
     } catch {}
-  }, [step, objetivo, tom, formato, duracaoAlvo, plataformaAlvo, script, videoModel, estiloIA, voiceMode, edgeVoice, format, formatTouched, imageMode, visualStyle, imageStyle, jobStatus, activeJobId]);
+  }, [step, objetivo, tom, formato, duracaoAlvo, plataformaAlvo, script, videoModel, estiloIA, voiceMode, edgeVoice, format, formatTouched, imageMode, visualStyle, imageStyle, creationPath, jobStatus, activeJobId]);
 
   // Se o usuário voltar de Premium/Pro para Gratuito com duração de teste
   // (10s/15s) selecionada, normaliza para 30s. Essas durações curtas só
@@ -895,70 +890,6 @@ export default function AdminEstudioViral() {
     }
   };
 
-  // Vídeo de referência → roteiro que replica a ESTRUTURA do viral (gancho,
-  // batidas, ritmo, CTA) com o conteúdo do profissional. Cai direto no Step 2.
-  const handleAnalisarReferencia = async () => {
-    if (!refFile || !professional?.slug) return;
-    setRefAnalyzing(true);
-    try {
-      const form = new FormData();
-      form.append("file", refFile);
-      form.append("professional_slug", professional.slug);
-      form.append("tema", refTema.trim());
-      form.append("tom", tom);
-      const res = await fetch(`${API}/analisar-video-referencia`, {
-        method: "POST",
-        headers: await videoApiAuthHeaders(),   // sem Content-Type — o browser define o boundary
-        body: form,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Falha ao analisar o vídeo de referência");
-      setScript(data.script);
-      setObjetivo((o) => o || `Clone de vídeo de referência${refTema.trim() ? ` — ${refTema.trim()}` : ""}`);
-      // Clonar É uma recriação por IA → vai direto pro PRO + Estúdio de Cenas
-      // (cenas geradas parecidas com o original), não pro fluxo de clipes de banco.
-      setVideoModel("pro");
-      setCreationPath("estudio");
-      setStep(2);
-      toast.success("Clone analisado! Abra o Estúdio de Cenas: cada cena será recriada por IA parecida com o original.", { duration: 9000 });
-    } catch (e: any) {
-      toast.error(e.message || "Erro ao analisar o vídeo de referência");
-    } finally {
-      setRefAnalyzing(false);
-    }
-  };
-
-  // Cópia de referência por LINK (YouTube/TikTok/Instagram). Se a plataforma
-  // não permitir baixar, o backend devolve o MOTIVO claro em `detail`.
-  const handleAnalisarReferenciaUrl = async () => {
-    if (!refUrl.trim() || !professional?.slug) return;
-    setRefAnalyzing(true);
-    try {
-      const res = await fetch(`${API}/analisar-video-referencia-url`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(await videoApiAuthHeaders()) },
-        body: JSON.stringify({
-          professional_slug: professional.slug,
-          url: refUrl.trim(),
-          tema: refTema.trim(),
-          tom,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Falha ao analisar o vídeo do link");
-      setScript(data.script);
-      setObjetivo((o) => o || `Clone de vídeo de referência${refTema.trim() ? ` — ${refTema.trim()}` : ""}`);
-      setVideoModel("pro");
-      setCreationPath("estudio");
-      setStep(2);
-      toast.success("Clone analisado! Abra o Estúdio de Cenas: cada cena será recriada por IA parecida com o original.", { duration: 9000 });
-    } catch (e: any) {
-      toast.error(e.message || "Erro ao analisar o vídeo do link", { duration: 8000 });
-    } finally {
-      setRefAnalyzing(false);
-    }
-  };
-
   // Cenas do vídeo: 1 clipe REAL sugerido por slide (o motor usa exatamente
   // o que estiver aqui na geração — o que você vê é o que sai).
   const loadPreviewClips = async () => {
@@ -1147,6 +1078,7 @@ export default function AdminEstudioViral() {
     setTom("acolhedor"); setFormato("livre");
     setDuracaoAlvo("45s"); setPlataformaAlvo("geral");
     setVideoModel("gratuito");
+    setCreationPath("rapido");
     setEstiloIA("cinematico");
     setVoiceMode("edge"); setEdgeVoice("pt-BR-FranciscaNeural");
     setVoiceBlob(null); setNarBlob(null); setRecloning(false);
@@ -1248,61 +1180,6 @@ export default function AdminEstudioViral() {
           A IA usa seu perfil e documentos para criar um objetivo personalizado, sem repetir os dos últimos 30 dias.
         </p>
       </div>
-
-      {/* ── Vídeo de referência (opcional) — replica a estrutura de um viral ── */}
-      <Card className="border-dashed border-2 border-orange-300/50 bg-orange-50/30 dark:bg-orange-950/10">
-        <CardContent className="p-4 space-y-3">
-          <Label className="text-base font-semibold flex items-center gap-2">
-            <Clapperboard className="h-4 w-4 text-orange-500" /> Clonar um vídeo que viralizou
-            <Badge variant="outline" className="text-xs font-normal border-purple-400 text-purple-600">com IA · PRO</Badge>
-          </Label>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            Cole o link (ou envie o arquivo) e a IA <strong>recria o vídeo</strong>: mesma estrutura
-            — gancho, ritmo, viradas e CTA — e <strong>cenas gerada por IA parecidas com as
-            originais</strong>, adaptadas ao seu conteúdo no Estúdio de Cenas. Os ativos do original
-            (imagens, áudio, rostos, marcas) nunca são copiados.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <Input
-              value={refUrl}
-              onChange={(e) => setRefUrl(e.target.value)}
-              placeholder="Cole o link (YouTube, TikTok ou Instagram)…"
-              className="text-sm"
-              disabled={!!refFile}
-            />
-            <Input
-              type="file"
-              accept="video/mp4,video/quicktime,video/webm,video/x-matroska"
-              className="text-xs file:text-xs"
-              onChange={(e) => setRefFile(e.target.files?.[0] ?? null)}
-            />
-          </div>
-          <Input
-            value={refTema}
-            onChange={(e) => setRefTema(e.target.value)}
-            placeholder="Sobre o que será o SEU vídeo? (opcional)"
-            className="text-sm"
-          />
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button
-              type="button"
-              size="sm"
-              className="gap-2"
-              disabled={(!refFile && !refUrl.trim()) || refAnalyzing}
-              onClick={refFile ? handleAnalisarReferencia : handleAnalisarReferenciaUrl}
-            >
-              {refAnalyzing
-                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Analisando a estrutura do vídeo...</>
-                : <><Wand2 className="h-3.5 w-3.5" /> Replicar estrutura</>}
-            </Button>
-            {!refFile && !!refUrl.trim() && (
-              <span className="text-[11px] text-muted-foreground">
-                Instagram às vezes bloqueia o acesso — se falhar, baixe o vídeo e envie o arquivo.
-              </span>
-            )}
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Seletor de tom */}
       <div className="space-y-3">

@@ -122,13 +122,16 @@ serve(async (req) => {
     let sendOk = false;
     let sendErr = "";
     if (ch.channel === "cloud") {
-      const res = await fetch(`${GRAPH_URL}/${ch.phoneNumberId}/messages`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${ch.accessToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ messaging_product: "whatsapp", to: number, type: "text", text: { body: message } }),
-      });
-      sendOk = res.ok;
-      if (!res.ok) sendErr = `cloud ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`;
+      sendOk = true;
+      // Graph API limita a 4096 chars — fatia pra não perder texto longo em silêncio.
+      for (let i = 0; i < message.length && sendOk; i += 4000) {
+        const res = await fetch(`${GRAPH_URL}/${ch.phoneNumberId}/messages`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${ch.accessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ messaging_product: "whatsapp", to: number, type: "text", text: { body: message.slice(i, i + 4000) } }),
+        });
+        if (!res.ok) { sendOk = false; sendErr = `cloud ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`; }
+      }
     } else {
       const evoUrl = Deno.env.get("EVOLUTION_API_URL");
       const evoKey = Deno.env.get("EVOLUTION_API_KEY");

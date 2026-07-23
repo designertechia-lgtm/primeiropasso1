@@ -16,6 +16,12 @@
 const VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") ?? "";
 const FALLBACK_TOKEN = Deno.env.get("WHATSAPP_CLOUD_TOKEN") ?? ""; // token do número de teste (Fase 1)
 const APP_SECRET = Deno.env.get("WHATSAPP_APP_SECRET") ?? ""; // B1: valida X-Hub-Signature-256 da Meta
+// Números de TESTE da Meta liberados para o modo eco (Fase 1), separados por vírgula.
+// O eco NUNCA vale para número real: sem conta ativa e fora desta lista, a mensagem não é
+// respondida com scaffolding de teste (evita vazar "🟢 Recebi..." pra paciente).
+const ECO_IDS = (Deno.env.get("WHATSAPP_CLOUD_TEST_NUMBER_IDS") ?? "")
+  .split(",").map((s) => s.trim()).filter(Boolean);
+const ECO_PERMITIDO = (phoneNumberId: string) => ECO_IDS.includes(phoneNumberId);
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GRAPH = "https://graph.facebook.com/v21.0";
@@ -73,16 +79,44 @@ async function findAccount(phoneNumberId: string): Promise<{ professional_id: st
 // pelo canal do profissional (professionals.whatsapp_channel = 'cloud' → Graph API).
 async function forwardToPipeline(professionalId: string, msg: any, from: string, text: string, pushName: string): Promise<void> {
   // instance é a CHAVE de lookup do professional no pipeline — usa o evolution_instance_name.
-  const res = await fetchT(
-    `${SUPABASE_URL}/rest/v1/professionals?id=eq.${professionalId}&select=evolution_instance_name&limit=1`,
-    { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
-  );
-  const pro = res.ok ? (await res.json().catch(() => []))?.[0] : null;
-  const instanceName = pro?.evolution_instance_name;
-  if (!instanceName) {
-    console.error(`[cloud→pipeline] professional ${professionalId} sem evolution_instance_name — mensagem descartada`);
-    return;
+  // (o cadastro da conta cloud garante um valor sintético 'cloud_<id>' quando não havia instância)
+  // Falha de FETCH é diferente de coluna vazia: a primeira é transitória e merece retry (lançar),
+  // a segunda é configuração e não adianta insistir.
+  let instanceName: string | undefined;
+  let lastErr = "";
+  for (let i = 0; i < 3 && !instanceName; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, i * 1500));
+    try {
+      const res = await fetchT(
+        `${SUPABASE_URL}/rest/v1/professionals?id=eq.${professionalId}&select=evolution_instance_name&limit=1`,
+        { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
+      );
+      if (!res.ok) { lastErr = `lookup ${res.status}`; continue; }
+      const pro = (await res.json().catch(() => []))?.[0];
+      if (!pro) { lastErr = "professional_not_found"; break; }
+      if (!pro.evolution_instance_name) { lastErr = "sem_instance_name"; break; }
+      instanceName = pro.evolution_instance_name;
+    } catch (e) {
+      lastErr = (e as any)?.message || "lookup_falhou";
+    }
   }
+  if (!instanceName) {
+    // Lança: o caller loga como falha (mensagem de paciente NÃO pode sumir em silêncio).
+    throw new Error(`professional ${professionalId} sem chave de pipeline (${lastErr})`);
+  }
+
+  // Cliques de botão/lista da Meta viram o formato que o pipeline entende (clickId → fluxo sat:,
+  // lembretes etc). Texto puro segue como conversation.
+  const brId = msg?.interactive?.button_reply;
+  const listId = msg?.interactive?.list_reply;
+  const tplBtn = msg?.button;
+  const message: Record<string, unknown> = brId
+    ? { buttonsResponseMessage: { selectedButtonId: brId.id, selectedDisplayText: brId.title } }
+    : listId
+    ? { listResponseMessage: { title: listId.title, singleSelectReply: { selectedRowId: listId.id } } }
+    : tplBtn
+    ? { templateButtonReplyMessage: { selectedId: tplBtn.payload ?? tplBtn.text, selectedDisplayText: tplBtn.text } }
+    : { conversation: text };
 
   const payload = {
     event: "messages.upsert",
@@ -94,19 +128,34 @@ async function forwardToPipeline(professionalId: string, msg: any, from: string,
         id: msg?.id || "", // wamid da Meta → provider_message_id (dedup B5 do pipeline)
       },
       pushName: pushName || "Visitante",
-      message: { conversation: text },
+      message,
     },
   };
 
-  const secret = Deno.env.get("WHATSAPP_WEBHOOK_SECRET") || "";
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (secret) headers["x-webhook-secret"] = secret;
-
   // O pipeline leva 10-40s (debounce + LLM). Timeout largo; quem chama usa waitUntil.
-  const r = await fetchT(`${SUPABASE_URL}/functions/v1/whatsapp-webhook`, {
-    method: "POST", headers, body: JSON.stringify(payload),
-  }, 90000);
-  console.log(`[cloud→pipeline] webhook respondeu ${r.status}`);
+  // Retry em falha de rede/5xx/401: é SEGURO porque o pipeline deduplica por
+  // provider_message_id (wamid) — UNIQUE(lead_id, provider_message_id).
+  for (let tentativa = 1; tentativa <= 3; tentativa++) {
+    // relê o secret a cada tentativa (cobre rotação com isolate antigo)
+    const secret = Deno.env.get("WHATSAPP_WEBHOOK_SECRET") || "";
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (secret) headers["x-webhook-secret"] = secret;
+    try {
+      const r = await fetchT(`${SUPABASE_URL}/functions/v1/whatsapp-webhook`, {
+        method: "POST", headers, body: JSON.stringify(payload),
+      }, 90000);
+      if (r.ok) {
+        console.log(`[cloud→pipeline] entregue (tentativa ${tentativa})`);
+        return;
+      }
+      console.error(`[cloud→pipeline] webhook respondeu ${r.status} (tentativa ${tentativa})`);
+      if (r.status >= 400 && r.status < 500 && r.status !== 401) return; // erro de payload: insistir não resolve
+    } catch (e) {
+      console.error(`[cloud→pipeline] tentativa ${tentativa} falhou:`, (e as any)?.message);
+    }
+    if (tentativa < 3) await new Promise((r) => setTimeout(r, tentativa * 2000));
+  }
+  throw new Error("pipeline não confirmou entrega após 3 tentativas");
 }
 
 async function sendText(phoneNumberId: string, token: string, to: string, body: string): Promise<void> {
@@ -144,59 +193,89 @@ Deno.serve(async (req) => {
       return new Response("invalid signature", { status: 401 });
     }
     const body = JSON.parse(raw);
-    // Estrutura: entry[].changes[].value.{ metadata.phone_number_id, messages[], contacts[], statuses[] }
-    const value = body?.entry?.[0]?.changes?.[0]?.value;
-    const phoneNumberId: string | undefined = value?.metadata?.phone_number_id;
-    const msg = value?.messages?.[0];
+    const assinado = !!req.headers.get("x-hub-signature-256") && !!APP_SECRET;
 
-    // Sem mensagem (ex.: webhook de status 'sent/delivered/read') → ignora sem re-tentativa.
-    if (!msg || !phoneNumberId) return jsonOk({ ignored: true, reason: "no_inbound_message" });
+    // A Meta AGREGA mensagens num único POST (rajada do lead, reentrega após downtime,
+    // vários números por WABA). Iterar entry[] × changes[] × messages[] — processar só o
+    // índice [0] descartaria o resto em silêncio (com 200, sem reentrega).
+    const tarefas: Promise<unknown>[] = [];
+    const resumo: Array<Record<string, unknown>> = [];
 
-    const from: string = msg.from; // E.164 sem '+'
-    const text: string =
-      msg.text?.body ??
-      msg.button?.text ??
-      msg.interactive?.button_reply?.title ??
-      msg.interactive?.list_reply?.title ??
-      "";
+    for (const entry of body?.entry ?? []) {
+      for (const change of entry?.changes ?? []) {
+        const value = change?.value;
+        const phoneNumberId: string | undefined = value?.metadata?.phone_number_id;
+        const mensagens = value?.messages ?? [];
+        if (!phoneNumberId || mensagens.length === 0) continue; // status sent/delivered/read
 
-    if (!from) return jsonOk({ ignored: true, reason: "no_from" });
-    // B4: mensagem NÃO-texto (áudio/imagem/figurinha/documento) → responde educado em vez de silêncio.
-    if (!text) {
-      const acc = await findAccount(phoneNumberId);
-      const tk = acc?.access_token || FALLBACK_TOKEN;
-      if (tk) await sendText(phoneNumberId, tk, from, "Por enquanto eu só consigo ler mensagens de texto por aqui 🙂 Pode me escrever?");
-      return jsonOk({ ignored: true, reason: "no_text", type: msg.type });
-    }
+        // 1 lookup por número (pode variar entre entries)
+        const account = await findAccount(phoneNumberId);
 
-    // Identifica o profissional dono deste número.
-    const account = await findAccount(phoneNumberId);
+        // SEGURANÇA: tráfego de tenant REAL só passa com assinatura da Meta validada.
+        // Sem WHATSAPP_APP_SECRET setado, o gate global é permissivo (Fase 1/eco) — mas
+        // NUNCA roteamos pro pipeline nem enviamos com o token do tenant sem assinatura.
+        if (account && !assinado) {
+          console.error(`[whatsapp-cloud-webhook] conta ativa (${phoneNumberId}) com requisição NÃO assinada — recusada. Configure WHATSAPP_APP_SECRET.`);
+          resumo.push({ phoneNumberId, ignored: "unsigned_for_active_account" });
+          continue;
+        }
 
-    // ── FASE 2: conta cadastrada → pipeline real do Axel (via adapter). Responde 200
-    // JÁ (a Meta re-tenta em timeout) e processa em background com waitUntil.
-    if (account) {
-      const contactName: string = value?.contacts?.[0]?.profile?.name || "";
-      const task = forwardToPipeline(account.professional_id, msg, from, text, contactName)
-        .catch((e) => console.error("[cloud→pipeline] falhou:", e?.message));
-      // @ts-ignore EdgeRuntime é global no runtime do Supabase Edge
-      if (typeof EdgeRuntime !== "undefined" && (EdgeRuntime as any)?.waitUntil) {
-        // @ts-ignore
-        ;(EdgeRuntime as any).waitUntil(task);
-      } else {
-        await task;
+        for (const msg of mensagens) {
+          const from: string = msg?.from;
+          if (!from) continue;
+          const text: string =
+            msg.text?.body ??
+            msg.button?.text ??
+            msg.interactive?.button_reply?.title ??
+            msg.interactive?.list_reply?.title ??
+            "";
+          const ehClique = !!(msg.interactive?.button_reply || msg.interactive?.list_reply || msg.button);
+
+          // B4: mensagem NÃO-texto (áudio/imagem/documento) → responde educado em vez de silêncio.
+          if (!text && !ehClique) {
+            const tk = account?.access_token || (ECO_PERMITIDO(phoneNumberId) ? FALLBACK_TOKEN : "");
+            if (tk) await sendText(phoneNumberId, tk, from, "Por enquanto eu só consigo ler mensagens de texto por aqui 🙂 Pode me escrever?");
+            resumo.push({ from, ignored: "no_text", type: msg.type });
+            continue;
+          }
+
+          // ── FASE 2: conta cadastrada → pipeline real do Axel (via adapter).
+          if (account) {
+            const contactName: string = value?.contacts?.[0]?.profile?.name || "";
+            tarefas.push(
+              forwardToPipeline(account.professional_id, msg, from, text, contactName)
+                .catch((e) => console.error(`[cloud→pipeline] PERDA de mensagem de ${from} (wamid ${msg?.id}):`, e?.message)),
+            );
+            resumo.push({ from, routed: "pipeline" });
+            continue;
+          }
+
+          // ── Sem conta ativa: só ecoa se for número de TESTE explicitamente liberado.
+          // (senão um número real com conta 'inactive'/typo receberia scaffolding de teste)
+          if (!ECO_PERMITIDO(phoneNumberId) || !FALLBACK_TOKEN) {
+            console.error(`[whatsapp-cloud-webhook] sem conta ativa para phone_number_id=${phoneNumberId} — mensagem NÃO processada`);
+            resumo.push({ from, ignored: "no_active_account", phoneNumberId });
+            continue;
+          }
+          await sendText(phoneNumberId, FALLBACK_TOKEN, from, `🟢 Recebi pela API oficial do WhatsApp: "${text}"`);
+          resumo.push({ from, routed: "echo" });
+        }
       }
-      return jsonOk({ ok: true, routed: "pipeline", phoneNumberId, from });
     }
 
-    // ── Sem conta cadastrada: modo TESTE (eco) com o token de fallback — permite
-    // validar o setup da Meta (webhook + número de teste) antes de cadastrar a conta.
-    if (!FALLBACK_TOKEN) {
-      console.error(`[whatsapp-cloud-webhook] sem conta e sem token para phone_number_id=${phoneNumberId}`);
-      return jsonOk({ ignored: true, reason: "no_token", phoneNumberId });
-    }
-    await sendText(phoneNumberId, FALLBACK_TOKEN, from, `🟢 Recebi pela API oficial do WhatsApp: "${text}"`);
+    if (tarefas.length === 0) return jsonOk({ ok: true, resumo });
 
-    return jsonOk({ ok: true, routed: "echo", phoneNumberId, from });
+    // Responde 200 JÁ (o pipeline leva 10-40s; a Meta re-tentaria em timeout) e conclui
+    // o encaminhamento em background.
+    const tudo = Promise.allSettled(tarefas);
+    // @ts-ignore EdgeRuntime é global no runtime do Supabase Edge
+    if (typeof EdgeRuntime !== "undefined" && (EdgeRuntime as any)?.waitUntil) {
+      // @ts-ignore
+      ;(EdgeRuntime as any).waitUntil(tudo);
+    } else {
+      await tudo;
+    }
+    return jsonOk({ ok: true, resumo });
   } catch (e) {
     console.error("[whatsapp-cloud-webhook]", e);
     return jsonOk({ error: String(e) }); // 200 mesmo em erro: evita re-tentativa em loop da Meta

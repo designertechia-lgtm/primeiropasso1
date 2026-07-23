@@ -229,17 +229,42 @@ async function waChannel(instanceName: string): Promise<WaChannel> {
   }
 }
 
+// Graph API aceita no máximo 4096 chars por mensagem (Baileys aceita ~65k). Um texto maior
+// tomaria 400 e seria PERDIDO em silêncio — quebramos preferindo quebra de linha/espaço.
+const CLOUD_MAX = 4000
+function fatiarTexto(texto: string, max = CLOUD_MAX): string[] {
+  if (texto.length <= max) return [texto]
+  const partes: string[] = []
+  let resto = texto
+  while (resto.length > max) {
+    const janela = resto.slice(0, max)
+    let corte = janela.lastIndexOf('\n')
+    if (corte < max * 0.5) corte = janela.lastIndexOf(' ')
+    if (corte < max * 0.5) corte = max
+    partes.push(resto.slice(0, corte).trim())
+    resto = resto.slice(corte).trim()
+  }
+  if (resto) partes.push(resto)
+  return partes
+}
+
 // Envio de texto pela Graph API. `to` aceita remoteJid ou número cru — normaliza pra dígitos.
 async function cloudSendText(ch: WaChannel, to: string, text: string): Promise<boolean> {
   try {
     const num = to.split('@')[0].split(':')[0].replace(/\D/g, '')
-    const res = await fetch(`${GRAPH_URL}/${ch.phoneNumberId}/messages`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${ch.accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messaging_product: 'whatsapp', to: num, type: 'text', text: { body: text } }),
-    })
-    if (!res.ok) console.error(`[cloud send] ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`)
-    return res.ok
+    let ok = true
+    for (const parte of fatiarTexto(text)) {
+      const res = await fetch(`${GRAPH_URL}/${ch.phoneNumberId}/messages`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ch.accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messaging_product: 'whatsapp', to: num, type: 'text', text: { body: parte } }),
+      })
+      if (!res.ok) {
+        console.error(`[cloud send] ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`)
+        ok = false
+      }
+    }
+    return ok
   } catch (e: any) {
     console.error('[cloud send] err', e?.message)
     return false

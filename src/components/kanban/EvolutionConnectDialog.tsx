@@ -49,10 +49,11 @@ export function EvolutionConnectDialog({
   onOpenChange,
   trigger,
 }: EvolutionConnectDialogProps) {
-  const { status, connectQr, createInstance, logoutInstance } = useEvolutionInstance();
   const { toast } = useToast();
   const cloudStatus = useCloudChannelStatus();
   const isCloudChannel = cloudStatus.data?.channel === "cloud";
+  // Canal cloud: sem instância/QR — desliga TODO o polling do Evolution (status + QR).
+  const { status, connectQr, createInstance, logoutInstance } = useEvolutionInstance({ enabled: !isCloudChannel });
 
   const handleCreate = () => {
     createInstance.mutate(undefined, {

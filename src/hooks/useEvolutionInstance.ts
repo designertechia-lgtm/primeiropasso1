@@ -13,11 +13,16 @@ interface EvolutionResponse {
   error?: string;
 }
 
-export function useEvolutionInstance() {
+// opts.enabled: false desliga TODO o polling (status + QR) — usado quando o profissional
+// está no canal cloud (a Cloud API não tem instância/QR; a action 'status' já responde
+// 'open' pra esse canal, o que também pararia o refetch sozinho, mas nem chamar é melhor).
+export function useEvolutionInstance(opts?: { enabled?: boolean }) {
   const queryClient = useQueryClient();
+  const enabled = opts?.enabled !== false;
 
   const statusQuery = useQuery({
     queryKey: ["evolution-status"],
+    enabled,
     queryFn: async (): Promise<EvolutionResponse> => {
       const { data, error } = await supabase.functions.invoke("evolution-proxy", {
         body: { action: "status" },
@@ -57,7 +62,7 @@ export function useEvolutionInstance() {
       if (data?.error) throw new Error(data.error);
       return data as EvolutionResponse;
     },
-    enabled: statusQuery.data?.status === "close" || statusQuery.data?.status === "connecting",
+    enabled: enabled && (statusQuery.data?.status === "close" || statusQuery.data?.status === "connecting"),
     refetchInterval: 10000,
   });
 

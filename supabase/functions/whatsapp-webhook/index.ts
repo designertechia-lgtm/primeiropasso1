@@ -59,20 +59,44 @@ async function waChannel(instanceName: string): Promise<WaChannel> {
 // Envio de texto roteado pelo canal. `to` aceita remoteJid ou dígitos. Timeout best-effort
 // (um envio travado NÃO pode pendurar o handler — a Evolution/Meta re-tenta e duplica).
 // Retorna true se o transporte aceitou.
+// Graph API limita a 4096 chars por mensagem — texto maior seria PERDIDO em silêncio (400).
+const CLOUD_MAX = 4000
+function fatiarTexto(texto: string, max = CLOUD_MAX): string[] {
+  if (texto.length <= max) return [texto]
+  const partes: string[] = []
+  let resto = texto
+  while (resto.length > max) {
+    const janela = resto.slice(0, max)
+    let corte = janela.lastIndexOf('\n')
+    if (corte < max * 0.5) corte = janela.lastIndexOf(' ')
+    if (corte < max * 0.5) corte = max
+    partes.push(resto.slice(0, corte).trim())
+    resto = resto.slice(corte).trim()
+  }
+  if (resto) partes.push(resto)
+  return partes
+}
+
 async function sendTextByChannel(instanceName: string, to: string, text: string, timeoutMs = 8000): Promise<boolean> {
   const ch = await waChannel(instanceName)
   const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
     if (ch.channel === 'cloud') {
       const num = to.split('@')[0].split(':')[0].replace(/\D/g, '')
-      const res = await fetch(`${GRAPH_URL}/${ch.phoneNumberId}/messages`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${ch.accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messaging_product: 'whatsapp', to: num, type: 'text', text: { body: text } }),
-        signal: ctrl.signal,
-      })
-      if (!res.ok) console.error(`[cloud send] ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`)
-      return res.ok
+      let ok = true
+      for (const parte of fatiarTexto(text)) {
+        const res = await fetch(`${GRAPH_URL}/${ch.phoneNumberId}/messages`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${ch.accessToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messaging_product: 'whatsapp', to: num, type: 'text', text: { body: parte } }),
+          signal: ctrl.signal,
+        })
+        if (!res.ok) {
+          console.error(`[cloud send] ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`)
+          ok = false
+        }
+      }
+      return ok
     }
     const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
     const evoKey = Deno.env.get('EVOLUTION_API_KEY')
@@ -996,11 +1020,42 @@ serve(async (req) => {
       })
     }
 
+    // 3.635. RESPOSTA À PESQUISA DE SATISFAÇÃO EM TEXTO (canal cloud, sem botões nativos —
+    //         a pesquisa sai como "Responda: *Ótimo* / *Bom* / *Pode melhorar*"). Sintetiza
+    //         o mesmo clickId `sat:<nota>:<apptId>` do fluxo de botões (bloco 3.64 abaixo),
+    //         reaproveitando 100% da lógica — só precisamos achar QUAL appointment_reminders
+    //         de satisfação está pendente pra este lead (mesmo padrão do 3.35: vínculo via
+    //         leads.booking_state->>appointment_id).
+    let syntheticClickId: string | null = null
+    if (!clickId) {
+      const txtSat = messageText.trim().toLowerCase()
+      const notaTexto = /^ótimo|^otimo/.test(txtSat) ? 'otimo'
+        : /^bom\b/.test(txtSat) ? 'bom'
+        : /^(pode melhorar|melhorar)/.test(txtSat) ? 'ruim'
+        : /^agora n[ãa]o|^n[ãa]o,?\s*obrigad/.test(txtSat) ? 'skip'
+        : null
+      if (notaTexto) {
+        const { data: leadBsSat } = await supabaseAdmin
+          .from('leads').select('booking_state').eq('id', leadId).maybeSingle()
+        const apptIdSat = (leadBsSat?.booking_state as any)?.appointment_id
+        if (apptIdSat) {
+          const { data: pendingSurvey } = await supabaseAdmin
+            .from('appointment_reminders')
+            .select('id')
+            .eq('appointment_id', apptIdSat)
+            .eq('kind', 'satisfaction')
+            .is('patient_response', null)
+            .maybeSingle()
+          if (pendingSurvey) syntheticClickId = `sat:${notaTexto}:${apptIdSat}`
+        }
+      }
+    }
+
     // 3.64. RESPOSTA À PESQUISA DE SATISFAÇÃO (pós-atendimento, caso H)
-    //        Clique sat:<nota>:<appointment_id>. Registra a nota, marca o lead ativo
-    //        e oferece reagendar. Não chama o agente.
-    if (clickId && clickId.startsWith('sat:')) {
-      const [, nota, apptId] = clickId.split(':')
+    //        Clique sat:<nota>:<appointment_id> (real ou sintetizado do texto acima).
+    //        Registra a nota, marca o lead ativo e oferece reagendar. Não chama o agente.
+    if ((clickId && clickId.startsWith('sat:')) || syntheticClickId) {
+      const [, nota, apptId] = (syntheticClickId || clickId).split(':')
       console.log(`[FLUXO] satisfação nota=${nota} appt=${apptId || '-'}`)
       const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
       const evoKey = Deno.env.get('EVOLUTION_API_KEY')

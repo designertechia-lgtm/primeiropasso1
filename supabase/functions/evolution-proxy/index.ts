@@ -98,17 +98,22 @@ serve(async (req) => {
           .eq('status', 'active')
           .maybeSingle()
         if (acc?.phone_number_id && acc?.access_token) {
-          const res = await fetch(`https://graph.facebook.com/v21.0/${acc.phone_number_id}/messages`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${acc.access_token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messaging_product: 'whatsapp', to: toNum, type: 'text', text: { body: text } }),
-          })
-          if (!res.ok) {
-            const err = (await res.text().catch(() => '')).slice(0, 200)
-            console.error(`[proxy send][cloud] ${res.status}: ${err}`)
-            return new Response(JSON.stringify({ error: `cloud_send_failed_${res.status}` }), {
-              status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          // Graph API limita a 4096 chars por mensagem — fatia pra não perder texto longo.
+          const partes: string[] = []
+          for (let i = 0; i < text.length; i += 4000) partes.push(text.slice(i, i + 4000))
+          for (const parte of partes) {
+            const res = await fetch(`https://graph.facebook.com/v21.0/${acc.phone_number_id}/messages`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${acc.access_token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ messaging_product: 'whatsapp', to: toNum, type: 'text', text: { body: parte } }),
             })
+            if (!res.ok) {
+              const err = (await res.text().catch(() => '')).slice(0, 200)
+              console.error(`[proxy send][cloud] ${res.status}: ${err}`)
+              return new Response(JSON.stringify({ error: `cloud_send_failed_${res.status}` }), {
+                status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              })
+            }
           }
           return new Response(JSON.stringify({ status: 'sent' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
         }

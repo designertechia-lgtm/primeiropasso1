@@ -45,13 +45,17 @@ async function sendTextByChannel(ch: WaChannel, instanceName: string, to: string
   try {
     if (ch.channel === 'cloud') {
       const num = to.split('@')[0].split(':')[0].replace(/\D/g, '')
-      const res = await fetch(`${GRAPH_URL}/${ch.phoneNumberId}/messages`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${ch.accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messaging_product: 'whatsapp', to: num, type: 'text', text: { body: text } }),
-      })
-      if (!res.ok) console.error(`[cloud send] ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`)
-      return res.ok
+      let ok = true
+      // Graph API limita a 4096 chars — fatia pra não perder texto longo em silêncio.
+      for (let i = 0; i < text.length; i += 4000) {
+        const res = await fetch(`${GRAPH_URL}/${ch.phoneNumberId}/messages`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${ch.accessToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messaging_product: 'whatsapp', to: num, type: 'text', text: { body: text.slice(i, i + 4000) } }),
+        })
+        if (!res.ok) { console.error(`[cloud send] ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`); ok = false }
+      }
+      return ok
     }
     const evoUrl = Deno.env.get('EVOLUTION_API_URL')?.replace(/\/$/, '')
     const evoKey = Deno.env.get('EVOLUTION_API_KEY')

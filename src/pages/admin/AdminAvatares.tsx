@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Plus, Trash2, Upload, Wand2, Loader2, User, Camera, Sparkles, Copy, Pencil, ZoomIn, RefreshCw } from "lucide-react";
+import { Plus, Trash2, Upload, Wand2, Loader2, User, Camera, Sparkles, Copy, Pencil, ZoomIn, RefreshCw, Link2 } from "lucide-react";
 
 const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
 
@@ -21,7 +21,7 @@ const STYLES = [
   { id: "minimalista",  label: "Minimalista", emoji: "✏️" },
 ] as const;
 type StyleId = typeof STYLES[number]["id"];
-type PhotoMode = "upload" | "generate" | "profile" | "transform" | "derive" | null;
+type PhotoMode = "upload" | "generate" | "profile" | "transform" | "derive" | "link" | null;
 
 interface AvatarForm {
   name: string;
@@ -96,6 +96,7 @@ export default function AdminAvatares() {
   const [cloneSource, setCloneSource]   = useState<Avatar | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl]     = useState<string | null>(null);
+  const [linkUrl, setLinkUrl]           = useState("");
   const [generating, setGenerating]         = useState(false);
   const [styleGenAvatar, setStyleGenAvatar] = useState<Avatar | null>(null);
   const [styleGenStyle, setStyleGenStyle]   = useState<StyleId>("profissional");
@@ -131,6 +132,7 @@ export default function AdminAvatares() {
     setCloneSource(null);
     setSelectedFile(null);
     setPreviewUrl(null);
+    setLinkUrl("");
     setEditingAvatar(null);
   };
 
@@ -149,6 +151,7 @@ export default function AdminAvatares() {
     setPhotoMode(null);
     setSelectedFile(null);
     setPreviewUrl(null);
+    setLinkUrl("");
     setOpen(true);
   };
 
@@ -168,6 +171,7 @@ export default function AdminAvatares() {
     setPhotoMode(av.photo_url ? "derive" : null);
     setSelectedFile(null);
     setPreviewUrl(null);
+    setLinkUrl("");
     setOpen(true);
   };
 
@@ -236,7 +240,7 @@ export default function AdminAvatares() {
     style: form.style,
     generate_photo: photoMode === "generate",
     generation_prompt: photoMode === "generate" ? form.generation_prompt : "",
-    photo_url_existing: photoMode === "profile" ? (professional?.photo_url ?? "") : "",
+    photo_url_existing: photoMode === "profile" ? (professional?.photo_url ?? "") : photoMode === "link" ? linkUrl.trim() : "",
   });
 
   const handleSave = async () => {
@@ -428,6 +432,46 @@ export default function AdminAvatares() {
     }
   };
 
+  // Importar por link: mesmo motor do "Minha foto do perfil", trocando a origem
+  // por uma URL de imagem qualquer que o usuário colar.
+  const handleLinkTransform = async () => {
+    if (!form.name.trim()) { toast.error("Informe o nome do personagem"); return; }
+    if (!linkUrl.trim()) { toast.error("Cole o link da imagem"); return; }
+    setSaving(true);
+    setRetryAttempt(0);
+    let lastRes: Response | undefined;
+    try {
+      const fd = new FormData();
+      fd.append("professional_slug", slug);
+      fd.append("name", form.name);
+      fd.append("personality", form.personality);
+      fd.append("backstory", form.backstory);
+      fd.append("style", form.style);
+      fd.append("instruction", form.generation_prompt.trim());
+      if (form.age) fd.append("age", form.age);
+      fd.append("photo_url", linkUrl.trim());
+      lastRes = await fetchWithRetry(
+        `${API}/criar-avatar-transformado`,
+        { method: "POST", body: fd },
+        (attempt, max) => {
+          setRetryAttempt(attempt);
+          toast.info(`Servidor ocupado, tentando novamente... (${attempt}/${max})`, { duration: 4000 });
+        },
+      );
+      const data = await lastRes.json();
+      if (!lastRes.ok) throw new Error(data.detail ?? `HTTP ${lastRes.status}`);
+      toast.success(`Personagem "${form.name}" criado a partir do link da imagem!`);
+      setOpen(false);
+      resetModal();
+      await refetch();
+    } catch (e: unknown) {
+      toast.error(await parseError(e, lastRes?.ok === false ? lastRes : undefined), { duration: 6000 });
+    } finally {
+      setSaving(false);
+      setRetryAttempt(0);
+    }
+  };
+
   const handleDelete = async (av: Avatar) => {
     if (!confirm(`Excluir o personagem "${av.name}"?`)) return;
     let res: Response | undefined;
@@ -447,13 +491,16 @@ export default function AdminAvatares() {
   };
 
   const currentPhoto = editingAvatar
-    ? (photoMode === "profile" ? professional?.photo_url : (photoMode === "upload" || photoMode === "transform") ? previewUrl : editingAvatar.photo_url)
-    : (photoMode === "profile" ? professional?.photo_url : photoMode === "derive" ? cloneSource?.photo_url : previewUrl);
+    ? (photoMode === "profile" ? professional?.photo_url : (photoMode === "upload" || photoMode === "transform") ? previewUrl : photoMode === "link" ? linkUrl : editingAvatar.photo_url)
+    : (photoMode === "profile" ? professional?.photo_url : photoMode === "derive" ? cloneSource?.photo_url : photoMode === "link" ? linkUrl : previewUrl);
 
   // Foto do perfil: transforma via IA quando muda o estilo (≠ Realista) ou quando o
   // usuário pede alguma mudança; senão apenas usa a foto como está (cópia, sem geração).
   const profileNeedsTransform =
     photoMode === "profile" && (form.style !== "profissional" || !!form.generation_prompt.trim());
+  // Mesma lógica para o link colado: só chama a IA se pediu mudança de estilo/instrução.
+  const linkNeedsTransform =
+    photoMode === "link" && (form.style !== "profissional" || !!form.generation_prompt.trim());
 
   if (isLoading) return <div className="animate-pulse text-muted-foreground p-6">Carregando personagens...</div>;
 
@@ -565,6 +612,17 @@ export default function AdminAvatares() {
               >
                 <Upload className="h-3 w-3 inline mr-1" />Upload simples
               </button>
+              <button
+                type="button"
+                onClick={() => { setForm(f => ({ ...f, generation_prompt: "" })); setPhotoMode(photoMode === "link" ? null : "link"); }}
+                className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
+                  photoMode === "link"
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "border-border text-muted-foreground hover:border-primary/50"
+                }`}
+              >
+                <Link2 className="h-3 w-3 inline mr-1" />Importar por link
+              </button>
             </div>
           </div>
         </div>
@@ -594,6 +652,42 @@ export default function AdminAvatares() {
               <>✓ Vai usar sua foto de perfil como está — escolha outro estilo ou peça uma mudança acima para a IA transformar</>
             )}
           </p>
+        </div>
+      )}
+      {photoMode === "link" && (
+        <div className="space-y-1.5">
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">
+              Link da imagem <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              placeholder="https://..."
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">
+              O que mudar na imagem? <span className="text-muted-foreground">(opcional)</span>
+            </Label>
+            <Textarea
+              rows={2}
+              placeholder="Ex: cabelo ruivo, roupa social azul, de braços cruzados — vazio aplica só o estilo escolhido"
+              value={form.generation_prompt}
+              onChange={(e) => setForm(f => ({ ...f, generation_prompt: e.target.value }))}
+            />
+          </div>
+          {linkUrl.trim() && (
+            <p className="text-xs text-primary bg-primary/5 rounded-lg px-2.5 py-1.5">
+              {linkNeedsTransform ? (
+                form.generation_prompt.trim()
+                  ? <>✨ A IA parte da <strong>imagem do link</strong> e aplica <strong>"{form.generation_prompt.trim()}"</strong> no estilo <strong>{STYLES.find(s => s.id === form.style)?.label}</strong> (~30s)</>
+                  : <>✨ A IA transforma a <strong>imagem do link</strong> no estilo <strong>{STYLES.find(s => s.id === form.style)?.label}</strong> (~30s)</>
+              ) : (
+                <>✓ Vai usar a imagem do link como está — escolha outro estilo ou peça uma mudança acima para a IA transformar</>
+              )}
+            </p>
+          )}
         </div>
       )}
       {photoMode === "derive" && (cloneSource ?? editingAvatar)?.photo_url && (
@@ -790,8 +884,18 @@ export default function AdminAvatares() {
                     ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{retryAttempt > 0 ? `Servidor ocupado, tentativa ${retryAttempt + 1}/3...` : "Transformando sua foto (~30s)..."}</>
                     : <><Sparkles className="h-4 w-4 mr-2" />Criar com minha foto de perfil + IA</>}
                 </Button>
+              ) : linkNeedsTransform ? (
+                <Button onClick={handleLinkTransform}
+                  disabled={saving || !form.name.trim() || !linkUrl.trim()}
+                  className="w-full">
+                  {saving
+                    ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{retryAttempt > 0 ? `Servidor ocupado, tentativa ${retryAttempt + 1}/3...` : "Transformando a imagem (~30s)..."}</>
+                    : <><Sparkles className="h-4 w-4 mr-2" />Criar com a imagem do link + IA</>}
+                </Button>
               ) : (
-                <Button onClick={handleSave} disabled={saving || !form.name.trim()} className="w-full">
+                <Button onClick={handleSave}
+                  disabled={saving || !form.name.trim() || (photoMode === "link" && !linkUrl.trim())}
+                  className="w-full">
                   {saving
                     ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Salvando...</>
                     : editingAvatar ? "Salvar alterações" : "Salvar Personagem"}

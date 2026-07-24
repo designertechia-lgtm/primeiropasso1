@@ -100,7 +100,7 @@ type Slide     = {
 };
 // Clipe de vídeo real (Pexels/Pixabay) sugerido/escolhido para um slide
 type ClipInfo = { url: string; thumb: string; duration: number; source: string };
-export type Script = {
+type Script = {
   titulo: string;
   narracao: string;
   narracao_completa?: string;

@@ -373,6 +373,16 @@ export default function AdminAgendaCalendario() {
       localStorage.setItem("ical-url", icalUrl);
       const events = await fetchIcal(icalUrl);
       if (events.length === 0) { toast.info("Nenhum evento encontrado."); return; }
+      // Sync idempotente: cada clique substitui o lote anterior em vez de empilhar
+      // duplicatas (block_type "other" é usado só por esta importação, nunca por
+      // bloqueio manual — ver TituloCombobox/blockType, que só grava "personal").
+      const { error: deleteError } = await supabase
+        .from("appointments")
+        .delete()
+        .eq("professional_id", professional.id)
+        .eq("appointment_type", "block")
+        .eq("block_type", "other");
+      if (deleteError) throw deleteError;
       const recurrenceGroup = crypto.randomUUID();
       const records = events.map((ev) => ({
         professional_id: professional.id,
@@ -435,7 +445,7 @@ export default function AdminAgendaCalendario() {
         .from("appointments")
         .select("*, professional_services(name)")
         .eq("professional_id", professional!.id)
-        .in("status", ["pending", "confirmed", "completed"]);
+        .in("status", ["pending", "confirmed", "completed", "cancelled"]);
       if (error) throw error;
 
       const bookings = data.filter((a) => !a.appointment_type || a.appointment_type === "booking");

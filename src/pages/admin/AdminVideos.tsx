@@ -487,7 +487,11 @@ export default function AdminVideos() {
                           variant="ghost"
                           size="icon"
                           title="Reeditar com IA"
-                          onClick={() => navigate(`/admin/redes-sociais?tab=videos&edit=${v.id}`)}
+                          onClick={() => navigate(
+                            (v as any).script_json?.kind === "clone_v2v"
+                              ? `/admin/redes-sociais?tab=videos&sub=clonar&video=${v.id}`
+                              : `/admin/redes-sociais?tab=videos&edit=${v.id}`
+                          )}
                         >
                           <Wand2 className="h-4 w-4 text-primary" />
                         </Button>
@@ -559,7 +563,11 @@ export default function AdminVideos() {
                   </div>
                   {(v as any).script_json && (
                     <Button variant="outline" size="sm" className="h-8 gap-1.5 shrink-0"
-                      onClick={() => navigate(`/admin/redes-sociais?tab=videos&edit=${v.id}`)}>
+                      onClick={() => navigate(
+                        (v as any).script_json?.kind === "clone_v2v"
+                          ? `/admin/redes-sociais?tab=videos&sub=clonar&video=${v.id}`
+                          : `/admin/redes-sociais?tab=videos&edit=${v.id}`
+                      )}>
                       <Wand2 className="h-3.5 w-3.5 text-primary" /> Continuar edição
                     </Button>
                   )}

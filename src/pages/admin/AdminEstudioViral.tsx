@@ -517,6 +517,10 @@ export default function AdminEstudioViral() {
     fetch(`${API}/video-roteiro/${editVideoId}?professional_slug=${professional.slug}`)
       .then((r) => r.json())
       .then((data) => {
+        if (data.script_json?.kind === "clone_v2v") {
+          toast.warning("Este vídeo veio da Clonagem de Vídeo — edite pela aba \"Clonar Vídeo\".");
+          return;
+        }
         if (data.script_json) {
           setScript(data.script_json);
           setFormat(data.video_format ?? "portrait");

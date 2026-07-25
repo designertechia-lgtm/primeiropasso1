@@ -305,6 +305,7 @@ export default function AdminAgendaCalendario() {
   const [editBlockStartTime, setEditBlockStartTime] = useState("");
   const [editBlockEndTime, setEditBlockEndTime] = useState("");
   const [editBlockColor, setEditBlockColor] = useState<string | null>(null);
+  const [editBlockDescription, setEditBlockDescription] = useState("");
   const [editBlockDate, setEditBlockDate] = useState<Date>(new Date());
 
   // Edit appointment fields
@@ -379,13 +380,14 @@ export default function AdminAgendaCalendario() {
         start_time: ev.allDay ? "00:00" : format(ev.dtstart, "HH:mm"),
         end_time: ev.allDay ? "23:59" : format(ev.dtend, "HH:mm"),
         notes: ev.summary,
+        description: ev.description || null,
         block_type: "other",
         appointment_type: "block" as const,
         status: "confirmed" as const,
         patient_id: null,
         recurrence_group: recurrenceGroup,
       }));
-      const { error } = await supabase.from("appointments").insert(records);
+      const { error } = await supabase.from("appointments").insert(records as any);
       if (error) throw error;
       queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
       toast.success(`${events.length} evento(s) importado(s) do Google Agenda!`);
@@ -603,6 +605,7 @@ export default function AdminAgendaCalendario() {
         .from("appointments")
         .update({
           notes: editBlockTitle,
+          description: editBlockDescription || null,
           start_time: editBlockStartTime,
           end_time: editBlockEndTime,
           color: editBlockColor,
@@ -781,6 +784,7 @@ export default function AdminAgendaCalendario() {
       setEditBlockStartTime(selectedEvent.start_time?.slice(0, 5) || "09:00");
       setEditBlockEndTime(selectedEvent.end_time?.slice(0, 5) || "10:00");
       setEditBlockColor(selectedEvent.color ?? null);
+      setEditBlockDescription(selectedEvent.description || "");
       setEditBlockDate(new Date(selectedEvent.appointment_date + "T12:00:00"));
     } else {
       setEditApptStatus(selectedEvent.status || "pending");
@@ -1246,6 +1250,9 @@ export default function AdminAgendaCalendario() {
                     <Clock className="h-4 w-4 text-muted-foreground" />
                     <span>{selectedEvent.start_time?.slice(0, 5)} – {selectedEvent.end_time?.slice(0, 5)}</span>
                   </div>
+                  {selectedEvent.description && (
+                    <p className="text-sm text-muted-foreground border-t pt-2 whitespace-pre-line">{selectedEvent.description}</p>
+                  )}
 
                   {/* Quick status buttons */}
                   <div className="border-t pt-3 space-y-2">
@@ -1354,6 +1361,10 @@ export default function AdminAgendaCalendario() {
                 <div className="mt-1.5">
                   <ColorPicker value={editBlockColor} onChange={setEditBlockColor} />
                 </div>
+              </div>
+              <div>
+                <Label>Descrição</Label>
+                <Textarea value={editBlockDescription} onChange={(e) => setEditBlockDescription(e.target.value)} placeholder="Detalhes do compromisso..." rows={3} />
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => setEditMode(false)} className="flex-1">Cancelar</Button>

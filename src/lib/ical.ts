@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 export interface ICalEvent {
   uid: string;
   summary: string;
+  description?: string;
   dtstart: Date;
   dtend: Date;
   allDay: boolean;
@@ -14,6 +15,15 @@ interface RRule {
   until?: Date;
   interval: number;
   byday?: string[];
+}
+
+// RFC 5545 escapa \, ; e quebras de linha dentro de valores de texto (SUMMARY/DESCRIPTION).
+function unescapeIcalText(value: string): string {
+  return value
+    .replace(/\\n/gi, "\n")
+    .replace(/\\,/g, ",")
+    .replace(/\\;/g, ";")
+    .replace(/\\\\/g, "\\");
 }
 
 function parseICalDate(value: string): { date: Date; allDay: boolean } {
@@ -95,6 +105,7 @@ function expandRecurring(
     results.push({
       uid: `${base.uid}_${i}`,
       summary: base.summary,
+      description: base.description,
       dtstart: new Date(current),
       dtend,
       allDay: base.allDay,
@@ -135,6 +146,7 @@ export function parseIcal(text: string): ICalEvent[] {
         const base: ICalEvent = {
           uid: current.uid ?? crypto.randomUUID(),
           summary: current.summary ?? "Evento",
+          description: current.description,
           dtstart: current.dtstart,
           dtend: current.dtend,
           allDay: current.allDay ?? false,
@@ -151,7 +163,10 @@ export function parseIcal(text: string): ICalEvent[] {
       current = null;
     } else if (current) {
       if (line.startsWith("SUMMARY:")) {
-        current.summary = line.slice(8).trim();
+        current.summary = unescapeIcalText(line.slice(8).trim());
+      } else if (line.match(/^DESCRIPTION/)) {
+        const idx = line.indexOf(":");
+        if (idx !== -1) current.description = unescapeIcalText(line.slice(idx + 1).trim());
       } else if (line.startsWith("UID:")) {
         current.uid = line.slice(4).trim();
       } else if (line.match(/^DTSTART/)) {

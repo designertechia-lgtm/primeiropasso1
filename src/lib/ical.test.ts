@@ -51,4 +51,35 @@ describe("parseIcal", () => {
   it("devolve lista vazia para HTML que não é calendário", () => {
     expect(parseIcal("<html><body>não sou um ics</body></html>")).toHaveLength(0);
   });
+
+  it("extrai a descrição do evento, com unescape de \\n, \\, e \\;", () => {
+    const ics = [
+      "BEGIN:VCALENDAR",
+      "BEGIN:VEVENT",
+      "UID:abc123",
+      "SUMMARY:Consulta Maria",
+      "DESCRIPTION:Cliente: Maria\\nTelefone: 11 99999-0000\\, retorno\\; confirmar",
+      "DTSTART:20260720T140000Z",
+      "DTEND:20260720T150000Z",
+      "END:VEVENT",
+      "END:VCALENDAR",
+    ].join("\r\n");
+    const events = parseIcal(ics);
+    expect(events).toHaveLength(1);
+    expect(events[0].description).toBe("Cliente: Maria\nTelefone: 11 99999-0000, retorno; confirmar");
+  });
+
+  it("evento sem DESCRIPTION fica com description undefined", () => {
+    const ics = [
+      "BEGIN:VCALENDAR",
+      "BEGIN:VEVENT",
+      "UID:abc123",
+      "SUMMARY:Consulta",
+      "DTSTART:20260720T140000Z",
+      "DTEND:20260720T150000Z",
+      "END:VEVENT",
+      "END:VCALENDAR",
+    ].join("\r\n");
+    expect(parseIcal(ics)[0].description).toBeUndefined();
+  });
 });

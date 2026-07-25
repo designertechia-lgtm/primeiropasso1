@@ -115,11 +115,16 @@ export default function AdminClonarVideo() {
     return () => URL.revokeObjectURL(url);
   }, [refFile]);
 
-  const carregarEstado = async (id: string) => {
+  // Achado real (25/07): a busca falhava silenciosamente (rede lenta, servidor
+  // ocupado terminando o job em background) e deixava a tela travada em "Sem
+  // vídeo ainda" mesmo com o vídeo já pronto e salvo no banco. Agora tenta de
+  // novo (3x, com espera curta) antes de desistir, e SEMPRE avisa se falhar de
+  // verdade — nunca mais falha em silêncio.
+  const carregarEstado = async (id: string, tentativa = 1): Promise<void> => {
     if (!professional?.slug) return;
     try {
       const res = await fetch(`${API}/clonar-video/${id}/estado?professional_slug=${encodeURIComponent(professional.slug)}`);
-      if (!res.ok) return;
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setVideoRow(data);
       setTituloDraft(data.title ?? "");
@@ -127,7 +132,13 @@ export default function AdminClonarVideo() {
       if (estiloSalvo === "pixar" || estiloSalvo === "cartoon" || estiloSalvo === "realista") {
         setEstiloRefinar(estiloSalvo);
       }
-    } catch { /* silencioso — a tela mostra o que já tinha */ }
+    } catch {
+      if (tentativa < 3) {
+        await new Promise((r) => setTimeout(r, 1500 * tentativa));
+        return carregarEstado(id, tentativa + 1);
+      }
+      toast.error("Não consegui carregar os dados do vídeo — clique em Voltar e tente reabrir.", { duration: 8000 });
+    }
   };
 
   // Reidrata ao abrir com ?video=<id> (ex.: "Reeditar" em Meus Vídeos) — regra
@@ -272,6 +283,9 @@ export default function AdminClonarVideo() {
   const processando = jobStatus.status === "processing";
   const state = (videoRow?.script_json || {}) as CloneState;
   const history = state.history || [];
+  // Fallback: a resposta do job já traz video_url — não depende só da segunda
+  // busca (/estado) pra mostrar o resultado assim que fica pronto.
+  const previewUrl = videoRow?.embed_url || jobStatus.video_url;
 
   // ── Modo estúdio: revisar/refinar o clone já gerado ─────────────────
   if (modoStudio) {
@@ -336,10 +350,15 @@ export default function AdminClonarVideo() {
                   <Loader2 className="h-8 w-8 animate-spin" />
                   <p className="text-sm text-center">{jobStatus.step || "Processando..."}{jobStatus.progress ? ` (${jobStatus.progress}%)` : ""}</p>
                 </div>
-              ) : videoRow?.embed_url ? (
-                <video controls poster={videoRow.thumbnail_url || undefined} src={videoRow.embed_url} className="max-h-[65vh] w-auto" />
-              ) : (
+              ) : previewUrl ? (
+                <video controls poster={videoRow?.thumbnail_url || undefined} src={previewUrl} className="max-h-[65vh] w-auto" />
+              ) : videoRow ? (
                 <div className="flex items-center justify-center text-white/40 text-sm p-8">Sem vídeo ainda</div>
+              ) : (
+                <div className="flex flex-col items-center justify-center gap-3 text-white/60 p-8">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <p className="text-sm">Carregando...</p>
+                </div>
               )}
             </div>
             <div className="p-3 border-t border-border space-y-2 bg-card">

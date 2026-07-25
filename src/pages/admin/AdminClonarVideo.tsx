@@ -11,12 +11,14 @@ import { toast } from "sonner";
 import {
   Clapperboard, Wand2, Loader2, Heart, BookOpenCheck, Flame, TrendingUp,
   Users, Sparkles, ArrowLeft, History, Trash2, Send, RotateCcw, Link2, Upload,
+  Camera, Palette, Box,
 } from "lucide-react";
 import { videoApiAuthHeaders } from "@/lib/videoApi";
 
 const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
 
 type Tom = "acolhedor" | "educativo" | "provocador" | "motivacional";
+type Estilo = "realista" | "pixar" | "cartoon";
 type AvatarLite = { id: string; name: string; photo_url: string | null };
 type JobStatus = {
   status: "idle" | "processing" | "done" | "error";
@@ -32,7 +34,7 @@ type HistoryEntry = {
 };
 type CloneState = {
   kind?: string;
-  tema?: string; tom?: string; manter_original?: boolean;
+  tema?: string; tom?: string; manter_original?: boolean; estilo?: string;
   history?: HistoryEntry[];
 };
 type VideoRow = {
@@ -45,6 +47,14 @@ const TONS = [
   { value: "educativo",    label: "Educativo",    desc: "Claro e informativo",   Icon: BookOpenCheck },
   { value: "provocador",   label: "Provocador",   desc: "Questiona e desafia",   Icon: Flame },
   { value: "motivacional", label: "Motivacional", desc: "Energia e ação",        Icon: TrendingUp },
+] as const;
+
+// Mesmo conceito de estilo já usado em Personagens/Criar Vídeo, adaptado pro
+// vídeo inteiro (Kling O1 Edit) — "realista" = sem mudança de estilo (padrão).
+const ESTILOS = [
+  { value: "realista", label: "Realista", Icon: Camera },
+  { value: "cartoon",  label: "Cartoon",  Icon: Palette },
+  { value: "pixar",    label: "Pixar 3D", Icon: Box },
 ] as const;
 
 // Fluxo independente: clonagem FIEL via Kling O1 Edit (vídeo-para-vídeo real —
@@ -67,6 +77,7 @@ export default function AdminClonarVideo() {
   const [refUrl, setRefUrl] = useState("");
   const [refTema, setRefTema] = useState("");
   const [tom, setTom] = useState<Tom>("acolhedor");
+  const [estilo, setEstilo] = useState<Estilo>("realista");
   const [instrucaoInicial, setInstrucaoInicial] = useState("");
 
   const [avatars, setAvatars] = useState<AvatarLite[]>([]);
@@ -81,6 +92,7 @@ export default function AdminClonarVideo() {
   const [videoRow, setVideoRow] = useState<VideoRow | null>(null);
   const [showHistorico, setShowHistorico] = useState(false);
   const [instrucaoRefinar, setInstrucaoRefinar] = useState("");
+  const [estiloRefinar, setEstiloRefinar] = useState<Estilo>("realista");
   const [tituloDraft, setTituloDraft] = useState("");
   const videoId = videoRow?.id ?? jobStatus.video_id ?? videoIdParam ?? null;
   const modoStudio = !!videoId;
@@ -111,6 +123,10 @@ export default function AdminClonarVideo() {
       const data = await res.json();
       setVideoRow(data);
       setTituloDraft(data.title ?? "");
+      const estiloSalvo = data.script_json?.estilo;
+      if (estiloSalvo === "pixar" || estiloSalvo === "cartoon" || estiloSalvo === "realista") {
+        setEstiloRefinar(estiloSalvo);
+      }
     } catch { /* silencioso — a tela mostra o que já tinha */ }
   };
 
@@ -158,6 +174,7 @@ export default function AdminClonarVideo() {
       form.append("tema", refTema.trim());
       form.append("tom", tom);
       form.append("manter_original", modo === "original" ? "true" : "false");
+      form.append("estilo", estilo);
       form.append("instrucao_inicial", instrucaoInicial.trim());
       if (modo === "personagem" && avatarId) form.append("avatar_id", avatarId);
       if (refFile) form.append("file", refFile);
@@ -189,7 +206,7 @@ export default function AdminClonarVideo() {
       const res = await fetch(`${API}/clonar-video/${videoId}/refinar`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(await videoApiAuthHeaders()) },
-        body: JSON.stringify({ professional_slug: professional.slug, instrucao: instrucaoRefinar.trim() }),
+        body: JSON.stringify({ professional_slug: professional.slug, instrucao: instrucaoRefinar.trim(), estilo: estiloRefinar }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Falha ao gerar a nova versão");
@@ -292,6 +309,23 @@ export default function AdminClonarVideo() {
             <div>
               <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Personagem</p>
               <p className="text-sm">{state.manter_original ? "Original do vídeo" : "Meu personagem"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1.5">Estilo (próxima versão)</p>
+              <div className="grid grid-cols-3 gap-1.5">
+                {ESTILOS.map(({ value, label, Icon }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    disabled={processando}
+                    onClick={() => setEstiloRefinar(value)}
+                    className={`rounded-lg border p-1.5 flex flex-col items-center gap-1 text-center transition ${estiloRefinar === value ? "border-primary ring-1 ring-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+                  >
+                    <Icon className={`h-3.5 w-3.5 ${estiloRefinar === value ? "text-primary" : "text-muted-foreground"}`} />
+                    <span className="text-[10px] leading-none">{label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -475,6 +509,25 @@ export default function AdminClonarVideo() {
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">Estilo visual</p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {ESTILOS.map(({ value, label, Icon }) => (
+                <button
+                  key={value}
+                  type="button"
+                  disabled={processando}
+                  onClick={() => setEstilo(value)}
+                  className={`rounded-lg border p-2 flex flex-col items-center gap-1 text-center transition ${estilo === value ? "border-primary ring-1 ring-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+                >
+                  <Icon className={`h-4 w-4 ${estilo === value ? "text-primary" : "text-muted-foreground"}`} />
+                  <span className="text-[11px]">{label}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground">"Realista" mantém a aparência original — Cartoon/Pixar transformam a cena inteira.</p>
           </div>
         </div>
 

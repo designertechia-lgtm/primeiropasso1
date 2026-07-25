@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useProfessional } from "@/hooks/useProfessional";
 import { supabase } from "@/integrations/supabase/client";
@@ -57,6 +57,55 @@ const ESTILOS = [
   { value: "pixar",    label: "Pixar 3D", Icon: Box },
 ] as const;
 
+// ── Acompanhamento resiliente à navegação (regra do projeto, CLAUDE.md) ────
+// A clonagem é cara (créditos reais) e demorada — o profissional não pode
+// perder o rastro dela só por sair da tela ou trocar de aba. O polling vive
+// no escopo do MÓDULO (Map por video_id), não dentro do componente: sai da
+// tela e o job continua sendo observado; volta (mesma aba ou via "Meus
+// Vídeos" → "Acompanhar") e a tela readota o estado atual na hora. Fechar ou
+// recarregar o navegador perde só a barra de progresso ao vivo — o job em si
+// roda no servidor e o resultado final já está salvo no banco quando pronto;
+// por isso `estado` também é conferido contra `/status` ao montar com
+// ?video=, não só o Map (que não sobrevive a um reload de página).
+type CloneJobEntry = { status: JobStatus; intervalId: ReturnType<typeof setInterval> | null; onChange: (() => void) | null };
+const cloneJobs = new Map<string, CloneJobEntry>();
+
+function pollCloneJob(videoId: string, initial?: JobStatus) {
+  let entry = cloneJobs.get(videoId);
+  if (!entry) {
+    entry = { status: initial || { status: "processing" }, intervalId: null, onChange: null };
+    cloneJobs.set(videoId, entry);
+  } else {
+    entry.status = initial || { status: "processing" };
+  }
+  entry.onChange?.();
+  if (entry.intervalId) clearInterval(entry.intervalId);
+  entry.intervalId = setInterval(async () => {
+    const e = cloneJobs.get(videoId);
+    if (!e) return;
+    try {
+      const data: JobStatus = await (await fetch(`${API}/status/${videoId}`)).json();
+      e.status = data;
+      e.onChange?.();
+      if (data.status === "done" || data.status === "error") {
+        if (e.intervalId) clearInterval(e.intervalId);
+        e.intervalId = null;
+        if (data.status === "done") {
+          if (e.onChange) toast.success("Vídeo pronto!", { duration: 6000 });
+          else toast.success("Seu vídeo clonado ficou pronto!", {
+            description: "Abra Meus Vídeos para revisar.",
+            duration: 12000,
+          });
+        } else {
+          toast.error(data.message || "Erro na clonagem", { duration: 8000 });
+        }
+      }
+    } catch {
+      // rede falhou nesse tick — tenta de novo no próximo, não desiste
+    }
+  }, 4000);
+}
+
 // Fluxo independente: clonagem FIEL via Kling O1 Edit (vídeo-para-vídeo real —
 // recebe o vídeo original de verdade e preserva movimentos/timing exatos).
 // Decisão consciente do Carlos (24/07): sem a proteção de "nunca reusar
@@ -86,7 +135,6 @@ export default function AdminClonarVideo() {
 
   const [enviando, setEnviando] = useState(false);
   const [jobStatus, setJobStatus] = useState<JobStatus>({ status: "idle" });
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Modo estúdio (revisão/refinamento) ──────────────────────────────
   const [videoRow, setVideoRow] = useState<VideoRow | null>(null);
@@ -142,35 +190,39 @@ export default function AdminClonarVideo() {
   };
 
   // Reidrata ao abrir com ?video=<id> (ex.: "Reeditar" em Meus Vídeos) — regra
-  // do projeto: operação cara/demorada sobrevive a sair/voltar da tela.
+  // do projeto: operação cara/demorada sobrevive a sair/voltar da tela. Se não
+  // há job no Map do módulo (aba nova ou navegador recarregado), confere no
+  // servidor se ainda está processando e retoma o polling a partir daí.
   useEffect(() => {
-    if (videoIdParam && professional?.slug) carregarEstado(videoIdParam);
+    if (!videoIdParam || !professional?.slug) return;
+    carregarEstado(videoIdParam);
+    if (!cloneJobs.has(videoIdParam)) {
+      fetch(`${API}/status/${videoIdParam}`)
+        .then((r) => r.json())
+        .then((data) => { if (data?.status === "processing") pollCloneJob(videoIdParam, data); })
+        .catch(() => {});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoIdParam, professional?.slug]);
 
-  const stopPolling = () => {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-  };
-
-  const pollStatus = (jobId: string, onDone?: () => void) => {
-    stopPolling();
-    pollRef.current = setInterval(async () => {
-      try {
-        const data = await (await fetch(`${API}/status/${jobId}`)).json();
-        setJobStatus(data);
-        if (data.status === "done" || data.status === "error") {
-          stopPolling();
-          if (data.status === "done") { toast.success("Vídeo pronto!", { duration: 6000 }); onDone?.(); }
-          if (data.status === "error") toast.error(data.message || "Erro na clonagem", { duration: 8000 });
-        }
-      } catch {
-        stopPolling();
-        setJobStatus({ status: "error", message: "Erro de conexão" });
+  // Reassina o job do módulo sempre que o video_id em foco muda — o polling
+  // em si roda independente do componente estar montado ou não.
+  useEffect(() => {
+    if (!videoId) return;
+    const entry = cloneJobs.get(videoId);
+    if (!entry) return;
+    const sync = () => {
+      setJobStatus(entry.status);
+      if (entry.status.status === "done") {
+        carregarEstado(videoId);
+        cloneJobs.delete(videoId);
       }
-    }, 4000);
-  };
-
-  useEffect(() => () => stopPolling(), []);
+    };
+    entry.onChange = sync;
+    sync();
+    return () => { if (entry.onChange === sync) entry.onChange = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoId]);
 
   const handleClonar = async () => {
     if (!professional?.slug) return;
@@ -200,7 +252,7 @@ export default function AdminClonarVideo() {
       if (!res.ok) throw new Error(data.detail || "Falha ao iniciar a clonagem");
       toast.info(`Clonando ${data.blocos} bloco(s) (~${Math.round(data.duracao_total_s)}s de vídeo)...`, { duration: 6000 });
       setJobStatus({ status: "processing", progress: 5, step: "Preparando...", video_id: data.job_id });
-      pollStatus(data.job_id, () => carregarEstado(data.job_id));
+      pollCloneJob(data.job_id, { status: "processing", progress: 5, step: "Preparando..." });
     } catch (e: any) {
       toast.error(e.message || "Erro ao iniciar a clonagem", { duration: 8000 });
     } finally {
@@ -222,9 +274,8 @@ export default function AdminClonarVideo() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Falha ao gerar a nova versão");
       toast.info("Aplicando a mudança pedida...", { duration: 5000 });
-      setJobStatus({ status: "processing", progress: 5, step: "Aplicando a mudança pedida...", video_id: videoId });
       setInstrucaoRefinar("");
-      pollStatus(videoId, () => carregarEstado(videoId));
+      pollCloneJob(videoId, { status: "processing", progress: 5, step: "Aplicando a mudança pedida..." });
     } catch (e: any) {
       toast.error(e.message || "Erro ao gerar a nova versão", { duration: 8000 });
     }

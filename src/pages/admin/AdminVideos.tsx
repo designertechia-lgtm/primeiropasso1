@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { publicVideoUrl } from "@/lib/publicSite";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -460,14 +461,21 @@ export default function AdminVideos() {
                   </button>
                   <CardContent className="p-3">
                     <div className="min-w-0">
-                      <CardTitle className="text-base leading-snug line-clamp-2">{v.title}</CardTitle>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <CardTitle className="text-base leading-snug line-clamp-2">{v.title}</CardTitle>
+                        {(v as any).script_json?.kind === "clone_v2v" && (
+                          <Badge variant="outline" className="text-[10px] font-normal border-purple-400 text-purple-600 gap-1 shrink-0">
+                            <Copy className="h-2.5 w-2.5" /> Clonado
+                          </Badge>
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground mt-1">
                         {(v as any).created_at &&
                           `Criado em ${new Date((v as any).created_at).toLocaleString("pt-BR", {
                             day: "2-digit", month: "2-digit", year: "numeric",
                             hour: "2-digit", minute: "2-digit",
                           })}`}
-                        {(v as any).script_json && (
+                        {(v as any).script_json && (v as any).script_json?.kind !== "clone_v2v" && (
                           <span className="ml-2 text-muted-foreground/60">· Roteiro salvo</span>
                         )}
                       </p>
@@ -541,13 +549,46 @@ export default function AdminVideos() {
           })}
         </div>
 
+        {/* Sem embed_url ainda: ou é rascunho de roteiro (não é vídeo), ou é
+            uma clonagem em andamento (é vídeo, só ainda não terminou de
+            gerar) — não confundir os dois rótulos, senão parece "sumiu". */}
+        {(videos as any[]).some((v) => !((v.embed_url ?? "") as string).trim() && (v as any).script_json?.kind === "clone_v2v") && (
+          <div className="space-y-2 pt-4">
+            <h2 className="text-sm font-semibold text-muted-foreground">Clonagem em andamento</h2>
+            {(videos as any[]).filter((v) => !((v.embed_url ?? "") as string).trim() && (v as any).script_json?.kind === "clone_v2v").map((v) => (
+              <Card key={v.id}>
+                <CardContent className="p-2.5 flex items-center gap-3">
+                  <Loader2 className="h-4 w-4 text-purple-500 shrink-0 animate-spin" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{v.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {(v as any).created_at &&
+                        new Date((v as any).created_at).toLocaleString("pt-BR", {
+                          day: "2-digit", month: "2-digit", year: "numeric",
+                          hour: "2-digit", minute: "2-digit",
+                        })}
+                    </p>
+                  </div>
+                  <Button variant="outline" size="sm" className="h-8 gap-1.5 shrink-0"
+                    onClick={() => navigate(`/admin/redes-sociais?tab=videos&sub=clonar&video=${v.id}`)}>
+                    <Copy className="h-3.5 w-3.5 text-purple-600" /> Acompanhar
+                  </Button>
+                  <Button variant="ghost" size="icon" title="Excluir" onClick={() => handleDelete(v.id)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
         {/* Rascunhos de roteiro: linhas compactas, sem fingir que são vídeos */}
-        {(videos as any[]).some((v) => !((v.embed_url ?? "") as string).trim()) && (
+        {(videos as any[]).some((v) => !((v.embed_url ?? "") as string).trim() && (v as any).script_json?.kind !== "clone_v2v") && (
           <div className="space-y-2 pt-4">
             <h2 className="text-sm font-semibold text-muted-foreground">
               Rascunhos de roteiro (ainda sem vídeo)
             </h2>
-            {(videos as any[]).filter((v) => !((v.embed_url ?? "") as string).trim()).map((v) => (
+            {(videos as any[]).filter((v) => !((v.embed_url ?? "") as string).trim() && (v as any).script_json?.kind !== "clone_v2v").map((v) => (
               <Card key={v.id}>
                 <CardContent className="p-2.5 flex items-center gap-3">
                   <Film className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -563,11 +604,7 @@ export default function AdminVideos() {
                   </div>
                   {(v as any).script_json && (
                     <Button variant="outline" size="sm" className="h-8 gap-1.5 shrink-0"
-                      onClick={() => navigate(
-                        (v as any).script_json?.kind === "clone_v2v"
-                          ? `/admin/redes-sociais?tab=videos&sub=clonar&video=${v.id}`
-                          : `/admin/redes-sociais?tab=videos&edit=${v.id}`
-                      )}>
+                      onClick={() => navigate(`/admin/redes-sociais?tab=videos&edit=${v.id}`)}>
                       <Wand2 className="h-3.5 w-3.5 text-primary" /> Continuar edição
                     </Button>
                   )}

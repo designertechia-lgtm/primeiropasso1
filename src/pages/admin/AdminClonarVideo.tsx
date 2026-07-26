@@ -408,11 +408,15 @@ export default function AdminClonarVideo() {
                 </div>
               ) : previewUrl ? (
                 <video controls poster={videoRow?.thumbnail_url || undefined} src={previewUrl} className="max-h-[65vh] w-auto" />
-              ) : jobStatus.status === "error" ? (
+              ) : jobStatus.status === "error" || (videoRow && !previewUrl) ? (
+                // Clone sem vídeo pronto e que não está processando = não
+                // concluído (job falhou, ou o worker reiniciou e perdeu o job
+                // da memória). "Sem vídeo ainda" nunca é um estado normal
+                // persistente aqui — ou está processando, ou tem vídeo, ou falhou.
                 <div className="flex flex-col items-center justify-center gap-3 text-white/80 p-8 text-center max-w-md">
                   <AlertTriangle className="h-8 w-8 text-amber-400" />
                   <p className="text-sm font-medium">Esta clonagem não foi concluída</p>
-                  <p className="text-xs text-white/50">{jobStatus.message || "Um erro interrompeu o processamento."} Nenhum crédito ficou retido — o valor foi estornado.</p>
+                  <p className="text-xs text-white/50">{jobStatus.message || "O processamento foi interrompido antes de gerar o vídeo."} Se algum crédito chegou a ser cobrado, ele foi estornado automaticamente.</p>
                   <div className="flex gap-2 pt-1">
                     <Button size="sm" variant="secondary" onClick={voltarParaForm}>Tentar de novo</Button>
                     <Button size="sm" variant="outline" className="gap-1.5" onClick={handleExcluir}>
@@ -420,8 +424,6 @@ export default function AdminClonarVideo() {
                     </Button>
                   </div>
                 </div>
-              ) : videoRow ? (
-                <div className="flex items-center justify-center text-white/40 text-sm p-8">Sem vídeo ainda</div>
               ) : (
                 <div className="flex flex-col items-center justify-center gap-3 text-white/60 p-8">
                   <Loader2 className="h-6 w-6 animate-spin" />

@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import {
   Clapperboard, Wand2, Loader2, Heart, BookOpenCheck, Flame, TrendingUp,
   Users, Sparkles, ArrowLeft, History, Trash2, Send, RotateCcw, Link2, Upload,
-  Camera, Palette, Box,
+  Camera, Palette, Box, AlertTriangle,
 } from "lucide-react";
 import { videoApiAuthHeaders } from "@/lib/videoApi";
 
@@ -199,7 +199,12 @@ export default function AdminClonarVideo() {
     if (!cloneJobs.has(videoIdParam)) {
       fetch(`${API}/status/${videoIdParam}`)
         .then((r) => r.json())
-        .then((data) => { if (data?.status === "processing") pollCloneJob(videoIdParam, data); })
+        .then((data) => {
+          if (data?.status === "processing") pollCloneJob(videoIdParam, data);
+          // Job que já terminou com erro (ex.: bloco falhou): mostra o erro em
+          // vez de "Sem vídeo ainda". Só se ainda não há vídeo salvo no banco.
+          else if (data?.status === "error") setJobStatus(data);
+        })
         .catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -403,6 +408,18 @@ export default function AdminClonarVideo() {
                 </div>
               ) : previewUrl ? (
                 <video controls poster={videoRow?.thumbnail_url || undefined} src={previewUrl} className="max-h-[65vh] w-auto" />
+              ) : jobStatus.status === "error" ? (
+                <div className="flex flex-col items-center justify-center gap-3 text-white/80 p-8 text-center max-w-md">
+                  <AlertTriangle className="h-8 w-8 text-amber-400" />
+                  <p className="text-sm font-medium">Esta clonagem não foi concluída</p>
+                  <p className="text-xs text-white/50">{jobStatus.message || "Um erro interrompeu o processamento."} Nenhum crédito ficou retido — o valor foi estornado.</p>
+                  <div className="flex gap-2 pt-1">
+                    <Button size="sm" variant="secondary" onClick={voltarParaForm}>Tentar de novo</Button>
+                    <Button size="sm" variant="outline" className="gap-1.5" onClick={handleExcluir}>
+                      <Trash2 className="h-3.5 w-3.5" /> Excluir
+                    </Button>
+                  </div>
+                </div>
               ) : videoRow ? (
                 <div className="flex items-center justify-center text-white/40 text-sm p-8">Sem vídeo ainda</div>
               ) : (
@@ -422,7 +439,7 @@ export default function AdminClonarVideo() {
                   disabled={processando}
                   className="text-sm"
                 />
-                <Button size="icon" className="shrink-0 self-end" onClick={handleRefinar} disabled={processando || !instrucaoRefinar.trim()}>
+                <Button size="icon" className="shrink-0 self-end" onClick={handleRefinar} disabled={processando || !previewUrl || !instrucaoRefinar.trim()} title={!previewUrl ? "Só é possível refinar depois que houver um vídeo pronto" : undefined}>
                   <Send className="h-4 w-4" />
                 </Button>
               </div>

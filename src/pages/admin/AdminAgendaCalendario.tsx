@@ -282,12 +282,15 @@ export default function AdminAgendaCalendario() {
   const calendarRef = useRef<FullCalendar>(null);
   const isMobile = useIsMobile();
 
-  // Mini calendário permanente (sidebar) — mês sincroniza com a view do FullCalendar
-  // e clicar num dia navega o calendário grande (gotoDate) sem trocar de tela.
+  // Mini calendário de navegação — mês sincroniza com a view do FullCalendar;
+  // clicar num dia navega o calendário grande (gotoDate) e fecha o popover.
+  // Mesmo padrão de Popover+Calendar já usado nos campos "Data" desta tela.
   const [miniCalMonth, setMiniCalMonth] = useState<Date>(new Date());
+  const [miniCalOpen, setMiniCalOpen] = useState(false);
   const goToDate = useCallback((date: Date) => {
     calendarRef.current?.getApi().gotoDate(date);
     setMiniCalMonth(date);
+    setMiniCalOpen(false);
   }, []);
 
   // Block dialog state
@@ -965,6 +968,25 @@ export default function AdminAgendaCalendario() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold">Agenda</h1>
         <div className="flex gap-2 flex-wrap items-center">
+          <Popover open={miniCalOpen} onOpenChange={setMiniCalOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="icon" className="h-9 w-9" title="Ir para uma data" aria-label="Ir para uma data">
+                <CalendarIcon className="h-4 w-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <Calendar
+                mode="single"
+                month={miniCalMonth}
+                onMonthChange={setMiniCalMonth}
+                onSelect={(d) => d && goToDate(d)}
+                modifiers={{ hasEvents: (date) => eventDates.has(format(date, "yyyy-MM-dd")) }}
+                modifiersClassNames={{ hasEvents: "underline decoration-2 decoration-primary underline-offset-4" }}
+                locale={ptBR}
+                className="p-3 pointer-events-auto"
+              />
+            </PopoverContent>
+          </Popover>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon" className="h-9 w-9" title="Ajustes da agenda" aria-label="Ajustes da agenda">
@@ -991,57 +1013,39 @@ export default function AdminAgendaCalendario() {
         </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-4 items-start">
-        {/* Mini calendário permanente — sempre visível, sem precisar abrir popover */}
-        <div className="w-full lg:w-64 shrink-0 lg:sticky lg:top-4">
-          <div className="bg-card rounded-lg border p-2">
-            <Calendar
-              mode="single"
-              month={miniCalMonth}
-              onMonthChange={setMiniCalMonth}
-              onSelect={(d) => d && goToDate(d)}
-              modifiers={{ hasEvents: (date) => eventDates.has(format(date, "yyyy-MM-dd")) }}
-              modifiersClassNames={{ hasEvents: "underline decoration-2 decoration-primary underline-offset-4" }}
-              locale={ptBR}
-              className="mx-auto"
-            />
-          </div>
-        </div>
-
-        <div className="fc-wrapper bg-card rounded-lg border p-2 sm:p-4 flex-1 min-w-0 w-full">
-          <FullCalendar
-            ref={calendarRef}
-            plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
-            initialView={isMobile ? "timeGridDay" : "timeGridWeek"}
-            headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek,timeGridDay" }}
-            locale="pt-br"
-            firstDay={0}
-            slotMinTime="07:00:00"
-            slotMaxTime="22:00:00"
-            snapDuration="00:15:00"
-            slotDuration="00:30:00"
-            slotLabelInterval="01:00:00"
-            slotLabelFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
-            allDaySlot={false}
-            nowIndicator={true}
-            selectable={true}
-            selectMirror={true}
-            editable={true}
-            eventStartEditable={true}
-            eventDurationEditable={true}
-            select={handleDateSelect}
-            eventClick={handleEventClick}
-            eventDrop={(info) => persistEventTimes(info, false)}
-            eventResize={(info) => persistEventTimes(info, true)}
-            datesSet={(arg) => setMiniCalMonth(arg.view.currentStart)}
-            events={buildEvents()}
-            height="auto"
-            expandRows={true}
-            dayHeaderFormat={{ weekday: "short", day: "numeric", month: "numeric" }}
-            buttonText={{ today: "Hoje", month: "Mês", week: "Semana", day: "Dia" }}
-            eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
-          />
-        </div>
+      <div className="fc-wrapper bg-card rounded-lg border p-2 sm:p-4">
+        <FullCalendar
+          ref={calendarRef}
+          plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
+          initialView={isMobile ? "timeGridDay" : "timeGridWeek"}
+          headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek,timeGridDay" }}
+          locale="pt-br"
+          firstDay={0}
+          slotMinTime="07:00:00"
+          slotMaxTime="22:00:00"
+          snapDuration="00:15:00"
+          slotDuration="00:30:00"
+          slotLabelInterval="01:00:00"
+          slotLabelFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
+          allDaySlot={false}
+          nowIndicator={true}
+          selectable={true}
+          selectMirror={true}
+          editable={true}
+          eventStartEditable={true}
+          eventDurationEditable={true}
+          select={handleDateSelect}
+          eventClick={handleEventClick}
+          eventDrop={(info) => persistEventTimes(info, false)}
+          eventResize={(info) => persistEventTimes(info, true)}
+          datesSet={(arg) => setMiniCalMonth(arg.view.currentStart)}
+          events={buildEvents()}
+          height="auto"
+          expandRows={true}
+          dayHeaderFormat={{ weekday: "short", day: "numeric", month: "numeric" }}
+          buttonText={{ today: "Hoje", month: "Mês", week: "Semana", day: "Dia" }}
+          eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
+        />
       </div>
 
       {/* Block Dialog with Recurrence */}

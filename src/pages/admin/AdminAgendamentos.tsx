@@ -221,7 +221,9 @@ export default function AdminAgendamentos() {
                       <TableCell>
                         {appt.appointment_type === "block"
                           ? BLOCK_TYPE_LABELS[appt.block_type || "other"] || appt.block_type || "Bloqueio"
-                          : (appt as any).patient?.full_name || "Sem paciente"}
+                          /* Cliente não cadastrado não tem profile: o nome digitado
+                             fica em notes (mesmo fallback usado no Calendário). */
+                          : (appt as any).patient?.full_name || appt.notes || "Sem paciente"}
                       </TableCell>
                       <TableCell>
                         {(appt as any).service?.name || appt.notes || "—"}

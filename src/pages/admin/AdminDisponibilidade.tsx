@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   Plus, Trash2, CalendarIcon, Lock, Repeat,
-  Infinity, Clock, AlignLeft, X,
+  Infinity, Clock, AlignLeft, X, UserCheck,
 } from "lucide-react";
 import { format, parseISO, addYears } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -178,6 +178,28 @@ export default function AdminDisponibilidade() {
       toast.success("Bloqueios removidos!");
     },
     onError: () => toast.error("Erro ao remover bloqueios"),
+  });
+
+  // Converte um bloqueio em atendimento. Existe porque, até 27/07/2026, criar um
+  // compromisso com nome de cliente não cadastrado gravava appointment_type='block'
+  // — esses registros são atendimentos e não deveriam listar aqui.
+  const convertToBooking = useMutation({
+    mutationFn: async (blockIds: string[]) => {
+      const { error } = await supabase
+        .from("appointments")
+        .update({ appointment_type: "booking", block_type: null, status: "pending" } as any)
+        .in("id", blockIds);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-block-groups"] });
+      queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
+      queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
+      toast.success("Convertido em atendimento!", {
+        description: "Agora aparece na aba Agendamentos.",
+      });
+    },
+    onError: (e: any) => toast.error("Erro ao converter", { description: e.message }),
   });
 
   const resetForm = () => {
@@ -455,14 +477,27 @@ export default function AdminDisponibilidade() {
                       </p>
                     </div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => deleteGroup.mutate({ groupId: group.groupId, blockIds: group.blocks.map((b) => b.id) })}
-                    disabled={deleteGroup.isPending}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1.5 text-xs"
+                      title="Este item é uma consulta, não um bloqueio"
+                      onClick={() => convertToBooking.mutate(group.blocks.map((b) => b.id))}
+                      disabled={convertToBooking.isPending}
+                    >
+                      <UserCheck className="h-4 w-4" />
+                      <span className="hidden sm:inline">É atendimento</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => deleteGroup.mutate({ groupId: group.groupId, blockIds: group.blocks.map((b) => b.id) })}
+                      disabled={deleteGroup.isPending}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ))}

@@ -33,7 +33,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, X, User, Clock, CalendarIcon, Settings2, Pencil, CheckCircle, DollarSign, XCircle, CalendarDays, HelpCircle, ZoomIn, Settings, Globe, Link2, Copy, Palette, Check, ChevronsUpDown } from "lucide-react";
+import { Plus, X, User, Clock, CalendarIcon, Settings2, Pencil, CheckCircle, DollarSign, XCircle, CalendarDays, HelpCircle, ZoomIn, Settings, Globe, Link2, Copy, Palette, Check, ChevronsUpDown, Lock } from "lucide-react";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import { fetchIcal } from "@/lib/ical";
@@ -302,6 +302,9 @@ export default function AdminAgendaCalendario() {
   const [blockType, setBlockType] = useState("personal");
   const [blockColor, setBlockColor] = useState<string | null>(null);
   const [blockLeadId, setBlockLeadId] = useState<string | null>(null);
+  // Atendimento x bloqueio é ESCOLHA EXPLÍCITA — antes era inferido do título
+  // (nome fora da lista de clientes virava bloqueio e poluía a aba Bloqueios).
+  const [entryKind, setEntryKind] = useState<"booking" | "block">("booking");
   const [recurrence, setRecurrence] = useState<RecurrenceType>("unico");
   const [recEndDate, setRecEndDate] = useState<Date>(new Date());
   const [selectedDates, setSelectedDates] = useState<Date[]>([]);
@@ -520,9 +523,10 @@ export default function AdminAgendaCalendario() {
 
       if (dates.length === 0) throw new Error("Nenhuma data");
 
-      // Cliente selecionado (lead) → atendimento real (booking) com lembrete.
-      // "Compromisso pessoal" / texto livre → bloqueio (block).
-      const isBooking = !!blockLeadId;
+      // O tipo vem do seletor da tela, não do título: nome livre de cliente ainda
+      // não cadastrado continua sendo ATENDIMENTO (só não dispara lembrete, por
+      // não ter WhatsApp vinculado).
+      const isBooking = entryKind === "booking";
 
       // ── VALIDAÇÃO ANTI-DOUBLE-BOOKING ──────────────────────────────────
       // Todo compromisso criado ocupa o horário: recusa se houver consulta real
@@ -579,7 +583,7 @@ export default function AdminAgendaCalendario() {
       queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
       queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
       queryClient.invalidateQueries({ queryKey: ["admin-block-groups"] });
-      toast.success("Agendamento adicionado!");
+      toast.success(entryKind === "booking" ? "Atendimento adicionado!" : "Bloqueio adicionado!");
       setBlockDialogOpen(false);
       resetBlockForm();
     },
@@ -867,6 +871,7 @@ export default function AdminAgendaCalendario() {
     setBlockType("personal");
     setBlockColor(null);
     setBlockLeadId(null);
+    setEntryKind("booking");
     setRecurrence("unico");
     setSelectedDates([]);
   };
@@ -1056,16 +1061,49 @@ export default function AdminAgendaCalendario() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
+              <Label>Tipo</Label>
+              <div className="grid grid-cols-2 gap-2 mt-1.5">
+                <Button
+                  type="button"
+                  variant={entryKind === "booking" ? "default" : "outline"}
+                  onClick={() => setEntryKind("booking")}
+                >
+                  <User className="h-4 w-4 mr-1.5" /> Atendimento
+                </Button>
+                <Button
+                  type="button"
+                  variant={entryKind === "block" ? "default" : "outline"}
+                  onClick={() => setEntryKind("block")}
+                >
+                  <Lock className="h-4 w-4 mr-1.5" /> Bloqueio
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                {entryKind === "booking"
+                  ? "Consulta com um cliente. Aparece na aba Agendamentos."
+                  : "Horário indisponível (almoço, folga, compromisso pessoal). Aparece na aba Bloqueios."}
+              </p>
+            </div>
+            <div>
               <Label>Título</Label>
               <TituloCombobox
                 value={blockTitle}
-                onChange={(v, leadId) => { setBlockTitle(v); setBlockLeadId(leadId); }}
+                onChange={(v, leadId) => {
+                  setBlockTitle(v);
+                  setBlockLeadId(leadId);
+                  // Escolher um cliente da lista implica atendimento; "Compromisso
+                  // pessoal" implica bloqueio. Segue ajustável pelo seletor acima.
+                  if (leadId) setEntryKind("booking");
+                  else if (v === "Compromisso pessoal") setEntryKind("block");
+                }}
                 leads={leads}
                 pastTitles={pastTitles}
               />
-              {blockLeadId && (
+              {entryKind === "booking" && (
                 <p className="text-xs text-muted-foreground mt-1">
-                  Atendimento vinculado a este cliente — recebe lembrete no WhatsApp.
+                  {blockLeadId
+                    ? "Vinculado a este cliente — recebe lembrete no WhatsApp."
+                    : "Cliente não cadastrado: o agendamento é criado, mas sem lembrete no WhatsApp."}
                 </p>
               )}
             </div>

@@ -12,9 +12,15 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { CheckCircle, Clock, XCircle, DollarSign, Calendar } from "lucide-react";
+import { CheckCircle, Clock, XCircle, DollarSign, Calendar, Trash2 } from "lucide-react";
 import { useState, useCallback } from "react";
+import { cn } from "@/lib/utils";
 
 const BLOCK_TYPE_LABELS: Record<string, string> = {
   personal: "Pessoal",
@@ -47,6 +53,17 @@ const DEFAULT_PAYMENT_COLORS: Record<PaymentStatus, string> = {
 const paymentLabels: Record<PaymentStatus, string> = {
   pending: "Pendente",
   paid: "Pago",
+};
+
+// Degradê de cada card de status. As famílias seguem DEFAULT_STATUS_COLORS acima
+// (concluído = azul, confirmado = verde), para o card não contradizer o badge da
+// mesma linha. Funcionam em tema claro e escuro por serem cores sólidas com
+// texto branco por cima.
+const STATUS_CARD_STYLES: Record<AppointmentStatus, { gradient: string; glow: string; Icon: typeof Clock }> = {
+  pending:   { gradient: "from-amber-400 to-orange-500", glow: "shadow-orange-500/30", Icon: Clock },
+  confirmed: { gradient: "from-emerald-400 to-green-600", glow: "shadow-emerald-500/30", Icon: Calendar },
+  completed: { gradient: "from-sky-400 to-blue-600",     glow: "shadow-blue-500/30",   Icon: CheckCircle },
+  cancelled: { gradient: "from-rose-400 to-red-600",     glow: "shadow-rose-500/30",   Icon: XCircle },
 };
 
 
@@ -137,6 +154,26 @@ export default function AdminAgendamentos() {
     onError: () => toast.error("Erro ao atualizar agendamento"),
   });
 
+  // Exclusão definitiva (a linha some do banco). Cancelar só muda o status —
+  // por isso o botão fica atrás de uma confirmação.
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("appointments").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["professional-appointments"] }),
+        queryClient.invalidateQueries({ queryKey: ["patient-appointments"] }),
+        queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] }),
+        queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-block-groups"] }),
+      ]);
+      toast.success("Agendamento excluído!");
+    },
+    onError: (e: any) => toast.error("Erro ao excluir", { description: e.message }),
+  });
+
   const filtered = appointments?.filter(
     (a) => statusFilter === "all" || a.status === statusFilter
   );
@@ -154,20 +191,45 @@ export default function AdminAgendamentos() {
       <h1 className="text-2xl font-bold">Agendamentos</h1>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {(["pending", "confirmed", "completed", "cancelled"] as const).map((s) => (
-          <Card key={s} className="cursor-pointer" onClick={() => setStatusFilter(s)}>
-            <CardContent className="pt-4 pb-4 flex items-center gap-3">
-              {s === "pending" && <Clock className="h-5 w-5 text-yellow-600" />}
-              {s === "confirmed" && <Calendar className="h-5 w-5 text-blue-600" />}
-              {s === "completed" && <CheckCircle className="h-5 w-5 text-green-600" />}
-              {s === "cancelled" && <XCircle className="h-5 w-5 text-red-600" />}
-              <div>
-                <p className="text-2xl font-bold">{counts?.[s] || 0}</p>
-                <p className="text-xs text-muted-foreground">{statusLabels[s]}</p>
+        {(["pending", "confirmed", "completed", "cancelled"] as const).map((s) => {
+          const { gradient, glow, Icon } = STATUS_CARD_STYLES[s];
+          const active = statusFilter === s;
+          return (
+            <button
+              key={s}
+              type="button"
+              aria-pressed={active}
+              // Clicar de novo no card ativo volta para "Todos" — antes não havia
+              // como desfazer o filtro pelo próprio card.
+              onClick={() => setStatusFilter(active ? "all" : s)}
+              className={cn(
+                "group relative overflow-hidden rounded-xl bg-gradient-to-br p-4 text-left text-white",
+                "shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                gradient,
+                glow,
+                active
+                  ? "ring-2 ring-foreground/60 ring-offset-2 ring-offset-background"
+                  : "opacity-90 hover:opacity-100",
+              )}
+            >
+              {/* Brilho decorativo — puramente visual, não recebe clique. */}
+              <span
+                aria-hidden
+                className="pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full bg-white/15 blur-xl"
+              />
+              <div className="relative flex items-center gap-3">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white/20 backdrop-blur-sm">
+                  <Icon className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-2xl font-bold leading-none tabular-nums">{counts?.[s] || 0}</p>
+                  <p className="mt-1 truncate text-xs font-medium text-white/90">{statusLabels[s]}</p>
+                </div>
               </div>
-            </CardContent>
-          </Card>
-        ))}
+            </button>
+          );
+        })}
       </div>
 
       <div className="flex items-center gap-2">
@@ -285,6 +347,44 @@ export default function AdminAgendamentos() {
                               <DollarSign className="h-3 w-3 mr-1" /> Pago
                             </Button>
                           )}
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                title="Excluir definitivamente"
+                                aria-label="Excluir agendamento"
+                                disabled={deleteMutation.isPending}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Excluir este agendamento?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  {format(new Date(appt.appointment_date + "T12:00:00"), "dd/MM/yyyy", { locale: ptBR })}
+                                  {" · "}
+                                  {appt.start_time.slice(0, 5)} – {appt.end_time.slice(0, 5)}
+                                  {" · "}
+                                  {(appt as any).patient?.full_name || appt.notes || "Sem paciente"}
+                                  <br />
+                                  Esta ação não pode ser desfeita. Para apenas marcar como
+                                  desmarcado, use “Cancelar” em vez de excluir.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Voltar</AlertDialogCancel>
+                                <AlertDialogAction
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  onClick={() => deleteMutation.mutate(appt.id)}
+                                >
+                                  Excluir
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         </div>
                       </TableCell>
                     </TableRow>

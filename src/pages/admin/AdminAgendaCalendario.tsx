@@ -28,7 +28,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import StatusColorsDialog from "@/components/admin/StatusColorsDialog";
+import { useAutoCompleteAppointments } from "@/hooks/useAutoCompleteAppointments";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -50,10 +56,10 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const DEFAULT_STATUS_COLORS: Record<string, string> = {
-  pending: "#EAB308",
-  confirmed: "#22C55E",
-  completed: "#3B82F6",
-  cancelled: "#EF4444",
+  pending: "#3B82F6",   // azul
+  confirmed: "#22C55E", // verde
+  completed: "#EAB308", // amarelo
+  cancelled: "#EF4444", // vermelho — só para registros antigos: cancelar agora exclui
 };
 
 const DEFAULT_PAYMENT_COLORS: Record<string, string> = {
@@ -94,6 +100,38 @@ function ColorPicker({ value, onChange }: { value: string | null; onChange: (c: 
         />
       ))}
     </div>
+  );
+}
+
+// Cancelar remove o registro, então passa por confirmação. Usado no modal de
+// detalhe tanto para consulta quanto para bloqueio.
+function CancelAppointmentButton({ onConfirm, disabled }: { onConfirm: () => void; disabled?: boolean }) {
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button size="sm" variant="outline" className="text-destructive" disabled={disabled}>
+          <XCircle className="h-3 w-3 mr-1" /> Cancelar
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Cancelar este agendamento?</AlertDialogTitle>
+          <AlertDialogDescription>
+            O agendamento será <strong>removido da agenda</strong> e o horário volta a
+            ficar livre. Esta ação não pode ser desfeita.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Voltar</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={onConfirm}
+          >
+            Cancelar agendamento
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -480,6 +518,9 @@ export default function AdminAgendaCalendario() {
     enabled: !!professional?.id,
   });
 
+  // Confirmados cujo horário já passou viram "Concluído" sozinhos.
+  useAutoCompleteAppointments(appointments as any);
+
   // Fetch blocks
   const { data: blocks = [], refetch: refetchBlocks } = useQuery({
     queryKey: ["agenda-blocks-all", professional?.id],
@@ -673,6 +714,27 @@ export default function AdminAgendaCalendario() {
       setEditMode(false);
     },
     onError: () => toast.error("Erro ao atualizar agendamento"),
+  });
+
+  // Cancelar É excluir: o registro sai do banco e o horário volta a ficar livre.
+  const cancelAndDelete = useMutation({
+    mutationFn: async (id: string) => {
+      // .select() detecta exclusão barrada pela RLS, que voltaria como sucesso
+      // com zero linhas (ver migration 20260728_appointments_delete_policies).
+      const { data, error } = await supabase
+        .from("appointments").delete().eq("id", id).select("id");
+      if (error) throw error;
+      if (!data?.length) throw new Error("Nada foi removido — o banco recusou a exclusão.");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
+      queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
+      queryClient.invalidateQueries({ queryKey: ["professional-appointments"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-block-groups"] });
+      toast.success("Agendamento cancelado e removido da agenda!");
+      setDetailDialogOpen(false);
+    },
+    onError: (e: any) => toast.error("Erro ao cancelar", { description: e.message }),
   });
 
   // Quick status change mutation
@@ -1292,11 +1354,10 @@ export default function AdminAgendaCalendario() {
                           <CheckCircle className="h-3 w-3 mr-1" /> Concluir
                         </Button>
                       )}
-                      {selectedEvent.status !== "cancelled" && (
-                        <Button size="sm" variant="outline" className="text-destructive" onClick={() => quickStatusChange.mutate({ id: selectedEvent.id, status: "cancelled" })} disabled={quickStatusChange.isPending}>
-                          <XCircle className="h-3 w-3 mr-1" /> Cancelar
-                        </Button>
-                      )}
+                      <CancelAppointmentButton
+                        onConfirm={() => cancelAndDelete.mutate(selectedEvent.id)}
+                        disabled={cancelAndDelete.isPending}
+                      />
                     </div>
                     <div className="flex gap-1">
                       <Button
@@ -1367,11 +1428,10 @@ export default function AdminAgendaCalendario() {
                           <CheckCircle className="h-3 w-3 mr-1" /> Concluir
                         </Button>
                       )}
-                      {selectedEvent.status !== "cancelled" && (
-                        <Button size="sm" variant="outline" className="text-destructive" onClick={() => quickStatusChange.mutate({ id: selectedEvent.id, status: "cancelled" })} disabled={quickStatusChange.isPending}>
-                          <XCircle className="h-3 w-3 mr-1" /> Cancelar
-                        </Button>
-                      )}
+                      <CancelAppointmentButton
+                        onConfirm={() => cancelAndDelete.mutate(selectedEvent.id)}
+                        disabled={cancelAndDelete.isPending}
+                      />
                     </div>
                     <div className="flex gap-1">
                       <Button

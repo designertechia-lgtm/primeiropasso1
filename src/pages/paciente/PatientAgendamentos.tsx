@@ -51,14 +51,19 @@ export default function PatientAgendamentos() {
     enabled: !!user?.id,
   });
 
+  // Cancelar remove o agendamento (não apenas marca status), liberando o horário
+  // na agenda do profissional — mesma regra aplicada no painel admin.
   const handleCancel = async (id: string) => {
-    if (!confirm("Cancelar este agendamento?")) return;
-    const { error } = await supabase
+    if (!confirm("Cancelar este agendamento? Ele será removido da agenda.")) return;
+    // .select() para não anunciar sucesso quando a RLS barra a exclusão (o
+    // PostgREST devolveria 200 com zero linhas).
+    const { data, error } = await supabase
       .from("appointments")
-      .update({ status: "cancelled" as const })
-      .eq("id", id);
+      .delete()
+      .eq("id", id)
+      .select("id");
 
-    if (error) toast.error("Erro ao cancelar");
+    if (error || !data?.length) toast.error("Erro ao cancelar");
     else {
       toast.success("Agendamento cancelado");
       await Promise.all([
@@ -66,6 +71,7 @@ export default function PatientAgendamentos() {
         queryClient.invalidateQueries({ queryKey: ["linked-existing"] }),
         queryClient.invalidateQueries({ queryKey: ["book-existing"] }),
         queryClient.invalidateQueries({ queryKey: ["agenda-appointments"] }),
+        queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] }),
         queryClient.invalidateQueries({ queryKey: ["professional-appointments"] }),
       ]);
     }

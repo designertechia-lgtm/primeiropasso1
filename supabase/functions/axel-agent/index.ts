@@ -243,7 +243,7 @@ const tools = [
   {
     name: "cancelar_agendamentos",
     description:
-      "Cancela (marca status=cancelled) UM ou VÁRIOS agendamentos pelos IDs. SÓ CHAME depois de mostrar quais agendamentos serão cancelados e o profissional CONFIRMAR explicitamente ('pode', 'cancela', 'sim'). A tool JÁ avisa o cliente do cancelamento no WhatsApp automaticamente — você não escreve essa mensagem. Pegue os appointment_ids via consultar_agenda.",
+      "Cancela UM ou VÁRIOS agendamentos pelos IDs. O cancelamento REMOVE o agendamento da agenda (não fica registro 'cancelado'): o horário volta a ficar livre e é IRREVERSÍVEL. Por isso SÓ CHAME depois de mostrar quais agendamentos serão cancelados e o profissional CONFIRMAR explicitamente ('pode', 'cancela', 'sim'). A tool JÁ avisa o cliente do cancelamento no WhatsApp automaticamente — você não escreve essa mensagem. Pegue os appointment_ids via consultar_agenda.",
     input_schema: {
       type: "object",
       properties: {
@@ -1883,9 +1883,13 @@ async function handleToolCall(
       .select("id, appointment_date, start_time, leads(name, whatsapp)")
       .in("id", ids).eq("professional_id", professionalId).in("status", ["pending", "confirmed"])
     // Segurança: só cancela agendamentos DESTE profissional e que ainda estão ativos.
+    // Cancelar REMOVE o registro (mesma regra do painel admin e da área do
+    // paciente): o horário volta a ficar livre em vez de manter uma linha
+    // "cancelada" ocupando a agenda. Os dados do cliente já foram lidos acima,
+    // em `alvos`, justamente para conseguir avisar depois da remoção.
     const { data, error } = await supabaseAdmin
       .from("appointments")
-      .update({ status: "cancelled" })
+      .delete()
       .in("id", ids)
       .eq("professional_id", professionalId)
       .in("status", ["pending", "confirmed"])

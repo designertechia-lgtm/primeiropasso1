@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { CheckCircle, Clock, XCircle, DollarSign, Calendar, Trash2 } from "lucide-react";
 import { useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { useAutoCompleteAppointments } from "@/hooks/useAutoCompleteAppointments";
 
 const BLOCK_TYPE_LABELS: Record<string, string> = {
   personal: "Pessoal",
@@ -39,10 +40,10 @@ const statusLabels: Record<AppointmentStatus, string> = {
 };
 
 const DEFAULT_STATUS_COLORS: Record<AppointmentStatus, string> = {
-  pending: "#EAB308",
-  confirmed: "#22C55E",
-  cancelled: "#EF4444",
-  completed: "#3B82F6",
+  pending: "#3B82F6",   // azul
+  confirmed: "#22C55E", // verde
+  completed: "#EAB308", // amarelo
+  cancelled: "#EF4444", // vermelho — só para registros antigos: cancelar agora exclui
 };
 
 const DEFAULT_PAYMENT_COLORS: Record<PaymentStatus, string> = {
@@ -60,10 +61,10 @@ const paymentLabels: Record<PaymentStatus, string> = {
 // mesma linha. Funcionam em tema claro e escuro por serem cores sólidas com
 // texto branco por cima.
 const STATUS_CARD_STYLES: Record<AppointmentStatus, { gradient: string; glow: string; Icon: typeof Clock }> = {
-  pending:   { gradient: "from-amber-400 to-orange-500", glow: "shadow-orange-500/30", Icon: Clock },
+  pending:   { gradient: "from-sky-400 to-blue-600",      glow: "shadow-blue-500/30",   Icon: Clock },
   confirmed: { gradient: "from-emerald-400 to-green-600", glow: "shadow-emerald-500/30", Icon: Calendar },
-  completed: { gradient: "from-sky-400 to-blue-600",     glow: "shadow-blue-500/30",   Icon: CheckCircle },
-  cancelled: { gradient: "from-rose-400 to-red-600",     glow: "shadow-rose-500/30",   Icon: XCircle },
+  completed: { gradient: "from-amber-400 to-yellow-500",  glow: "shadow-amber-500/30",  Icon: CheckCircle },
+  cancelled: { gradient: "from-rose-400 to-red-600",      glow: "shadow-rose-500/30",   Icon: XCircle },
 };
 
 
@@ -154,12 +155,20 @@ export default function AdminAgendamentos() {
     onError: () => toast.error("Erro ao atualizar agendamento"),
   });
 
-  // Exclusão definitiva (a linha some do banco). Cancelar só muda o status —
-  // por isso o botão fica atrás de uma confirmação.
+  // Confirmados cujo horário já passou viram "Concluído" sozinhos.
+  useAutoCompleteAppointments(appointments);
+
+  // Cancelar É excluir: a linha some do banco. Por ser irreversível, toda
+  // chamada passa por confirmação.
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("appointments").delete().eq("id", id);
+      // .select() é obrigatório aqui: sem ele, uma exclusão barrada pela RLS
+      // volta como sucesso com zero linhas e o usuário vê "removido" sem ter
+      // removido nada (ver migration 20260728_appointments_delete_policies).
+      const { data, error } = await supabase
+        .from("appointments").delete().eq("id", id).select("id");
       if (error) throw error;
+      if (!data?.length) throw new Error("Nada foi removido — o banco recusou a exclusão.");
     },
     onSuccess: async () => {
       await Promise.all([
@@ -169,9 +178,33 @@ export default function AdminAgendamentos() {
         queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] }),
         queryClient.invalidateQueries({ queryKey: ["admin-block-groups"] }),
       ]);
-      toast.success("Agendamento excluído!");
+      toast.success("Agendamento cancelado e removido da agenda!");
     },
-    onError: (e: any) => toast.error("Erro ao excluir", { description: e.message }),
+    onError: (e: any) => toast.error("Erro ao cancelar", { description: e.message }),
+  });
+
+  // Limpeza dos "Cancelado" antigos, de antes de cancelar passar a excluir.
+  const clearCancelled = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase
+        .from("appointments")
+        .delete()
+        .eq("professional_id", professional!.id)
+        .eq("status", "cancelled")
+        .select("id");
+      if (error) throw error;
+      if (!data?.length) throw new Error("Nada foi removido — o banco recusou a exclusão.");
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["professional-appointments"] }),
+        queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] }),
+        queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-block-groups"] }),
+      ]);
+      toast.success("Cancelados removidos!");
+    },
+    onError: (e: any) => toast.error("Erro ao limpar", { description: e.message }),
   });
 
   const filtered = appointments?.filter(
@@ -246,6 +279,42 @@ export default function AdminAgendamentos() {
             <SelectItem value="cancelled">Cancelados</SelectItem>
           </SelectContent>
         </Select>
+
+        {/* Só aparece se ainda houver registros do tempo em que cancelar
+            apenas mudava o status. */}
+        {(counts?.cancelled ?? 0) > 0 && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                disabled={clearCancelled.isPending}
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                Limpar cancelados ({counts?.cancelled})
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Remover os cancelados?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Os {counts?.cancelled} agendamentos com status “Cancelado” serão apagados
+                  definitivamente. Esta ação não pode ser desfeita.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Voltar</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={() => clearCancelled.mutate()}
+                >
+                  Remover todos
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
       </div>
 
       <Card>
@@ -303,27 +372,15 @@ export default function AdminAgendamentos() {
                       <TableCell>
                         <div className="flex gap-1 flex-wrap">
                           {appt.status === "pending" && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() =>
-                                  updateMutation.mutate({ id: appt.id, updates: { status: "confirmed" } })
-                                }
-                              >
-                                <CheckCircle className="h-3 w-3 mr-1" /> Confirmar
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="text-destructive"
-                                onClick={() =>
-                                  updateMutation.mutate({ id: appt.id, updates: { status: "cancelled" } })
-                                }
-                              >
-                                <XCircle className="h-3 w-3 mr-1" /> Cancelar
-                              </Button>
-                            </>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                updateMutation.mutate({ id: appt.id, updates: { status: "confirmed" } })
+                              }
+                            >
+                              <CheckCircle className="h-3 w-3 mr-1" /> Confirmar
+                            </Button>
                           )}
                           {appt.status === "confirmed" && (
                             <Button
@@ -351,18 +408,17 @@ export default function AdminAgendamentos() {
                             <AlertDialogTrigger asChild>
                               <Button
                                 size="sm"
-                                variant="ghost"
+                                variant="outline"
                                 className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                title="Excluir definitivamente"
-                                aria-label="Excluir agendamento"
+                                title="Cancelar e remover da agenda"
                                 disabled={deleteMutation.isPending}
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
+                                <XCircle className="h-3 w-3 mr-1" /> Cancelar
                               </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
-                                <AlertDialogTitle>Excluir este agendamento?</AlertDialogTitle>
+                                <AlertDialogTitle>Cancelar este agendamento?</AlertDialogTitle>
                                 <AlertDialogDescription>
                                   {format(new Date(appt.appointment_date + "T12:00:00"), "dd/MM/yyyy", { locale: ptBR })}
                                   {" · "}
@@ -370,8 +426,8 @@ export default function AdminAgendamentos() {
                                   {" · "}
                                   {(appt as any).patient?.full_name || appt.notes || "Sem paciente"}
                                   <br />
-                                  Esta ação não pode ser desfeita. Para apenas marcar como
-                                  desmarcado, use “Cancelar” em vez de excluir.
+                                  O agendamento será <strong>removido da agenda</strong> e o horário
+                                  volta a ficar livre. Esta ação não pode ser desfeita.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
@@ -380,7 +436,7 @@ export default function AdminAgendamentos() {
                                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                   onClick={() => deleteMutation.mutate(appt.id)}
                                 >
-                                  Excluir
+                                  Cancelar agendamento
                                 </AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>

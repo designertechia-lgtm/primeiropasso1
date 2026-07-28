@@ -29,10 +29,10 @@ interface StatusColorsDialogProps {
 }
 
 const DEFAULTS = {
-  pending: "#EAB308",
-  confirmed: "#22C55E",
-  completed: "#3B82F6",
-  cancelled: "#EF4444",
+  pending: "#3B82F6",   // azul
+  confirmed: "#22C55E", // verde
+  completed: "#EAB308", // amarelo
+  cancelled: "#EF4444", // vermelho — só para registros antigos: cancelar agora exclui
   paymentPending: "#F97316",
   paymentPaid: "#10B981",
 };

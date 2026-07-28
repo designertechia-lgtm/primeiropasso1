@@ -93,12 +93,29 @@ export default function AdminDisponibilidade() {
   const { data: blockGroups = [], isLoading } = useQuery({
     queryKey: ["admin-block-groups", professional?.id],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("appointments")
-        .select("*")
-        .eq("professional_id", professional!.id)
-        .eq("appointment_type", "block")
-        .order("appointment_date", { ascending: true });
+      // block_type='appointment' marca consulta gravada como bloqueio: é
+      // atendimento e pertence à aba Agendamentos, não a esta.
+      // O ".or" precisa do "is.null" porque, em SQL, NULL <> 'appointment' não
+      // é verdadeiro — sem ele, bloqueios sem tipo sumiriam da lista.
+      //
+      // Busca PAGINADA: o PostgREST corta em 1000 linhas sem devolver erro. Com
+      // 4k+ bloqueios numa agenda, o "Nx" de cada série saía menor que o real
+      // (uma série de 867 aparecia como 489x) porque só o primeiro lote chegava.
+      const PAGE = 1000;
+      const data: any[] = [];
+      for (let from = 0; from < 50_000; from += PAGE) {
+        const { data: page, error } = await supabase
+          .from("appointments")
+          .select("*")
+          .eq("professional_id", professional!.id)
+          .eq("appointment_type", "block")
+          .or("block_type.neq.appointment,block_type.is.null")
+          .order("appointment_date", { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        data.push(...(page ?? []));
+        if (!page || page.length < PAGE) break;
+      }
 
       const groups = new Map<string, typeof data>();
       (data ?? []).forEach((block) => {

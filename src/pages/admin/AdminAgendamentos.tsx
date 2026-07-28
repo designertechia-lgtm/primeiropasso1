@@ -96,11 +96,16 @@ export default function AdminAgendamentos() {
   const { data: appointments, isLoading } = useQuery({
     queryKey: ["professional-appointments", professional?.id],
     queryFn: async () => {
+      // Esta tela lista ATENDIMENTOS. Bloqueios de horário (almoço, folga,
+      // eventos importados do Google) ficam na aba Bloqueios — exceto os
+      // gravados com block_type='appointment', que são consulta e vêm para cá.
+      // "appointment_type.is.null" cobre os registros antigos, anteriores ao
+      // default 'booking' da coluna.
       const { data, error } = await supabase
         .from("appointments")
         .select("*")
         .eq("professional_id", professional!.id)
-        
+        .or("appointment_type.neq.block,appointment_type.is.null,block_type.eq.appointment")
         .order("appointment_date", { ascending: false });
       if (error) throw error;
 

@@ -1033,6 +1033,13 @@ export default function AdminAgendaCalendario() {
           slotLabelInterval="01:00:00"
           slotLabelFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
           allDaySlot={false}
+          // Abaixo desta altura o evento usa layout de UMA linha (hora + título
+          // lado a lado). Com slot de 2rem, um evento de 30 min tem ~32px: sem
+          // subir este limite ele empilharia em 2 linhas e o texto seria cortado.
+          eventShortHeight={44}
+          // snapDuration de 15 min permite eventos de ~16px, curtos demais para
+          // caber uma linha de texto: garante um piso de altura na renderização.
+          eventMinHeight={22}
           nowIndicator={true}
           selectable={true}
           selectMirror={true}

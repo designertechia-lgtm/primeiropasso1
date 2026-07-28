@@ -157,8 +157,29 @@
 .fc-wrapper .fc .fc-col-header-cell { background: hsl(var(--muted)); font-weight: 500; font-size: 0.8rem; padding: 0.5rem 0; }
 .fc-wrapper .fc .fc-col-header-cell-cushion { color: hsl(var(--foreground)); text-decoration: none; }
 .fc-wrapper .fc .fc-timegrid-slot-label-cushion { font-size: 0.75rem; color: hsl(var(--muted-foreground)); }
-.fc-wrapper .fc .fc-event { border-radius: calc(var(--radius) - 4px); font-size: 0.78rem; padding: 2px 4px; cursor: pointer; }
-.fc-wrapper .fc .fc-timegrid-event .fc-event-main { padding: 2px 4px; }
+.fc-wrapper .fc .fc-event { border-radius: calc(var(--radius) - 4px); font-size: 0.78rem; cursor: pointer; }
+
+/* ── Legibilidade de eventos curtos (30 min) ───────────────────────────────
+   Um slot de 30 min tinha ~21px. Com padding 2px no .fc-event MAIS 2px no
+   .fc-event-main, sobravam ~13px para hora e título EMPILHADOS — o texto era
+   cortado e sumia. Correções: altura de slot maior, padding só no main, e nos
+   eventos curtos hora+título na mesma linha com reticências. */
+.fc-wrapper .fc .fc-timegrid-slot { height: 2rem; }
+.fc-wrapper .fc .fc-timegrid-event .fc-event-main { padding: 1px 5px; line-height: 1.25; }
+.fc-wrapper .fc .fc-timegrid-event .fc-event-time,
+.fc-wrapper .fc .fc-timegrid-event .fc-event-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* .fc-timegrid-event-short é aplicada pelo próprio FullCalendar quando a altura
+   renderizada é menor que eventShortHeight (ajustado para 44px no componente,
+   senão um evento de 30 min ficaria acima do limite e voltaria a empilhar). O FC
+   já põe flex-direction:row e um "–" entre hora e título; aqui só garantimos que
+   o título encolha com reticências em vez de estourar. */
+.fc-wrapper .fc .fc-timegrid-event-short .fc-event-time { flex: 0 0 auto; font-weight: 600; }
+.fc-wrapper .fc .fc-timegrid-event-short .fc-event-title-container { min-width: 0; }
+.fc-wrapper .fc .fc-timegrid-event-short .fc-event-title { font-size: 0.72rem; }
 .fc-wrapper .fc .fc-daygrid-day-number, .fc-wrapper .fc .fc-timegrid-axis-cushion { color: hsl(var(--muted-foreground)); font-size: 0.75rem; }
 .fc-wrapper .fc .fc-scrollgrid { border-radius: var(--radius); overflow: hidden; }
 .fc-wrapper .fc td, .fc-wrapper .fc th { border-color: hsl(var(--border)); }

@@ -39,6 +39,7 @@ import {
   PATH_MAX,
 } from "./types";
 import { downloadGoogleAdsEditorCsv } from "./exportGoogleAdsCsv";
+import { sanitizeKeywordText } from "./keywordUtils";
 import PublishChecklistDialog from "./PublishChecklistDialog";
 import { useAdsAccountStatus } from "./GoogleAdsAccountCard";
 
@@ -189,12 +190,14 @@ export default function CampaignEditor({ campaign }: { campaign: Campaign }) {
         }
       }
 
-      // 2. Keywords alteradas
+      // 2. Keywords alteradas (sanitizadas: o Google rejeita pontuação/símbolos)
       for (const a of assets.filter((x) => x.asset_type === "keyword")) {
         if (removedKw.has(a.id)) continue;
         const draft = kwDrafts[a.id];
         if (!draft || !draft.text.trim()) continue;
-        const next = { ...a.payload, text: draft.text.trim(), match_type: draft.match_type };
+        const cleanText = sanitizeKeywordText(draft.text);
+        if (!cleanText) throw new Error(`Palavra-chave inválida: "${draft.text}" (use só letras, números e espaços — máx. 10 palavras).`);
+        const next = { ...a.payload, text: cleanText, match_type: draft.match_type };
         if (JSON.stringify(next) !== JSON.stringify(a.payload)) {
           const { error } = await supabase
             .from("ads_campaign_assets" as any)
@@ -213,16 +216,20 @@ export default function CampaignEditor({ campaign }: { campaign: Campaign }) {
         if (error) throw error;
       }
 
-      // 4. Keywords novas
+      // 4. Keywords novas (sanitizadas)
       const inserts = newKws
         .filter((k) => k.text.trim())
-        .map((k, i) => ({
-          campaign_id: campaign.id,
-          asset_type: "keyword",
-          parent_id: k.groupId,
-          payload: { text: k.text.trim(), match_type: k.match_type },
-          position: 100 + i,
-        }));
+        .map((k, i) => {
+          const cleanText = sanitizeKeywordText(k.text);
+          if (!cleanText) throw new Error(`Palavra-chave inválida: "${k.text}" (use só letras, números e espaços — máx. 10 palavras).`);
+          return {
+            campaign_id: campaign.id,
+            asset_type: "keyword",
+            parent_id: k.groupId,
+            payload: { text: cleanText, match_type: k.match_type },
+            position: 100 + i,
+          };
+        });
       if (inserts.length > 0) {
         const { error } = await supabase.from("ads_campaign_assets" as any).insert(inserts);
         if (error) throw error;

@@ -171,15 +171,34 @@ export default function PublishChecklistDialog({
         }]
       : []),
     {
+      id: "segmentacao",
+      title: "Definir localização e idioma (o CSV NÃO carrega isso)",
+      body: (
+        <span className="flex items-start gap-1.5">
+          <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-yellow-600 dark:text-yellow-400" />
+          <span>
+            Sem esse passo o Google veicula no <span className="font-medium">mundo inteiro</span>. Na
+            campanha importada, em <span className="font-medium">Configurações</span>, defina a{" "}
+            <span className="font-medium">Localização</span>
+            {campaign.geo_targeting?.cidade
+              ? <> ({campaign.geo_targeting.cidade}{campaign.geo_targeting?.raio_km ? `, raio ~${campaign.geo_targeting.raio_km} km` : ""})</>
+              : " (sua cidade/raio de atendimento)"}{" "}
+            com a opção <span className="font-medium">"Presença: pessoas no local"</span> e o idioma{" "}
+            <span className="font-medium">Português</span>.
+          </span>
+        </span>
+      ),
+    },
+    {
       id: "orcamento",
       title: `Conferir o orçamento (R$ ${Number(campaign.daily_budget_brl).toFixed(2)}/dia)`,
       body: (
         <span className="flex items-start gap-1.5">
           <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-yellow-600 dark:text-yellow-400" />
           <span>
-            A campanha importa <span className="font-medium">PAUSADA</span> de propósito. Confira
-            orçamento e localização antes de ativar — e lembre que o Google pode gastar até 2× o
-            diário num dia (compensa na média do mês).
+            A campanha importa <span className="font-medium">PAUSADA</span> de propósito. Confira o
+            orçamento antes de ativar — e lembre que o Google pode gastar até 2× o diário num dia
+            (compensa na média do mês).
           </span>
         </span>
       ),

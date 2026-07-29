@@ -29,8 +29,12 @@ const RSA_PATH_MAX     = 15
 const SITELINK_MAX     = 25
 const CALLOUT_MAX      = 25
 
-// Keywords negativas padrão do nicho de saúde (evitam cliques de pesquisa informacional)
-const NEGATIVE_SEED = ["grátis", "sus", "gratuito", "curso", "o que é", "significado", "como funciona", "pra que serve"]
+// Keywords negativas padrão do nicho de saúde (evitam cliques de pesquisa informacional
+// e de quem procura carreira/estudo, não atendimento)
+const NEGATIVE_SEED = [
+  "grátis", "sus", "gratuito", "curso", "o que é", "significado", "como funciona", "pra que serve",
+  "faculdade", "vagas", "emprego", "salário", "quanto ganha", "pdf",
+]
 
 // =============================================
 // JSON Schema para o structured output (tool forced)
@@ -302,7 +306,7 @@ REGRAS OBRIGATÓRIAS:
 3. Path1 / path2: máx ${RSA_PATH_MAX} chars, sem espaços.
 4. Sitelinks: máx ${SITELINK_MAX} chars no texto.
 5. Callouts: máx ${CALLOUT_MAX} chars cada.
-6. Keywords: use exact para termos de alta intenção ("consulta psicólogo"), phrase para variações ("psicólogo infantil são paulo"), broad para descoberta. Mínimo 8 por grupo.
+6. Keywords: use exact para termos de alta intenção ("consulta psicólogo"), phrase para variações ("psicólogo infantil são paulo"), broad para descoberta. Mínimo 8 por grupo. Derive as keywords dos SERVIÇOS e do PÚBLICO reais do brief e do DNA da Marca (como o paciente buscaria esse atendimento no Google), inclua variações com a cidade, e escreva só com letras/números/espaços — sem pontuação, aspas, colchetes ou símbolos. Nunca repita a mesma keyword em grupos diferentes.
 7. Negativos globais obrigatórios (inclua todos): ${NEGATIVE_SEED.map((n) => `"${n}"`).join(", ")}.
 8. URLs dos sitelinks: use a URL de destino base fornecida (mantém a atribuição UTM).
 9. Tom: profissional e acolhedor; nunca prometa cura ou resultados garantidos (Resolução CFM 1974/2011).
@@ -317,7 +321,62 @@ function trunc(s: string, max: number): string {
   return s.length > max ? s.slice(0, max) : s
 }
 
+// =============================================
+// Sanitização de keywords (contratos do Google Ads)
+// O Google REJEITA keywords com pontuação (?, !, @, %, vírgula, aspas, colchetes…),
+// mais de 80 caracteres ou mais de 10 palavras — e na publicação via API o mutate é
+// atômico: UMA keyword inválida derrubaria a campanha inteira. Sanitizamos na origem.
+// Espelho: mesma lógica em google-ads-proxy (defesa p/ campanhas antigas) e
+// src/components/admin/trafego-pago/keywordUtils.ts (editor/CSV).
+// =============================================
+const KW_MAX_CHARS = 80
+const KW_MAX_WORDS = 10
+
+function deaccent(s: string): string {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "")
+}
+
+// Devolve o texto limpo, ou "" se a keyword for inviável (descartar)
+function sanitizeKeywordText(s: string): string {
+  const clean = (s ?? "")
+    .toLowerCase()
+    // whitelist: letras (com acento), números, espaço, hífen, & e apóstrofo
+    .replace(/[^\p{L}\p{N}\s\-&']/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  if (!clean || clean.length > KW_MAX_CHARS || clean.split(" ").length > KW_MAX_WORDS) return ""
+  return clean
+}
+
+const VALID_MATCH = new Set(["broad", "phrase", "exact"])
+// Fallback PHRASE (não broad): se o tipo vier inválido, o erro seguro é o mais restrito
+function normMatchType(m: string): string {
+  return VALID_MATCH.has(m) ? m : "phrase"
+}
+
+// Negativas NÃO têm close variants no Google: "grátis" não bloqueia a busca "gratis"
+// (sem acento — como a maioria digita). Expande cada negativa com a variante sem
+// acento e deduplica.
+function expandNegatives(list: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of list) {
+    const text = sanitizeKeywordText(raw)
+    if (!text) continue
+    for (const v of [text, deaccent(text)]) {
+      if (!seen.has(v)) {
+        seen.add(v)
+        out.push(v)
+      }
+    }
+  }
+  return out
+}
+
 function sanitizeCampaign(raw: any, landingUrl: string): any {
+  // Dedupe de keywords entre TODOS os grupos (mesma keyword+match em 2 grupos = competição interna)
+  const kwSeen = new Set<string>()
+
   const adGroups = (raw.ad_groups ?? []).map((g: any) => ({
     ...g,
     rsa: {
@@ -327,7 +386,16 @@ function sanitizeCampaign(raw: any, landingUrl: string): any {
       path1: g.rsa?.path1 ? trunc(g.rsa.path1, RSA_PATH_MAX) : undefined,
       path2: g.rsa?.path2 ? trunc(g.rsa.path2, RSA_PATH_MAX) : undefined,
     },
-    negative_keywords: g.negative_keywords ?? [],
+    keywords: (g.keywords ?? [])
+      .map((k: any) => ({ text: sanitizeKeywordText(k?.text ?? ""), match_type: normMatchType(k?.match_type) }))
+      .filter((k: any) => {
+        if (!k.text) return false
+        const key = `${k.text}|${k.match_type}`
+        if (kwSeen.has(key)) return false
+        kwSeen.add(key)
+        return true
+      }),
+    negative_keywords: expandNegatives(g.negative_keywords ?? []),
   }))
 
   return {
@@ -335,10 +403,10 @@ function sanitizeCampaign(raw: any, landingUrl: string): any {
     ad_groups:              adGroups,
     sitelinks:              (raw.sitelinks ?? []).map((s: any) => ({ ...s, text: trunc(s.text, SITELINK_MAX) })),
     callouts:               (raw.callouts ?? []).map((c: string) => trunc(c, CALLOUT_MAX)),
-    negative_keywords_global: [
+    negative_keywords_global: expandNegatives([
       ...NEGATIVE_SEED,
-      ...((raw.negative_keywords_global ?? []).filter((k: string) => !NEGATIVE_SEED.includes(k))),
-    ],
+      ...(raw.negative_keywords_global ?? []),
+    ]),
   }
 }
 
@@ -605,7 +673,8 @@ serve(async (req) => {
     if (!isMeta) {
       const grupos = raw.ad_groups ?? []
       const incompleta = grupos.length === 0 || grupos.some((g: any) =>
-        (g.rsa?.headlines?.length ?? 0) < 3 || (g.rsa?.descriptions?.length ?? 0) < 2)
+        (g.rsa?.headlines?.length ?? 0) < 3 || (g.rsa?.descriptions?.length ?? 0) < 2 ||
+        (g.keywords?.length ?? 0) < 1) // sanitização pode ter descartado keywords inválidas
       if (incompleta) {
         return json({ error: "campanha_incompleta", mensagem: "A IA devolveu a campanha incompleta (faltam títulos ou descrições mínimos do Google). Nada foi cobrado — tente gerar de novo." }, 422)
       }

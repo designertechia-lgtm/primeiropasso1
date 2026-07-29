@@ -1,4 +1,5 @@
 import type { Campaign, Asset } from "./types";
+import { expandNegatives, sanitizeKeywordText } from "./keywordUtils";
 
 // Formato de importação do Google Ads Editor: uma linha por entidade,
 // colunas compartilhadas identificam campanha/grupo. Campos vazios são ignorados.
@@ -85,42 +86,47 @@ export function buildGoogleAdsEditorCsv(campaign: Campaign, assets: Asset[]): st
       rows.push(row);
     }
 
-    // 4. Keywords do grupo
+    // 4. Keywords do grupo (sanitizadas: o Google rejeita pontuação/símbolos;
+    //    fallback Phrase — Broad silencioso é o tipo que mais gasta)
     const keywords = assets
       .filter((a) => a.asset_type === "keyword" && a.parent_id === group.id)
       .sort((a, b) => a.position - b.position);
     for (const kw of keywords) {
+      const text = sanitizeKeywordText(kw.payload.text ?? "");
+      if (!text) continue;
       rows.push({
         Campaign: campaignName,
         "Ad Group": groupName,
-        Keyword: kw.payload.text ?? "",
-        "Criterion Type": MATCH_TYPE_LABEL[kw.payload.match_type] ?? "Broad",
+        Keyword: text,
+        "Criterion Type": MATCH_TYPE_LABEL[kw.payload.match_type] ?? "Phrase",
         Status: "Enabled",
       });
     }
 
     // 5. Negativos do grupo (Phrase: bloqueia a sequência — certo p/ "o que é" etc.)
-    const groupNegs = assets.filter(
-      (a) => a.asset_type === "negative_keyword" && a.parent_id === group.id,
-    );
-    for (const neg of groupNegs) {
+    //    Expandidos com variante sem acento: negativas NÃO têm close variants no Google
+    //    ("grátis" não bloqueia a busca "gratis").
+    const groupNegs = assets
+      .filter((a) => a.asset_type === "negative_keyword" && a.parent_id === group.id)
+      .map((a) => a.payload.text ?? "");
+    for (const text of expandNegatives(groupNegs)) {
       rows.push({
         Campaign: campaignName,
         "Ad Group": groupName,
-        Keyword: neg.payload.text ?? "",
+        Keyword: text,
         "Criterion Type": "Negative Phrase",
       });
     }
   }
 
-  // 6. Negativos de campanha (sem Ad Group)
-  const campaignNegs = assets.filter(
-    (a) => a.asset_type === "negative_keyword" && !a.parent_id,
-  );
-  for (const neg of campaignNegs) {
+  // 6. Negativos de campanha (sem Ad Group; também expandidos sem acento)
+  const campaignNegs = assets
+    .filter((a) => a.asset_type === "negative_keyword" && !a.parent_id)
+    .map((a) => a.payload.text ?? "");
+  for (const text of expandNegatives(campaignNegs)) {
     rows.push({
       Campaign: campaignName,
-      Keyword: neg.payload.text ?? "",
+      Keyword: text,
       "Criterion Type": "Negative Phrase",
     });
   }

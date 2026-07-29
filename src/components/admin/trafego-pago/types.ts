@@ -39,6 +39,7 @@ export interface Campaign {
   max_daily_budget_brl: number;
   landing_url: string | null;
   brief: Record<string, any>;
+  geo_targeting: { cidade?: string; raio_km?: number } | null;
   start_date: string | null;
   end_date: string | null;
   external_id: string | null;

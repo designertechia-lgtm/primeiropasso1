@@ -115,7 +115,70 @@ function msgErroGoogle(data: any): string {
     ?? "O Google Ads recusou a operação. Tente de novo em instantes."
 }
 
+// Fallback PHRASE (não broad): se o match_type vier inválido, o erro seguro é o mais
+// restrito — broad silencioso é o tipo que mais gasta.
 const MATCH_TYPE_ENUM: Record<string, string> = { broad: "BROAD", phrase: "PHRASE", exact: "EXACT" }
+
+// ── Sanitização de keywords (espelho de ads-campaign-generator) ─────────────
+// Defesa na publicação: campanhas geradas ANTES da sanitização na origem podem ter
+// pontuação que o Google rejeita — e o mutate é atômico (1 keyword inválida derruba
+// a campanha inteira).
+const KW_MAX_CHARS = 80
+const KW_MAX_WORDS = 10
+
+function deaccent(s: string): string {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "")
+}
+
+function sanitizeKeywordText(s: string): string {
+  const clean = (s ?? "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s\-&']/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  if (!clean || clean.length > KW_MAX_CHARS || clean.split(" ").length > KW_MAX_WORDS) return ""
+  return clean
+}
+
+// Negativas não têm close variants: "grátis" NÃO bloqueia "gratis". Expande com a
+// variante sem acento e deduplica.
+function expandNegatives(list: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of list) {
+    const text = sanitizeKeywordText(raw)
+    if (!text) continue
+    for (const v of [text, deaccent(text)]) {
+      if (!seen.has(v)) { seen.add(v); out.push(v) }
+    }
+  }
+  return out
+}
+
+// ── Geo targeting: resolve o nome da cidade num geoTargetConstant do Google ──
+// Sem critério de localização o Google veicula no MUNDO INTEIRO — para serviço
+// local isso é queima de verba. Cidade não resolvida → fallback Brasil (2076).
+const GEO_BRAZIL = "geoTargetConstants/2076"
+const LANG_PT = "languageConstants/1014"
+
+async function resolveGeoTarget(creds: Creds, cidade: string): Promise<{ resource: string; nome: string } | null> {
+  try {
+    const res = await adsApiFetch(creds, "geoTargetConstants:suggest", {
+      method: "POST",
+      body: { locale: "pt-BR", countryCode: "BR", locationNames: { names: [cidade] } },
+    })
+    if (!res.ok) return null
+    const sugestoes = (res.data.geoTargetConstantSuggestions ?? [])
+      .map((s: any) => s.geoTargetConstant)
+      .filter((g: any) => g?.resourceName && g?.status === "ENABLED")
+    // Preferência: City > qualquer outro tipo (Municipality, Region…)
+    const city = sugestoes.find((g: any) => g.targetType === "City") ?? sugestoes[0]
+    return city ? { resource: city.resourceName, nome: city.name ?? cidade } : null
+  } catch (e) {
+    console.error("[google-ads-proxy] resolveGeoTarget:", (e as Error).message)
+    return null
+  }
+}
 
 // =============================================================================
 serve(async (req) => {
@@ -285,6 +348,15 @@ serve(async (req) => {
         return json({ error: "campanha_nao_publicavel_via_api", mensagem: "Só dá pra publicar pela plataforma uma campanha aprovada. Se você já publicou pelo CSV no Ads Editor, não republique aqui." }, 400)
       }
 
+      // Período configurado na geração (datas puras YYYY-MM-DD; hoje no fuso do Carlos/SP)
+      const hojeSP = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" })
+      const campStart: string | null = (campaign as any).start_date ?? null
+      const campEnd: string | null = (campaign as any).end_date ?? null
+      if (campEnd && campEnd < hojeSP) {
+        return json({ error: "periodo_expirado", mensagem: `A data final da campanha (${campEnd}) já passou. Edite o período antes de publicar.` }, 400)
+      }
+      const cidadeAlvo: string = ((campaign as any).geo_targeting?.cidade ?? "").toString().trim()
+
       // Dupla confirmação: 1ª chamada retorna o resumo; só executa com confirmar=true
       if (body.confirmar !== true) {
         return json({
@@ -293,10 +365,22 @@ serve(async (req) => {
             nome: (campaign as any).name,
             orcamento_diario: `R$ ${Number((campaign as any).daily_budget_brl).toFixed(2)}/dia`,
             conta_destino: account.external_customer_id,
+            segmentacao: cidadeAlvo
+              ? `${cidadeAlvo} (quem está fisicamente lá) · idioma português`
+              : "Brasil inteiro (campanha sem cidade definida) · idioma português",
+            periodo: campStart || campEnd
+              ? `${campStart && campStart > hojeSP ? `de ${campStart} ` : "a partir da ativação "}${campEnd ? `até ${campEnd}` : "(sem data final)"}`
+              : "contínuo (você pausa quando quiser)",
             aviso: "A campanha será criada PAUSADA no Google Ads. Você ativa quando quiser começar a veicular.",
           },
         })
       }
+
+      // Resolve a cidade num geoTargetConstant ANTES de montar o batch
+      const geo = cidadeAlvo ? await resolveGeoTarget(creds, cidadeAlvo) : null
+      const avisos: string[] = []
+      if (cidadeAlvo && !geo) avisos.push(`Não achei "${cidadeAlvo}" no Google — a campanha foi segmentada para o Brasil inteiro. Ajuste a localização no Google Ads antes de ativar.`)
+      if (!cidadeAlvo) avisos.push("Campanha sem cidade no brief — segmentei para o Brasil inteiro. Ajuste a localização no Google Ads antes de ativar.")
 
       const { data: assetsData } = await supabaseAdmin
         .from("ads_campaign_assets")
@@ -340,7 +424,35 @@ serve(async (req) => {
               targetContentNetwork: false,
               targetPartnerSearchNetwork: false,
             },
+            // PRESENCE: só quem está fisicamente na área (sem "interesse em" — turista
+            // pesquisando sobre a cidade não é paciente)
+            geoTargetTypeSetting: {
+              positiveGeoTargetType: "PRESENCE",
+              negativeGeoTargetType: "PRESENCE",
+            },
+            // Datas do período configurado na geração (start no passado = começa na ativação)
+            ...(campStart && campStart > hojeSP ? { startDate: campStart } : {}),
+            ...(campEnd ? { endDate: campEnd } : {}),
             containsEuPoliticalAdvertising: "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING",
+          },
+        },
+      })
+
+      // Localização (cidade resolvida ou Brasil) + idioma português — sem esses critérios
+      // o Google veicula no mundo todo, em qualquer idioma
+      ops.push({
+        campaignCriterionOperation: {
+          create: {
+            campaign: `customers/${cid}/campaigns/${campTemp}`,
+            location: { geoTargetConstant: geo?.resource ?? GEO_BRAZIL },
+          },
+        },
+      })
+      ops.push({
+        campaignCriterionOperation: {
+          create: {
+            campaign: `customers/${cid}/campaigns/${campTemp}`,
+            language: { languageConstant: LANG_PT },
           },
         },
       })
@@ -382,38 +494,105 @@ serve(async (req) => {
           })
         }
 
+        // Keywords: sanitiza (pontuação inválida derrubaria o mutate atômico inteiro)
+        // e deduplica dentro do grupo
+        const kwGrupoSeen = new Set<string>()
         for (const kw of assets.filter((a) => a.asset_type === "keyword" && a.parent_id === group.id)) {
+          const text = sanitizeKeywordText(kw.payload.text ?? "")
+          const matchType = MATCH_TYPE_ENUM[kw.payload.match_type] ?? "PHRASE"
+          const key = `${text}|${matchType}`
+          if (!text || kwGrupoSeen.has(key)) continue
+          kwGrupoSeen.add(key)
           ops.push({
             adGroupCriterionOperation: {
               create: {
                 adGroup: `customers/${cid}/adGroups/${groupTemp}`,
                 status: "ENABLED",
-                keyword: { text: kw.payload.text, matchType: MATCH_TYPE_ENUM[kw.payload.match_type] ?? "BROAD" },
+                keyword: { text, matchType },
               },
             },
           })
         }
-        for (const neg of assets.filter((a) => a.asset_type === "negative_keyword" && a.parent_id === group.id)) {
+        // Negativas do grupo com variantes sem acento (negativas não têm close variants)
+        const negsGrupo = assets
+          .filter((a) => a.asset_type === "negative_keyword" && a.parent_id === group.id)
+          .map((a) => a.payload.text ?? "")
+        for (const text of expandNegatives(negsGrupo)) {
           ops.push({
             adGroupCriterionOperation: {
               create: {
                 adGroup: `customers/${cid}/adGroups/${groupTemp}`,
                 negative: true,
-                keyword: { text: neg.payload.text, matchType: "PHRASE" },
+                keyword: { text, matchType: "PHRASE" },
               },
             },
           })
         }
       }
 
-      // Negativos de campanha
-      for (const neg of assets.filter((a) => a.asset_type === "negative_keyword" && !a.parent_id)) {
+      // Negativos de campanha (também expandidos sem acento)
+      const negsCampanha = assets
+        .filter((a) => a.asset_type === "negative_keyword" && !a.parent_id)
+        .map((a) => a.payload.text ?? "")
+      for (const text of expandNegatives(negsCampanha)) {
         ops.push({
           campaignCriterionOperation: {
             create: {
               campaign: `customers/${cid}/campaigns/${campTemp}`,
               negative: true,
-              keyword: { text: neg.payload.text, matchType: "PHRASE" },
+              keyword: { text, matchType: "PHRASE" },
+            },
+          },
+        })
+      }
+
+      // Sitelinks e callouts — antes eram gerados/cobrados e NUNCA publicados.
+      // Asset (create) + vínculo CampaignAsset por fieldType.
+      const SITELINK_LINKTEXT_MAX = 25
+      const CALLOUT_TEXT_MAX = 25
+      for (const sl of assets.filter((a) => a.asset_type === "sitelink")) {
+        const linkText = (sl.payload.text ?? "").toString().trim().slice(0, SITELINK_LINKTEXT_MAX)
+        const url = (sl.payload.url ?? (campaign as any).landing_url ?? "").toString().trim()
+        if (!linkText || !url) continue
+        const assetTemp = nextTemp()
+        // description1/description2 são tudo-ou-nada no Google; geramos só 1 → omitimos ambas
+        ops.push({
+          assetOperation: {
+            create: {
+              resourceName: `customers/${cid}/assets/${assetTemp}`,
+              finalUrls: [url],
+              sitelinkAsset: { linkText },
+            },
+          },
+        })
+        ops.push({
+          campaignAssetOperation: {
+            create: {
+              campaign: `customers/${cid}/campaigns/${campTemp}`,
+              asset: `customers/${cid}/assets/${assetTemp}`,
+              fieldType: "SITELINK",
+            },
+          },
+        })
+      }
+      for (const co of assets.filter((a) => a.asset_type === "callout")) {
+        const calloutText = (co.payload.text ?? "").toString().trim().slice(0, CALLOUT_TEXT_MAX)
+        if (!calloutText) continue
+        const assetTemp = nextTemp()
+        ops.push({
+          assetOperation: {
+            create: {
+              resourceName: `customers/${cid}/assets/${assetTemp}`,
+              calloutAsset: { calloutText },
+            },
+          },
+        })
+        ops.push({
+          campaignAssetOperation: {
+            create: {
+              campaign: `customers/${cid}/campaigns/${campTemp}`,
+              asset: `customers/${cid}/assets/${assetTemp}`,
+              fieldType: "CALLOUT",
             },
           },
         })
@@ -446,11 +625,13 @@ serve(async (req) => {
         })
       }
 
-      console.log(`[google-ads-proxy] campanha ${campaignId} publicada: ${campResource}`)
+      console.log(`[google-ads-proxy] campanha ${campaignId} publicada: ${campResource} (geo: ${geo?.nome ?? "Brasil"})`)
       return json({
         sucesso: true,
         external_id: campResource,
         operacoes: ops.length,
+        segmentacao: geo ? `${geo.nome} (presença física) · português` : "Brasil · português",
+        ...(avisos.length ? { avisos } : {}),
         aviso: "Campanha criada PAUSADA no Google Ads. Ative quando quiser veicular (ou use ativar_campanha).",
       })
     }

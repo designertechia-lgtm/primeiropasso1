@@ -145,14 +145,16 @@
    Aqui a agenda passa a ter as PRÓPRIAS cores de texto: quase preto no tema
    claro, quase branco no escuro. */
 .fc-wrapper {
-  --agenda-texto: 220 26% 12%;
-  --agenda-texto-suave: 220 14% 32%;
-  --agenda-borda: 190 20% 78%;
+  --agenda-texto: 0 0% 7%;
+  --agenda-texto-suave: 0 0% 24%;
+  --agenda-borda: 190 18% 72%;
+  --agenda-fechado: 220 14% 46%;
 }
 .dark .fc-wrapper {
   --agenda-texto: 0 0% 100%;
-  --agenda-texto-suave: 200 20% 82%;
-  --agenda-borda: 190 20% 28%;
+  --agenda-texto-suave: 0 0% 88%;
+  --agenda-borda: 190 20% 30%;
+  --agenda-fechado: 200 12% 68%;
 }
 
 .fc-wrapper .fc {
@@ -245,6 +247,30 @@
 .fc-wrapper .fc .fc-event-passado { opacity: 0.55; }
 .fc-wrapper .fc .fc-event-passado:hover { opacity: 0.85; }
 .fc-wrapper .fc .fc-dia-passado { background: hsl(var(--muted) / 0.35); }
+
+/* ── Faixas de "não atendo" no grid ─────────────────────────────────────────
+   Desde que a indisponibilidade virou REGRA, ela não tem mais um registro para
+   desenhar. Estas faixas são o que mostra o almoço, o fora-de-expediente e os
+   dias fechados — sem elas o profissional perde de vista onde não trabalha.
+   Hachura + rótulo, para diferenciar de um horário simplesmente vago. */
+.fc-wrapper .fc .fc-faixa-fechada {
+  background-color: hsl(var(--agenda-fechado) / 0.14) !important;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    hsl(var(--agenda-fechado) / 0.16) 0, hsl(var(--agenda-fechado) / 0.16) 5px,
+    transparent 5px, transparent 11px
+  );
+  opacity: 1 !important;
+}
+.fc-wrapper .fc .fc-faixa-fechada .fc-event-title {
+  color: hsl(var(--agenda-texto-suave));
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 2px 6px;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
 
 /* Feriado e datas em que o profissional não atende: listra diagonal discreta.
    No admin o dia continua clicável de propósito — quem manda na agenda pode

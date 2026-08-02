@@ -1028,6 +1028,31 @@ export default function AdminAgendaCalendario() {
   };
 
   // Build events
+  const temAllDay = useMemo(
+    () => [...appointments, ...blocks].some((r: any) => isAllDay(r)),
+    [appointments, blocks],
+  );
+
+  // Janela de horas do grid, derivada do que existe de verdade. Era fixa em
+  // 07:00–22:00: quem atendia às 6h30 ou marcava algo às 22h30 simplesmente não
+  // via o compromisso no calendário.
+  const { slotMinTime, slotMaxTime } = useMemo(() => {
+    const horas: number[] = [];
+    availability.filter((a) => a.active).forEach((a) => {
+      horas.push(Math.floor(toMin(a.start_time) / 60), Math.ceil(toMin(a.end_time) / 60));
+    });
+    [...appointments, ...blocks].forEach((r: any) => {
+      if (isAllDay(r)) return;
+      horas.push(Math.floor(toMin(r.start_time) / 60), Math.ceil(toMin(r.end_time) / 60));
+    });
+    const min = horas.length ? Math.min(7, ...horas) : 7;
+    const max = horas.length ? Math.max(22, ...horas) : 22;
+    return {
+      slotMinTime: `${String(Math.max(0, min)).padStart(2, "0")}:00:00`,
+      slotMaxTime: `${String(Math.min(24, max)).padStart(2, "0")}:00:00`,
+    };
+  }, [availability, appointments, blocks]);
+
   const events = useMemo((): EventInput[] => {
     const out: EventInput[] = [];
 
@@ -1079,21 +1104,60 @@ export default function AdminAgendaCalendario() {
       });
     });
 
-    availability.filter((a) => a.active).forEach((avail) => {
-      out.push({
-        id: `avail-${avail.id}`,
-        title: "",
-        daysOfWeek: [avail.day_of_week],
-        startTime: avail.start_time,
-        endTime: avail.end_time,
-        display: "background",
-        backgroundColor: "hsl(var(--primary) / 0.12)",
-        extendedProps: { type: "availability" },
-      });
-    });
+    // ── Faixas de INDISPONIBILIDADE ─────────────────────────────────────────
+    // Antes o grid pintava de leve o horário DISPONÍVEL, e o resto ficava
+    // branco. Desde que "não atendo" virou regra (e os bloqueios repetidos
+    // saíram do banco), isso deixou o almoço e os dias fechados invisíveis —
+    // o profissional perdeu de vista onde não trabalha.
+    //
+    // Agora é o contrário: o que está FECHADO aparece hachurado e com rótulo, e
+    // o horário de trabalho fica limpo. É a leitura que interessa no dia a dia.
+    const ativas = availability.filter((a) => a.active);
+    if (ativas.length > 0) {
+      const faixa = (dia: number, de: string, ate: string, titulo: string, id: string) => {
+        if (toMin(ate) <= toMin(de)) return;
+        out.push({
+          id,
+          title: titulo,
+          daysOfWeek: [dia],
+          startTime: de,
+          endTime: ate,
+          display: "background",
+          classNames: ["fc-faixa-fechada"],
+          extendedProps: { type: "availability" },
+        });
+      };
+
+      for (let dia = 0; dia <= 6; dia++) {
+        const doDia = ativas
+          .filter((a) => a.day_of_week === dia)
+          .map((a) => ({ de: a.start_time.slice(0, 5), ate: a.end_time.slice(0, 5) }))
+          .sort((x, y) => toMin(x.de) - toMin(y.de));
+
+        // Dia sem janela nenhuma = fechado inteiro.
+        if (doDia.length === 0) {
+          faixa(dia, slotMinTime.slice(0, 5), slotMaxTime.slice(0, 5), "Não atendo", `fechado-${dia}`);
+          continue;
+        }
+
+        // Antes da primeira janela e depois da última.
+        faixa(dia, slotMinTime.slice(0, 5), doDia[0].de, "Fora do horário", `antes-${dia}`);
+        faixa(dia, doDia[doDia.length - 1].ate, slotMaxTime.slice(0, 5), "Fora do horário", `depois-${dia}`);
+        // Buracos entre janelas do mesmo dia.
+        for (let i = 0; i < doDia.length - 1; i++) {
+          faixa(dia, doDia[i].ate, doDia[i + 1].de, "Fora do horário", `vao-${dia}-${i}`);
+        }
+
+        // O almoço é o intervalo que a pessoa mais quer enxergar.
+        const almoco = lunchByDay[dia];
+        if (almoco?.start && almoco?.end) {
+          faixa(dia, almoco.start, almoco.end, "Almoço", `almoco-${dia}`);
+        }
+      }
+    }
 
     return out;
-  }, [appointments, blocks, availability, getStatusColor]);
+  }, [appointments, blocks, availability, lunchByDay, slotMinTime, slotMaxTime, getStatusColor]);
 
   // Feriados: no admin eles NÃO impedem de marcar — o dono da agenda pode
   // atender num feriado se quiser. Aparecem pintados no grid, e é a agenda
@@ -1103,31 +1167,6 @@ export default function AdminAgendaCalendario() {
     (professional as any)?.skip_national_holidays,
     { inicio: range.start, fim: range.end },
   );
-
-  const temAllDay = useMemo(
-    () => [...appointments, ...blocks].some((r: any) => isAllDay(r)),
-    [appointments, blocks],
-  );
-
-  // Janela de horas do grid, derivada do que existe de verdade. Era fixa em
-  // 07:00–22:00: quem atendia às 6h30 ou marcava algo às 22h30 simplesmente não
-  // via o compromisso no calendário.
-  const { slotMinTime, slotMaxTime } = useMemo(() => {
-    const horas: number[] = [];
-    availability.filter((a) => a.active).forEach((a) => {
-      horas.push(Math.floor(toMin(a.start_time) / 60), Math.ceil(toMin(a.end_time) / 60));
-    });
-    [...appointments, ...blocks].forEach((r: any) => {
-      if (isAllDay(r)) return;
-      horas.push(Math.floor(toMin(r.start_time) / 60), Math.ceil(toMin(r.end_time) / 60));
-    });
-    const min = horas.length ? Math.min(7, ...horas) : 7;
-    const max = horas.length ? Math.max(22, ...horas) : 22;
-    return {
-      slotMinTime: `${String(Math.max(0, min)).padStart(2, "0")}:00:00`,
-      slotMaxTime: `${String(Math.min(24, max)).padStart(2, "0")}:00:00`,
-    };
-  }, [availability, appointments, blocks]);
 
   // O esqueleto é só da PRIMEIRA carga. Trocar de mês muda a queryKey (o período
   // faz parte dela), então sem esta trava o calendário desmontaria e remontaria

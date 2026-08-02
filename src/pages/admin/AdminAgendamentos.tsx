@@ -22,6 +22,8 @@ import { CheckCircle, Clock, XCircle, DollarSign, Calendar, Trash2 } from "lucid
 import { useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { useAutoCompleteAppointments } from "@/hooks/useAutoCompleteAppointments";
+import { CancelAppointmentDialog, type CancellationReason } from "@/components/admin/CancelAppointmentDialog";
+import { saveCancellationReason } from "@/lib/cancellations";
 
 const BLOCK_TYPE_LABELS: Record<string, string> = {
   personal: "Pessoal",
@@ -164,9 +166,10 @@ export default function AdminAgendamentos() {
   useAutoCompleteAppointments(appointments);
 
   // Cancelar É excluir: a linha some do banco. Por ser irreversível, toda
-  // chamada passa por confirmação.
+  // chamada passa por confirmação. O histórico do cancelamento sobrevive em
+  // `appointment_cancellations`, gravado por trigger (migration 20260802c).
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({ id, motivo }: { id: string; motivo?: CancellationReason }) => {
       // .select() é obrigatório aqui: sem ele, uma exclusão barrada pela RLS
       // volta como sucesso com zero linhas e o usuário vê "removido" sem ter
       // removido nada (ver migration 20260728_appointments_delete_policies).
@@ -174,6 +177,7 @@ export default function AdminAgendamentos() {
         .from("appointments").delete().eq("id", id).select("id");
       if (error) throw error;
       if (!data?.length) throw new Error("Nada foi removido — o banco recusou a exclusão.");
+      await saveCancellationReason(id, motivo);
     },
     onSuccess: async () => {
       await Promise.all([
@@ -182,8 +186,11 @@ export default function AdminAgendamentos() {
         queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] }),
         queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] }),
         queryClient.invalidateQueries({ queryKey: ["admin-block-groups"] }),
+        queryClient.invalidateQueries({ queryKey: ["appointment-cancellations"] }),
       ]);
-      toast.success("Agendamento cancelado e removido da agenda!");
+      toast.success("Cancelado e removido da agenda.", {
+        description: "O registro ficou guardado na aba Cancelados.",
+      });
     },
     onError: (e: any) => toast.error("Erro ao cancelar", { description: e.message }),
   });
@@ -409,8 +416,18 @@ export default function AdminAgendamentos() {
                               <DollarSign className="h-3 w-3 mr-1" /> Pago
                             </Button>
                           )}
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
+                          <CancelAppointmentDialog
+                            onConfirm={(motivo) => deleteMutation.mutate({ id: appt.id, motivo })}
+                            resumo={
+                              <>
+                                {(appt as any).patient?.full_name || appt.notes || "Sem paciente"}
+                                {" · "}
+                                {format(new Date(appt.appointment_date + "T12:00:00"), "dd/MM/yyyy", { locale: ptBR })}
+                                {" · "}
+                                {appt.start_time.slice(0, 5)}–{appt.end_time.slice(0, 5)}
+                              </>
+                            }
+                            trigger={
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -420,32 +437,8 @@ export default function AdminAgendamentos() {
                               >
                                 <XCircle className="h-3 w-3 mr-1" /> Cancelar
                               </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Cancelar este agendamento?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  {format(new Date(appt.appointment_date + "T12:00:00"), "dd/MM/yyyy", { locale: ptBR })}
-                                  {" · "}
-                                  {appt.start_time.slice(0, 5)} – {appt.end_time.slice(0, 5)}
-                                  {" · "}
-                                  {(appt as any).patient?.full_name || appt.notes || "Sem paciente"}
-                                  <br />
-                                  O agendamento será <strong>removido da agenda</strong> e o horário
-                                  volta a ficar livre. Esta ação não pode ser desfeita.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Voltar</AlertDialogCancel>
-                                <AlertDialogAction
-                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                  onClick={() => deleteMutation.mutate(appt.id)}
-                                >
-                                  Cancelar agendamento
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                            }
+                          />
                         </div>
                       </TableCell>
                     </TableRow>

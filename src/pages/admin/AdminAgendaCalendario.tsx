@@ -36,16 +36,21 @@ import {
 import StatusColorsDialog from "@/components/admin/StatusColorsDialog";
 import { useAutoCompleteAppointments } from "@/hooks/useAutoCompleteAppointments";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Textarea } from "@/components/ui/textarea";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, X, User, Clock, CalendarIcon, Settings2, Pencil, CheckCircle, DollarSign, XCircle, CalendarDays, HelpCircle, ZoomIn, Settings, Globe, Link2, Copy, Palette, Check, ChevronsUpDown, Lock } from "lucide-react";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
-import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import { fetchIcal } from "@/lib/ical";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { generateRecurrenceDates, type RecurrenceType } from "@/lib/recurrence";
+import { validateAgendaSlot, readableTextColor, type AgendaEntry } from "@/lib/agendaValidation";
+import { toMin } from "@/lib/slots";
+import { CancelAppointmentDialog, type CancellationReason } from "@/components/admin/CancelAppointmentDialog";
+import { saveCancellationReason } from "@/lib/cancellations";
+import { fetchAllPages } from "@/lib/fetchAllPages";
 import type { EventInput, EventClickArg, DateSelectArg, EventApi } from "@fullcalendar/core";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -103,35 +108,40 @@ function ColorPicker({ value, onChange }: { value: string | null; onChange: (c: 
   );
 }
 
-// Cancelar remove o registro, então passa por confirmação. Usado no modal de
-// detalhe tanto para consulta quanto para bloqueio.
-function CancelAppointmentButton({ onConfirm, disabled }: { onConfirm: () => void; disabled?: boolean }) {
+// Badge de status/pagamento com texto legível: a cor de fundo é escolhida pelo
+// profissional e pode ser clara (o amarelo de "Concluído", por exemplo), então o
+// texto não pode ser branco fixo — `readableTextColor` decide por contraste.
+function StatusBadge({ label, color, icon }: { label: string; color: string; icon?: React.ReactNode }) {
   return (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>
+    <Badge style={{ backgroundColor: color, color: readableTextColor(color), borderColor: color }}>
+      {icon}
+      {label}
+    </Badge>
+  );
+}
+
+// Cancelar remove o registro da agenda (o horário precisa voltar a ficar livre),
+// mas o cancelamento em si fica guardado em `appointment_cancellations` — por
+// isso o diálogo já pergunta o motivo. Ver components/admin/CancelAppointmentDialog.
+function CancelAppointmentButton({
+  onConfirm,
+  disabled,
+  resumo,
+}: {
+  onConfirm: (motivo: CancellationReason) => void;
+  disabled?: boolean;
+  resumo?: React.ReactNode;
+}) {
+  return (
+    <CancelAppointmentDialog
+      resumo={resumo}
+      onConfirm={onConfirm}
+      trigger={
         <Button size="sm" variant="outline" className="text-destructive" disabled={disabled}>
           <XCircle className="h-3 w-3 mr-1" /> Cancelar
         </Button>
-      </AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Cancelar este agendamento?</AlertDialogTitle>
-          <AlertDialogDescription>
-            O agendamento será <strong>removido da agenda</strong> e o horário volta a
-            ficar livre. Esta ação não pode ser desfeita.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Voltar</AlertDialogCancel>
-          <AlertDialogAction
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            onClick={onConfirm}
-          >
-            Cancelar agendamento
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+      }
+    />
   );
 }
 
@@ -320,15 +330,39 @@ export default function AdminAgendaCalendario() {
   const calendarRef = useRef<FullCalendar>(null);
   const isMobile = useIsMobile();
 
+  // ── Carga por PERÍODO VISÍVEL ──────────────────────────────────────────────
+  // As duas queries abaixo traziam a agenda INTEIRA, sem .range(). O PostgREST
+  // corta em 1000 linhas e não devolve erro nenhum: numa agenda com séries
+  // longas (uma recorrência diária "para sempre" já grava 730 registros), os
+  // eventos passavam a sumir do grid sem explicação.
+  // O padding de 31 dias dos dois lados cobre a navegação entre meses e os
+  // marcadores do mini calendário sem precisar recarregar a cada clique.
+  const RANGE_PADDING = 31;
+  const [range, setRange] = useState(() => ({
+    start: format(addDays(new Date(), -RANGE_PADDING), "yyyy-MM-dd"),
+    end: format(addDays(new Date(), RANGE_PADDING), "yyyy-MM-dd"),
+  }));
+
   // Mini calendário de navegação — mês sincroniza com a view do FullCalendar;
   // clicar num dia navega o calendário grande (gotoDate) e fecha o popover.
   // Mesmo padrão de Popover+Calendar já usado nos campos "Data" desta tela.
   const [miniCalMonth, setMiniCalMonth] = useState<Date>(new Date());
+  const [miniCalDay, setMiniCalDay] = useState<Date>(new Date());
   const [miniCalOpen, setMiniCalOpen] = useState(false);
   const goToDate = useCallback((date: Date) => {
     calendarRef.current?.getApi().gotoDate(date);
     setMiniCalMonth(date);
+    setMiniCalDay(date);
     setMiniCalOpen(false);
+  }, []);
+
+  const handleDatesSet = useCallback((arg: { start: Date; end: Date; view: { currentStart: Date } }) => {
+    setMiniCalMonth(arg.view.currentStart);
+    const start = format(addDays(arg.start, -RANGE_PADDING), "yyyy-MM-dd");
+    const end = format(addDays(arg.end, RANGE_PADDING), "yyyy-MM-dd");
+    // Só troca o objeto quando as datas mudam de verdade, senão a queryKey muda
+    // a cada render do calendário e a busca entra em laço.
+    setRange((prev) => (prev.start === start && prev.end === end ? prev : { start, end }));
   }, []);
 
   // Block dialog state
@@ -340,11 +374,12 @@ export default function AdminAgendaCalendario() {
   const [blockType, setBlockType] = useState("personal");
   const [blockColor, setBlockColor] = useState<string | null>(null);
   const [blockLeadId, setBlockLeadId] = useState<string | null>(null);
+  const [blockServiceId, setBlockServiceId] = useState<string | null>(null);
   // Atendimento x bloqueio é ESCOLHA EXPLÍCITA — antes era inferido do título
   // (nome fora da lista de clientes virava bloqueio e poluía a aba Bloqueios).
   const [entryKind, setEntryKind] = useState<"booking" | "block">("booking");
   const [recurrence, setRecurrence] = useState<RecurrenceType>("unico");
-  const [recEndDate, setRecEndDate] = useState<Date>(new Date());
+  const [recEndDate, setRecEndDate] = useState<Date>(() => addDays(new Date(), 30));
   const [selectedDates, setSelectedDates] = useState<Date[]>([]);
 
   // Event detail dialog
@@ -426,14 +461,22 @@ export default function AdminAgendaCalendario() {
       const events = await fetchIcal(icalUrl);
       if (events.length === 0) { toast.info("Nenhum evento encontrado."); return; }
       // Sync idempotente: cada clique substitui o lote anterior em vez de empilhar
-      // duplicatas (block_type "other" é usado só por esta importação, nunca por
-      // bloqueio manual — ver TituloCombobox/blockType, que só grava "personal").
-      const { error: deleteError } = await supabase
+      // duplicatas.
+      //
+      // O filtro é `source = 'ical'`, NUNCA `block_type = 'other'`. Até 02/08/2026
+      // era por block_type — e como a aba Bloqueios oferece "Outro" como
+      // CATEGORIA, sincronizar apagava os bloqueios manuais dessa categoria
+      // (um "Férias de janeiro" sumia inteiro). Origem e categoria são coisas
+      // diferentes: ver migration 20260802_appointments_source.
+      // O `as any` isola a coluna nova (migration 20260802) do types.ts gerado,
+      // que ainda não foi regerado — mesmo padrão já usado em `color`/`lead_id`.
+      // O cast é no builder inteiro: aplicá-lo só no nome da coluna faz o
+      // TypeScript expandir a união de colunas e estourar a profundidade.
+      const delQuery = supabase
         .from("appointments")
         .delete()
-        .eq("professional_id", professional.id)
-        .eq("appointment_type", "block")
-        .eq("block_type", "other");
+        .eq("professional_id", professional.id);
+      const { error: deleteError } = await (delQuery as any).eq("source", "ical");
       if (deleteError) throw deleteError;
       const recurrenceGroup = crypto.randomUUID();
       const records = events.map((ev) => ({
@@ -444,6 +487,7 @@ export default function AdminAgendaCalendario() {
         notes: ev.summary,
         description: ev.description || null,
         block_type: "other",
+        source: "ical",
         appointment_type: "block" as const,
         status: "confirmed" as const,
         patient_id: null,
@@ -452,6 +496,7 @@ export default function AdminAgendaCalendario() {
       const { error } = await supabase.from("appointments").insert(records as any);
       if (error) throw error;
       queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-block-groups"] });
       toast.success(`${events.length} evento(s) importado(s) do Google Agenda!`);
       setIcalDialogOpen(false);
     } catch (e: any) {
@@ -489,16 +534,20 @@ export default function AdminAgendaCalendario() {
     }
   }, [availability]);
 
-  // Fetch appointments
-  const { data: appointments = [], refetch: refetchAppointments } = useQuery({
-    queryKey: ["agenda-appointments-all", professional?.id],
+  // Fetch appointments — só o período visível (ver comentário do `range`).
+  const { data: appointments = [], isLoading: loadingAppointments, refetch: refetchAppointments } = useQuery({
+    queryKey: ["agenda-appointments-all", professional?.id, range.start, range.end],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("appointments")
-        .select("*, professional_services(name)")
-        .eq("professional_id", professional!.id)
-        .in("status", ["pending", "confirmed", "completed", "cancelled"]);
-      if (error) throw error;
+      const data = await fetchAllPages<any>((from, to) =>
+        supabase
+          .from("appointments")
+          .select("*, professional_services(name)")
+          .eq("professional_id", professional!.id)
+          .in("status", ["pending", "confirmed", "completed", "cancelled"])
+          .gte("appointment_date", range.start)
+          .lte("appointment_date", range.end)
+          .order("appointment_date")
+          .range(from, to));
 
       const bookings = data.filter((a) => !a.appointment_type || a.appointment_type === "booking");
       const patientIds = [...new Set(bookings.map((a) => a.patient_id).filter(Boolean))];
@@ -516,23 +565,31 @@ export default function AdminAgendaCalendario() {
       }));
     },
     enabled: !!professional?.id,
+    // Mantém o mês anterior desenhado enquanto o novo carrega, em vez de piscar
+    // um calendário vazio a cada clique em "próximo".
+    placeholderData: (anterior) => anterior,
   });
 
-  // Confirmados cujo horário já passou viram "Concluído" sozinhos.
+  // Reforço do cron `auto_complete_appointments` (migration 20260802b): fecha na
+  // hora o que o profissional está vendo, sem esperar o próximo tick de 15 min.
   useAutoCompleteAppointments(appointments as any);
 
-  // Fetch blocks
-  const { data: blocks = [], refetch: refetchBlocks } = useQuery({
-    queryKey: ["agenda-blocks-all", professional?.id],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("appointments")
-        .select("*")
-        .eq("professional_id", professional!.id)
-        .eq("appointment_type", "block");
-      return data ?? [];
-    },
+  // Fetch blocks — mesmo recorte de período dos agendamentos.
+  const { data: blocks = [], isLoading: loadingBlocks, refetch: refetchBlocks } = useQuery({
+    queryKey: ["agenda-blocks-all", professional?.id, range.start, range.end],
+    queryFn: async () =>
+      fetchAllPages<any>((from, to) =>
+        supabase
+          .from("appointments")
+          .select("*")
+          .eq("professional_id", professional!.id)
+          .eq("appointment_type", "block")
+          .gte("appointment_date", range.start)
+          .lte("appointment_date", range.end)
+          .order("appointment_date")
+          .range(from, to)),
     enabled: !!professional?.id,
+    placeholderData: (anterior) => anterior,
   });
 
   // Realtime
@@ -561,37 +618,53 @@ export default function AdminAgendaCalendario() {
       } else {
         dates = generateRecurrenceDates(blockDate, recEndDate, recurrence);
       }
+      dates = [...new Set(dates)].sort();
 
-      if (dates.length === 0) throw new Error("Nenhuma data");
+      if (dates.length === 0) {
+        // Acontecia calado quando a data de término ficava antes da de início:
+        // generateRecurrenceDates devolve lista vazia e o erro era só "Nenhuma data".
+        throw new Error(
+          recurrence === "selecionavel"
+            ? "Selecione ao menos uma data no calendário."
+            : "Nenhuma data foi gerada — verifique se a data de término é posterior à de início.",
+        );
+      }
 
       // O tipo vem do seletor da tela, não do título: nome livre de cliente ainda
       // não cadastrado continua sendo ATENDIMENTO (só não dispara lembrete, por
       // não ter WhatsApp vinculado).
       const isBooking = entryKind === "booking";
 
-      // ── VALIDAÇÃO ANTI-DOUBLE-BOOKING ──────────────────────────────────
-      // Todo compromisso criado ocupa o horário: recusa se houver consulta real
-      // (não-bloqueio) se sobrepondo no mesmo dia. Usa overlap de intervalo
-      // (.lt/.gt), não start_time exato. NÃO usa .is('appointment_type', null):
-      // o default da coluna virou 'booking', então bookings reais não são null.
-      for (const date of dates) {
-        let q = supabase
+      // ── VALIDAÇÃO ──────────────────────────────────────────────────────
+      // Mesma função usada ao arrastar e ao editar (lib/agendaValidation):
+      // intervalo coerente + almoço do dia + conflito considerando a folga.
+      // Antes daqui, só a sobreposição crua era checada — dava para criar pelo
+      // formulário exatamente o que o arraste recusava.
+      //
+      // Os vizinhos vêm do BANCO, não da memória: a recorrência costuma cair
+      // fora do período carregado no grid, e outra aba pode ter gravado agora.
+      const vizinhos = await fetchAllPages<AgendaEntry>((from, to) =>
+        supabase
           .from("appointments")
-          .select("id")
+          .select("id, appointment_date, start_time, end_time, status, appointment_type")
           .eq("professional_id", professional.id)
-          .eq("appointment_date", date)
+          .gte("appointment_date", dates[0])
+          .lte("appointment_date", dates[dates.length - 1])
           .in("status", ["pending", "confirmed"])
-          .lt("start_time", blockEndTime)
-          .gt("end_time", blockStartTime);
-        // booking de cliente conflita com TUDO ocupado; bloqueio só com consultas reais.
-        if (!isBooking) q = q.or("appointment_type.eq.booking,appointment_type.is.null");
-        const { data: conflitos } = await q;
+          .order("appointment_date")
+          .range(from, to));
 
-        if (conflitos && conflitos.length > 0) {
-          throw new Error(
-            `Conflito de horário: já existe um agendamento em ${date} nesse intervalo. Escolha outro horário.`
-          );
-        }
+      for (const date of dates) {
+        const check = validateAgendaSlot({
+          date,
+          startTime: blockStartTime,
+          endTime: blockEndTime,
+          kind: isBooking ? "booking" : "block",
+          entries: vizinhos,
+          lunchByDay,
+          bufferMinutes: bufferMin,
+        });
+        if (!check.ok) throw new Error(check.reason);
       }
       // ──────────────────────────────────────────────────────────────────
 
@@ -607,7 +680,15 @@ export default function AdminAgendaCalendario() {
         patient_id: null,
         recurrence_group: recurrenceGroup,
         ...(isBooking
-          ? { appointment_type: "booking", lead_id: blockLeadId, status: "pending", block_type: null }
+          ? {
+              appointment_type: "booking",
+              lead_id: blockLeadId,
+              status: "pending",
+              block_type: null,
+              // Sem isto o atendimento nascia sem serviço e a aba Agendamentos
+              // mostrava "—" na coluna Serviço.
+              service_id: blockServiceId,
+            }
           : { appointment_type: "block", lead_id: null, status: "confirmed", block_type: blockType }),
       }));
 
@@ -664,9 +745,37 @@ export default function AdminAgendaCalendario() {
     onError: () => toast.error("Erro ao remover série"),
   });
 
+  // Vizinhos de UM dia, direto do banco — usado pelas edições, que podem mover o
+  // compromisso para uma data fora do período carregado no grid.
+  const fetchDayEntries = useCallback(async (date: string): Promise<AgendaEntry[]> => {
+    const { data, error } = await supabase
+      .from("appointments")
+      .select("id, appointment_date, start_time, end_time, status, appointment_type")
+      .eq("professional_id", professional!.id)
+      .eq("appointment_date", date)
+      .in("status", ["pending", "confirmed"]);
+    if (error) throw error;
+    return (data ?? []) as AgendaEntry[];
+  }, [professional]);
+
   // Update block mutation
   const updateBlock = useMutation({
     mutationFn: async (id: string) => {
+      const date = format(editBlockDate, "yyyy-MM-dd");
+      // Editar pelo modal não passava por validação NENHUMA: dava para salvar
+      // fim antes do início, ou empurrar o bloqueio para cima de uma consulta.
+      const check = validateAgendaSlot({
+        date,
+        startTime: editBlockStartTime,
+        endTime: editBlockEndTime,
+        kind: "block",
+        ignoreId: id,
+        entries: await fetchDayEntries(date),
+        lunchByDay,
+        bufferMinutes: bufferMin,
+      });
+      if (!check.ok) throw new Error(check.reason);
+
       const { error } = await supabase
         .from("appointments")
         .update({
@@ -675,7 +784,7 @@ export default function AdminAgendaCalendario() {
           start_time: editBlockStartTime,
           end_time: editBlockEndTime,
           color: editBlockColor,
-          appointment_date: format(editBlockDate, "yyyy-MM-dd"),
+          appointment_date: date,
         } as any)
         .eq("id", id);
       if (error) throw error;
@@ -687,12 +796,25 @@ export default function AdminAgendaCalendario() {
       setDetailDialogOpen(false);
       setEditMode(false);
     },
-    onError: () => toast.error("Erro ao atualizar bloqueio"),
+    onError: (e: Error) => toast.error(e.message || "Erro ao atualizar bloqueio"),
   });
 
   // Update appointment mutation
   const updateAppointment = useMutation({
     mutationFn: async (id: string) => {
+      const date = format(editApptDate, "yyyy-MM-dd");
+      const check = validateAgendaSlot({
+        date,
+        startTime: editApptStartTime,
+        endTime: editApptEndTime,
+        kind: "booking",
+        ignoreId: id,
+        entries: await fetchDayEntries(date),
+        lunchByDay,
+        bufferMinutes: bufferMin,
+      });
+      if (!check.ok) throw new Error(check.reason);
+
       const { error } = await supabase
         .from("appointments")
         .update({
@@ -702,7 +824,7 @@ export default function AdminAgendaCalendario() {
           start_time: editApptStartTime,
           end_time: editApptEndTime,
           color: editApptColor,
-          appointment_date: format(editApptDate, "yyyy-MM-dd"),
+          appointment_date: date,
         } as any)
         .eq("id", id);
       if (error) throw error;
@@ -713,25 +835,32 @@ export default function AdminAgendaCalendario() {
       setDetailDialogOpen(false);
       setEditMode(false);
     },
-    onError: () => toast.error("Erro ao atualizar agendamento"),
+    onError: (e: Error) => toast.error(e.message || "Erro ao atualizar agendamento"),
   });
 
   // Cancelar É excluir: o registro sai do banco e o horário volta a ficar livre.
+  // O histórico não se perde — um trigger copia o agendamento para
+  // `appointment_cancellations` antes do DELETE (migration 20260802c).
   const cancelAndDelete = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({ id, motivo }: { id: string; motivo?: CancellationReason }) => {
       // .select() detecta exclusão barrada pela RLS, que voltaria como sucesso
       // com zero linhas (ver migration 20260728_appointments_delete_policies).
       const { data, error } = await supabase
         .from("appointments").delete().eq("id", id).select("id");
       if (error) throw error;
       if (!data?.length) throw new Error("Nada foi removido — o banco recusou a exclusão.");
+      // Só depois do delete a linha de cancelamento existe para receber o motivo.
+      await saveCancellationReason(id, motivo);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
       queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
       queryClient.invalidateQueries({ queryKey: ["professional-appointments"] });
       queryClient.invalidateQueries({ queryKey: ["admin-block-groups"] });
-      toast.success("Agendamento cancelado e removido da agenda!");
+      queryClient.invalidateQueries({ queryKey: ["appointment-cancellations"] });
+      toast.success("Cancelado e removido da agenda.", {
+        description: "O registro ficou guardado na aba Cancelados.",
+      });
       setDetailDialogOpen(false);
     },
     onError: (e: any) => toast.error("Erro ao cancelar", { description: e.message }),
@@ -807,39 +936,30 @@ export default function AdminAgendaCalendario() {
 
     const startDate = format(ev.start, "yyyy-MM-dd");
     const endDate = format(endRef, "yyyy-MM-dd");
-    // Arrastar/esticar entre dias vira barra confusa: recusa (recorrência é no editor).
-    if (startDate !== endDate) {
+    // Arrastar/esticar entre dias vira barra confusa: recusa (recorrência é no
+    // editor). O evento de dia inteiro é exceção: ele ocupa o dia por definição.
+    if (startDate !== endDate && !ev.allDay) {
       toast.info("Para repetir em vários dias, edite o agendamento e use a recorrência.");
       info.revert();
       return;
     }
 
-    // Item 3 — valida almoço + conflito (com a folga/buffer) antes de gravar o arraste.
-    const hhmmToMin = (t: string) => { const [h, m] = t.slice(0, 5).split(":").map(Number); return h * 60 + m; };
-    const sMin = hhmmToMin(format(ev.start, "HH:mm"));
-    const eMin = hhmmToMin(format(end, "HH:mm"));
-
-    const lunchDrag = lunchByDay[new Date(startDate + "T00:00:00").getDay()];
-    if (lunchDrag) {
-      const ls = hhmmToMin(lunchDrag.start);
-      const le = hhmmToMin(lunchDrag.end);
-      if (sMin < le && eMin > ls) {
-        toast.info(`Esse horário cai no intervalo de almoço (${lunchDrag.start}–${lunchDrag.end}). Desfazendo.`);
-        info.revert();
-        return;
-      }
-    }
-
-    const buffer = bufferMin || 0;
-    const conflita = [...appointments, ...blocks]
-      .filter((x: any) => x.id !== props.id && x.appointment_date === startDate)
-      .some((x: any) => {
-        const os = hhmmToMin(x.start_time);
-        const oe = hhmmToMin(x.end_time);
-        return sMin < oe + buffer && eMin > os - buffer;
-      });
-    if (conflita) {
-      toast.info("Esse horário conflita com outro agendamento (ou a folga entre eles). Desfazendo.");
+    // Mesma validação de criar e editar (lib/agendaValidation). O conflito agora
+    // ignora cancelados e concluídos: eles continuam desenhados no grid, e antes
+    // faziam a agenda recusar um horário que na prática estava livre.
+    const check = validateAgendaSlot({
+      date: startDate,
+      startTime: format(ev.start, "HH:mm"),
+      endTime: format(end, "HH:mm"),
+      kind: props.type === "block" ? "block" : "booking",
+      ignoreId: props.id as string,
+      entries: [...appointments, ...blocks] as AgendaEntry[],
+      lunchByDay,
+      bufferMinutes: bufferMin,
+      allDay: ev.allDay,
+    });
+    if (!check.ok) {
+      toast.info(`${check.reason ?? "Horário indisponível."} Desfazendo.`);
       info.revert();
       return;
     }
@@ -848,8 +968,10 @@ export default function AdminAgendaCalendario() {
       .from("appointments")
       .update({
         appointment_date: startDate,
-        start_time: format(ev.start, "HH:mm:ss"),
-        end_time: format(end, "HH:mm:ss"),
+        // Evento de dia inteiro (importado do Google) volta com a marcação
+        // original de 24h em vez do horário que o grid inventaria.
+        start_time: ev.allDay ? "00:00:00" : format(ev.start, "HH:mm:ss"),
+        end_time: ev.allDay ? "23:59:00" : format(end, "HH:mm:ss"),
       })
       .eq("id", props.id as string);
 
@@ -933,9 +1055,13 @@ export default function AdminAgendaCalendario() {
     setBlockType("personal");
     setBlockColor(null);
     setBlockLeadId(null);
+    setBlockServiceId(null);
     setEntryKind("booking");
     setRecurrence("unico");
     setSelectedDates([]);
+    // Ficava com a data da última recorrência criada — e, começando em "hoje",
+    // qualquer início futuro gerava zero datas com um erro que não explicava nada.
+    setRecEndDate(addDays(new Date(), 30));
   };
 
   // Dias com algum compromisso (agendamento ou bloqueio) — vira um pontinho no mini calendário.
@@ -946,46 +1072,64 @@ export default function AdminAgendaCalendario() {
     return set;
   }, [appointments, blocks]);
 
+  // Evento que cobre o dia inteiro. Sem isto ele vira uma barra de 24 horas que
+  // engole a coluna e esconde o resto.
+  //
+  // A tolerância NÃO é decorativa: em produção existem 131 compromissos gravados
+  // como 00:01–23:59 (o "Compromisso pessoal" de dia inteiro criado à mão), além
+  // dos 00:00–23:59 que vêm do Google. Uma comparação exata deixaria os 131 de
+  // fora e ainda esticaria o grid de 00:00 às 24:00 todo dia.
+  const isAllDay = (r: { start_time?: string; end_time?: string }) => {
+    if (!r.start_time || !r.end_time) return false;
+    return toMin(r.start_time) <= 5 && toMin(r.end_time) >= 23 * 60 + 55;
+  };
+
   // Build events
-  const buildEvents = useCallback((): EventInput[] => {
-    const events: EventInput[] = [];
+  const events = useMemo((): EventInput[] => {
+    const out: EventInput[] = [];
 
     appointments.forEach((appt: any) => {
       const displayName = appt.block_type === "personal"
         ? "Pessoal"
         : (appt.patientName || "Paciente");
       const serviceName = appt.professional_services?.name || "Consulta";
-      events.push({
+      const fundo = appt.color || getStatusColor(appt.status);
+      out.push({
         id: `appt-${appt.id}`,
         title: `${displayName} — ${serviceName}`,
         start: `${appt.appointment_date}T${appt.start_time}`,
         end: `${appt.appointment_date}T${appt.end_time}`,
-        backgroundColor: appt.color || getStatusColor(appt.status),
+        allDay: isAllDay(appt),
+        backgroundColor: fundo,
         borderColor: getStatusColor(appt.status),
-        textColor: "#fff",
+        // Era "#fff" fixo: branco sobre o amarelo de "Concluído" dá 1.7:1 de
+        // contraste, metade do mínimo legível.
+        textColor: readableTextColor(fundo),
         classNames: appt.color ? ["fc-event-tinted"] : undefined,
-        extendedProps: { type: "appointment", ...appt },
+        extendedProps: { type: "appointment", displayName, serviceName, ...appt },
       });
     });
 
     blocks.forEach((block: any) => {
       // F17 — sem "tipo": o título é o que a pessoa digitou (cor diferencia o evento).
       const blockTitle = block.notes || "Compromisso";
-      events.push({
+      const fundo = block.color || getStatusColor(block.status || "pending");
+      out.push({
         id: `block-${block.id}`,
         title: blockTitle,
         start: `${block.appointment_date}T${block.start_time}`,
         end: `${block.appointment_date}T${block.end_time}`,
-        backgroundColor: block.color || getStatusColor(block.status || "pending"),
+        allDay: isAllDay(block),
+        backgroundColor: fundo,
         borderColor: getStatusColor(block.status || "pending"),
-        textColor: "#fff",
+        textColor: readableTextColor(fundo),
         classNames: block.color ? ["fc-event-tinted"] : undefined,
-        extendedProps: { type: "block", ...block },
+        extendedProps: { type: "block", displayName: blockTitle, ...block },
       });
     });
 
     availability.filter((a) => a.active).forEach((avail) => {
-      events.push({
+      out.push({
         id: `avail-${avail.id}`,
         title: "",
         daysOfWeek: [avail.day_of_week],
@@ -997,8 +1141,98 @@ export default function AdminAgendaCalendario() {
       });
     });
 
-    return events;
+    return out;
   }, [appointments, blocks, availability, getStatusColor]);
+
+  const temAllDay = useMemo(
+    () => [...appointments, ...blocks].some((r: any) => isAllDay(r)),
+    [appointments, blocks],
+  );
+
+  // Janela de horas do grid, derivada do que existe de verdade. Era fixa em
+  // 07:00–22:00: quem atendia às 6h30 ou marcava algo às 22h30 simplesmente não
+  // via o compromisso no calendário.
+  const { slotMinTime, slotMaxTime } = useMemo(() => {
+    const horas: number[] = [];
+    availability.filter((a) => a.active).forEach((a) => {
+      horas.push(Math.floor(toMin(a.start_time) / 60), Math.ceil(toMin(a.end_time) / 60));
+    });
+    [...appointments, ...blocks].forEach((r: any) => {
+      if (isAllDay(r)) return;
+      horas.push(Math.floor(toMin(r.start_time) / 60), Math.ceil(toMin(r.end_time) / 60));
+    });
+    const min = horas.length ? Math.min(7, ...horas) : 7;
+    const max = horas.length ? Math.max(22, ...horas) : 22;
+    return {
+      slotMinTime: `${String(Math.max(0, min)).padStart(2, "0")}:00:00`,
+      slotMaxTime: `${String(Math.min(24, max)).padStart(2, "0")}:00:00`,
+    };
+  }, [availability, appointments, blocks]);
+
+  // O esqueleto é só da PRIMEIRA carga. Trocar de mês muda a queryKey (o período
+  // faz parte dela), então sem esta trava o calendário desmontaria e remontaria
+  // a cada navegação — perdendo inclusive a view escolhida pela pessoa.
+  const carregando = loadingAppointments || loadingBlocks;
+  const [jaCarregou, setJaCarregou] = useState(false);
+  useEffect(() => {
+    if (!carregando) setJaCarregou(true);
+  }, [carregando]);
+  const mostrarEsqueleto = carregando && !jaCarregou;
+
+  // Meia-noite de hoje — referência para esmaecer os dias já vividos.
+  const hojeZero = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+
+  // A view inicial é lida UMA vez, no construtor do FullCalendar. Como
+  // `useIsMobile` devolve false no primeiro render (só mede depois do efeito), a
+  // agenda abria em "Semana" no celular — sete colunas num tela de 6 cm — e
+  // ficava assim para sempre. Aqui a correção vai pela API.
+  useEffect(() => {
+    const api = calendarRef.current?.getApi();
+    if (!api) return;
+    const alvo = isMobile ? "timeGridDay" : "timeGridWeek";
+    const atual = api.view.type;
+    // Respeita quem escolheu "Mês": só alterna entre dia e semana.
+    if (atual !== alvo && (atual === "timeGridDay" || atual === "timeGridWeek")) {
+      api.changeView(alvo);
+    }
+  }, [isMobile, carregando]);
+
+  // Passado esmaecido: dá relevo ao que ainda vai acontecer, que é o que importa
+  // na tela. O corte é por FIM do evento, não por dia.
+  const eventClassNames = useCallback((arg: { event: EventApi }) => {
+    const fim = arg.event.end ?? arg.event.start;
+    return fim && fim.getTime() < Date.now() ? ["fc-event-passado"] : [];
+  }, []);
+
+  // Conteúdo do evento. O padrão era a string "Nome — Serviço" inteira, que
+  // sumia em reticências no primeiro corte. Aqui o nome tem prioridade, o
+  // serviço aparece se couber, e os sinais (bloqueio, pago) viram ícone.
+  const renderEventContent = useCallback((arg: { event: EventApi; timeText: string; view: { type: string } }) => {
+    const p = arg.event.extendedProps as any;
+    if (p.type === "availability") return null;
+
+    const bloqueio = p.type === "block";
+    const pago = p.payment_status === "paid";
+    const compacto = arg.view.type === "dayGridMonth" || arg.event.allDay;
+
+    return (
+      <div className="fc-pp-event">
+        <div className="fc-pp-linha">
+          {bloqueio && <Lock className="fc-pp-icone" aria-hidden />}
+          {arg.timeText && <span className="fc-pp-hora">{arg.timeText}</span>}
+          <span className="fc-pp-nome">{p.displayName || arg.event.title}</span>
+          {pago && <span className="fc-pp-pago" title="Pago" aria-label="Pago">•</span>}
+        </div>
+        {!compacto && p.serviceName && (
+          <div className="fc-pp-servico">{p.serviceName}</div>
+        )}
+      </div>
+    );
+  }, []);
 
   const handleEventClick = (info: EventClickArg) => {
     const props = info.event.extendedProps;
@@ -1007,13 +1241,34 @@ export default function AdminAgendaCalendario() {
     setDetailDialogOpen(true);
   };
 
+  // Duração de um slot do grid — a seleção de um clique simples tem esse tamanho.
+  const SLOT_MS = 30 * 60000;
+
   const handleDateSelect = (info: DateSelectArg) => {
-    const start = info.start;
-    const defaultDuration = services.length > 0 ? services[0].duration_minutes : 60;
-    const calculatedEnd = new Date(start.getTime() + defaultDuration * 60000);
+    // Sem o reset, o formulário abria com o título, o tipo e a cor do
+    // agendamento anterior, e a pessoa salvava sem perceber.
+    resetBlockForm();
+
+    const servicoPadrao = (services.length > 0 ? services[0].duration_minutes : 60) * 60000;
+    let start = info.start;
+    let duracao: number;
+
+    if (info.allDay) {
+      // Visão de mês: a seleção é o dia inteiro. Abre às 9h com a duração do serviço.
+      start = new Date(info.start);
+      start.setHours(9, 0, 0, 0);
+      duracao = servicoPadrao;
+    } else {
+      // A duração ARRASTADA manda. Antes ela era descartada: arrastar das 14h às
+      // 16h abria o formulário 14h–15h. Um clique só (um slot) continua usando a
+      // duração do serviço, que é o que se espera de um clique.
+      const selecionado = info.end.getTime() - info.start.getTime();
+      duracao = selecionado > SLOT_MS ? selecionado : servicoPadrao;
+    }
+
     setBlockDate(start);
     setBlockStartTime(format(start, "HH:mm"));
-    setBlockEndTime(format(calculatedEnd, "HH:mm"));
+    setBlockEndTime(format(new Date(start.getTime() + duracao), "HH:mm"));
     setRecurrence("unico");
     setBlockDialogOpen(true);
   };
@@ -1046,9 +1301,12 @@ export default function AdminAgendaCalendario() {
                 mode="single"
                 month={miniCalMonth}
                 onMonthChange={setMiniCalMonth}
+                // Sem `selected` o dia em que a agenda está não ficava marcado,
+                // e o mini calendário abria sempre "sem lugar nenhum".
+                selected={miniCalDay}
                 onSelect={(d) => d && goToDate(d)}
                 modifiers={{ hasEvents: (date) => eventDates.has(format(date, "yyyy-MM-dd")) }}
-                modifiersClassNames={{ hasEvents: "underline decoration-2 decoration-primary underline-offset-4" }}
+                modifiersClassNames={{ hasEvents: "fc-mini-com-evento" }}
                 locale={ptBR}
                 className="p-3 pointer-events-auto"
               />
@@ -1080,7 +1338,33 @@ export default function AdminAgendaCalendario() {
         </div>
       </div>
 
+      {/* Legenda — o único lugar onde as cores eram explicadas ficava dentro do
+          diálogo de configuração, então ninguém sabia o que cada cor queria dizer. */}
+      <div className="flex items-center gap-x-4 gap-y-1.5 flex-wrap text-xs text-muted-foreground">
+        {(["pending", "confirmed", "completed"] as const).map((s) => (
+          <span key={s} className="inline-flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: getStatusColor(s) }} />
+            {STATUS_LABELS[s]}
+          </span>
+        ))}
+        <span className="inline-flex items-center gap-1.5">
+          <Lock className="h-3 w-3" /> Bloqueio
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: getPaymentColor("paid") }} /> Pago
+        </span>
+      </div>
+
       <div className="fc-wrapper bg-card rounded-lg border p-2 sm:p-4">
+        {mostrarEsqueleto ? (
+          <div className="space-y-2" aria-busy="true" aria-label="Carregando a agenda">
+            <Skeleton className="h-9 w-full" />
+            <div className="grid grid-cols-7 gap-2">
+              {Array.from({ length: 7 }).map((_, i) => <Skeleton key={i} className="h-6" />)}
+            </div>
+            <Skeleton className="h-[420px] w-full" />
+          </div>
+        ) : (
         <FullCalendar
           ref={calendarRef}
           plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
@@ -1088,13 +1372,20 @@ export default function AdminAgendaCalendario() {
           headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek,timeGridDay" }}
           locale="pt-br"
           firstDay={0}
-          slotMinTime="07:00:00"
-          slotMaxTime="22:00:00"
+          // Derivados do que existe na agenda: a janela fixa 07:00–22:00 tornava
+          // invisível qualquer compromisso fora dela (ver useMemo acima).
+          slotMinTime={slotMinTime}
+          slotMaxTime={slotMaxTime}
           snapDuration="00:15:00"
           slotDuration="00:30:00"
           slotLabelInterval="01:00:00"
           slotLabelFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
-          allDaySlot={false}
+          // Ligado por causa dos eventos de dia inteiro do Google, que como
+          // 00:00–23:59 viravam uma barra gigante em cima da coluna do dia.
+          // Só aparece quando existe algum: senão é uma faixa vazia roubando
+          // altura do grid todo santo dia.
+          allDaySlot={temAllDay}
+          allDayText="Dia todo"
           // Abaixo desta altura o evento usa layout de UMA linha (hora + título
           // lado a lado). Com slot de 2rem, um evento de 30 min tem ~32px: sem
           // subir este limite ele empilharia em 2 linhas e o texto seria cortado.
@@ -1112,14 +1403,18 @@ export default function AdminAgendaCalendario() {
           eventClick={handleEventClick}
           eventDrop={(info) => persistEventTimes(info, false)}
           eventResize={(info) => persistEventTimes(info, true)}
-          datesSet={(arg) => setMiniCalMonth(arg.view.currentStart)}
-          events={buildEvents()}
+          datesSet={handleDatesSet}
+          eventContent={renderEventContent}
+          eventClassNames={eventClassNames}
+          dayCellClassNames={(arg) => (arg.date < hojeZero ? ["fc-dia-passado"] : [])}
+          events={events}
           height="auto"
           expandRows={true}
           dayHeaderFormat={{ weekday: "short", day: "numeric", month: "numeric" }}
           buttonText={{ today: "Hoje", month: "Mês", week: "Semana", day: "Dia" }}
           eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
         />
+        )}
       </div>
 
       {/* Block Dialog with Recurrence */}
@@ -1176,6 +1471,40 @@ export default function AdminAgendaCalendario() {
                 </p>
               )}
             </div>
+
+            {/* Serviço só existe para atendimento. Sem este campo o agendamento
+                nascia sem service_id e a aba Agendamentos mostrava "—". */}
+            {entryKind === "booking" && services.length > 0 && (
+              <div>
+                <Label>Serviço</Label>
+                <Select
+                  value={blockServiceId ?? "__none"}
+                  onValueChange={(v) => {
+                    const id = v === "__none" ? null : v;
+                    setBlockServiceId(id);
+                    // Escolher o serviço ajusta o fim pela duração cadastrada —
+                    // é o dado que a pessoa já configurou, não faz sentido
+                    // pedir de novo.
+                    const s = services.find((x) => x.id === id);
+                    if (s?.duration_minutes) {
+                      const [h, m] = blockStartTime.split(":").map(Number);
+                      const fim = new Date(2000, 0, 1, h, m + s.duration_minutes);
+                      setBlockEndTime(format(fim, "HH:mm"));
+                    }
+                  }}
+                >
+                  <SelectTrigger><SelectValue placeholder="Sem serviço" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">Sem serviço</SelectItem>
+                    {services.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name} ({s.duration_minutes} min)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Início</Label>
@@ -1194,7 +1523,18 @@ export default function AdminAgendaCalendario() {
             </div>
             <div>
               <Label>Recorrência</Label>
-              <Select value={recurrence} onValueChange={(v) => setRecurrence(v as RecurrenceType)}>
+              <Select
+                value={recurrence}
+                onValueChange={(v) => {
+                  setRecurrence(v as RecurrenceType);
+                  // Uma data de término anterior ao início gera zero ocorrências.
+                  // Ao ligar a recorrência, o término salta 30 dias à frente do
+                  // início em vez de ficar preso no valor antigo.
+                  if (v === "diario" || v === "semanal" || v === "quinzenal") {
+                    setRecEndDate((prev) => (prev > blockDate ? prev : addDays(blockDate, 30)));
+                  }
+                }}
+              >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {Object.entries(RECURRENCE_LABELS).map(([key, label]) => (
@@ -1285,13 +1625,13 @@ export default function AdminAgendaCalendario() {
           <DialogHeader>
             <div className="flex items-center justify-between pr-8">
               <DialogTitle>
-                {selectedEvent?.type === "appointment" ? "Consulta" : "Agendamento"}
+                {selectedEvent?.type === "appointment" ? "Consulta" : "Bloqueio"}
               </DialogTitle>
               {selectedEvent && !editMode && (
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button variant="ghost" size="icon" className="h-8 w-8" title="Cor do evento" aria-label="Cor do evento">
-                      <Settings className="h-4 w-4" />
+                      <Palette className="h-4 w-4" />
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent align="end" className="w-auto">
@@ -1330,13 +1670,15 @@ export default function AdminAgendaCalendario() {
                     <div className="text-sm text-muted-foreground">Serviço: {selectedEvent.professional_services.name}</div>
                   )}
                   <div className="flex items-center gap-2 flex-wrap">
-                    <Badge style={{ backgroundColor: getStatusColor(selectedEvent.status), color: "#fff", borderColor: getStatusColor(selectedEvent.status) }}>
-                      {STATUS_LABELS[selectedEvent.status] || selectedEvent.status}
-                    </Badge>
-                    <Badge style={{ backgroundColor: getPaymentColor(selectedEvent.payment_status || "pending"), color: "#fff", borderColor: getPaymentColor(selectedEvent.payment_status || "pending") }}>
-                      <DollarSign className="h-3 w-3 mr-1" />
-                      {PAYMENT_LABELS[selectedEvent.payment_status || "pending"]}
-                    </Badge>
+                    <StatusBadge
+                      label={STATUS_LABELS[selectedEvent.status] || selectedEvent.status}
+                      color={getStatusColor(selectedEvent.status)}
+                    />
+                    <StatusBadge
+                      label={PAYMENT_LABELS[selectedEvent.payment_status || "pending"]}
+                      color={getPaymentColor(selectedEvent.payment_status || "pending")}
+                      icon={<DollarSign className="h-3 w-3 mr-1" />}
+                    />
                   </div>
                   {selectedEvent.notes && <p className="text-sm text-muted-foreground border-t pt-2">{selectedEvent.notes}</p>}
 
@@ -1355,8 +1697,17 @@ export default function AdminAgendaCalendario() {
                         </Button>
                       )}
                       <CancelAppointmentButton
-                        onConfirm={() => cancelAndDelete.mutate(selectedEvent.id)}
+                        onConfirm={(motivo) => cancelAndDelete.mutate({ id: selectedEvent.id, motivo })}
                         disabled={cancelAndDelete.isPending}
+                        resumo={
+                          <>
+                            {selectedEvent.patientName}
+                            {" · "}
+                            {format(new Date(selectedEvent.appointment_date + "T12:00:00"), "dd/MM/yyyy")}
+                            {" · "}
+                            {selectedEvent.start_time?.slice(0, 5)}–{selectedEvent.end_time?.slice(0, 5)}
+                          </>
+                        }
                       />
                     </div>
                     <div className="flex gap-1">
@@ -1386,14 +1737,18 @@ export default function AdminAgendaCalendario() {
                     <CalendarIcon className="h-4 w-4 text-primary" />
                     <span className="font-medium">{selectedEvent.notes || "Agendamento"}</span>
                   </div>
-                   <div className="flex items-center gap-2 flex-wrap">
-                    <Badge style={{ backgroundColor: getStatusColor(selectedEvent.status || "pending"), color: "#fff", borderColor: getStatusColor(selectedEvent.status || "pending") }}>
-                      {STATUS_LABELS[selectedEvent.status] || selectedEvent.status || "Pendente"}
-                    </Badge>
-                    {selectedEvent.block_type === "atendimento" && (
-                      <Badge style={{ backgroundColor: getPaymentColor(selectedEvent.payment_status || "pending"), color: "#fff", borderColor: getPaymentColor(selectedEvent.payment_status || "pending") }}>
-                        <DollarSign className="h-3 w-3 mr-1" />
-                        {PAYMENT_LABELS[selectedEvent.payment_status || "pending"]}
+                  {/* Bloqueio não tem pagamento. O badge daqui dependia de
+                      block_type === "atendimento", valor que nunca é gravado em
+                      lugar nenhum (as categorias são personal/vacation/other) —
+                      era código morto sustentando um controle sem sentido. */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <StatusBadge
+                      label={STATUS_LABELS[selectedEvent.status] || selectedEvent.status || "Pendente"}
+                      color={getStatusColor(selectedEvent.status || "pending")}
+                    />
+                    {selectedEvent.source === "ical" && (
+                      <Badge variant="outline" className="gap-1">
+                        <CalendarDays className="h-3 w-3" /> Google Agenda
                       </Badge>
                     )}
                   </div>
@@ -1428,30 +1783,15 @@ export default function AdminAgendaCalendario() {
                           <CheckCircle className="h-3 w-3 mr-1" /> Concluir
                         </Button>
                       )}
-                      <CancelAppointmentButton
-                        onConfirm={() => cancelAndDelete.mutate(selectedEvent.id)}
-                        disabled={cancelAndDelete.isPending}
-                      />
-                    </div>
-                    <div className="flex gap-1">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => quickPaymentChange.mutate({
-                          id: selectedEvent.id,
-                          payment_status: selectedEvent.payment_status === "paid" ? "pending" : "paid",
-                        })}
-                        disabled={quickPaymentChange.isPending}
-                      >
-                        <DollarSign className="h-3 w-3 mr-1" />
-                        {selectedEvent.payment_status === "paid" ? "Marcar Pendente" : "Marcar Pago"}
-                      </Button>
+                      {/* Sem "Cancelar" aqui: bloqueio não é cancelamento (o
+                          histórico da aba Cancelados é só de atendimentos), e a
+                          remoção já está no botão destrutivo logo abaixo. */}
                     </div>
                   </div>
 
                   <div className="flex flex-col gap-2">
                     <Button variant="outline" size="sm" onClick={enterEditMode} className="w-full">
-                      <Pencil className="h-4 w-4 mr-1" /> Editar agendamento
+                      <Pencil className="h-4 w-4 mr-1" /> Editar bloqueio
                     </Button>
                     <Button
                       variant="destructive"
@@ -1460,7 +1800,7 @@ export default function AdminAgendaCalendario() {
                       disabled={removeBlock.isPending}
                     >
                       <X className="h-4 w-4 mr-1" />
-                      {removeBlock.isPending ? "Removendo..." : "Remover este agendamento"}
+                      {removeBlock.isPending ? "Removendo..." : "Remover este bloqueio"}
                     </Button>
                     {selectedEvent.recurrence_group && (
                       <Button
@@ -1629,7 +1969,7 @@ export default function AdminAgendaCalendario() {
               const Icon = s.icon;
               const total = TUTORIAL_STEPS_AGENDA.length;
               return (
-                <div className="rounded-xl border overflow-hidden bg-white shadow-sm">
+                <div className="rounded-xl border overflow-hidden bg-card shadow-sm">
                   {/* Imagem como background — nunca vaza */}
                   <div
                     className="relative h-44 cursor-zoom-in group"

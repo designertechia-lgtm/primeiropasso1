@@ -19,6 +19,7 @@ import { format, parseISO, addYears } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { generateRecurrenceDates, type RecurrenceType } from "@/lib/recurrence";
+import { fetchAllPages } from "@/lib/fetchAllPages";
 import { FieldHint } from "@/components/ui/FieldHint";
 
 const RECURRENCE_OPTIONS: { value: RecurrenceType; label: string; desc: string }[] = [
@@ -101,21 +102,16 @@ export default function AdminDisponibilidade() {
       // Busca PAGINADA: o PostgREST corta em 1000 linhas sem devolver erro. Com
       // 4k+ bloqueios numa agenda, o "Nx" de cada série saía menor que o real
       // (uma série de 867 aparecia como 489x) porque só o primeiro lote chegava.
-      const PAGE = 1000;
-      const data: any[] = [];
-      for (let from = 0; from < 50_000; from += PAGE) {
-        const { data: page, error } = await supabase
+      // O laço virou `fetchAllPages`, compartilhado com o calendário.
+      const data = await fetchAllPages<any>((from, to) =>
+        supabase
           .from("appointments")
           .select("*")
           .eq("professional_id", professional!.id)
           .eq("appointment_type", "block")
           .or("block_type.neq.appointment,block_type.is.null")
           .order("appointment_date", { ascending: true })
-          .range(from, from + PAGE - 1);
-        if (error) throw error;
-        data.push(...(page ?? []));
-        if (!page || page.length < PAGE) break;
-      }
+          .range(from, to));
 
       const groups = new Map<string, typeof data>();
       (data ?? []).forEach((block) => {
@@ -129,6 +125,9 @@ export default function AdminDisponibilidade() {
         blocks: blocks!,
         title:     blocks![0].notes || "Bloqueado",
         blockType: blocks![0].block_type || "other",
+        // Origem, para o profissional saber o que é dele e o que veio do Google
+        // — e entender por que a próxima sincronização vai substituir o lote.
+        isIcal:    blocks![0].source === "ical",
         startTime: blocks![0].start_time,
         endTime:   blocks![0].end_time,
         firstDate: blocks![0].appointment_date,
@@ -479,6 +478,11 @@ export default function AdminDisponibilidade() {
                         <Badge variant="secondary" className="text-xs shrink-0">
                           {BLOCK_TYPE_LABELS[group.blockType] || group.blockType}
                         </Badge>
+                        {group.isIcal && (
+                          <Badge variant="outline" className="text-xs gap-1 shrink-0" title="Importado do Google Agenda — substituído a cada sincronização">
+                            <CalendarIcon className="h-3 w-3" /> Google
+                          </Badge>
+                        )}
                         {group.isRecurring && (
                           <Badge variant="outline" className="text-xs gap-1 shrink-0">
                             <Repeat className="h-3 w-3" /> {group.count}x

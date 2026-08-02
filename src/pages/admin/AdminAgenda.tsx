@@ -1,11 +1,12 @@
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CalendarDays, ListChecks, Lock } from "lucide-react";
+import { CalendarDays, ListChecks, Lock, CalendarX2 } from "lucide-react";
 import AdminAgendaCalendario from "./AdminAgendaCalendario";
 import AdminAgendamentos from "./AdminAgendamentos";
 import AdminDisponibilidade from "./AdminDisponibilidade";
+import AdminCancelados from "./AdminCancelados";
 
-const VALID_TABS = ["calendario", "agendamentos", "bloqueios"] as const;
+const VALID_TABS = ["calendario", "agendamentos", "bloqueios", "cancelados"] as const;
 type TabValue = (typeof VALID_TABS)[number];
 
 export default function AdminAgenda() {
@@ -27,7 +28,7 @@ export default function AdminAgenda() {
   return (
     <div className="space-y-4">
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full max-w-xl grid-cols-3">
+        <TabsList className="grid w-full max-w-2xl grid-cols-4">
           <TabsTrigger value="calendario" className="gap-2">
             <CalendarDays className="h-4 w-4" />
             <span className="hidden sm:inline">Calendário</span>
@@ -39,6 +40,10 @@ export default function AdminAgenda() {
           <TabsTrigger value="bloqueios" className="gap-2">
             <Lock className="h-4 w-4" />
             <span className="hidden sm:inline">Bloqueios</span>
+          </TabsTrigger>
+          <TabsTrigger value="cancelados" className="gap-2">
+            <CalendarX2 className="h-4 w-4" />
+            <span className="hidden sm:inline">Cancelados</span>
           </TabsTrigger>
         </TabsList>
 
@@ -52,6 +57,10 @@ export default function AdminAgenda() {
 
         <TabsContent value="bloqueios" className="mt-4">
           <AdminDisponibilidade />
+        </TabsContent>
+
+        <TabsContent value="cancelados" className="mt-4">
+          <AdminCancelados />
         </TabsContent>
       </Tabs>
     </div>

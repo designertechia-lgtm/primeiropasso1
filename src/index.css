@@ -204,6 +204,43 @@
    cor do STATUS (Pendente/Confirmado/Concluído/Cancelado), pra não perder o sinal
    de status quando o fundo é uma cor escolhida pelo profissional. */
 .fc-wrapper .fc-event-tinted { border-left-width: 5px !important; }
+
+/* ── Agenda: conteúdo do evento (eventContent em AdminAgendaCalendario) ──────
+   O layout padrão jogava "Nome — Serviço" numa string só, que sumia em
+   reticências no primeiro corte. Aqui o nome tem prioridade de espaço e o
+   serviço só aparece quando há altura para ele. */
+.fc-pp-event { display: flex; flex-direction: column; gap: 1px; min-width: 0; overflow: hidden; }
+.fc-pp-linha { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.fc-pp-icone { height: 11px; width: 11px; flex: 0 0 auto; opacity: 0.85; }
+.fc-pp-hora { flex: 0 0 auto; font-weight: 600; font-variant-numeric: tabular-nums; opacity: 0.9; }
+.fc-pp-nome { flex: 1 1 auto; min-width: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-pp-servico { font-size: 0.68rem; opacity: 0.85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Bolinha de "pago" — herda a cor do texto, que já é calculada por contraste. */
+.fc-pp-pago { flex: 0 0 auto; font-size: 1.1em; line-height: 0; opacity: 0.9; }
+
+/* Passado esmaecido: o que já aconteceu recua, o que vem pela frente salta.
+   Continua clicável e legível — é opacidade, não desligamento. */
+.fc-wrapper .fc .fc-event-passado { opacity: 0.55; }
+.fc-wrapper .fc .fc-event-passado:hover { opacity: 0.85; }
+.fc-wrapper .fc .fc-dia-passado { background: hsl(var(--muted) / 0.35); }
+
+/* Linha do "agora" mais visível: era um fio de 1px fácil de perder de vista. */
+.fc-wrapper .fc .fc-timegrid-now-indicator-line { border-width: 2px 0 0; }
+.fc-wrapper .fc .fc-timegrid-now-indicator-arrow { border-width: 6px; }
+
+/* Mini calendário de navegação: dia com compromisso ganha um ponto embaixo,
+   que foi o que o código sempre prometeu (o sublinhado confundia com link). */
+.fc-mini-com-evento { position: relative; font-weight: 600; }
+.fc-mini-com-evento::after {
+  content: ""; position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%);
+  height: 4px; width: 4px; border-radius: 9999px; background: hsl(var(--primary));
+}
+
+/* Área de toque dos botões da barra no celular (mínimo confortável ~40px). */
+@media (max-width: 640px) {
+  .fc-wrapper .fc .fc-button { padding: 0.5rem 0.7rem; }
+  .fc-wrapper .fc .fc-toolbar-chunk { display: flex; justify-content: center; }
+}
 .marquee-static { display: none; }
 
 /* ============================================================

@@ -32,7 +32,9 @@ export interface FreeSlotsParams {
   defaultRange?: { startMin: number; endMin: number };
 }
 
-const toMin = (hhmm: string): number => {
+/** "HH:mm" (ou "HH:mm:ss") → minutos desde a meia-noite. Compartilhado com
+ *  `agendaValidation.ts`, para o admin e as telas do paciente medirem igual. */
+export const toMin = (hhmm: string): number => {
   const [h, m] = hhmm.slice(0, 5).split(":").map(Number);
   return h * 60 + m;
 };

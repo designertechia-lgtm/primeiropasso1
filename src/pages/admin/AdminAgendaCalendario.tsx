@@ -79,6 +79,17 @@ const PAYMENT_LABELS: Record<string, string> = {
   paid: "Pago",
 };
 
+// Categoria do bloqueio, para dizer no card o que aquilo é quando não há
+// descrição escrita. "ical" não é categoria de verdade — é origem, e vale mais
+// que a categoria na hora de explicar o evento.
+const BLOCK_TYPE_LABELS: Record<string, string> = {
+  personal: "Compromisso pessoal",
+  vacation: "Férias / Folga",
+  other: "Outro",
+  appointment: "Atendimento",
+  ical: "Google Agenda",
+};
+
 // F19 — paleta de cor por evento (estilo Google Agenda). "Auto" = sem cor → usa a cor do status.
 const EVENT_COLORS = ["#3B82F6", "#22C55E", "#EF4444", "#EAB308", "#A855F7", "#EC4899", "#14B8A6", "#F97316", "#64748B"];
 
@@ -1038,7 +1049,7 @@ export default function AdminAgendaCalendario() {
         // contraste, metade do mínimo legível.
         textColor: readableTextColor(fundo),
         classNames: appt.color ? ["fc-event-tinted"] : undefined,
-        extendedProps: { type: "appointment", displayName, serviceName, ...appt },
+        extendedProps: { type: "appointment", displayName, subtitulo: serviceName, ...appt },
       });
     });
 
@@ -1056,7 +1067,15 @@ export default function AdminAgendaCalendario() {
         borderColor: getStatusColor(block.status || "pending"),
         textColor: readableTextColor(fundo),
         classNames: block.color ? ["fc-event-tinted"] : undefined,
-        extendedProps: { type: "block", displayName: blockTitle, ...block },
+        extendedProps: {
+          type: "block",
+          displayName: blockTitle,
+          // Segunda linha do card. A descrição é o que a pessoa escreveu sobre o
+          // compromisso; sem ela, ao menos a categoria explica o que é aquilo —
+          // antes o card mostrava só um título solto como "BLOQUEIO".
+          subtitulo: block.description || BLOCK_TYPE_LABELS[block.source === "ical" ? "ical" : block.block_type] || null,
+          ...block,
+        },
       });
     });
 
@@ -1160,16 +1179,24 @@ export default function AdminAgendaCalendario() {
     const pago = p.payment_status === "paid";
     const compacto = arg.view.type === "dayGridMonth" || arg.event.allDay;
 
+    // O card corta com reticências; o texto inteiro fica no hover.
+    const completo = [
+      arg.timeText,
+      p.displayName || arg.event.title,
+      p.subtitulo,
+      p.description && p.description !== p.subtitulo ? p.description : null,
+    ].filter(Boolean).join(" · ");
+
     return (
-      <div className="fc-pp-event">
+      <div className="fc-pp-event" title={completo}>
         <div className="fc-pp-linha">
           {bloqueio && <Lock className="fc-pp-icone" aria-hidden />}
           {arg.timeText && <span className="fc-pp-hora">{arg.timeText}</span>}
           <span className="fc-pp-nome">{p.displayName || arg.event.title}</span>
           {pago && <span className="fc-pp-pago" title="Pago" aria-label="Pago">•</span>}
         </div>
-        {!compacto && p.serviceName && (
-          <div className="fc-pp-servico">{p.serviceName}</div>
+        {!compacto && p.subtitulo && (
+          <div className="fc-pp-servico">{p.subtitulo}</div>
         )}
       </div>
     );

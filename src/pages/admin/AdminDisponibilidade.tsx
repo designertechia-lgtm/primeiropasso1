@@ -132,6 +132,7 @@ export default function AdminDisponibilidade() {
         // Origem, para o profissional saber o que é dele e o que veio do Google
         // — e entender por que a próxima sincronização vai substituir o lote.
         isIcal:    blocks![0].source === "ical",
+        description: blocks![0].description || null,
         startTime: blocks![0].start_time,
         endTime:   blocks![0].end_time,
         firstDate: blocks![0].appointment_date,
@@ -565,6 +566,13 @@ export default function AdminDisponibilidade() {
                           ? format(parseISO(group.firstDate), "dd/MM/yyyy")
                           : `${format(parseISO(group.firstDate), "dd/MM/yyyy")} → ${format(parseISO(group.lastDate), "dd/MM/yyyy")}`}
                       </p>
+                      {/* A descrição existia no banco (vem do Google, e o editor
+                          grava) mas não aparecia em lugar nenhum desta lista. */}
+                      {group.description && (
+                        <p className="text-sm mt-1 border-l-2 border-muted pl-2 whitespace-pre-line line-clamp-3">
+                          {group.description}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">

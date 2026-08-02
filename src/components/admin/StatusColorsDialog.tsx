@@ -22,6 +22,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { cn } from "@/lib/utils";
+import { readableTextColor } from "@/lib/agendaValidation";
+import { AGENDA_PALETTES, detectarPalette, type AgendaPalette } from "@/lib/agendaPalettes";
 
 interface StatusColorsDialogProps {
   open: boolean;
@@ -128,6 +131,18 @@ export default function StatusColorsDialog({ open, onOpenChange }: StatusColorsD
     { label: "Pago", color: paymentPaid },
   ];
 
+  const coresAtuais = { pending, confirmed, completed, cancelled, paymentPending, paymentPaid };
+  const paletteAtual = detectarPalette(coresAtuais);
+
+  const aplicarPalette = (p: AgendaPalette) => {
+    setPending(p.cores.pending);
+    setConfirmed(p.cores.confirmed);
+    setCompleted(p.cores.completed);
+    setCancelled(p.cores.cancelled);
+    setPaymentPending(p.cores.paymentPending);
+    setPaymentPaid(p.cores.paymentPaid);
+  };
+
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -140,6 +155,37 @@ export default function StatusColorsDialog({ open, onOpenChange }: StatusColorsD
           </DialogHeader>
 
           <div className="space-y-4">
+            {/* Paletas prontas. A escolha livre continua logo abaixo — isto é um
+                atalho para quem só quer "mais forte" sem escolher seis cores. */}
+            <div>
+              <Label className="text-xs text-muted-foreground">Paletas prontas</Label>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {AGENDA_PALETTES.map((p) => {
+                  const ativa = paletteAtual === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => aplicarPalette(p)}
+                      className={cn(
+                        "rounded-lg border-2 p-2 text-left transition-all",
+                        ativa ? "border-primary bg-primary/5" : "border-border hover:border-primary/40",
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        {Object.values(p.cores).slice(0, 4).map((c) => (
+                          <span key={c} className="h-4 w-4 rounded-full border border-black/10"
+                            style={{ backgroundColor: c }} />
+                        ))}
+                        <span className="text-xs font-semibold ml-0.5">{p.nome}</span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-1 leading-tight">{p.descricao}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               {STATUS_FIELDS.map(({ label, value, set }) => (
                 <div key={label} className="space-y-1">
@@ -169,9 +215,16 @@ export default function StatusColorsDialog({ open, onOpenChange }: StatusColorsD
 
             <div className="border-t pt-3">
               <Label className="text-xs text-muted-foreground">Preview</Label>
+              {/* O texto do preview segue a MESMA regra de contraste da agenda
+                  (readableTextColor). Antes era branco fixo, então o preview
+                  mentia: mostrava branco onde o calendário desenharia escuro. */}
               <div className="flex gap-2 flex-wrap mt-2">
                 {PREVIEW.map(({ label, color }) => (
-                  <span key={label} className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold text-white" style={{ backgroundColor: color }}>
+                  <span
+                    key={label}
+                    className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold"
+                    style={{ backgroundColor: color, color: readableTextColor(color) }}
+                  >
                     {label}
                   </span>
                 ))}

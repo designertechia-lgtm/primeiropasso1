@@ -1296,18 +1296,21 @@ export default function AdminAgendaCalendario() {
 
       {/* Legenda — o único lugar onde as cores eram explicadas ficava dentro do
           diálogo de configuração, então ninguém sabia o que cada cor queria dizer. */}
-      <div className="flex items-center gap-x-4 gap-y-1.5 flex-wrap text-xs text-muted-foreground">
+      {/* A legenda usava text-muted-foreground e sumia junto com o resto do
+          grid. Agora segue a cor de texto própria da agenda. */}
+      <div className="fc-wrapper flex items-center gap-x-4 gap-y-1.5 flex-wrap text-xs font-medium"
+           style={{ color: "hsl(var(--agenda-texto-suave))" }}>
         {(["pending", "confirmed", "completed"] as const).map((s) => (
           <span key={s} className="inline-flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: getStatusColor(s) }} />
+            <span className="h-3 w-3 rounded-full ring-1 ring-black/10" style={{ backgroundColor: getStatusColor(s) }} />
             {STATUS_LABELS[s]}
           </span>
         ))}
         <span className="inline-flex items-center gap-1.5">
-          <Lock className="h-3 w-3" /> Bloqueio
+          <Lock className="h-3.5 w-3.5" /> Bloqueio
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: getPaymentColor("paid") }} /> Pago
+          <span className="h-3 w-3 rounded-full ring-1 ring-black/10" style={{ backgroundColor: getPaymentColor("paid") }} /> Pago
         </span>
       </div>
 

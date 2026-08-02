@@ -28,8 +28,14 @@ export interface FreeSlotsParams {
   lunch?: LunchBreak | null;
   /** "Agora" para descartar horários passados (default: new Date()). */
   now?: Date;
-  /** Janela usada quando o profissional não cadastrou disponibilidade no dia. */
+  /**
+   * Janela usada quando o profissional NUNCA cadastrou disponibilidade — rede de
+   * segurança para não deixar a agenda pública vazia. Não vale para quem já
+   * configurou: aí um dia sem janela significa dia FECHADO (ver getFreeSlots).
+   */
   defaultRange?: { startMin: number; endMin: number };
+  /** Feriado ou data em que o profissional não atende: nenhum horário é oferecido. */
+  isHoliday?: boolean;
 }
 
 /** "HH:mm" (ou "HH:mm:ss") → minutos desde a meia-noite. Compartilhado com
@@ -66,8 +72,21 @@ export function getFreeSlots(p: FreeSlotsParams): string[] {
   const step = duration + buffer;
   if (duration <= 0 || step <= 0) return [];
 
+  // Feriado, recesso, viagem: o dia está fechado, não há o que oferecer.
+  if (p.isHoliday) return [];
+
   const dow = p.date.getDay();
   const dayWindows = p.availability.filter((a) => a.day_of_week === dow);
+
+  // Dia SEM janela: a resposta depende de o profissional ter configurado a
+  // agenda ou não — e essa distinção não existia, o que invertia o resultado.
+  // Quem desligava o domingo passava a OFERECER domingo das 7h às 20h, porque
+  // caía direto no defaultRange. O fechado virava aberto.
+  if (dayWindows.length === 0) {
+    const configurou = p.availability.length > 0;
+    if (configurou) return [];
+  }
+
   let ranges: Array<[number, number]> = dayWindows.length > 0
     ? dayWindows.map((a) => [toMin(a.start_time), toMin(a.end_time)] as [number, number])
     : [p.defaultRange

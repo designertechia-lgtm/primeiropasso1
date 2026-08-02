@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   Plus, Trash2, CalendarIcon, Lock, Repeat,
-  Infinity, Clock, AlignLeft, X, UserCheck,
+  Infinity, Clock, AlignLeft, X, UserCheck, CalendarOff, Wand2,
 } from "lucide-react";
 import { format, parseISO, addYears } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -21,6 +21,9 @@ import { cn } from "@/lib/utils";
 import { generateRecurrenceDates, type RecurrenceType } from "@/lib/recurrence";
 import { fetchAllPages } from "@/lib/fetchAllPages";
 import { FieldHint } from "@/components/ui/FieldHint";
+import QuandoNaoAtendoEditor from "@/components/admin/QuandoNaoAtendoEditor";
+import ConverterBloqueiosDialog from "@/components/admin/ConverterBloqueiosDialog";
+import { detectarFaixasRepetidas } from "@/lib/detectarRegras";
 
 const RECURRENCE_OPTIONS: { value: RecurrenceType; label: string; desc: string }[] = [
   { value: "unico",       label: "Único",            desc: "Um dia só"         },
@@ -47,6 +50,7 @@ export default function AdminDisponibilidade() {
   const queryClient = useQueryClient();
 
   const [showForm, setShowForm]     = useState(false);
+  const [converterOpen, setConverterOpen] = useState(false);
 
   // Form state
   const [blockTitle,     setBlockTitle]     = useState("Compromisso pessoal");
@@ -218,6 +222,27 @@ export default function AdminDisponibilidade() {
     onError: (e: any) => toast.error("Erro ao converter", { description: e.message }),
   });
 
+  // Bloqueios "achatados" (a lista vem agrupada por série) para a detecção de
+  // regra, que raciocina por data e horário, não por grupo.
+  const todosOsBlocos = useMemo(
+    () => blockGroups.flatMap((g) =>
+      g.blocks.map((b: any) => ({
+        id: b.id,
+        appointment_date: b.appointment_date,
+        start_time: b.start_time,
+        end_time: b.end_time,
+        notes: b.notes,
+      })),
+    ),
+    [blockGroups],
+  );
+
+  const faixasRepetidas = useMemo(() => detectarFaixasRepetidas(todosOsBlocos), [todosOsBlocos]);
+  const totalBloqueiosRepetidos = useMemo(
+    () => faixasRepetidas.reduce((s, f) => s + f.ids.length, 0),
+    [faixasRepetidas],
+  );
+
   const resetForm = () => {
     setBlockTitle("Compromisso pessoal");
     setBlockStartTime("08:00");
@@ -237,7 +262,7 @@ export default function AdminDisponibilidade() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="font-heading text-2xl md:text-3xl font-bold text-foreground">Bloqueios de Horário</h1>
-          <p className="text-muted-foreground mt-1">Impeça agendamentos em períodos específicos.</p>
+          <p className="text-muted-foreground mt-1">Quando você não atende — de forma fixa ou pontual.</p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -250,6 +275,50 @@ export default function AdminDisponibilidade() {
           </Button>
         </div>
       </div>
+
+      {/* ── Regra fixa ────────────────────────────────────────────────────────
+          Vem PRIMEIRO porque é o que resolve a maioria dos casos (almoço,
+          sábado até meio-dia, domingo, feriado). Antes só existia no diálogo
+          escondido na engrenagem do Calendário, e apenas 2 dos 19 profissionais
+          tinham chegado nele — o resto fechava horário criando bloqueio a
+          bloqueio. */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <CalendarOff className="h-4 w-4" /> Quando eu não atendo
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Vale para todas as semanas, sem criar um bloqueio por dia. A agenda pública
+            e o Axel respeitam isso automaticamente.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <QuandoNaoAtendoEditor professional={professional} />
+        </CardContent>
+      </Card>
+
+      {/* Convite para converter o que já foi feito na mão */}
+      {faixasRepetidas.length > 0 && (
+        <Card className="border-primary/40 bg-primary/5">
+          <CardContent className="p-4 flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex items-start gap-3 min-w-0">
+              <Wand2 className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <p className="font-medium text-sm">
+                  {totalBloqueiosRepetidos} bloqueios seus parecem ser horário fixo
+                </p>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Eles se repetem toda semana em {faixasRepetidas.length} faixa(s). Dá para
+                  virar regra e limpar a agenda — você confere antes de aplicar.
+                </p>
+              </div>
+            </div>
+            <Button size="sm" onClick={() => setConverterOpen(true)} className="shrink-0">
+              Revisar
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Formulário Novo Bloqueio — colapsável */}
       {showForm && (
@@ -525,6 +594,13 @@ export default function AdminDisponibilidade() {
           </div>
         )}
       </div>
+
+      <ConverterBloqueiosDialog
+        open={converterOpen}
+        onOpenChange={setConverterOpen}
+        professionalId={professional?.id}
+        blocos={todosOsBlocos}
+      />
     </div>
   );
 }

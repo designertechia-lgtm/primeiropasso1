@@ -392,6 +392,74 @@ async function getSchedulingConfig(
   return { buffer, lunchBreaks }
 }
 
+// ── Feriados ────────────────────────────────────────────────────────────────
+// ESPELHO de src/lib/holidays.ts (o front calcula o mesmo). Ao mexer em um,
+// mexa no outro — o Axel não pode oferecer um dia que a agenda web fecha.
+// Domingo de Páscoa por Meeus/Jones/Butcher; é a âncora dos feriados móveis.
+function easterSunday(year: number): Date {
+  const a = year % 19
+  const b = Math.floor(year / 100)
+  const c = year % 100
+  const d = Math.floor(b / 4)
+  const e = b % 4
+  const f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3)
+  const h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4)
+  const k = c % 4
+  const l = (32 + 2 * e + 2 * i - h - k) % 7
+  const m = Math.floor((a + 11 * h + 22 * l) / 451)
+  const mes = Math.floor((h + l - 7 * m + 114) / 31)
+  const dia = ((h + l - 7 * m + 114) % 31) + 1
+  return new Date(Date.UTC(year, mes - 1, dia, 12, 0, 0))
+}
+
+function nationalHolidayDates(year: number): string[] {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const iso = (y: number, m: number, d: number) => `${y}-${pad(m)}-${pad(d)}`
+  const pascoa = easterSunday(year)
+  const desloca = (dias: number) => {
+    const x = new Date(pascoa)
+    x.setUTCDate(x.getUTCDate() + dias)
+    return iso(x.getUTCFullYear(), x.getUTCMonth() + 1, x.getUTCDate())
+  }
+  return [
+    iso(year, 1, 1), desloca(-48), desloca(-47), desloca(-46), desloca(-2),
+    iso(year, 4, 21), iso(year, 5, 1), desloca(60), iso(year, 9, 7),
+    iso(year, 10, 12), iso(year, 11, 2), iso(year, 11, 15), iso(year, 11, 20),
+    iso(year, 12, 25),
+  ]
+}
+
+// Datas fechadas do profissional no período: nacionais (se ligado) + próprias.
+async function getHolidaySet(
+  supabaseAdmin: any, professionalId: string, dataInicio: string, dataFim: string,
+): Promise<Set<string>> {
+  const set = new Set<string>()
+  const { data: prof } = await supabaseAdmin
+    .from('professionals').select('skip_national_holidays')
+    .eq('id', professionalId).maybeSingle()
+
+  // Default do banco é true: só desliga quando o profissional disser.
+  if (prof?.skip_national_holidays !== false) {
+    const anoIni = Number(dataInicio.slice(0, 4))
+    const anoFim = Number(dataFim.slice(0, 4))
+    for (let ano = anoIni; ano <= anoFim; ano++) {
+      for (const d of nationalHolidayDates(ano)) {
+        if (d >= dataInicio && d <= dataFim) set.add(d)
+      }
+    }
+  }
+
+  const { data: custom } = await supabaseAdmin
+    .from('professional_holidays').select('date')
+    .eq('professional_id', professionalId)
+    .gte('date', dataInicio).lte('date', dataFim)
+  for (const c of (custom || [])) set.add(c.date as string)
+
+  return set
+}
+
 // Almoço do dia da semana (dow 0=dom … 6=sáb) a partir do jsonb lunch_breaks.
 function lunchForDow(lunchBreaks: any, dow: number): { start: number; end: number } | null {
   const lb = lunchBreaks?.[String(dow)]
@@ -425,6 +493,7 @@ async function computeFreeSlots(
 
   const { buffer, lunchBreaks } = await getSchedulingConfig(supabaseAdmin, professionalId)
   const step = slotMin + buffer
+  const feriados = await getHolidaySet(supabaseAdmin, professionalId, dataInicio, dataFim)
 
   const { data: occupied } = await supabaseAdmin
     .from('appointments')
@@ -461,6 +530,8 @@ async function computeFreeSlots(
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const dateStr = d.toISOString().slice(0, 10)
     if (dateStr < todayIso) continue
+    // Feriado nacional ou data própria: o dia inteiro está fechado.
+    if (feriados.has(dateStr)) continue
 
     const dow = d.getDay()
     const isToday = dateStr === todayIso
@@ -516,6 +587,21 @@ async function isSlotFree(
 
   // 2) não cai no intervalo de almoço do profissional (do dia da semana)
   if (lunch && startMin < lunch.end && endMin > lunch.start) return false
+
+  // 2b) não é feriado nem data fechada. Sem isto, o Axel recusaria oferecer o dia
+  // mas ainda aceitaria se o cliente pedisse a data cravada.
+  const feriados = await getHolidaySet(supabaseAdmin, professionalId, dateIso, dateIso)
+  if (feriados.has(dateIso)) return false
+
+  // 2c) o dia da semana precisa estar aberto. `computeFreeSlots` já não oferece
+  // esses horários; aqui fecha a porta de quem pede a data direto.
+  const { data: janelas } = await supabaseAdmin
+    .from('availability').select('day_of_week')
+    .eq('professional_id', professionalId).eq('active', true)
+  if (janelas && janelas.length > 0) {
+    const dow = new Date(dateIso + 'T00:00:00').getDay()
+    if (!janelas.some((j: any) => j.day_of_week === dow)) return false
+  }
 
   // 3) não sobrepõe agendamento NEM bloqueio, respeitando a folga (buffer) dos dois lados
   const { data: conflitos } = await supabaseAdmin

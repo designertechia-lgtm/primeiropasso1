@@ -50,6 +50,8 @@ import { validateAgendaSlot, readableTextColor, type AgendaEntry } from "@/lib/a
 import { toMin } from "@/lib/slots";
 import { CancelAppointmentDialog, type CancellationReason } from "@/components/admin/CancelAppointmentDialog";
 import { saveCancellationReason } from "@/lib/cancellations";
+import QuandoNaoAtendoEditor from "@/components/admin/QuandoNaoAtendoEditor";
+import { useProfessionalHolidays } from "@/hooks/useProfessionalHolidays";
 import { fetchAllPages } from "@/lib/fetchAllPages";
 import type { EventInput, EventClickArg, DateSelectArg, EventApi } from "@fullcalendar/core";
 
@@ -240,14 +242,6 @@ const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   selecionavel: "Datas específicas",
 };
 
-interface AvailSlot {
-  id?: string;
-  day_of_week: number;
-  start_time: string;
-  end_time: string;
-  active: boolean;
-}
-
 export default function AdminAgendaCalendario() {
   const { data: professional } = useProfessional();
   const queryClient = useQueryClient();
@@ -406,9 +400,9 @@ export default function AdminAgendaCalendario() {
 
   // Availability dialog
   const [availDialogOpen, setAvailDialogOpen] = useState(false);
-  const [savingAvail, setSavingAvail] = useState(false);
 
-  // F20 — buffer (global) + almoço POR DIA da semana (jsonb lunch_breaks).
+  // Buffer + almoço por dia, aqui apenas para VALIDAR o que é criado, editado ou
+  // arrastado. Quem edita esses valores é o QuandoNaoAtendoEditor.
   const [bufferMin, setBufferMin] = useState(0);
   const [lunchByDay, setLunchByDay] = useState<Record<number, { start: string; end: string }>>({});
   useEffect(() => {
@@ -423,16 +417,6 @@ export default function AdminAgendaCalendario() {
     }
     setLunchByDay(norm);
   }, [professional]);
-
-  const toggleLunch = (day: number, on: boolean) =>
-    setLunchByDay((prev) => {
-      const next = { ...prev };
-      if (on) next[day] = prev[day] || { start: "12:00", end: "13:00" };
-      else delete next[day];
-      return next;
-    });
-  const updateLunch = (day: number, field: "start" | "end", value: string) =>
-    setLunchByDay((prev) => ({ ...prev, [day]: { ...(prev[day] || { start: "12:00", end: "13:00" }), [field]: value } }));
 
   // Status colors dialog (acionado pela engrenagem de ajustes)
   const [colorsDialogOpen, setColorsDialogOpen] = useState(false);
@@ -520,19 +504,6 @@ export default function AdminAgendaCalendario() {
     },
     enabled: !!professional?.id,
   });
-
-  const [localSlots, setLocalSlots] = useState<AvailSlot[]>([]);
-  useEffect(() => {
-    if (availability.length > 0) {
-      setLocalSlots(availability.map((s) => ({
-        id: s.id,
-        day_of_week: s.day_of_week,
-        start_time: s.start_time,
-        end_time: s.end_time,
-        active: s.active,
-      })));
-    }
-  }, [availability]);
 
   // Fetch appointments — só o período visível (ver comentário do `range`).
   const { data: appointments = [], isLoading: loadingAppointments, refetch: refetchAppointments } = useQuery({
@@ -1008,45 +979,6 @@ export default function AdminAgendaCalendario() {
   };
 
 
-  const handleSaveAvailability = async () => {
-    if (!professional) return;
-    setSavingAvail(true);
-    await supabase.from("availability").delete().eq("professional_id", professional.id);
-    if (localSlots.length > 0) {
-      const { error } = await supabase.from("availability").insert(
-        localSlots.map((s) => ({
-          professional_id: professional.id,
-          day_of_week: s.day_of_week,
-          start_time: s.start_time,
-          end_time: s.end_time,
-          active: s.active,
-        }))
-      );
-      if (error) {
-        toast.error("Erro ao salvar", { description: error.message });
-        setSavingAvail(false);
-        return;
-      }
-    }
-    // F20 — salva buffer + almoço no profissional.
-    const { error: cfgError } = await supabase
-      .from("professionals")
-      .update({
-        slot_buffer_minutes: bufferMin,
-        lunch_breaks: lunchByDay,
-      } as any)
-      .eq("id", professional.id);
-    if (cfgError) {
-      toast.error("Erro ao salvar intervalo/almoço", { description: cfgError.message });
-      setSavingAvail(false);
-      return;
-    }
-    toast.success("Disponibilidade salva!");
-    queryClient.invalidateQueries({ queryKey: ["agenda-availability"] });
-    queryClient.invalidateQueries({ queryKey: ["my-professional"] });
-    setSavingAvail(false);
-    setAvailDialogOpen(false);
-  };
 
   const resetBlockForm = () => {
     setBlockTitle("Compromisso pessoal");
@@ -1143,6 +1075,15 @@ export default function AdminAgendaCalendario() {
 
     return out;
   }, [appointments, blocks, availability, getStatusColor]);
+
+  // Feriados: no admin eles NÃO impedem de marcar — o dono da agenda pode
+  // atender num feriado se quiser. Aparecem pintados no grid, e é a agenda
+  // pública (paciente e Axel) que fecha o dia de verdade.
+  const { isHoliday, holidayName } = useProfessionalHolidays(
+    professional?.id,
+    (professional as any)?.skip_national_holidays,
+    { inicio: range.start, fim: range.end },
+  );
 
   const temAllDay = useMemo(
     () => [...appointments, ...blocks].some((r: any) => isAllDay(r)),
@@ -1273,18 +1214,6 @@ export default function AdminAgendaCalendario() {
     setBlockDialogOpen(true);
   };
 
-  const addAvailSlot = (day: number) => {
-    setLocalSlots([...localSlots, { day_of_week: day, start_time: "08:00", end_time: "17:00", active: true }]);
-  };
-
-  const removeAvailSlot = (index: number) => {
-    setLocalSlots(localSlots.filter((_, i) => i !== index));
-  };
-
-  const updateAvailSlot = (index: number, field: keyof AvailSlot, value: string | boolean) => {
-    setLocalSlots(localSlots.map((s, i) => (i === index ? { ...s, [field]: value } : s)));
-  };
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -1406,7 +1335,24 @@ export default function AdminAgendaCalendario() {
           datesSet={handleDatesSet}
           eventContent={renderEventContent}
           eventClassNames={eventClassNames}
-          dayCellClassNames={(arg) => (arg.date < hojeZero ? ["fc-dia-passado"] : [])}
+          dayCellClassNames={(arg) => {
+            const classes: string[] = [];
+            if (arg.date < hojeZero) classes.push("fc-dia-passado");
+            if (isHoliday(format(arg.date, "yyyy-MM-dd"))) classes.push("fc-dia-feriado");
+            return classes;
+          }}
+          // O nome do feriado vai no cabeçalho do dia — "por que ninguém marca
+          // nada aqui?" tem que ter resposta visível.
+          dayHeaderContent={(arg) => {
+            const nome = holidayName(format(arg.date, "yyyy-MM-dd"));
+            const rotulo = arg.text;
+            return nome ? (
+              <span className="flex flex-col leading-tight" title={nome}>
+                <span>{rotulo}</span>
+                <span className="text-[10px] font-normal text-primary truncate max-w-[9rem]">{nome}</span>
+              </span>
+            ) : rotulo;
+          }}
           events={events}
           height="auto"
           expandRows={true}
@@ -2045,78 +1991,19 @@ export default function AdminAgendaCalendario() {
         </div>
       )}
 
-      {/* Availability Dialog */}
+      {/* Quando eu não atendo — mesmo editor da aba Bloqueios, para a regra não
+          ter dois donos que divergem. */}
       <Dialog open={availDialogOpen} onOpenChange={setAvailDialogOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Horários de Atendimento</DialogTitle>
+            <DialogTitle>Horários de atendimento</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">Defina os horários em que você atende em cada dia da semana.</p>
-          <div className="space-y-4 mt-2">
-            {DAYS.map((name, day) => {
-              const daySlots = localSlots
-                .map((s, idx) => ({ ...s, _index: idx }))
-                .filter((s) => s.day_of_week === day);
-              return (
-                <div key={day} className="border rounded-md p-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium text-sm">{name}</span>
-                    <Button variant="ghost" size="sm" onClick={() => addAvailSlot(day)}>
-                      <Plus className="h-3 w-3 mr-1" /> Horário
-                    </Button>
-                  </div>
-                  {daySlots.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">Sem horários</p>
-                  ) : (
-                    daySlots.map((slot) => (
-                      <div key={slot._index} className="flex items-center gap-2 mb-1 flex-wrap">
-                        <Input type="time" value={slot.start_time} onChange={(e) => updateAvailSlot(slot._index, "start_time", e.target.value)} className="w-24 h-8 text-xs" />
-                        <span className="text-xs">–</span>
-                        <Input type="time" value={slot.end_time} onChange={(e) => updateAvailSlot(slot._index, "end_time", e.target.value)} className="w-24 h-8 text-xs" />
-                        <Switch checked={slot.active} onCheckedChange={(v) => updateAvailSlot(slot._index, "active", v)} />
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeAvailSlot(slot._index)}>
-                          <X className="h-3 w-3 text-destructive" />
-                        </Button>
-                      </div>
-                    ))
-                  )}
-                  <div className="flex items-center gap-2 mt-2 flex-wrap text-xs border-t pt-2">
-                    <Switch checked={!!lunchByDay[day]} onCheckedChange={(v) => toggleLunch(day, v)} />
-                    <span className="text-muted-foreground">Almoço</span>
-                    {lunchByDay[day] && (
-                      <>
-                        <Input type="time" value={lunchByDay[day].start} onChange={(e) => updateLunch(day, "start", e.target.value)} className="w-24 h-8 text-xs" />
-                        <span>até</span>
-                        <Input type="time" value={lunchByDay[day].end} onChange={(e) => updateLunch(day, "end", e.target.value)} className="w-24 h-8 text-xs" />
-                      </>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <div className="border-t pt-4 mt-4">
-            <Label className="text-sm">Intervalo entre atendimentos</Label>
-            <p className="text-xs text-muted-foreground mb-1.5">Folga automática entre um atendimento e o próximo (vale para todos os dias).</p>
-            <div className="flex items-center gap-2">
-              <Input
-                type="number"
-                min={0}
-                step={5}
-                value={bufferMin}
-                onChange={(e) => setBufferMin(Math.max(0, Number(e.target.value) || 0))}
-                className="w-20 h-9"
-              />
-              <span className="text-sm text-muted-foreground">minutos</span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-3">💡 O intervalo de almoço é configurado por dia, na grade acima.</p>
-          </div>
-          <Button onClick={handleSaveAvailability} disabled={savingAvail} className="w-full mt-2">
-            {savingAvail ? "Salvando..." : "Salvar Disponibilidade"}
-          </Button>
+          <QuandoNaoAtendoEditor
+            professional={professional}
+            onSaved={() => setAvailDialogOpen(false)}
+          />
         </DialogContent>
       </Dialog>
-
       {/* Status colors dialog */}
       <StatusColorsDialog open={colorsDialogOpen} onOpenChange={setColorsDialogOpen} />
     </div>

@@ -15,6 +15,7 @@ import { format, addMinutes } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { getFreeSlots, lunchForDow } from "@/lib/slots";
+import { useProfessionalHolidays } from "@/hooks/useProfessionalHolidays";
 import { User, ArrowLeft } from "lucide-react";
 
 export default function PatientAgendar() {
@@ -103,6 +104,12 @@ export default function PatientAgendar() {
     enabled: !!professional?.id && !!dateStr,
   });
 
+  // Feriados nacionais + datas próprias: dia fechado não oferece horário.
+  const { isHoliday, holidayName } = useProfessionalHolidays(
+    professional?.id,
+    (professional as any)?.skip_national_holidays,
+  );
+
   const selectedService = services.find((s) => s.id === selectedServiceId);
   const durationMinutes = selectedService?.duration_minutes ?? 50;
 
@@ -116,6 +123,7 @@ export default function PatientAgendar() {
         blocks: scheduleBlocks,
         bufferMinutes: (professional as any)?.slot_buffer_minutes ?? 0,
         lunch: lunchForDow((professional as any)?.lunch_breaks, selectedDate.getDay()),
+        isHoliday: isHoliday(format(selectedDate, "yyyy-MM-dd")),
       })
     : [];
 
@@ -239,7 +247,12 @@ export default function PatientAgendar() {
           </CardHeader>
           <CardContent>
             {timeSlots.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Sem horários disponíveis nesta data.</p>
+              <p className="text-sm text-muted-foreground">
+                {/* Dizer o motivo evita a impressão de agenda quebrada. */}
+                {holidayName(format(selectedDate, "yyyy-MM-dd"))
+                  ? `Não há atendimento neste dia — ${holidayName(format(selectedDate, "yyyy-MM-dd"))}.`
+                  : "Sem horários disponíveis nesta data."}
+              </p>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {timeSlots.map((t) => (

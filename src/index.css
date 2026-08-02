@@ -224,6 +224,17 @@
 .fc-wrapper .fc .fc-event-passado:hover { opacity: 0.85; }
 .fc-wrapper .fc .fc-dia-passado { background: hsl(var(--muted) / 0.35); }
 
+/* Feriado e datas em que o profissional não atende: listra diagonal discreta.
+   No admin o dia continua clicável de propósito — quem manda na agenda pode
+   atender num feriado; quem fecha o dia é a agenda pública. */
+.fc-wrapper .fc .fc-dia-feriado {
+  background-image: repeating-linear-gradient(
+    45deg,
+    hsl(var(--primary) / 0.07) 0, hsl(var(--primary) / 0.07) 6px,
+    transparent 6px, transparent 12px
+  );
+}
+
 /* Linha do "agora" mais visível: era um fio de 1px fácil de perder de vista. */
 .fc-wrapper .fc .fc-timegrid-now-indicator-line { border-width: 2px 0 0; }
 .fc-wrapper .fc .fc-timegrid-now-indicator-arrow { border-width: 6px; }

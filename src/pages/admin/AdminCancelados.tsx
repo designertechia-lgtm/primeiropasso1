@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -66,6 +67,14 @@ export default function AdminCancelados() {
   const [periodo, setPeriodo] = useState("90");
   const [filtroMotivo, setFiltroMotivo] = useState("all");
   const [soPendentes, setSoPendentes] = useState(false);
+  const [selecionados, setSelecionados] = useState<Set<number>>(new Set());
+
+  // Trocar de filtro zera a seleção de propósito: sem isso a pessoa marcaria
+  // itens, mudaria o filtro e apagaria coisa que não está mais na tela.
+  const trocarFiltro = <T,>(set: (v: T) => void) => (v: T) => {
+    setSelecionados(new Set());
+    set(v);
+  };
 
   const { data: cancelamentos = [], isLoading } = useQuery({
     queryKey: ["appointment-cancellations", professional?.id],
@@ -107,6 +116,27 @@ export default function AdminCancelados() {
     onError: (e: any) => toast.error("Erro ao remover", { description: e.message }),
   });
 
+  const excluirVarios = useMutation({
+    mutationFn: async (ids: number[]) => {
+      let removidos = 0;
+      // Lotes de 200: um .in() com centenas de ids estoura o tamanho da URL.
+      for (let i = 0; i < ids.length; i += 200) {
+        const { data, error } = await (supabase.from("appointment_cancellations" as any) as any)
+          .delete().in("id", ids.slice(i, i + 200)).select("id");
+        if (error) throw error;
+        removidos += data?.length ?? 0;
+      }
+      if (removidos === 0) throw new Error("Nada foi removido — o banco recusou a exclusão.");
+      return removidos;
+    },
+    onSuccess: (removidos) => {
+      queryClient.invalidateQueries({ queryKey: ["appointment-cancellations"] });
+      setSelecionados(new Set());
+      toast.success(`${removidos} registro(s) removido(s) do histórico.`);
+    },
+    onError: (e: any) => toast.error("Erro ao remover", { description: e.message }),
+  });
+
   const filtrados = useMemo(() => {
     const limite = periodo === "all" ? null : Number(periodo);
     return cancelamentos.filter((c) => {
@@ -139,6 +169,15 @@ export default function AdminCancelados() {
 
   const semMotivo = filtrados.filter((c) => !c.reason_category).length;
   const naoTratados = filtrados.filter((c) => !c.handled).length;
+
+  const todosSelecionados = filtrados.length > 0 && filtrados.every((c) => selecionados.has(c.id));
+  const alternar = (id: number) =>
+    setSelecionados((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   if (isLoading) {
     return (
@@ -219,13 +258,13 @@ export default function AdminCancelados() {
 
       {/* Filtros */}
       <div className="flex items-center gap-2 flex-wrap">
-        <Select value={periodo} onValueChange={setPeriodo}>
+        <Select value={periodo} onValueChange={trocarFiltro(setPeriodo)}>
           <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
           <SelectContent>
             {PERIODOS.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select value={filtroMotivo} onValueChange={setFiltroMotivo}>
+        <Select value={filtroMotivo} onValueChange={trocarFiltro(setFiltroMotivo)}>
           <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos os motivos</SelectItem>
@@ -238,11 +277,67 @@ export default function AdminCancelados() {
         <Button
           variant={soPendentes ? "default" : "outline"}
           size="sm"
-          onClick={() => setSoPendentes((v) => !v)}
+          onClick={() => { setSelecionados(new Set()); setSoPendentes((v) => !v); }}
         >
           Só não tratados
         </Button>
       </div>
+
+      {/* ── Seleção em lote ─────────────────────────────────────────────────
+          "Selecionar todos" marca apenas o que está NA TELA (já filtrado), e a
+          contagem no botão é sempre a do que será apagado de fato. */}
+      {filtrados.length > 0 && (
+        <div className="flex items-center gap-3 flex-wrap rounded-lg border bg-muted/40 px-3 py-2">
+          <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+            <Checkbox
+              checked={todosSelecionados}
+              onCheckedChange={(v) =>
+                setSelecionados(v ? new Set(filtrados.map((c) => c.id)) : new Set())
+              }
+            />
+            {todosSelecionados ? "Desmarcar todos" : "Selecionar todos"}
+            <span className="text-muted-foreground">({filtrados.length} na tela)</span>
+          </label>
+
+          {selecionados.size > 0 && (
+            <>
+              <span className="text-sm text-muted-foreground">
+                {selecionados.size} selecionado(s)
+              </span>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm" className="gap-1.5 ml-auto"
+                    disabled={excluirVarios.isPending}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {excluirVarios.isPending ? "Removendo..." : `Excluir ${selecionados.size}`}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      Remover {selecionados.size} registro(s) do histórico?
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Some da lista de cancelados definitivamente, junto com os motivos
+                      e observações. Os agendamentos em si já não existem — isso apaga
+                      apenas as anotações. Não dá para desfazer.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Voltar</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      onClick={() => excluirVarios.mutate([...selecionados])}
+                    >
+                      Remover {selecionados.size}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Lista */}
       {filtrados.length === 0 ? (
@@ -259,10 +354,19 @@ export default function AdminCancelados() {
       ) : (
         <div className="space-y-2">
           {filtrados.map((c) => (
-            <Card key={c.id} className={cn(c.handled && "opacity-70")}>
+            <Card key={c.id} className={cn(
+              c.handled && "opacity-70",
+              selecionados.has(c.id) && "ring-2 ring-primary/60",
+            )}>
               <CardContent className="p-4 flex items-start justify-between gap-4 flex-wrap">
-                <div className="min-w-0 space-y-1.5">
+                <div className="min-w-0 space-y-1.5 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
+                    <Checkbox
+                      checked={selecionados.has(c.id)}
+                      onCheckedChange={() => alternar(c.id)}
+                      aria-label={`Selecionar cancelamento de ${c.client_name || "sem nome"}`}
+                      className="shrink-0"
+                    />
                     <User className="h-4 w-4 text-muted-foreground shrink-0" />
                     <span className="font-medium truncate">{c.client_name || "Sem nome"}</span>
                     <Badge

@@ -177,7 +177,7 @@
 .fc-wrapper .fc .fc-col-header-cell { background: hsl(var(--muted)); font-weight: 600; font-size: 0.8rem; padding: 0.5rem 0; }
 .fc-wrapper .fc .fc-col-header-cell-cushion { color: hsl(var(--agenda-texto)); text-decoration: none; font-weight: 600; }
 .fc-wrapper .fc .fc-timegrid-slot-label-cushion { font-size: 0.75rem; color: hsl(var(--agenda-texto-suave)); font-weight: 600; }
-.fc-wrapper .fc .fc-event { border-radius: calc(var(--radius) - 4px); font-size: 0.78rem; cursor: pointer; }
+.fc-wrapper .fc .fc-event { border-radius: calc(var(--radius) - 4px); font-size: 0.82rem; cursor: pointer; }
 
 /* ── Legibilidade de eventos curtos (30 min) ───────────────────────────────
    Um slot de 30 min tinha ~21px. Com padding 2px no .fc-event MAIS 2px no
@@ -233,19 +233,26 @@
    O layout padrão jogava "Nome — Serviço" numa string só, que sumia em
    reticências no primeiro corte. Aqui o nome tem prioridade de espaço e o
    serviço só aparece quando há altura para ele. */
+/* NENHUMA opacidade no texto: a hierarquia entre hora, nome e subtítulo vem de
+   tamanho e peso. Opacidade aqui se somava à do evento passado e o resultado
+   era texto ilegível — foi a queixa do Carlos em 02/08. */
 .fc-pp-event { display: flex; flex-direction: column; gap: 1px; min-width: 0; overflow: hidden; }
 .fc-pp-linha { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.fc-pp-icone { height: 11px; width: 11px; flex: 0 0 auto; opacity: 0.85; }
-.fc-pp-hora { flex: 0 0 auto; font-weight: 700; font-variant-numeric: tabular-nums; opacity: 0.95; }
-.fc-pp-nome { flex: 1 1 auto; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fc-pp-servico { font-size: 0.68rem; opacity: 0.9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-pp-icone { height: 12px; width: 12px; flex: 0 0 auto; }
+.fc-pp-hora { flex: 0 0 auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fc-pp-nome { flex: 1 1 auto; min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-pp-servico { font-size: 0.7rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Bolinha de "pago" — herda a cor do texto, que já é calculada por contraste. */
-.fc-pp-pago { flex: 0 0 auto; font-size: 1.1em; line-height: 0; opacity: 0.9; }
+.fc-pp-pago { flex: 0 0 auto; font-size: 1.1em; line-height: 0; }
 
-/* Passado esmaecido: o que já aconteceu recua, o que vem pela frente salta.
-   Continua clicável e legível — é opacidade, não desligamento. */
-.fc-wrapper .fc .fc-event-passado { opacity: 0.55; }
-.fc-wrapper .fc .fc-event-passado:hover { opacity: 0.85; }
+/* Passado recuado — SEM lavar o texto.
+   A primeira versão usava opacity: 0.55, e isso derrubava fundo E texto juntos:
+   num evento passado o subtítulo caía para 0.55 × 0.9 = 0.49 de opacidade e
+   ficava ilegível. Como o texto do evento é sempre acromático (preto ou branco,
+   escolhido por contraste em readableTextColor), `saturate` desbota só a COR do
+   fundo e não toca na legibilidade. */
+.fc-wrapper .fc .fc-event-passado { filter: saturate(0.5); opacity: 0.94; }
+.fc-wrapper .fc .fc-event-passado:hover { filter: saturate(1); opacity: 1; }
 .fc-wrapper .fc .fc-dia-passado { background: hsl(var(--muted) / 0.35); }
 
 /* ── Faixas de "não atendo" no grid ─────────────────────────────────────────

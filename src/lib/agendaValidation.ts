@@ -41,6 +41,14 @@ export interface ValidateSlotParams {
   bufferMinutes?: number;
   /** Evento de dia inteiro (importado do Google): não disputa horário. */
   allDay?: boolean;
+  /**
+   * Quem está agendando é o DONO da agenda, pelo painel. Nesse caso o próprio
+   * almoço e os próprios bloqueios deixam de ser impedimento e viram aviso —
+   * são compromissos dele, e encaixar um atendimento por cima é decisão dele.
+   * Choque com outro ATENDIMENTO continua barrado: isso é double-booking real,
+   * com duas pessoas esperando no mesmo horário.
+   */
+  overridable?: boolean;
 }
 
 // Objeto único em vez de união discriminada de propósito: o projeto compila com
@@ -50,6 +58,11 @@ export interface SlotValidation {
   ok: boolean;
   /** Frase pronta para o toast. Sempre presente quando `ok` é false. */
   reason?: string;
+  /**
+   * Passou, mas vale avisar — o horário cai no almoço ou por cima de um
+   * bloqueio. Só aparece com `overridable`.
+   */
+  warning?: string;
 }
 
 /** Status que efetivamente ocupam o horário. Concluído e cancelado liberam a
@@ -79,6 +92,9 @@ export function validateAgendaSlot(p: ValidateSlotParams): SlotValidation {
 
   if (p.allDay) return { ok: true };
 
+  // Ressalvas acumuladas: com `overridable`, o que impediria vira aviso.
+  const avisos: string[] = [];
+
   // "T12:00:00" evita o recuo de um dia que o parse UTC causa em fusos negativos.
   const dow = new Date(`${p.date}T12:00:00`).getDay();
   const lunch = p.lunchByDay?.[dow];
@@ -86,38 +102,48 @@ export function validateAgendaSlot(p: ValidateSlotParams): SlotValidation {
     const ls = toMin(lunch.start);
     const le = toMin(lunch.end);
     if (start < le && end > ls) {
-      return {
-        ok: false,
-        reason: `Esse horário cai no intervalo de almoço (${lunch.start}–${lunch.end}).`,
-      };
+      const texto = `Esse horário cai no intervalo de almoço (${lunch.start}–${lunch.end}).`;
+      if (!p.overridable) return { ok: false, reason: texto };
+      avisos.push("está no seu horário de almoço");
     }
   }
 
   const buffer = Math.max(0, p.bufferMinutes ?? 0);
 
-  const conflito = p.entries.find((e) => {
+  const colide = (e: AgendaEntry) => {
     if (e.id === p.ignoreId) return false;
     if (e.appointment_date !== p.date) return false;
     if (!OCUPA.has(e.status ?? "pending")) return false;
-    // Bloqueio pode se sobrepor a outro bloqueio (férias em cima de folga, por
-    // exemplo); só não pode cobrir um atendimento já marcado.
-    const isBlock = e.appointment_type === "block";
-    if (p.kind === "block" && isBlock) return false;
     const os = toMin(e.start_time);
     const oe = toMin(e.end_time);
     // A folga vale dos dois lados de cada compromisso já existente.
     return start < oe + buffer && end > os - buffer;
-  });
+  };
 
-  if (conflito) {
-    const quando = `${conflito.start_time.slice(0, 5)}–${conflito.end_time.slice(0, 5)}`;
+  const descreve = (e: AgendaEntry) => {
+    const quando = `${e.start_time.slice(0, 5)}–${e.end_time.slice(0, 5)}`;
     const comFolga = buffer > 0 ? ` (considerando a folga de ${buffer} min)` : "";
-    return {
-      ok: false,
-      reason: `Conflito em ${ddmm(p.date)}: já existe algo às ${quando}${comFolga}.`,
-    };
+    return `Conflito em ${ddmm(p.date)}: já existe algo às ${quando}${comFolga}.`;
+  };
+
+  const candidatos = p.entries.filter(colide);
+  const isBlock = (e: AgendaEntry) => e.appointment_type === "block";
+
+  // Choque com ATENDIMENTO barra sempre: seriam duas pessoas no mesmo horário.
+  const comAtendimento = candidatos.find((e) => !isBlock(e));
+  if (comAtendimento) return { ok: false, reason: descreve(comAtendimento) };
+
+  const comBloqueio = candidatos.find(isBlock);
+  if (comBloqueio) {
+    // Bloqueio sobre bloqueio sempre pôde (férias em cima de folga).
+    const permitido = p.kind === "block" || p.overridable;
+    if (!permitido) return { ok: false, reason: descreve(comBloqueio) };
+    if (p.kind !== "block") avisos.push("cai em cima de um bloqueio seu");
   }
 
+  if (avisos.length > 0) {
+    return { ok: true, warning: `Atenção: o horário ${avisos.join(" e ")}.` };
+  }
   return { ok: true };
 }
 

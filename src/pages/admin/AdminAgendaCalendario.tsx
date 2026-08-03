@@ -636,6 +636,10 @@ export default function AdminAgendaCalendario() {
           .order("appointment_date")
           .range(from, to));
 
+      // `overridable`: quem agenda aqui é o DONO da agenda. O almoço e os
+      // bloqueios dele deixam de barrar e viram aviso — encaixar um atendimento
+      // por cima é decisão dele. Choque com outro atendimento continua barrado.
+      const avisos: string[] = [];
       for (const date of dates) {
         const check = validateAgendaSlot({
           date,
@@ -645,8 +649,10 @@ export default function AdminAgendaCalendario() {
           entries: vizinhos,
           lunchByDay,
           bufferMinutes: bufferMin,
+          overridable: true,
         });
         if (!check.ok) throw new Error(check.reason);
+        if (check.warning) avisos.push(check.warning);
       }
       // ──────────────────────────────────────────────────────────────────
 
@@ -682,12 +688,16 @@ export default function AdminAgendaCalendario() {
         }
         throw error;
       }
+      return avisos[0] ?? null;
     },
-    onSuccess: () => {
+    onSuccess: (aviso) => {
       queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
       queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
       queryClient.invalidateQueries({ queryKey: ["admin-block-groups"] });
-      toast.success(entryKind === "booking" ? "Atendimento adicionado!" : "Bloqueio adicionado!");
+      toast.success(entryKind === "booking" ? "Atendimento adicionado!" : "Bloqueio adicionado!", {
+        // O agendamento foi criado de qualquer jeito; o aviso é informativo.
+        description: aviso ?? undefined,
+      });
       setBlockDialogOpen(false);
       resetBlockForm();
     },
@@ -755,8 +765,10 @@ export default function AdminAgendaCalendario() {
         entries: await fetchDayEntries(date),
         lunchByDay,
         bufferMinutes: bufferMin,
+        overridable: true,
       });
       if (!check.ok) throw new Error(check.reason);
+      if (check.warning) toast.info(check.warning);
 
       const { error } = await supabase
         .from("appointments")
@@ -794,8 +806,10 @@ export default function AdminAgendaCalendario() {
         entries: await fetchDayEntries(date),
         lunchByDay,
         bufferMinutes: bufferMin,
+        overridable: true,
       });
       if (!check.ok) throw new Error(check.reason);
+      if (check.warning) toast.info(check.warning);
 
       const { error } = await supabase
         .from("appointments")
@@ -939,6 +953,9 @@ export default function AdminAgendaCalendario() {
       lunchByDay,
       bufferMinutes: bufferMin,
       allDay: ev.allDay,
+      // Arrastar para cima do próprio bloqueio ou do almoço é permitido: quem
+      // move é o dono da agenda. Só o choque com outro atendimento desfaz.
+      overridable: true,
     });
     if (!check.ok) {
       toast.info(`${check.reason ?? "Horário indisponível."} Desfazendo.`);
@@ -963,7 +980,9 @@ export default function AdminAgendaCalendario() {
       return;
     }
 
-    toast.success(isResize ? "Duração atualizada!" : "Agendamento movido!");
+    toast.success(isResize ? "Duração atualizada!" : "Agendamento movido!", {
+      description: check.warning ?? undefined,
+    });
     queryClient.invalidateQueries({ queryKey: ["agenda-appointments-all"] });
     queryClient.invalidateQueries({ queryKey: ["agenda-blocks-all"] });
   };

@@ -120,6 +120,58 @@ describe("validateAgendaSlot — conflito", () => {
   });
 });
 
+describe("validateAgendaSlot — o dono da agenda pode passar por cima", () => {
+  const bloqueio = consulta({ appointment_type: "block", notes: "Almoço" } as any);
+  const lunchByDay = { 1: { start: "12:00", end: "13:00" } };
+
+  it("atendimento POR CIMA de bloqueio: passa com aviso", () => {
+    const r = validateAgendaSlot({ ...base, entries: [bloqueio], overridable: true });
+    expect(r.ok).toBe(true);
+    expect(r.warning).toContain("bloqueio");
+  });
+
+  it("atendimento no horário de almoço: passa com aviso", () => {
+    const r = validateAgendaSlot({
+      ...base, startTime: "12:15", endTime: "12:45", lunchByDay, overridable: true,
+    });
+    expect(r.ok).toBe(true);
+    expect(r.warning).toContain("almoço");
+  });
+
+  it("acumula os dois avisos numa frase só", () => {
+    const r = validateAgendaSlot({
+      ...base, startTime: "12:15", endTime: "12:45", lunchByDay,
+      entries: [consulta({ appointment_type: "block", start_time: "12:00:00", end_time: "13:00:00" })],
+      overridable: true,
+    });
+    expect(r.ok).toBe(true);
+    expect(r.warning).toContain("almoço");
+    expect(r.warning).toContain("bloqueio");
+  });
+
+  it("MAS choque com outro atendimento continua barrado", () => {
+    const r = validateAgendaSlot({ ...base, entries: [consulta()], overridable: true });
+    expect(r.ok).toBe(false);
+    expect(r.warning).toBeUndefined();
+  });
+
+  it("um atendimento escondido atrás de um bloqueio ainda barra", () => {
+    const r = validateAgendaSlot({
+      ...base, entries: [bloqueio, consulta({ id: "outro" })], overridable: true,
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it("sem overridable, o bloqueio volta a impedir (agenda pública)", () => {
+    expect(validateAgendaSlot({ ...base, entries: [bloqueio] }).ok).toBe(false);
+  });
+
+  it("fim antes do início não é negociável nem para o dono", () => {
+    const r = validateAgendaSlot({ ...base, startTime: "16:00", endTime: "15:00", overridable: true });
+    expect(r.ok).toBe(false);
+  });
+});
+
 describe("readableTextColor — contraste dos eventos", () => {
   // As quatro cores PADRÃO de status são de tom médio: NENHUMA delas alcança os
   // 4.5:1 exigidos com texto branco (o verde de "Confirmado" dá 2.28:1, o

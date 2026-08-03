@@ -73,15 +73,65 @@ export const EXPORT_FORMATOS = [
 ];
 
 /** Transições: o painel manda a chave; o motor traduz para o xfade.
- *  "spin" e "3D" da spec não existem no xfade e ficaram de fora. */
-export const TRANSICOES: { id: string; label: string }[] = [
-  { id: "none", label: "Corte seco" },
-  { id: "fade", label: "Suave (crossfade)" },
-  { id: "dissolve", label: "Dissolver" },
-  { id: "zoom", label: "Zoom" },
-  { id: "flash", label: "Flash" },
-  { id: "slide", label: "Deslizar" },
-  { id: "blur", label: "Desfoque" },
-  { id: "warp", label: "Warp" },
-  { id: "pixel", label: "Pixelizar" },
+ *
+ *  ESPELHO de `video-api/services/video_editor.py` (TRANSICOES) — mudou lá,
+ *  muda aqui. Cada chave foi PROVADA num render real do ffmpeg antes de entrar
+ *  (o frame do meio tem de diferir dos dois lados). Ficaram FORA de propósito:
+ *  "fadegrain" (não implementada na build do worker), "distance" (degenerada) e
+ *  spin/3D (não existem no xfade) — melhor não ter do que entregar outra coisa.
+ *
+ *  As 9 primeiras são as chaves HISTÓRICAS: projetos salvos as usam, então os
+ *  ids nunca mudam (só o rótulo pode evoluir).
+ *
+ *  `familia` agrupa os cartões na tela; `anim` é a classe da miniatura animada
+ *  (ver `transicaoDemoClass`) — ilustração do movimento, não prévia do vídeo. */
+export type TransicaoFamilia = "basica" | "movimento" | "forma" | "efeito";
+
+export const TRANSICOES: {
+  id: string; label: string; familia: TransicaoFamilia; anim: string;
+}[] = [
+  // básicas
+  { id: "none", label: "Corte seco", familia: "basica", anim: "corte" },
+  { id: "fade", label: "Suave", familia: "basica", anim: "fade" },
+  { id: "dissolve", label: "Dissolver", familia: "basica", anim: "fade" },
+  { id: "escurecer", label: "Escurecer", familia: "basica", anim: "preto" },
+  { id: "flash", label: "Flash", familia: "basica", anim: "branco" },
+  // movimento
+  { id: "slide", label: "Deslizar ←", familia: "movimento", anim: "desl-esq" },
+  { id: "slide_dir", label: "Deslizar →", familia: "movimento", anim: "desl-dir" },
+  { id: "slide_cima", label: "Deslizar ↑", familia: "movimento", anim: "desl-cima" },
+  { id: "slide_baixo", label: "Deslizar ↓", familia: "movimento", anim: "desl-baixo" },
+  { id: "suave_esq", label: "Suave ←", familia: "movimento", anim: "desl-esq" },
+  { id: "suave_dir", label: "Suave →", familia: "movimento", anim: "desl-dir" },
+  { id: "empurrar", label: "Empurrar", familia: "movimento", anim: "desl-esq" },
+  { id: "revelar", label: "Revelar", familia: "movimento", anim: "desl-dir" },
+  // formas
+  { id: "varrer_esq", label: "Varrer ←", familia: "forma", anim: "varre-esq" },
+  { id: "varrer_dir", label: "Varrer →", familia: "forma", anim: "varre-dir" },
+  { id: "varrer_cima", label: "Varrer ↑", familia: "forma", anim: "varre-cima" },
+  { id: "varrer_baixo", label: "Varrer ↓", familia: "forma", anim: "varre-baixo" },
+  { id: "circulo_abre", label: "Círculo abre", familia: "forma", anim: "circ-abre" },
+  { id: "circulo_fecha", label: "Círculo fecha", familia: "forma", anim: "circ-fecha" },
+  { id: "iris", label: "Íris", familia: "forma", anim: "circ-abre" },
+  { id: "radial", label: "Radial", familia: "forma", anim: "varre-dir" },
+  { id: "diagonal", label: "Diagonal", familia: "forma", anim: "diag" },
+  // efeito
+  { id: "zoom", label: "Zoom", familia: "efeito", anim: "zoom" },
+  { id: "blur", label: "Desfoque", familia: "efeito", anim: "blur" },
+  { id: "pixel", label: "Pixelizar", familia: "efeito", anim: "pixel" },
+  { id: "warp", label: "Espremer", familia: "efeito", anim: "espreme" },
+  { id: "fatias", label: "Fatias", familia: "efeito", anim: "fatias" },
+  { id: "vento", label: "Vento", familia: "efeito", anim: "varre-dir" },
 ];
+
+export const TRANSICAO_FAMILIAS: { id: TransicaoFamilia; label: string }[] = [
+  { id: "basica", label: "Básicas" },
+  { id: "movimento", label: "Movimento" },
+  { id: "forma", label: "Formas" },
+  { id: "efeito", label: "Efeito" },
+];
+
+/** Rótulo de uma chave — inclusive de projeto antigo cuja chave saiu do catálogo. */
+export function transicaoLabel(id: string): string {
+  return TRANSICOES.find((t) => t.id === id)?.label ?? "Corte seco";
+}

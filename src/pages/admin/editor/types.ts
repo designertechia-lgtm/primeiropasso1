@@ -101,6 +101,11 @@ export type SeqClip = {
   source_url: string;     // URL re-carregável (galeria) — "" quando foi upload
   src_in: number;         // trim dentro da fonte
   src_out: number;
+  /** Transição de ENTRADA deste clipe (como ele emenda com o que vem antes).
+   *  AUSENTE = herda a transição global do Acabamento — é o que todo projeto
+   *  salvo antes desta feature tem, e o que mantém o comportamento de sempre.
+   *  "none" é uma escolha EXPLÍCITA de corte seco e vence a global. */
+  transition_in?: string;
 };
 
 export const ANIM_IN_OPTS: { id: AnimIn; label: string }[] = [

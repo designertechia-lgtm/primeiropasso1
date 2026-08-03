@@ -11,7 +11,7 @@ import { describe, it, expect } from "vitest";
 import { timelineFinalDe, origToFinal, docFlatToTracks, duracaoFinalDe, type VideoClip, type TextClip, type AudioClipT } from "./tracksModel";
 import { emptyDoc, type EditorDoc } from "./documentReducer";
 import { snapshotFromStored, aplicarFaixasOcultas } from "./serialize";
-import type { Segment } from "./types";
+import type { Segment, SeqClip } from "./types";
 
 const seg = (id: number, start: number, end: number, keep: boolean, speed = 1): Segment =>
   ({ id, start, end, keep, speed });
@@ -309,6 +309,79 @@ describe("emenda por PARTES da mesma fonte — corte seco (cortador de clipe)", 
     const [, p1, p2] = base.clips as VideoClip[];
     expect(p1.timeline_start).toBeCloseTo(3.73, 3);     // 4 - 0.27
     expect(p2.timeline_start).toBeCloseTo(p1.timeline_end, 3);   // seco
+  });
+});
+
+describe("transição POR EMENDA (escolha explícita vence a regra padrão)", () => {
+  const doc3 = (over: Partial<SeqClip>[] = []): EditorDoc => ({
+    ...emptyDoc(),
+    segments: [seg(1, 0, 4, true, 1)],
+    transition: "dissolve",
+    seqClips: [
+      { id: "p1", edit_id: "vidB", name: "take (parte 1)", natural_dur: 6,
+        source_url: "", src_in: 1, src_out: 4, ...over[0] },
+      { id: "p2", edit_id: "vidB", name: "take (parte 2)", natural_dur: 6,
+        source_url: "", src_in: 4, src_out: 6, ...over[1] },
+      { id: "c", edit_id: "vidC", name: "fecho", natural_dur: 2,
+        source_url: "", src_in: 0, src_out: 2, ...over[2] },
+    ],
+  });
+
+  it("partes da mesma fonte PODEM ter transição quando pedida no cortador", () => {
+    // o cortador funde partes encostadas, então 2 partes = há um buraco entre
+    // elas: o conteúdo dos dois lados é diferente e não há fantasma
+    const base = docFlatToTracks(doc3([{}, { transition_in: "zoom" }]), "fonteA")
+      .find((t) => t.id === "video-base")!;
+    const [, p1, p2] = base.clips as VideoClip[];
+    expect(p2.transition_in).toBe("zoom");
+    expect(p2.timeline_start).toBeCloseTo(p1.timeline_end - 0.4, 3);   // descontou xf
+  });
+
+  it("corte seco EXPLÍCITO entre fontes diferentes vence a global", () => {
+    const base = docFlatToTracks(doc3([{}, {}, { transition_in: "none" }]), "fonteA")
+      .find((t) => t.id === "video-base")!;
+    const [, , p2, c] = base.clips as VideoClip[];
+    expect(c.transition_in).toBeUndefined();
+    expect(c.timeline_start).toBeCloseTo(p2.timeline_end, 3);         // contíguo
+  });
+
+  it("cada emenda pode ter uma transição DIFERENTE", () => {
+    const base = docFlatToTracks(
+      doc3([{ transition_in: "iris" }, { transition_in: "varrer_esq" }, { transition_in: "flash" }]),
+      "fonteA").find((t) => t.id === "video-base")!;
+    const [, p1, p2, c] = base.clips as VideoClip[];
+    expect(p1.transition_in).toBe("iris");
+    expect(p2.transition_in).toBe("varrer_esq");
+    expect(c.transition_in).toBe("flash");
+  });
+
+  it("global SECA + emenda com transição: o xf existe só para o emendado", () => {
+    // sem isto o xf seria 0 e a transição escolhida sairia com duração zero,
+    // ou seja, não sairia. Os trechos do PRINCIPAL seguem secos.
+    const doc: EditorDoc = {
+      ...emptyDoc(),
+      segments: [seg(1, 0, 4, true, 1), seg(2, 5, 9, true, 1)],
+      transition: "none",
+      seqClips: [{ id: "c", edit_id: "vidC", name: "fecho", natural_dur: 3,
+        source_url: "", src_in: 0, src_out: 3, transition_in: "fade" }],
+    };
+    const base = docFlatToTracks(doc, "fonteA").find((t) => t.id === "video-base")!;
+    const [t1, t2, c] = base.clips as VideoClip[];
+    // os 2 trechos do principal continuam CONTÍGUOS (a global é corte seco)
+    expect(t2.timeline_start).toBeCloseTo(t1.timeline_end, 3);
+    // e o emendado descontou o xf da transição que ele pediu
+    expect(c.transition_in).toBe("fade");
+    expect(c.timeline_start).toBeCloseTo(t2.timeline_end - 0.4, 3);
+    expect(duracaoFinalDe(doc)).toBeCloseTo(4 + 4 + 3 - 0.4, 3);
+  });
+
+  it("projeto SALVO antes da feature (sem transition_in) não muda de resultado", () => {
+    // regressão zero por construção: campo ausente = herda a regra de sempre
+    const antigo = docFlatToTracks(doc3(), "fonteA").find((t) => t.id === "video-base")!;
+    const [, p1, p2, c] = antigo.clips as VideoClip[];
+    expect(p1.transition_in).toBe("dissolve");     // fontes diferentes → global
+    expect(p2.transition_in).toBeUndefined();      // mesma fonte → seco
+    expect(c.transition_in).toBe("dissolve");
   });
 });
 

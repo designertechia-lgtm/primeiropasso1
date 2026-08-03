@@ -41,7 +41,8 @@ describe("SeqTrimDialog", () => {
     render(<SeqTrimDialog clip={CLIPE} onConcluir={onConcluir} onCancelar={vi.fn()} />);
     expect(screen.getByText(/Cortar "take 2"/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Concluir/ }));
-    expect(onConcluir).toHaveBeenCalledWith([{ src_in: 0, src_out: 10 }]);
+    // 1 parte só = não há emenda entre partes: a transição vai como "none"
+    expect(onConcluir).toHaveBeenCalledWith([{ src_in: 0, src_out: 10 }], "none");
   });
 
   it("dividir + tirar o miolo devolve DUAS partes", () => {
@@ -61,9 +62,42 @@ describe("SeqTrimDialog", () => {
       .toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Concluir/ }));
-    expect(onConcluir).toHaveBeenCalledWith([
-      { src_in: 0, src_out: 3 }, { src_in: 6, src_out: 10 },
-    ]);
+    expect(onConcluir).toHaveBeenCalledWith(
+      [{ src_in: 0, src_out: 3 }, { src_in: 6, src_out: 10 }], "none");
+  });
+
+  it("com 2+ partes dá para escolher a transição ENTRE ELAS", () => {
+    const onConcluir = vi.fn();
+    render(<SeqTrimDialog clip={CLIPE} onConcluir={onConcluir} onCancelar={vi.fn()} />);
+
+    // com uma parte só, o seletor de emenda nem aparece (não há emenda)
+    expect(screen.queryByText(/Entre as partes/)).not.toBeInTheDocument();
+
+    moverCursor(3);
+    fireEvent.click(screen.getByRole("button", { name: /Dividir no cursor/ }));
+    moverCursor(6);
+    fireEvent.click(screen.getByRole("button", { name: /Dividir no cursor/ }));
+    moverCursor(4.5);
+    fireEvent.click(screen.getByRole("button", { name: /Tirar do clipe/ }));
+
+    // agora há 2 partes → o seletor aparece e abre
+    fireEvent.click(screen.getByText(/Entre as partes/));
+    fireEvent.click(screen.getByRole("button", { name: "Dissolver" }));
+    fireEvent.click(screen.getByRole("button", { name: /Concluir/ }));
+    expect(onConcluir).toHaveBeenCalledWith(
+      [{ src_in: 0, src_out: 3 }, { src_in: 6, src_out: 10 }], "dissolve");
+  });
+
+  it("o aviso diz que a prévia NÃO toca a transição", () => {
+    render(<SeqTrimDialog clip={CLIPE} onConcluir={vi.fn()} onCancelar={vi.fn()} />);
+    moverCursor(3);
+    fireEvent.click(screen.getByRole("button", { name: /Dividir no cursor/ }));
+    moverCursor(6);
+    fireEvent.click(screen.getByRole("button", { name: /Dividir no cursor/ }));
+    moverCursor(4.5);
+    fireEvent.click(screen.getByRole("button", { name: /Tirar do clipe/ }));
+    fireEvent.click(screen.getByText(/Entre as partes/));
+    expect(screen.getByText(/A prévia não toca a transição/)).toBeInTheDocument();
   });
 
   it("cancelar não devolve nada", () => {
@@ -82,6 +116,6 @@ describe("SeqTrimDialog", () => {
     render(<SeqTrimDialog clip={{ ...CLIPE, src_in: 6, src_out: 10 }}
       onConcluir={onConcluir} onCancelar={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /Concluir/ }));
-    expect(onConcluir).toHaveBeenCalledWith([{ src_in: 6, src_out: 10 }]);
+    expect(onConcluir).toHaveBeenCalledWith([{ src_in: 6, src_out: 10 }], "none");
   });
 });

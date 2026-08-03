@@ -15,16 +15,19 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Scissors, Play, Pause, Trash2, RotateCcw, Check } from "lucide-react";
+import { Scissors, Play, Pause, Trash2, RotateCcw, Check, Shuffle, ChevronDown } from "lucide-react";
 import { API, fmt, parseTime, type SeqClip } from "./types";
 import { videoApiAuthHeaders } from "@/lib/videoApi";
 import {
   segsIniciais, dividirEm, janelasMantidas, duracaoMantida, type TrimSeg,
 } from "./seqTrim";
+import TransicaoPicker, { TransicaoDemo, AvisoPrevia } from "./TransicaoPicker";
+import { TRANSICOES, transicaoLabel } from "./filtros";
 
 type Props = {
   clip: SeqClip;
-  onConcluir: (partes: { src_in: number; src_out: number }[]) => void;
+  /** `transicao` = como as PARTES emendam entre si ("none" = corte seco). */
+  onConcluir: (partes: { src_in: number; src_out: number }[], transicao: string) => void;
   onCancelar: () => void;
 };
 
@@ -39,6 +42,11 @@ export default function SeqTrimDialog({ clip, onConcluir, onCancelar }: Props) {
   const [thumbsFalhou, setThumbsFalhou] = useState(false);
   const [deField, setDeField] = useState("");
   const [ateField, setAteField] = useState("");
+  // como as PARTES emendam entre si. Nasce no que o clipe já tem (reabrir o
+  // cortador não muda a escolha anterior); "none" = corte seco, o padrão de
+  // sempre — partes só existem quando o usuário tirou um pedaço do MEIO.
+  const [transicao, setTransicao] = useState(clip.transition_in ?? "none");
+  const [abriuTransicao, setAbriuTransicao] = useState(false);
 
   const dur = Math.max(clip.natural_dur, clip.src_out, 0.1);
   const partes = useMemo(() => janelasMantidas(segs), [segs]);
@@ -217,6 +225,32 @@ export default function SeqTrimDialog({ clip, onConcluir, onCancelar }: Props) {
           </div>
         )}
 
+        {/* Como as PARTES emendam entre si. Só aparece quando existem 2+ partes
+            — com uma parte só não há emenda nenhuma para configurar. */}
+        {partes.length > 1 && (
+          <div className="rounded-lg border bg-muted/30 px-3 py-2">
+            <button type="button"
+              onClick={() => setAbriuTransicao((v) => !v)}
+              className="flex w-full items-center gap-2 text-xs">
+              <Shuffle className="h-3.5 w-3.5 text-primary" />
+              <span className="font-medium">Entre as partes:</span>
+              <TransicaoDemo anim={TRANSICOES.find((t) => t.id === transicao)?.anim || "corte"}
+                className="h-4 w-7" />
+              <span className="text-muted-foreground">
+                {transicao === "none" ? "Corte seco" : transicaoLabel(transicao)}
+              </span>
+              <ChevronDown className={`ml-auto h-3.5 w-3.5 transition-transform ${abriuTransicao ? "rotate-180" : ""}`} />
+            </button>
+            {abriuTransicao && (
+              <div className="mt-2 space-y-2">
+                <TransicaoPicker value={transicao} onChange={setTransicao}
+                  labelNone="Corte seco" compacto />
+                <AvisoPrevia />
+              </div>
+            )}
+          </div>
+        )}
+
         <DialogFooter className="flex-row items-center justify-between gap-2 sm:justify-between">
           <span className="text-xs text-muted-foreground">
             {partes.length === 0
@@ -227,7 +261,7 @@ export default function SeqTrimDialog({ clip, onConcluir, onCancelar }: Props) {
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={onCancelar}>Cancelar</Button>
             <Button size="sm" className="gap-1" disabled={partes.length === 0}
-              onClick={() => onConcluir(partes)}>
+              onClick={() => onConcluir(partes, partes.length > 1 ? transicao : "none")}>
               <Check className="h-3.5 w-3.5" /> Concluir
             </Button>
           </div>

@@ -111,7 +111,7 @@ export type SegFinal = {
  *  implementação da conta — front e (na Fase B) o motor v9 leem daqui. */
 export function timelineFinalDe(
   keep: Segment[], transitionOn: boolean, introDur = 0,
-  extraDurs: number[] = [],
+  extraDurs: number[] = [], xfSemGlobal = false,
 ): { segs: SegFinal[]; xf: number; totalFinal: number } {
   // duração final de cada trecho, já com a velocidade
   const dur = keep.map((s) => (s.end - s.start) / (s.speed ?? 1));
@@ -120,46 +120,72 @@ export function timelineFinalDe(
   // (parts > 1) — e a intro (>= 1s) nunca é quem clampa (0,9s > XFADE 0,4s).
   // extraDurs = vídeos EMENDADOS no fim: também são parts — um emendado curto
   // clampa o xf de TODAS as emendas, como no motor (min sobre todas as parts).
-  const xf = transitionOn && (keep.length + extraDurs.length > 1 || introDur > 0)
+  //
+  // `xfSemGlobal`: a transição global é "Corte seco" mas ALGUM clipe emendado
+  // declarou a sua. O motor calcula UM xf para o render inteiro, então ele
+  // precisa existir aqui — mas só os EMENDADOS o consomem (via posicionarSeqs).
+  // Os trechos do vídeo principal seguem a global e continuam secos abaixo.
+  const xf = (transitionOn || xfSemGlobal) && (keep.length + extraDurs.length > 1 || introDur > 0)
     ? Math.min(XFADE_DUR, Math.max(0.1, Math.min(...dur, ...extraDurs) * 0.9))
     : 0;
   // a intro consome xf ao emendar com o 1º trecho (video_editor.py:1387)
-  const head = Math.max(0, introDur - (xf && introDur ? xf : 0));
+  const head = Math.max(0, introDur - (transitionOn && xf && introDur ? xf : 0));
 
   const segs: SegFinal[] = [];
   let offset = head;
   keep.forEach((s, i) => {
     segs.push({ seg: s, finalStart: offset, speed: s.speed ?? 1 });
     // último trecho não subtrai xf (não há emenda depois) — remap_cues:486
-    offset += dur[i] - (i < keep.length - 1 ? xf : 0);
+    offset += dur[i] - (transitionOn && i < keep.length - 1 ? xf : 0);
   });
   return { segs, xf, totalFinal: offset };
 }
 
+/** Há ALGUMA transição na edição? Não basta olhar a global: um clipe emendado
+ *  pode declarar a sua (`transition_in`) com a global em "Corte seco", e nesse
+ *  caso o xf precisa existir — senão a transição escolhida sairia com duração
+ *  zero, ou seja, não sairia. */
+export function haTransicao(doc: EditorDoc): boolean {
+  if (doc.transition !== "none") return true;
+  return (doc.seqClips ?? []).some((c) => c.transition_in && c.transition_in !== "none");
+}
+
 /** Onde cada vídeo EMENDADO cai na timeline final, decidindo a emenda uma a uma.
  *
- *  Regra: partes ADJACENTES da MESMA fonte (mesmo edit_id) emendam em CORTE
- *  SECO — é o que o cortador de clipe produz ao dividir um vídeo em "parte 1 /
- *  parte 2", e crossfadear um vídeo com ele mesmo geraria fantasma (e comeria
- *  xf de duração que o usuário não pediu). As demais emendas seguem a transição
- *  global. Corte seco = sem `transition_in` + posições contíguas, exatamente a
- *  forma que o motor já recebe quando a transição é "none".
+ *  Cada clipe pode declarar a SUA transição de entrada (`transition_in`, escolhida
+ *  no losango da trilha ou no cortador). Quem não declara herda a regra padrão:
+ *
+ *  - partes ADJACENTES da MESMA fonte (mesmo edit_id) emendam em CORTE SECO — é
+ *    o que o cortador produz ao dividir um vídeo em "parte 1 / parte 2", e
+ *    crossfadear um vídeo com ele mesmo geraria fantasma (e comeria xf que o
+ *    usuário não pediu);
+ *  - as demais seguem a transição GLOBAL do Acabamento.
+ *
+ *  Um `transition_in` explícito vence a regra nos dois sentidos: dá para pedir
+ *  transição entre partes do mesmo vídeo (elas só existem quando o usuário tirou
+ *  um pedaço do meio — o conteúdo dos dois lados é diferente e não há fantasma)
+ *  e dá para pedir corte seco entre vídeos diferentes.
+ *
+ *  Corte seco = sem `transition_in` no payload + posições contíguas, exatamente
+ *  a forma que o motor já recebe quando a transição é "none".
  *
  *  O `xf` continua vindo de `timelineFinalDe` com TODAS as partes no clamp
  *  (inclusive as que só emendam seco): conservador e espelha o `min` sobre
  *  parts do motor. */
 export function posicionarSeqs(
   totalFinal: number, xf: number, transition: string,
-  seqs: { edit_id: string; src_in: number; src_out: number }[],
+  seqs: { edit_id: string; src_in: number; src_out: number; transition_in?: string }[],
 ): { start: number; end: number; transitionIn?: string }[] {
-  const comFade = transition !== "none";
   const out: { start: number; end: number; transitionIn?: string }[] = [];
   let cursor = totalFinal;
   seqs.forEach((c, i) => {
-    const secaAqui = !comFade || (i > 0 && seqs[i - 1].edit_id === c.edit_id);
+    const mesmaFonte = i > 0 && seqs[i - 1].edit_id === c.edit_id;
+    // escolha explícita do usuário > regra padrão (seco entre partes, global no resto)
+    const escolhida = c.transition_in ?? (mesmaFonte ? "none" : transition);
+    const secaAqui = !escolhida || escolhida === "none";
     const start = secaAqui ? cursor : cursor - xf;
     const end = start + (c.src_out - c.src_in);
-    out.push({ start, end, transitionIn: secaAqui ? undefined : transition });
+    out.push({ start, end, transitionIn: secaAqui ? undefined : escolhida });
     cursor = end;
   });
   return out;
@@ -174,7 +200,7 @@ export function duracaoFinalDe(doc: EditorDoc): number {
   const seqs = (doc.seqClips ?? []).filter((c) => c.src_out - c.src_in >= 0.15);
   const { xf, totalFinal } = timelineFinalDe(
     keep, doc.transition !== "none", introDur,
-    seqs.map((c) => c.src_out - c.src_in));
+    seqs.map((c) => c.src_out - c.src_in), haTransicao(doc));
   const pos = posicionarSeqs(totalFinal, xf, doc.transition, seqs);
   return pos.length ? pos[pos.length - 1].end : totalFinal;
 }
@@ -201,7 +227,7 @@ export function docFlatToTracks(doc: EditorDoc, sourceId: string): Track[] {
   const seqs = (doc.seqClips ?? []).filter((c) => c.src_out - c.src_in >= 0.15);
   const { segs, xf, totalFinal } = timelineFinalDe(
     keep, doc.transition !== "none", introDur,
-    seqs.map((c) => c.src_out - c.src_in));
+    seqs.map((c) => c.src_out - c.src_in), haTransicao(doc));
 
   // faixa base de vídeo (z=0): cada trecho keep vira um VideoClip da fonte única
   const videoBase: VideoClip[] = segs.map(({ seg, finalStart, speed }, i) => ({

@@ -47,6 +47,7 @@ import {
   FolderOpen, Copy, Plus, Minus, Palette, Sparkles, Mic, Square, HelpCircle,
   Image as ImageIcon, Headphones, Volume2, Magnet, Download, Type, Clapperboard,
   Repeat, LogIn, LogOut, Check, Eye, EyeOff, Maximize2, Minimize2, ChevronDown,
+  Shuffle,
 } from "lucide-react";
 import { videoApiAuthHeaders } from "@/lib/videoApi";
 import {
@@ -66,8 +67,9 @@ import {
   type ProjectSnapshot,
 } from "./editor/serialize";
 import { evaluateScene, drawScene, fontesDaCena, FONTE_PADRAO } from "./editor/scene";
-import { FILTROS, FILTRO_IDS, EFEITOS, TRANSICOES, filtroCss,
+import { FILTROS, FILTRO_IDS, EFEITOS, TRANSICOES, filtroCss, transicaoLabel,
   EXPORT_RESOLUCOES, EXPORT_FPS, EXPORT_CODECS, EXPORT_FORMATOS } from "./editor/filtros";
+import TransicaoPicker, { TransicaoDemo, AvisoPrevia } from "./editor/TransicaoPicker";
 import EditorOnboarding, { onboardingPendente } from "./editor/EditorOnboarding";
 import VideoAddDialog, { type FilaUpload } from "./editor/VideoAddDialog";
 import SeqTrimDialog from "./editor/SeqTrimDialog";
@@ -169,6 +171,10 @@ export default function AdminEditorVideo() {
   const [filaSeq, setFilaSeq] = useState<FilaUpload | null>(null);
   // clipe da sequência aberto no cortador (tela sobreposta)
   const [trimClip, setTrimClip] = useState<SeqClip | null>(null);
+  // id do SeqClip cuja EMENDA DE ENTRADA está aberta no losango da trilha
+  const [emendaAberta, setEmendaAberta] = useState<string | null>(null);
+  // painel de transições da linha Acabamento (a global) aberto
+  const [abriuTransicaoGlobal, setAbriuTransicaoGlobal] = useState(false);
   // mesa de edição: ferramenta aberta no painel ao lado do player + biblioteca
   // recolhível (fica aberta enquanto não há vídeo; recolhe ao carregar um)
   const [tab, setTab] = useState("cortes");
@@ -656,6 +662,23 @@ export default function AdminEditorVideo() {
     }
     return bases;
   }, [seqClips, meta?.duration]);
+  /** Transição REAL da emenda de entrada do emendado `i` — o que o render vai
+   *  fazer. ESPELHA a regra de `posicionarSeqs`: escolha explícita do clipe
+   *  vence; sem escolha, partes da MESMA fonte emendam secas e o resto herda a
+   *  global do Acabamento. É o que o losango da trilha mostra. */
+  const transicaoEfetiva = (i: number): string => {
+    const c = seqClips[i];
+    if (!c) return "none";
+    if (c.transition_in) return c.transition_in;
+    const mesmaFonte = i > 0 && seqClips[i - 1].edit_id === c.edit_id;
+    return mesmaFonte ? "none" : transition;
+  };
+  /** Grava a transição de entrada de um emendado (escolha EXPLÍCITA). */
+  const setTransicaoDe = (id: string, tr: string) =>
+    apply((d) => ({
+      seqClips: d.seqClips.map((x) => (x.id === id ? { ...x, transition_in: tr } : x)),
+    }));
+
   /** Duração do domínio ESTENDIDO. É tempo ORIGINAL: não desconta o crossfade
    *  das emendas, do mesmo jeito que a timeline sempre mostrou o tempo original
    *  dos cortes (o relógio não tem como "tocar" um crossfade). Quem sabe a
@@ -1028,8 +1051,12 @@ export default function AdminEditorVideo() {
 
   // Cortador de clipe: as janelas mantidas viram partes DA MESMA FONTE no lugar
   // do clipe original — um único passo de desfazer restaura o clipe inteiro.
-  // Partes vizinhas da mesma fonte emendam em corte seco (tracksModel).
-  const concluirTrim = (partes: { src_in: number; src_out: number }[]) => {
+  // `transicao` é como as partes emendam ENTRE SI (o seletor do cortador): vai
+  // no transition_in da 2ª parte em diante — a 1ª conserva a transição de
+  // ENTRADA do clipe original, que é a emenda dele com o que vem antes.
+  const concluirTrim = (
+    partes: { src_in: number; src_out: number }[], transicao: string,
+  ) => {
     const alvo = trimClip;
     if (!alvo || !partes.length) return;
     const base = alvo.name.replace(/\s*\(parte \d+\)$/, "");
@@ -1040,6 +1067,7 @@ export default function AdminEditorVideo() {
         ...alvo, id: newId(),
         name: partes.length > 1 ? `${base} (parte ${j + 1})` : base,
         src_in: p.src_in, src_out: p.src_out,
+        transition_in: j === 0 ? alvo.transition_in : transicao,
       }));
       const arr = [...d.seqClips];
       arr.splice(i, 1, ...novos);
@@ -1047,7 +1075,7 @@ export default function AdminEditorVideo() {
     });
     setTrimClip(null);
     toast.success(partes.length > 1
-      ? `Clipe cortado em ${partes.length} partes — emendadas em corte seco, na mesma posição da sequência.`
+      ? `Clipe cortado em ${partes.length} partes — emendadas com "${transicaoLabel(transicao)}", na mesma posição da sequência.`
       : "Trecho do clipe ajustado.", { duration: 6000 });
   };
 
@@ -3295,23 +3323,37 @@ export default function AdminEditorVideo() {
             {/* Acabamento + Render */}
             <div className="flex items-center gap-3 flex-wrap text-xs rounded-lg border bg-muted/30 px-3 py-2">
               <span className="font-medium">Acabamento:</span>
-              <label className="flex items-center gap-1.5" title="Como um trecho vira o próximo">
+              <button type="button"
+                title="Como um trecho vira o próximo (vale para todas as emendas que não têm escolha própria)"
+                onClick={() => setAbriuTransicaoGlobal((v) => !v)}
+                className="flex items-center gap-1.5 rounded border bg-background px-2 py-1 hover:border-primary/60 transition">
                 Emendas
-                <select className="h-7 rounded border bg-background px-1" value={transition}
-                  onChange={(e) => patch({ transition: e.target.value })}>
-                  {TRANSICOES.map((t) => (
-                    <option key={t.id} value={t.id}>{t.label}</option>
-                  ))}
-                </select>
-              </label>
+                <TransicaoDemo anim={TRANSICOES.find((t) => t.id === transition)?.anim || "corte"}
+                  className="h-4 w-7" />
+                <span className="font-medium">{transicaoLabel(transition)}</span>
+                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${abriuTransicaoGlobal ? "rotate-180" : ""}`} />
+              </button>
               <label className="flex items-center gap-1.5 cursor-pointer" title="Leve zoom alternado a cada trecho — disfarça as emendas">
                 <input type="checkbox" checked={punchIn} onChange={(e) => patch({ punchIn: e.target.checked })} />
                 Zoom alternado nos cortes
               </label>
-              {segments.filter((s) => s.keep).length < 2 && transition !== "none" && (
+              {segments.filter((s) => s.keep).length < 2 && !seqClips.length && transition !== "none" && (
                 <span className="text-muted-foreground">
                   (a emenda só aparece com 2+ trechos)
                 </span>
+              )}
+              {abriuTransicaoGlobal && (
+                <div className="w-full space-y-2 border-t pt-2">
+                  <TransicaoPicker value={transition}
+                    onChange={(tr) => patch({ transition: tr })} compacto />
+                  {seqClips.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground">
+                      Vale para as emendas que não têm escolha própria. Para mudar uma
+                      emenda específica entre vídeos, clique no losango ✦ entre os blocos da trilha.
+                    </p>
+                  )}
+                  <AvisoPrevia />
+                </div>
               )}
             </div>
 
@@ -3584,6 +3626,33 @@ export default function AdminEditorVideo() {
                         </div>
                       );
                     })}
+                    {/* LOSANGO em cada emenda: como este clipe entra depois do
+                        anterior. Fica por cima dos blocos (z-20) e abre o
+                        seletor abaixo da timeline — dentro da fita ele seria
+                        cortado pelo overflow-hidden. */}
+                    {seqClips.map((c, i) => {
+                      const efetiva = transicaoEfetiva(i);
+                      const temTr = efetiva !== "none";
+                      const aberto = emendaAberta === c.id;
+                      return (
+                        <button key={`tr-${c.id}`} type="button"
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEmendaAberta(aberto ? null : c.id);
+                          }}
+                          title={`Emenda com o clipe anterior: ${transicaoLabel(efetiva)} — clique para trocar`}
+                          className={`absolute top-1/2 z-20 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 rotate-45 items-center justify-center rounded-[3px] border text-[8px] shadow transition hover:scale-125 ${
+                            aberto
+                              ? "border-primary bg-primary text-primary-foreground scale-125"
+                              : temTr
+                                ? "border-primary/70 bg-primary/90 text-primary-foreground"
+                                : "border-white/40 bg-neutral-900/90 text-white/70"}`}
+                          style={{ left: `${(basesSeq[i] / durTL) * 100}%` }}>
+                          <span className="-rotate-45 leading-none">{temTr ? "✦" : "|"}</span>
+                        </button>
+                      );
+                    })}
                     {/* + no FIM da trilha: o jeito direto de emendar mais
                         vídeos e montar um maior (o mesmo fluxo do botão
                         "+ Vídeos no fim") */}
@@ -3740,6 +3809,38 @@ export default function AdminEditorVideo() {
               </div>
             </div>
             </div>
+
+            {/* Seletor da emenda aberta pelo losango. Fica FORA do scroll da
+                timeline de propósito: dentro dela seria cortado pelo
+                overflow-hidden e andaria junto com o zoom. */}
+            {emendaAberta && (() => {
+              const i = seqClips.findIndex((x) => x.id === emendaAberta);
+              if (i < 0) return null;
+              const c = seqClips[i];
+              const anterior = i === 0 ? "o vídeo principal" : `"${seqClips[i - 1].name}"`;
+              const efetiva = transicaoEfetiva(i);
+              const herdado = !c.transition_in;
+              return (
+                <div className="rounded-lg border border-primary/40 bg-primary/5 p-3 space-y-2">
+                  <div className="flex items-center gap-2 text-xs flex-wrap">
+                    <Shuffle className="h-4 w-4 text-primary shrink-0" />
+                    <span className="font-medium">
+                      Emenda de {anterior} → "{c.name}"
+                    </span>
+                    {herdado && (
+                      <span className="rounded-full border border-primary/40 px-1.5 py-0.5 text-[9px] text-muted-foreground">
+                        herdando do Acabamento: {transicaoLabel(efetiva)}
+                      </span>
+                    )}
+                    <Button size="sm" variant="ghost" className="ml-auto h-6 px-2 text-[10px]"
+                      onClick={() => setEmendaAberta(null)}>Fechar</Button>
+                  </div>
+                  <TransicaoPicker value={efetiva}
+                    onChange={(tr) => setTransicaoDe(c.id, tr)} compacto />
+                  <AvisoPrevia />
+                </div>
+              );
+            })()}
 
             {/* Adicionar conteúdo às faixas — a resposta de "como adiciono
                 isto?": cada botão ABRE A ABA da ferramenta ao lado do player

@@ -136,6 +136,49 @@ export function timelineFinalDe(
   return { segs, xf, totalFinal: offset };
 }
 
+/** Onde cada vídeo EMENDADO cai na timeline final, decidindo a emenda uma a uma.
+ *
+ *  Regra: partes ADJACENTES da MESMA fonte (mesmo edit_id) emendam em CORTE
+ *  SECO — é o que o cortador de clipe produz ao dividir um vídeo em "parte 1 /
+ *  parte 2", e crossfadear um vídeo com ele mesmo geraria fantasma (e comeria
+ *  xf de duração que o usuário não pediu). As demais emendas seguem a transição
+ *  global. Corte seco = sem `transition_in` + posições contíguas, exatamente a
+ *  forma que o motor já recebe quando a transição é "none".
+ *
+ *  O `xf` continua vindo de `timelineFinalDe` com TODAS as partes no clamp
+ *  (inclusive as que só emendam seco): conservador e espelha o `min` sobre
+ *  parts do motor. */
+export function posicionarSeqs(
+  totalFinal: number, xf: number, transition: string,
+  seqs: { edit_id: string; src_in: number; src_out: number }[],
+): { start: number; end: number; transitionIn?: string }[] {
+  const comFade = transition !== "none";
+  const out: { start: number; end: number; transitionIn?: string }[] = [];
+  let cursor = totalFinal;
+  seqs.forEach((c, i) => {
+    const secaAqui = !comFade || (i > 0 && seqs[i - 1].edit_id === c.edit_id);
+    const start = secaAqui ? cursor : cursor - xf;
+    const end = start + (c.src_out - c.src_in);
+    out.push({ start, end, transitionIn: secaAqui ? undefined : transition });
+    cursor = end;
+  });
+  return out;
+}
+
+/** Duração final EXATA do vídeo de saída — a MESMA conta do render (cortes,
+ *  velocidade, capa, emendas com o desconto de xf onde há crossfade). O contador
+ *  da tela lê daqui para não divergir do arquivo que sai. */
+export function duracaoFinalDe(doc: EditorDoc): number {
+  const keep = doc.segments.filter((s) => s.keep);
+  const introDur = doc.introOn ? doc.introDur : 0;
+  const seqs = (doc.seqClips ?? []).filter((c) => c.src_out - c.src_in >= 0.15);
+  const { xf, totalFinal } = timelineFinalDe(
+    keep, doc.transition !== "none", introDur,
+    seqs.map((c) => c.src_out - c.src_in));
+  const pos = posicionarSeqs(totalFinal, xf, doc.transition, seqs);
+  return pos.length ? pos[pos.length - 1].end : totalFinal;
+}
+
 /** Mapeia um instante `t` da timeline ORIGINAL (fonte única) → timeline final,
  *  se ele cai num trecho keep. Espelha remap_cues:469 `(t-a)/speed + finalStart`. */
 export function origToFinal(t: number, segs: SegFinal[]): number | null {
@@ -173,22 +216,21 @@ export function docFlatToTracks(doc: EditorDoc, sourceId: string): Track[] {
   }));
 
   // vídeos EMENDADOS no fim (Fase F): continuam a faixa base depois do último
-  // trecho. Cada emenda desconta xf (o remap não subtraía no ÚLTIMO keep
-  // porque não havia nada depois — agora há). Filtro/efeito/volume globais
+  // trecho. Cada emenda com crossfade desconta xf (o remap não subtraía no
+  // ÚLTIMO keep porque não havia nada depois — agora há); entre partes da mesma
+  // fonte a emenda é seca (ver posicionarSeqs). Filtro/efeito/volume globais
   // valem para eles também (a edição é uma só).
-  let cursorSeq = totalFinal - (seqs.length && xf ? xf : 0);
-  seqs.forEach((c, i) => {
-    const d = c.src_out - c.src_in;
+  posicionarSeqs(totalFinal, xf, doc.transition, seqs).forEach((p, i) => {
+    const c = seqs[i];
     videoBase.push({
       id: uid("q", i), kind: "video", source_id: c.edit_id,
       src_in: c.src_in, src_out: c.src_out, speed: 1,
-      timeline_start: cursorSeq, timeline_end: cursorSeq + d,
+      timeline_start: p.start, timeline_end: p.end,
       volume: doc.originalVolume / 100,
       transform: { ...TRANSFORM_NEUTRO },
       filtro: doc.filtro, efeito: doc.efeito,
-      transition_in: doc.transition !== "none" ? doc.transition : undefined,
+      transition_in: p.transitionIn,
     });
-    cursorSeq += d - (i < seqs.length - 1 ? xf : 0);
   });
 
   // textos e legendas → TextClips (posição já na timeline final), em FAIXAS

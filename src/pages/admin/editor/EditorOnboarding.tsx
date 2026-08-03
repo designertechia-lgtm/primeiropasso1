@@ -25,22 +25,22 @@ const PASSOS = [
   {
     icone: "📁",
     titulo: "1. Carregue um vídeo",
-    texto: "Envie do computador ou escolha um vídeo seu na Biblioteca. Cada edição vira um projeto salvo — você pode sair, voltar e até trocar de computador sem perder nada.",
+    texto: "Em \"Biblioteca e projetos\" (no topo), envie do computador ou escolha um vídeo seu. Assim que o vídeo abre, a biblioteca se recolhe sozinha pra dar espaço — clique nela de novo quando quiser trocar. Cada edição vira um projeto salvo: você pode sair, voltar e até trocar de computador sem perder nada.",
   },
   {
     icone: "✂️",
-    titulo: "2. Corte na linha do tempo",
-    texto: "Clique na timeline pra posicionar o cursor, divida e remova o que não quiser. Use o zoom (+) pra cortar com precisão — a fita cresce e mostra mais quadros. Com pressa? Peça pra IA tirar as pausas e os erros.",
+    titulo: "2. A mesa de edição",
+    texto: "O player fica à esquerda e as ferramentas em ABAS à direita — Cortes, Vídeos, Legendas, Textos, Stickers, Trilha, Áudio e Acabamento. Embaixo, a linha do tempo ocupa a largura toda: clique nela pra posicionar o cursor, divida e remova o que não quiser. O zoom (+) mostra mais quadros pra cortar com precisão, e a IA pode tirar as pausas e os erros por você.",
   },
   {
     icone: "🎞️",
     titulo: "3. Monte pelas faixas",
-    texto: "Cada conteúdo vira uma FAIXA na timeline: legendas, textos, stickers e áudios são blocos que você arrasta e estica. A barra \"Adicionar:\" cria tudo; o olhinho de cada faixa esconde ela da prévia E do vídeo final — sem apagar nada.",
+    texto: "Cada conteúdo vira uma FAIXA na timeline: legendas, textos, stickers e áudios são blocos que você arrasta e estica. A barra \"Adicionar:\" abre a aba certa ao lado do player; o olhinho de cada faixa esconde ela da prévia E do vídeo final — sem apagar nada.",
   },
   {
     icone: "📺",
-    titulo: "4. Vídeo sobre vídeo (PiP)",
-    texto: "\"+ Vídeo (PiP)\" coloca um segundo vídeo em janela sobre o principal — reação, ilustração, antes/depois. Arraste no player pra posicionar; tamanho, transparência e som próprios (ele começa mudo).",
+    titulo: "4. Junte vários vídeos",
+    texto: "Na aba Vídeos: \"+ Vídeos no fim\" emenda vídeos curtos depois do principal — pode enviar VÁRIOS de uma vez pra montar um vídeo maior. Cada um vira um bloco na trilha, e o ✂ do bloco abre o cortador pra aparar antes de montar. Já \"+ Vídeo (PiP)\" coloca um segundo vídeo em janela SOBRE o principal (reação, ilustração, antes/depois): arraste no player pra posicionar; tamanho, transparência e som próprios (ele começa mudo).",
   },
   {
     icone: "🎨",

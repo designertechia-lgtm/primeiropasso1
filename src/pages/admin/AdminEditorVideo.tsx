@@ -33,6 +33,10 @@ import { useProfessional } from "@/hooks/useProfessional";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Collapsible, CollapsibleContent, CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,7 +46,7 @@ import {
   CheckCircle2, AlertCircle, Video as VideoIcon, Captions, Wand2, RotateCcw,
   FolderOpen, Copy, Plus, Minus, Palette, Sparkles, Mic, Square, HelpCircle,
   Image as ImageIcon, Headphones, Volume2, Magnet, Download, Type, Clapperboard,
-  Repeat, LogIn, LogOut, Check, Eye, EyeOff, Maximize2, Minimize2,
+  Repeat, LogIn, LogOut, Check, Eye, EyeOff, Maximize2, Minimize2, ChevronDown,
 } from "lucide-react";
 import { videoApiAuthHeaders } from "@/lib/videoApi";
 import {
@@ -52,7 +56,7 @@ import {
   ANIM_IN_OPTS, ANIM_OUT_OPTS, ANIM_LOOP_OPTS,
   type Segment, type EditMeta, type SubSize, type SubStyle, type SubPos,
   type TitlePos, type Sticker, type StickerMovement, type StickerJob,
-  type AnimIn, type AnimOut, type AnimLoop,
+  type AnimIn, type AnimOut, type AnimLoop, type SeqClip,
 } from "./editor/types";
 import {
   editorReducer, initialEditorState, type EditorDoc,
@@ -65,7 +69,10 @@ import { evaluateScene, drawScene, fontesDaCena, FONTE_PADRAO } from "./editor/s
 import { FILTROS, FILTRO_IDS, EFEITOS, TRANSICOES, filtroCss,
   EXPORT_RESOLUCOES, EXPORT_FPS, EXPORT_CODECS, EXPORT_FORMATOS } from "./editor/filtros";
 import EditorOnboarding, { onboardingPendente } from "./editor/EditorOnboarding";
+import VideoAddDialog, { type FilaUpload } from "./editor/VideoAddDialog";
+import SeqTrimDialog from "./editor/SeqTrimDialog";
 import { usePreviewClock } from "./editor/previewClock";
+import { duracaoFinalDe } from "./editor/tracksModel";
 import {
   listEditorProjects, fetchEditorProject, insertEditorProject,
   updateEditorProject, deleteEditorProject,
@@ -142,6 +149,14 @@ export default function AdminEditorVideo() {
   // Diálogo de escolha de um 2º vídeo: "pip" (sobre o vídeo) ou "seq" (no fim)
   const [dialogVideo, setDialogVideo] = useState<null | "pip" | "seq">(null);
   const [pipLoading, setPipLoading] = useState(false);
+  // andamento do LOTE de vídeos da sequência (multi-upload, um por vez)
+  const [filaSeq, setFilaSeq] = useState<FilaUpload | null>(null);
+  // clipe da sequência aberto no cortador (tela sobreposta)
+  const [trimClip, setTrimClip] = useState<SeqClip | null>(null);
+  // mesa de edição: ferramenta aberta no painel ao lado do player + biblioteca
+  // recolhível (fica aberta enquanto não há vídeo; recolhe ao carregar um)
+  const [tab, setTab] = useState("cortes");
+  const [bibliotecaAberta, setBibliotecaAberta] = useState(true);
   // player: indicador de fonte carregando/travada + tela cheia
   const [videoCarregando, setVideoCarregando] = useState(false);
   const [isFull, setIsFull] = useState(false);
@@ -598,6 +613,27 @@ export default function AdminEditorVideo() {
   // Fonte nova = janela antiga não vale mais
   useEffect(() => { setWinThumbs(null); }, [meta?.edit_id]);
 
+  // ── domínio da timeline/prévia: principal + vídeos EMENDADOS ───────────────
+  // Declarado aqui em cima porque a timeline INTEIRA (régua, fita, blocos,
+  // cursor, zoom, miniaturas) mede por ele. Sem emendados é igual a
+  // meta.duration — nada muda de lugar.
+  const seqDurPrevia = seqClips.reduce((a, c) => a + Math.max(0, c.src_out - c.src_in), 0);
+  /** Início de cada emendado no domínio estendido, na ordem da sequência. */
+  const basesSeq = useMemo(() => {
+    const bases: number[] = [];
+    let cursor = meta?.duration ?? 0;
+    for (const c of seqClips) {
+      bases.push(cursor);
+      cursor += Math.max(0, c.src_out - c.src_in);
+    }
+    return bases;
+  }, [seqClips, meta?.duration]);
+  /** Duração do domínio ESTENDIDO. É tempo ORIGINAL: não desconta o crossfade
+   *  das emendas, do mesmo jeito que a timeline sempre mostrou o tempo original
+   *  dos cortes (o relógio não tem como "tocar" um crossfade). Quem sabe a
+   *  duração exata do arquivo final é o contador (duracaoFinalDe). */
+  const durTL = (meta?.duration ?? 0) + seqDurPrevia;
+
   // Miniaturas do TRECHO VISÍVEL: ao ampliar/rolar, pede os quadros SÓ do
   // intervalo na tela, em tamanho natural. É o que faz o zoom REVELAR detalhe
   // (mais quadros distintos do trecho) em vez de esticar os mesmos quadros da
@@ -613,8 +649,13 @@ export default function AdminEditorVideo() {
     winTimerRef.current = setTimeout(async () => {
       const total = box.scrollWidth || 1;
       const vis = box.clientWidth || 1;
-      const t0 = (box.scrollLeft / total) * dur;
-      const t1 = Math.min(dur, ((box.scrollLeft + vis) / total) * dur);
+      // a fita cobre o domínio ESTENDIDO, mas só o vídeo principal tem quadros:
+      // mapeia o scroll pela escala real e trunca no fim dele (pedir além
+      // devolveria quadros pretos)
+      const escala = durTL || dur;
+      const t0 = (box.scrollLeft / total) * escala;
+      const t1 = Math.min(dur, ((box.scrollLeft + vis) / total) * escala);
+      if (t0 >= dur - 0.2) return;   // janela toda na região dos emendados
       // quantos quadros pedir para cobrir a largura visível com quadros de
       // largura ~natural (as imgs usam w-auto, então NUNCA esticam; isto só
       // garante que há quadros suficientes para preencher, sem sobrar cinza).
@@ -645,7 +686,7 @@ export default function AdminEditorVideo() {
     pedirJanelaThumbs();
     return () => { if (winTimerRef.current) clearTimeout(winTimerRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zoom, meta?.edit_id, meta?.duration]);
+  }, [zoom, meta?.edit_id, meta?.duration, seqDurPrevia]);
 
   // ── amostra REAL do efeito (Fase efeitos) ─────────────────────────────────
   // O efeito não tem prévia ao vivo (VHS/glitch não existem em CSS), então o
@@ -660,7 +701,10 @@ export default function AdminEditorVideo() {
       setAmostraCarregando(true);
       try {
         const q = new URLSearchParams({
-          t: String(Math.max(0, playhead)), filtro, efeito,
+          // o cursor pode estar num emendado (fora desta fonte) — a amostra é
+          // sempre do vídeo principal
+          t: String(Math.max(0, Math.min(playhead, (meta?.duration ?? 0) - 0.05))),
+          filtro, efeito,
         });
         const res = await fetch(`${API}/editor/amostra/${id}?${q}`, {
           headers: await videoApiAuthHeaders(),
@@ -851,8 +895,8 @@ export default function AdminEditorVideo() {
   };
 
   // Vídeo EMENDADO no fim (sequência): draft próprio, entra depois do vídeo
-  // principal na faixa base. A prévia do trecho emendado (como a da capa de
-  // entrada) chega na próxima leva — o RENDER já sai completo.
+  // principal na faixa base — aparece como bloco na trilha de vídeo e a prévia
+  // toca a sequência inteira.
   const adicionarSeq = async (form: FormData, label: string, srcUrl = "") => {
     if (!meta) return;
     setPipLoading(true);
@@ -870,12 +914,83 @@ export default function AdminEditorVideo() {
         }],
       }));
       setDialogVideo(null);
-      toast.success("Vídeo emendado no FIM da edição — ajuste o trecho em \"Vídeos em sequência\". O render sai completo; a prévia do trecho emendado chega em breve.", { duration: 8000 });
+      toast.success("Vídeo emendado no FIM da edição — o bloco já está na trilha de vídeo. Clique no ✂ dele para cortar o trecho.", { duration: 8000 });
     } catch (e: any) {
       toast.error(e.message, { duration: 7000 });
     } finally {
       setPipLoading(false);
     }
+  };
+
+  // LOTE de vídeos para a sequência: sobe UM POR VEZ (arquivos de até 200MB e o
+  // worker cria um draft por vídeo — paralelo sufoca conexão doméstica). Cada
+  // sucesso já entra no doc na ordem escolhida, então o que subiu nunca se
+  // perde; um arquivo com problema não aborta a fila, só entra na lista de
+  // erros do diálogo.
+  const adicionarSeqLote = async (files: File[]) => {
+    if (!meta || !files.length) return;
+    setPipLoading(true);
+    const erros: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      setFilaSeq({ atual: i + 1, total: files.length, nome: f.name, erros: [...erros] });
+      try {
+        const fd = new FormData();
+        fd.append("file", f);
+        const res = await fetch(`${API}/editor/carregar`, {
+          method: "POST", body: fd, headers: await videoApiAuthHeaders(),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "falha ao carregar");
+        apply((d) => ({
+          seqClips: [...d.seqClips, {
+            id: newId(), edit_id: data.edit_id,
+            name: f.name.replace(/\.[^.]+$/, ""),
+            natural_dur: data.duration, source_url: "",
+            src_in: 0, src_out: data.duration,
+          }],
+        }));
+      } catch (e: any) {
+        erros.push(`${f.name}: ${e.message || "falhou"}`);
+      }
+    }
+    setPipLoading(false);
+    if (!erros.length) {
+      setFilaSeq(null);
+      setDialogVideo(null);
+      toast.success(files.length > 1
+        ? `${files.length} vídeos emendados na sequência — os blocos estão na trilha de vídeo, na ordem. Use o ✂ de cada um para cortar.`
+        : "Vídeo emendado no FIM da edição — o bloco já está na trilha de vídeo.",
+        { duration: 8000 });
+    } else {
+      setFilaSeq((p) => (p ? { ...p, erros } : p));
+      toast.error(`${erros.length} de ${files.length} não subiram — veja a lista no diálogo. Os demais já entraram na sequência.`, { duration: 9000 });
+    }
+  };
+
+  // Cortador de clipe: as janelas mantidas viram partes DA MESMA FONTE no lugar
+  // do clipe original — um único passo de desfazer restaura o clipe inteiro.
+  // Partes vizinhas da mesma fonte emendam em corte seco (tracksModel).
+  const concluirTrim = (partes: { src_in: number; src_out: number }[]) => {
+    const alvo = trimClip;
+    if (!alvo || !partes.length) return;
+    const base = alvo.name.replace(/\s*\(parte \d+\)$/, "");
+    apply((d) => {
+      const i = d.seqClips.findIndex((x) => x.id === alvo.id);
+      if (i < 0) return {};
+      const novos = partes.map((p, j) => ({
+        ...alvo, id: newId(),
+        name: partes.length > 1 ? `${base} (parte ${j + 1})` : base,
+        src_in: p.src_in, src_out: p.src_out,
+      }));
+      const arr = [...d.seqClips];
+      arr.splice(i, 1, ...novos);
+      return { seqClips: arr };
+    });
+    setTrimClip(null);
+    toast.success(partes.length > 1
+      ? `Clipe cortado em ${partes.length} partes — emendadas em corte seco, na mesma posição da sequência.`
+      : "Trecho do clipe ajustado.", { duration: 6000 });
   };
 
   // ── projetos salvos ────────────────────────────────────────────────────────
@@ -956,17 +1071,6 @@ export default function AdminEditorVideo() {
   // quando desvia >0,15s). Com vídeos EMENDADOS, o domínio se estende: os
   // emendados viram pseudo-trechos depois do principal e o POOL troca de
   // <video> quando o play cruza a emenda — a prévia toca a edição inteira.
-  const seqDurPrevia = seqClips.reduce((a, c) => a + Math.max(0, c.src_out - c.src_in), 0);
-  // base (início no domínio estendido) de cada emendado, na ordem
-  const basesSeq = useMemo(() => {
-    const bases: number[] = [];
-    let cursor = meta?.duration ?? 0;
-    for (const c of seqClips) {
-      bases.push(cursor);
-      cursor += Math.max(0, c.src_out - c.src_in);
-    }
-    return bases;
-  }, [seqClips, meta?.duration]);
   const segmentosEstendidos = useMemo(() => {
     if (!seqClips.length || !meta) return segments;
     let nid = Math.max(0, ...segments.map((s) => s.id)) + 1;
@@ -994,7 +1098,7 @@ export default function AdminEditorVideo() {
       }
       return { el: videoRef.current, srcTime: t };
     },
-    duration: (meta?.duration ?? 0) + seqDurPrevia,
+    duration: durTL,
     segments: segmentosEstendidos,
     previewEdit,
     onTick: setPlayhead,
@@ -1020,11 +1124,17 @@ export default function AdminEditorVideo() {
       toast.error("Tela cheia não suportada neste navegador."));
   };
 
+  // A biblioteca é a porta de entrada: some da frente quando já há vídeo aberto
+  // (e volta sozinha ao recomeçar). Reage à TROCA de fonte, nunca ao clique —
+  // reabrir manualmente continua valendo.
+  useEffect(() => { setBibliotecaAberta(!meta); }, [meta?.edit_id]);
+
   // ── timeline ───────────────────────────────────────────────────────────────
   const seekTo = (t: number) => clock.seek(t);
-  // barra "Adicionar" da timeline → rola até a seção que cria aquele conteúdo
-  const irParaSecao = (id: string) =>
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  /** O cursor pode estar sobre um vídeo EMENDADO; textos, stickers e PiP vivem
+   *  no tempo do vídeo principal. Traz o cursor de volta pra dentro dele. */
+  const cursorNoPrincipal = (folga = 0.5) =>
+    Math.max(0, Math.min(playhead, (meta?.duration ?? 0) - folga));
 
   // Faixas ocultas (olhinho): a prévia lê o doc EFETIVO — o que você vê é o
   // que o render vai fazer (o buildRenderPayload aplica o MESMO filtro)
@@ -1039,10 +1149,13 @@ export default function AdminEditorVideo() {
       {faixaOculta(k) ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
     </button>
   );
+  // A fita cobre o domínio ESTENDIDO (principal + emendados): clicar num bloco
+  // emendado leva o cursor pra dentro dele. Os gestos de CORTE continuam presos
+  // ao vídeo principal pelos clamps de cada handler (fronteira, blocos, bounds).
   const posFromEvent = (clientX: number) => {
     if (!timelineRef.current || !meta) return 0;
     const rect = timelineRef.current.getBoundingClientRect();
-    return ((clientX - rect.left) / rect.width) * meta.duration;
+    return ((clientX - rect.left) / rect.width) * durTL;
   };
   const onTimelineDown = (e: React.MouseEvent) => {
     draggingRef.current = true;
@@ -1061,6 +1174,11 @@ export default function AdminEditorVideo() {
     const pts = [
       { t: 0, dono: "fix" }, { t: meta.duration, dono: "fix" }, { t: playhead, dono: "fix" },
     ];
+    // bordas dos emendados: a fronteira principal↔sequência e cada emenda
+    if (seqClips.length) {
+      pts.push({ t: durTL, dono: "fix" });
+      seqClips.forEach((c, i) => pts.push({ t: basesSeq[i], dono: `seq${c.id}` }));
+    }
     segments.forEach((s, i) => {
       pts.push({ t: s.start, dono: `seg${i}` }, { t: s.end, dono: `seg${i}` });
     });
@@ -1071,7 +1189,7 @@ export default function AdminEditorVideo() {
       pts.push({ t: c.start, dono: `cue${i}` }, { t: c.end, dono: `cue${i}` }));
     for (const p of pipClips) pts.push({ t: p.start, dono: `pip${p.id}` }, { t: p.end, dono: `pip${p.id}` });
     return pts;
-  }, [meta, playhead, segments, stickers, audioClips, titles, cues, subsOn, pipClips]);
+  }, [meta, playhead, segments, stickers, audioClips, titles, cues, subsOn, pipClips, seqClips, basesSeq, durTL]);
 
   /** Cola `t` no ponto notável mais próximo (tolerância de 8px, convertida para
    *  segundos pela escala atual — no zoom a régua fica mais fina, então a
@@ -1081,7 +1199,7 @@ export default function AdminEditorVideo() {
   const calcSnap = (t: number, donos: string[] = []): { t: number; guide: number | null } => {
     if (!snapOn || !meta || !timelineRef.current) return { t, guide: null };
     const largura = timelineRef.current.getBoundingClientRect().width || 1;
-    const tol = (8 / largura) * meta.duration;
+    const tol = (8 / largura) * durTL;
     let melhor = t, dist = tol;
     for (const p of snapPoints) {
       if (donos.includes(p.dono)) continue;
@@ -1130,17 +1248,17 @@ export default function AdminEditorVideo() {
   // ── régua (Fase 1) ─────────────────────────────────────────────────────────
   // Passo que mantém ~8 marcas visíveis em qualquer zoom (0:00, 0:05, 0:10...)
   const rulerStep = useMemo(() => {
-    if (!meta?.duration) return 5;
-    const visivel = meta.duration / zoom;
+    if (!durTL) return 5;
+    const visivel = durTL / zoom;
     const alvo = visivel / 8;
     return [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600].find((s) => s >= alvo) ?? 600;
-  }, [meta?.duration, zoom]);
+  }, [durTL, zoom]);
   const rulerMarks = useMemo(() => {
-    if (!meta?.duration) return [] as number[];
+    if (!durTL) return [] as number[];
     const m: number[] = [];
-    for (let t = 0; t <= meta.duration + 1e-6; t += rulerStep) m.push(Number(t.toFixed(3)));
+    for (let t = 0; t <= durTL + 1e-6; t += rulerStep) m.push(Number(t.toFixed(3)));
     return m;
-  }, [meta?.duration, rulerStep]);
+  }, [durTL, rulerStep]);
   const rotuloRegua = (t: number) => {
     const mm = Math.floor(t / 60);
     const ss = t - mm * 60;
@@ -1160,8 +1278,8 @@ export default function AdminEditorVideo() {
     setZoom(z);
     requestAnimationFrame(() => {
       const box = scrollRef.current;
-      if (!box || !meta?.duration) return;
-      const alvo = (playhead / meta.duration) * box.scrollWidth;
+      if (!box || !durTL) return;
+      const alvo = (playhead / durTL) * box.scrollWidth;
       box.scrollLeft = Math.max(0, alvo - box.clientWidth / 2);
     });
   };
@@ -1169,13 +1287,13 @@ export default function AdminEditorVideo() {
   // Com zoom, o playhead sai da área visível durante o play — acompanha
   useEffect(() => {
     const box = scrollRef.current;
-    if (!box || zoom === 1 || !meta?.duration) return;
+    if (!box || zoom === 1 || !durTL) return;
     if (!clock.playing) return;
-    const x = (playhead / meta.duration) * box.scrollWidth;
+    const x = (playhead / durTL) * box.scrollWidth;
     if (x < box.scrollLeft + 40 || x > box.scrollLeft + box.clientWidth - 40) {
       box.scrollLeft = Math.max(0, x - box.clientWidth / 2);
     }
-  }, [playhead, zoom, meta?.duration]);
+  }, [playhead, zoom, durTL]);
   useEffect(() => {
     const move = (e: MouseEvent) => { if (draggingRef.current) seekTo(posFromEvent(e.clientX)); };
     const up = () => { draggingRef.current = false; };
@@ -1275,11 +1393,10 @@ export default function AdminEditorVideo() {
   };
 
   const keepSegments = segments.filter((s) => s.keep);
-  // duração REAL: câmera lenta (0,5×) dobra o tempo do trecho, acelerado
-  // encurta; vídeos EMENDADOS no fim somam (o desconto do crossfade por
-  // emenda é pequeno e o contador histórico nunca o considerou)
-  const seqDur = seqClips.reduce((a, c) => a + Math.max(0, c.src_out - c.src_in), 0);
-  const finalDuration = keepSegments.reduce((a, s) => a + (s.end - s.start) / (s.speed ?? 1), 0) + seqDur;
+  // duração REAL do arquivo que vai sair: a MESMA conta do render (velocidade
+  // dos trechos, capa, e o desconto do crossfade em cada emenda que tem fade).
+  // Vem do adaptador para não divergir do motor.
+  const finalDuration = useMemo(() => duracaoFinalDe(doc), [doc]);
 
   // ── cortar com IA ──────────────────────────────────────────────────────────
   const applyAiSegments = (keeps: { start: number; end: number }[]) => {
@@ -2040,7 +2157,7 @@ export default function AdminEditorVideo() {
 
   // ── UI ─────────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <audio ref={audioRef} onEnded={() => setPreviewingTrack("")} />
       <EditorOnboarding aberto={tourAberto} onFechar={() => setTourAberto(false)} />
       <div className="flex items-center gap-3 flex-wrap">
@@ -2081,1246 +2198,508 @@ export default function AdminEditorVideo() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Biblioteca */}
-        <Card>
-          <CardContent className="pt-5 space-y-4">
-            <Label className="font-semibold flex items-center gap-2"><Film className="h-4 w-4" /> Biblioteca de mídia</Label>
-            <label className="flex items-center justify-center gap-2 rounded-lg border-2 border-dashed p-3 text-sm cursor-pointer hover:border-primary/60 transition">
-              {loadingSource ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              Enviar vídeo do computador
-              <input type="file" className="hidden"
-                accept="video/mp4,video/quicktime,video/webm,video/x-matroska"
-                disabled={loadingSource}
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) { const fd = new FormData(); fd.append("file", f); carregar(fd, f.name); }
-                  e.target.value = "";
-                }} />
-            </label>
-            {/* Meus projetos: edições salvas no painel (sobrevivem a troca de
-                máquina — o vídeo-fonte é recarregado sozinho se expirar) */}
-            {projects.length > 0 && (
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium flex items-center gap-1">
-                    <FolderOpen className="h-3.5 w-3.5" /> Meus projetos
-                  </span>
-                  {meta && (
-                    <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px] ml-auto"
-                      onClick={novoProjeto} title="Guarda o projeto atual e começa outro">
-                      + Novo projeto
-                    </Button>
-                  )}
-                </div>
-                <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
-                  {projects.map((p) => (
-                    <div key={p.id}
-                      className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs transition ${p.id === projectId ? "border-primary ring-1 ring-primary" : "hover:border-primary/50"}`}>
-                      <button type="button" className="flex-1 text-left truncate py-0.5"
-                        disabled={loadingSource}
-                        onClick={() => { if (p.id !== projectId) abrirProjeto(p.id); }}
-                        title={p.id === projectId ? "Projeto aberto" : `Abrir "${p.name}"`}>
-                        {p.name}
-                      </button>
-                      <span className="text-[10px] text-muted-foreground shrink-0">
-                        {new Date(p.updated_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
-                      </span>
-                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-destructive shrink-0"
-                        onClick={() => excluirProjeto(p.id, p.name)}>
-                        <Trash2 className="h-3 w-3" />
+      {/* Biblioteca e projetos: porta de entrada. Recolhe sozinha quando
+          um vídeo está aberto para o editor ocupar a tela. */}
+      <Collapsible open={bibliotecaAberta} onOpenChange={setBibliotecaAberta}>
+        <div className="flex items-center gap-2 flex-wrap">
+          <CollapsibleTrigger asChild>
+            <Button variant="outline" size="sm" className="h-8 gap-1.5">
+              <Film className="h-4 w-4" /> Biblioteca e projetos
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${bibliotecaAberta ? "rotate-180" : ""}`} />
+            </Button>
+          </CollapsibleTrigger>
+          {meta && sourceLabel && (
+            <span className="text-xs text-muted-foreground truncate max-w-64" title={sourceLabel}>
+              editando: <b>{sourceLabel}</b>
+            </span>
+          )}
+        </div>
+        <CollapsibleContent className="pt-3">
+          <Card>
+            <CardContent className="pt-5 space-y-4">
+              <Label className="font-semibold flex items-center gap-2"><Film className="h-4 w-4" /> Biblioteca de mídia</Label>
+              <label className="flex items-center justify-center gap-2 rounded-lg border-2 border-dashed p-3 text-sm cursor-pointer hover:border-primary/60 transition">
+                {loadingSource ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                Enviar vídeo do computador
+                <input type="file" className="hidden"
+                  accept="video/mp4,video/quicktime,video/webm,video/x-matroska"
+                  disabled={loadingSource}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) { const fd = new FormData(); fd.append("file", f); carregar(fd, f.name); }
+                    e.target.value = "";
+                  }} />
+              </label>
+              {/* Meus projetos: edições salvas no painel (sobrevivem a troca de
+                  máquina — o vídeo-fonte é recarregado sozinho se expirar) */}
+              {projects.length > 0 && (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium flex items-center gap-1">
+                      <FolderOpen className="h-3.5 w-3.5" /> Meus projetos
+                    </span>
+                    {meta && (
+                      <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px] ml-auto"
+                        onClick={novoProjeto} title="Guarda o projeto atual e começa outro">
+                        + Novo projeto
                       </Button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
-              {mp4Videos.length === 0 && <p className="text-xs text-muted-foreground">Seus vídeos gerados aparecem aqui.</p>}
-              {mp4Videos.map((v: any) => (
-                <button key={v.id} type="button" disabled={loadingSource}
-                  onClick={() => { const fd = new FormData(); fd.append("video_url", v.embed_url); carregar(fd, v.title || "Vídeo da galeria", v.embed_url); }}
-                  className="w-full flex items-center gap-2 rounded-lg border p-1.5 text-left text-xs hover:border-primary/60 transition">
-                  {v.thumbnail_url
-                    ? <img src={v.thumbnail_url} className="h-10 w-7 rounded object-cover shrink-0" alt="" />
-                    : <div className="h-10 w-7 rounded bg-muted flex items-center justify-center shrink-0"><VideoIcon className="h-3.5 w-3.5" /></div>}
-                  <span className="truncate">{v.title || "Sem título"}</span>
-                </button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Trilha sonora */}
-        <Card>
-          <CardContent className="pt-5 space-y-4">
-            <Label id="sec-musica" className="font-semibold flex items-center gap-2"><Music className="h-4 w-4" /> Trilha sonora</Label>
-            <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
-              <button type="button"
-                onClick={() => patch({ musicId: "", musicUploadId: "", musicUploadName: "" })}
-                className={`w-full rounded-lg border px-2 py-1.5 text-left text-xs transition ${!musicId && !musicUploadId ? "border-primary ring-1 ring-primary" : "hover:border-primary/50"}`}>
-                Sem música (só o áudio original)
-              </button>
-              {musicas.map((m) => (
-                <div key={m.id} className={`flex items-center gap-1 rounded-lg border px-2 py-1 transition ${musicId === m.id ? "border-primary ring-1 ring-primary" : ""}`}>
-                  <button type="button" className="flex-1 text-left text-xs py-0.5"
-                    onClick={() => patch({ musicId: m.id, musicUploadId: "", musicUploadName: "" })}>
-                    {m.label}
-                  </button>
-                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => previewTrack(m.id)}>
-                    {previewingTrack === m.id ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-                  </Button>
-                </div>
-              ))}
-            </div>
-            <label className="flex items-center gap-2 text-xs cursor-pointer text-muted-foreground hover:text-foreground transition">
-              <Upload className="h-3.5 w-3.5" />
-              {musicUploadName ? `♪ ${musicUploadName}` : "Ou envie sua própria música (mp3)"}
-              <input type="file" className="hidden" accept="audio/mpeg,audio/wav,audio/mp4,audio/ogg,audio/aac"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadMusica(f); e.target.value = ""; }} />
-            </label>
-            <div className="space-y-2 text-xs">
-              <div>
-                <div className="flex justify-between"><span>Volume da música</span><span>{musicVolume}%</span></div>
-                <input type="range" min={0} max={100} value={musicVolume}
-                  onPointerDown={checkpoint}
-                  onChange={(e) => update({ musicVolume: Number(e.target.value) })} className="w-full" />
-                <p className="text-[10px] text-muted-foreground">15-25% = fundo sob a voz · 80%+ = destaque. O ▶ de prévia toca neste volume.</p>
-              </div>
-              <div>
-                <div className="flex justify-between"><span>Volume do áudio original</span><span>{originalVolume}%</span></div>
-                <input type="range" min={0} max={150} value={originalVolume}
-                  onPointerDown={checkpoint}
-                  onChange={(e) => update({ originalVolume: Number(e.target.value) })} className="w-full" />
-              </div>
-              <div className="flex gap-4 flex-wrap">
-                <label className="flex items-center gap-1.5 cursor-pointer" title="O áudio entra subindo no começo">
-                  <input type="checkbox" checked={fadeIn} onChange={(e) => patch({ fadeIn: e.target.checked })} />
-                  Fade in no início
-                </label>
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <input type="checkbox" checked={fadeOut} onChange={(e) => patch({ fadeOut: e.target.checked })} />
-                  Fade out no final
-                </label>
-                <label className="flex items-center gap-1.5 cursor-pointer" title="A música abaixa sozinha quando você fala e volta nas pausas">
-                  <input type="checkbox" checked={ducking} onChange={(e) => patch({ ducking: e.target.checked })} />
-                  Música abaixa na fala
-                </label>
-                <label className="flex items-center gap-1.5 cursor-pointer"
-                  title="Reduz chiado constante da gravação — ar-condicionado, ventilador, ruído de sala">
-                  <input type="checkbox" checked={denoise} onChange={(e) => patch({ denoise: e.target.checked })} />
-                  <Headphones className="h-3.5 w-3.5" /> Limpar ruído de fundo
-                </label>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Preview EM CIMA + Timeline em LARGURA TOTAL embaixo (layout de editor).
-          Antes ficavam lado a lado e a timeline espremida tornava o zoom inútil
-          (Carlos 16/07) — agora a timeline usa a tela toda. */}
-      {meta && (
-        <Card>
-          <CardContent className="pt-5 space-y-4">
-            <div className="space-y-4">
-              <div className="space-y-2 max-w-md mx-auto w-full">
-                <div ref={videoWrapRef} className="relative">
-                  {/* o filtro de cor vale só para o VÍDEO: legendas, textos e
-                      stickers são queimados depois no motor, então não são
-                      filtrados (por isso o filter vai aqui, não no wrapper).
-                      SEM controles nativos (Fase C): o relógio mestre rege a
-                      prévia — clicar no vídeo toca/pausa. */}
-                  <video ref={videoRef} src={previewSrc} playsInline
-                    className={isFull
-                      ? "h-full w-full bg-black cursor-pointer object-contain"
-                      : "w-full max-h-72 rounded-lg bg-black cursor-pointer"}
-                    style={{ filter: filtroCss(filtro) }}
-                    onClick={clock.toggle}
-                    onEnded={clock.pause}
-                    onPause={() => clipAudiosRef.current.forEach((el) => el.pause())}
-                    onLoadStart={() => setVideoCarregando(true)}
-                    onWaiting={() => setVideoCarregando(true)}
-                    onCanPlay={() => setVideoCarregando(false)}
-                    onPlaying={() => setVideoCarregando(false)}
-                    onError={() => {
-                      // a CDN da galeria expira — cai na rota do worker, que
-                      // restaura o arquivo do Storage sozinha (era a TELA PRETA
-                      // com o cursor andando: o relógio não depende do vídeo)
-                      if (!meta) return;
-                      const rotaWorker = `${API}/editor/video/${meta.edit_id}`;
-                      if (previewSrc && previewSrc !== rotaWorker) {
-                        console.warn("[editor] preview falhou — trocando para a rota do worker");
-                        setPreviewSrc(rotaWorker);
-                      } else {
-                        setVideoCarregando(false);
-                        toast.error("Não consegui carregar o vídeo da prévia — recarregue a página; se persistir, reenvie o arquivo.", { duration: 8000 });
-                      }
-                    }} />
-                  {/* fonte carregando/travada: sem isto era tela preta muda */}
-                  {videoCarregando && previewSrc && (
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <div className="flex items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 text-xs text-white">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> carregando o vídeo…
-                      </div>
-                    </div>
-                  )}
-                  {/* POOL dos vídeos EMENDADOS: cada um é um <video> oculto que
-                      cobre o player quando o relógio entra na janela dele — a
-                      prévia toca a edição inteira, emendas incluídas */}
-                  {meta && seqClips.map((c, i) => {
-                    const base = basesSeq[i] ?? meta.duration;
-                    const ativo = playhead >= base && playhead < base + Math.max(0, c.src_out - c.src_in);
-                    return (
-                      <video key={c.id}
-                        ref={(el) => {
-                          if (el) seqVideosRef.current.set(c.id, el);
-                          else seqVideosRef.current.delete(c.id);
-                        }}
-                        src={c.source_url || `${API}/editor/video/${c.edit_id}`}
-                        playsInline preload="metadata"
-                        onClick={clock.toggle}
-                        onEnded={clock.pause}
-                        className="absolute inset-0 h-full w-full rounded-lg bg-black object-contain cursor-pointer"
-                        style={{ display: ativo ? "block" : "none" }} />
-                    );
-                  })}
-                  {/* convite de play quando parado (decorativo — o clique é no vídeo) */}
-                  {!clock.playing && previewSrc && (
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white">
-                        <Play className="h-6 w-6 ml-0.5" />
-                      </div>
-                    </div>
-                  )}
-                  {/* prévia dos stickers EXATAMENTE onde o ffmpeg vai desenhar;
-                      arraste (quando sem movimento) para posicionar */}
-                  {contentRect && activeStickers.map((s) => {
-                    const w = contentRect.w * s.scale_pct;
-                    let cxPct = s.x_pct;
-                    if (s.movement !== "none") {
-                      const p = Math.max(0, Math.min(1, (playhead - s.start) / Math.max(0.1, s.end - s.start)));
-                      const total = contentRect.w + w;
-                      const leftPx = s.movement === "walk-right" ? -w + total * p : contentRect.w - total * p;
-                      cxPct = (leftPx + w / 2) / contentRect.w;
-                    }
-                    const style: React.CSSProperties = {
-                      position: "absolute",
-                      left: contentRect.left + cxPct * contentRect.w,
-                      top: contentRect.top + s.y_pct * contentRect.h,
-                      width: w,
-                      transform: `translate(-50%,-50%)${s.flip ? " scaleX(-1)" : ""}`,
-                      cursor: s.movement === "none" ? "grab" : "default",
-                      pointerEvents: s.movement === "none" ? "auto" : "none",
-                      touchAction: "none",
-                    };
-                    const src = `${API}/editor/sticker/${s.upload_id}`;
-                    return s.upload_id.endsWith(".webm") ? (
-                      <video key={s.id} src={src} muted loop autoPlay playsInline style={style}
-                        onPointerDown={(e) => onStickerPreviewDown(e, s.id)}
-                        onPointerMove={onStickerPreviewMove} onPointerUp={onStickerPreviewUp} />
-                    ) : (
-                      <img key={s.id} src={src} alt="" draggable={false} style={style}
-                        onPointerDown={(e) => onStickerPreviewDown(e, s.id)}
-                        onPointerMove={onStickerPreviewMove} onPointerUp={onStickerPreviewUp} />
-                    );
-                  })}
-                  {/* PiP: vídeo sobre o vídeo (Fase F) — comandado pelo relógio
-                      mestre; arraste para posicionar. Acima dos stickers e
-                      abaixo das legendas, como no motor. */}
-                  {contentRect && !faixaOculta("pip") && pipClips
-                    .filter((p) => playhead >= p.start && playhead <= p.end)
-                    .map((p) => (
+                    )}
+                  </div>
+                  <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
+                    {projects.map((p) => (
                       <div key={p.id}
-                        style={{
-                          position: "absolute",
-                          left: contentRect.left + p.x_pct * contentRect.w,
-                          top: contentRect.top + p.y_pct * contentRect.h,
-                          width: contentRect.w * p.scale_pct,
-                          transform: "translate(-50%,-50%)",
-                          cursor: "grab",
-                          touchAction: "none",
-                        }}
-                        onPointerDown={(e) => onPipPreviewDown(e, p.id)}
-                        onPointerMove={(e) => { onPipPreviewMove(e); onPipResizeMove(e); }}
-                        onPointerUp={() => { onPipPreviewUp(); onPipResizeUp(); }}>
-                        <video
-                          ref={(el) => {
-                            if (el) pipVideosRef.current.set(p.id, el);
-                            else pipVideosRef.current.delete(p.id);
-                          }}
-                          src={p.source_url || `${API}/editor/video/${p.edit_id}`}
-                          muted={p.volume <= 0.01} playsInline preload="auto"
-                          className="pointer-events-none w-full rounded-md"
-                          style={{ opacity: p.opacity }} />
-                        {/* alça do canto: redimensiona a janela direto no player */}
-                        <div
-                          className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-sm border border-white bg-primary cursor-nwse-resize"
-                          title="Arraste para mudar o tamanho da janela"
-                          style={{ touchAction: "none" }}
-                          onPointerDown={(e) => onPipResizeDown(e, p.id)} />
+                        className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs transition ${p.id === projectId ? "border-primary ring-1 ring-primary" : "hover:border-primary/50"}`}>
+                        <button type="button" className="flex-1 text-left truncate py-0.5"
+                          disabled={loadingSource}
+                          onClick={() => { if (p.id !== projectId) abrirProjeto(p.id); }}
+                          title={p.id === projectId ? "Projeto aberto" : `Abrir "${p.name}"`}>
+                          {p.name}
+                        </button>
+                        <span className="text-[10px] text-muted-foreground shrink-0">
+                          {new Date(p.updated_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                        </span>
+                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-destructive shrink-0"
+                          onClick={() => excluirProjeto(p.id, p.name)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
                       </div>
                     ))}
-                  {/* prévia de legendas/textos/selos: desenhada como o ffmpeg
-                      desenha (mesma régua de estilo). Fica ACIMA dos stickers,
-                      como no motor, e não intercepta o mouse (o sticker embaixo
-                      continua arrastável). */}
-                  {contentRect && (
-                    <canvas ref={overlayRef}
-                      className="absolute pointer-events-none"
-                      style={{
-                        left: contentRect.left, top: contentRect.top,
-                        width: contentRect.w, height: contentRect.h,
-                      }} />
-                  )}
-                </div>
-                <label className="flex items-center gap-1.5 text-xs cursor-pointer"
-                  title="No play, os trechos removidos são pulados — você vê o resultado antes de renderizar">
-                  <input type="checkbox" checked={previewEdit} onChange={(e) => setPreviewEdit(e.target.checked)} />
-                  ▶ Prévia da edição (pula os trechos removidos)
-                </label>
-                <div className="flex items-center gap-2 text-xs">
-                  <Button size="sm" variant="outline" className="h-7 w-7 p-0 rounded-full"
-                    title={clock.playing ? "Pausar" : "Tocar"} onClick={clock.toggle}>
-                    {clock.playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 ml-0.5" />}
-                  </Button>
-                  <span className="tabular-nums" title={seqDurPrevia > 0 ? "Total com os vídeos emendados no fim" : undefined}>
-                    cursor: {fmt(playhead)} / {fmt(meta.duration + seqDurPrevia)}
-                  </span>
-                  <label className="flex items-center gap-1 ml-2" title="Volume da prévia">
-                    <Volume2 className="h-3.5 w-3.5 text-muted-foreground" />
-                    <input type="range" min={0} max={1} step={0.05} value={previewVol}
-                      onChange={(e) => setPreviewVol(Number(e.target.value))} className="w-16" />
-                  </label>
-                  <Button size="sm" variant="outline" className="h-7 w-7 p-0"
-                    title={isFull ? "Sair da tela cheia" : "Expandir (tela cheia)"} onClick={alternarTelaCheia}>
-                    {isFull ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-                  </Button>
-                  <span className="ml-auto text-muted-foreground">{meta.width}x{meta.height}</span>
-                </div>
-              </div>
-
-              <div className="space-y-3 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Label className="font-semibold">Timeline</Label>
-                  <Button size="sm" variant="outline" className="h-7 gap-1" onClick={splitAtPlayhead}>
-                    <Scissors className="h-3.5 w-3.5" /> Dividir no cursor
-                  </Button>
-                  <Button size="sm" variant="ghost" className="h-7 gap-1" disabled={!state.past.length} onClick={undo}
-                    title="Cada clique volta UM passo de edição (agora cobre a edição inteira, não só os cortes)">
-                    <Undo2 className="h-3.5 w-3.5" /> Desfazer{state.past.length ? ` (${state.past.length})` : ""}
-                  </Button>
-                  <span className="text-xs text-muted-foreground ml-auto">
-                    duração final: <b>{fmt(finalDuration)}</b>
-                  </span>
-                </div>
-
-                {/* Caixinha FIXA de corte por tempo (sempre visível) */}
-                <div className="flex items-center gap-2 flex-wrap rounded-lg border bg-muted/30 px-3 py-2 text-xs">
-                  <Scissors className="h-3.5 w-3.5 text-destructive shrink-0" />
-                  <span className="font-medium">Remover trecho:</span>
-                  <label className="flex items-center gap-1">de
-                    <Input value={cutStart} onChange={(e) => setCutStart(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && cortarIntervalo()}
-                      placeholder="1:56" className="h-7 w-20 text-xs tabular-nums" />
-                  </label>
-                  <label className="flex items-center gap-1">até
-                    <Input value={cutEnd} onChange={(e) => setCutEnd(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && cortarIntervalo()}
-                      placeholder="1:59" className="h-7 w-20 text-xs tabular-nums" />
-                  </label>
-                  <Button size="sm" variant="destructive" className="h-7"
-                    disabled={!cutStart.trim() || !cutEnd.trim()} onClick={cortarIntervalo}>
-                    Cortar
-                  </Button>
-                  <Button size="sm" variant="ghost" className="h-7 text-muted-foreground"
-                    onClick={() => setCutStart(fmt(playhead))} title="Preenche o início com o cursor">
-                    início = cursor
-                  </Button>
-                  <Button size="sm" variant="ghost" className="h-7 text-muted-foreground"
-                    onClick={() => setCutEnd(fmt(playhead))} title="Preenche o fim com o cursor">
-                    fim = cursor
-                  </Button>
-                </div>
-
-                {/* Cortar com IA */}
-                <div className="flex items-center gap-2 flex-wrap rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
-                  <Wand2 className="h-4 w-4 text-primary shrink-0" />
-                  <Input value={aiCutText} onChange={(e) => setAiCutText(e.target.value)}
-                    placeholder='Cortar com IA — ex.: "tire as pausas e os erros, deixe uns 40 segundos"'
-                    className="h-8 text-xs flex-1 min-w-52" />
-                  <Button size="sm" className="h-8" disabled={aiCutting} onClick={cortarComIA}>
-                    {aiCutting ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />Assistindo o vídeo…</> : "Sugerir cortes"}
-                  </Button>
-                </div>
-
-                {/* Zoom + snap (Fase 1). Tudo abaixo vive no MESMO container
-                    rolável e com a mesma largura — as faixas ficam alinhadas
-                    com a timeline em qualquer zoom. */}
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="text-muted-foreground">Zoom</span>
-                  <Button size="sm" variant="outline" className="h-6 w-6 p-0"
-                    disabled={zoom <= 1} onClick={() => aplicarZoom(zoom / 2)} title="Afastar">
-                    <Minus className="h-3 w-3" />
-                  </Button>
-                  <span className="tabular-nums w-9 text-center">{zoom}×</span>
-                  <Button size="sm" variant="outline" className="h-6 w-6 p-0"
-                    disabled={zoom >= 16} onClick={() => aplicarZoom(zoom * 2)} title="Aproximar (mais precisão no corte)">
-                    <Plus className="h-3 w-3" />
-                  </Button>
-                  {zoom > 1 && (
-                    <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
-                      onClick={() => { setZoom(1); if (scrollRef.current) scrollRef.current.scrollLeft = 0; }}>
-                      ver tudo
-                    </Button>
-                  )}
-                  {zoom > 1 && winThumbs && (
-                    // deixa claro que o zoom mostra um RECORTE navegável do vídeo
-                    <span className="text-[10px] text-muted-foreground tabular-nums">
-                      trecho {Math.floor(winThumbs.t0 / 60)}:{String(Math.round(winThumbs.t0 % 60)).padStart(2, "0")}–{Math.floor(winThumbs.t1 / 60)}:{String(Math.round(winThumbs.t1 % 60)).padStart(2, "0")}
-                    </span>
-                  )}
-                  <label className="flex items-center gap-1.5 cursor-pointer ml-auto"
-                    title="Ao arrastar, os blocos grudam no cursor, nos cortes e nas bordas dos outros — sem frestas">
-                    <input type="checkbox" checked={snapOn} onChange={(e) => setSnapOn(e.target.checked)} />
-                    <Magnet className="h-3.5 w-3.5" /> Encaixe
-                  </label>
-                </div>
-
-                {/* Timeline multi-faixa (Fase E): gutter de CABEÇALHOS à esquerda
-                    (fora do scroll — não some no zoom) + faixas à direita. A
-                    ordem/condições do gutter ESPELHAM as faixas: régua, fita de
-                    vídeo, legendas, textos, stickers, áudio. */}
-                <div className="grid grid-cols-[56px_minmax(0,1fr)] gap-1">
-                  <div className="space-y-1">
-                    <div className="h-4" /> {/* espaço da régua */}
-                    <div className="flex items-center gap-1 rounded border bg-muted/40 px-1.5 text-[9px] text-muted-foreground transition-[height] duration-200"
-                      style={{ height: alturaFita }}>
-                      <Clapperboard className="h-3 w-3 shrink-0" /> <span className="truncate">Vídeo</span>
-                    </div>
-                    {subsOn && cues.length > 0 && (
-                      <div className="flex h-7 items-center gap-1 rounded border bg-emerald-500/10 px-1.5 text-[9px] text-muted-foreground">
-                        <Captions className="h-3 w-3 shrink-0" /> <span className="truncate">Legenda</span> {olhoFaixa("subs")}
-                      </div>
-                    )}
-                    {titles.length > 0 && (
-                      <div className="flex h-7 items-center gap-1 rounded border bg-amber-500/10 px-1.5 text-[9px] text-muted-foreground">
-                        <Type className="h-3 w-3 shrink-0" /> <span className="truncate">Texto</span> {olhoFaixa("text")}
-                      </div>
-                    )}
-                    {stickers.length > 0 && (
-                      <div className="flex h-7 items-center gap-1 rounded border bg-violet-500/10 px-1.5 text-[9px] text-muted-foreground">
-                        <ImageIcon className="h-3 w-3 shrink-0" /> <span className="truncate">Sticker</span> {olhoFaixa("sticker")}
-                      </div>
-                    )}
-                    {pipClips.length > 0 && (
-                      <div className="flex h-7 items-center gap-1 rounded border bg-rose-500/10 px-1.5 text-[9px] text-muted-foreground">
-                        <Clapperboard className="h-3 w-3 shrink-0" /> <span className="truncate">Vídeo 2</span> {olhoFaixa("pip")}
-                      </div>
-                    )}
-                    {audioClips.length > 0 && (
-                      <div className="flex h-7 items-center gap-1 rounded border bg-sky-500/10 px-1.5 text-[9px] text-muted-foreground">
-                        <Headphones className="h-3 w-3 shrink-0" /> <span className="truncate">Áudio</span> {olhoFaixa("audio")}
-                      </div>
-                    )}
-                  </div>
-                <div ref={scrollRef} onScroll={pedirJanelaThumbs} className="overflow-x-auto overflow-y-hidden pb-1">
-                  <div className="relative space-y-1" style={{ width: `${zoom * 100}%` }}>
-                    {/* régua */}
-                    <div className="relative h-4 select-none">
-                      {rulerMarks.map((t) => (
-                        <div key={t} className="absolute top-0 flex flex-col items-start"
-                          style={{ left: `${(t / meta.duration) * 100}%` }}>
-                          <div className="h-1.5 w-px bg-muted-foreground/50" />
-                          <span className="text-[9px] text-muted-foreground tabular-nums -translate-x-1/2 ml-px whitespace-nowrap">
-                            {rotuloRegua(t)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div ref={timelineRef} className="relative select-none cursor-col-resize" onMouseDown={onTimelineDown}>
-                      <div className="relative rounded-lg overflow-hidden border bg-neutral-800 transition-[height] duration-200"
-                        style={{ height: alturaFita }}>
-                        {zoom <= 1 ? (
-                          // 1×: fita inteira preenche a largura (slot ~natural)
-                          <div className="flex h-full w-full">
-                            {(meta.thumbs.length ? meta.thumbs : Array(20).fill("")).map((t, i, arr) =>
-                              t ? <img key={i} src={t} draggable={false} className="h-full object-cover" style={{ width: `${100 / arr.length}%` }} alt="" />
-                                : <div key={i} className={`h-full bg-muted ${thumbsErro ? "" : "animate-pulse"}`}
-                                    style={{ width: `${100 / arr.length}%` }} />,
-                            )}
-                          </div>
-                        ) : winThumbs ? (
-                          // ampliado: cada quadro em LARGURA NATURAL (w-auto = a proporção
-                          // REAL da imagem manda; nunca estica), começando no tempo t0
-                          <div className="absolute top-0 bottom-0 flex"
-                            style={{ left: `${(winThumbs.t0 / meta.duration) * 100}%` }}>
-                            {winThumbs.list.map((t, i) =>
-                              t ? <img key={i} src={t} draggable={false} className="h-full w-auto shrink-0" alt="" />
-                                : <div key={i} className="h-full shrink-0 bg-muted" style={{ width: Math.round(alturaFita * 0.5625) }} />,
-                            )}
-                          </div>
-                        ) : (
-                          <span className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground pointer-events-none animate-pulse">
-                            carregando os quadros do trecho…
-                          </span>
-                        )}
-                      </div>
-                      {thumbsErro && !meta.thumbs.length && (
-                        <span className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground pointer-events-none">
-                          (sem miniaturas — a timeline funciona normalmente)
-                        </span>
-                      )}
-                      <div className="absolute inset-0 pointer-events-none">
-                        {segments.map((s) => (
-                          <div key={s.id}
-                            className={`absolute top-0 h-full border-2 rounded-sm ${
-                              s.keep
-                                ? (activeSeg?.id === s.id ? "border-primary" : "border-emerald-400/70")
-                                : "border-red-500/70 bg-black/60 backdrop-grayscale"}`}
-                            style={{ left: `${(s.start / meta.duration) * 100}%`, width: `${((s.end - s.start) / meta.duration) * 100}%` }}>
-                            <button type="button"
-                              title={s.keep ? "Remover este trecho" : "Restaurar este trecho"}
-                              onMouseDown={(e) => e.stopPropagation()}
-                              onClick={(e) => { e.stopPropagation(); toggleSegment(s.id); }}
-                              className={`pointer-events-auto absolute top-0.5 right-0.5 rounded p-0.5 ${
-                                s.keep ? "bg-black/50 text-white hover:bg-red-600" : "bg-red-600 text-white hover:bg-emerald-600"}`}>
-                              {s.keep ? <Trash2 className="h-3 w-3" /> : <RotateCcw className="h-3 w-3" />}
-                            </button>
-                            {s.keep && (s.speed ?? 1) !== 1 && (
-                              <span className="absolute bottom-0.5 left-0.5 rounded bg-black/70 text-white text-[8px] px-1 leading-tight">
-                                {(s.speed ?? 1) < 1 ? "🐢" : "⚡"}{String(s.speed).replace(".", ",")}×
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                        {/* alças das FRONTEIRAS entre trechos: arraste para mover
-                            o ponto de corte (o vizinho acompanha) */}
-                        {segments.slice(0, -1).map((s) => (
-                          <div key={`b${s.id}`}
-                            className="pointer-events-auto absolute top-0 bottom-0 w-2 -translate-x-1/2 cursor-ew-resize group"
-                            style={{ left: `${(s.end / meta.duration) * 100}%`, touchAction: "none" }}
-                            title="Arraste para ajustar onde o corte acontece"
-                            onMouseDown={(e) => e.stopPropagation()}
-                            onPointerDown={(e) => onBorderDown(e, s.id)}
-                            onPointerMove={onBorderMove}
-                            onPointerUp={onBorderUp}
-                            onPointerCancel={onBorderUp}>
-                            <div className="mx-auto h-full w-0.5 bg-white/70 group-hover:bg-primary group-hover:w-1 transition-all" />
-                          </div>
-                        ))}
-                        <div className="absolute top-[-4px] bottom-[-4px] w-0.5 bg-primary"
-                          style={{ left: `${Math.min(100, (playhead / meta.duration) * 100)}%` }}>
-                          <div className="h-2.5 w-2.5 rounded-full bg-primary -translate-x-[45%]" />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* guia do encaixe: mostra em que ponto o bloco grudou */}
-                    {snapGuide !== null && (
-                      <div className="absolute top-4 bottom-0 w-px bg-amber-400 pointer-events-none z-10"
-                        style={{ left: `${(snapGuide / meta.duration) * 100}%` }} />
-                    )}
-
-                    {/* Faixas (estilo CapCut): legendas, textos, stickers e áudio.
-                        Arraste o bloco pra mover no tempo; borda direita estica. */}
-                    {subsOn && cues.length > 0 && (
-                      <div className={`relative h-7 rounded border bg-emerald-500/5 overflow-hidden ${faixaOculta("subs") ? "opacity-40" : ""}`}>
-                        {cues.map((c, i) => (
-                          <div key={i}
-                            className="absolute top-0.5 bottom-0.5 rounded bg-emerald-600/70 border border-emerald-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
-                            style={{ left: `${(c.start / meta.duration) * 100}%`, width: `${Math.max(1.2, ((c.end - c.start) / meta.duration) * 100)}%`, touchAction: "none" }}
-                            title={`${c.text} · ${fmt(c.start)}–${fmt(c.end)} — arraste pra mover; borda direita estica`}
-                            onPointerDown={(e) => onTrackDown(e, "cue", String(i), "move")}
-                            onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
-                            <span className="truncate pointer-events-none">{c.text || "(legenda)"}</span>
-                            <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/40"
-                              style={{ touchAction: "none" }}
-                              onPointerDown={(e) => onTrackDown(e, "cue", String(i), "resize")} />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {titles.length > 0 && (
-                      <div className={`relative h-7 rounded border bg-amber-500/5 overflow-hidden ${faixaOculta("text") ? "opacity-40" : ""}`}>
-                        {titles.map((t) => (
-                          <div key={t.id}
-                            className="absolute top-0.5 bottom-0.5 rounded bg-amber-500/70 border border-amber-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
-                            style={{ left: `${(t.start / meta.duration) * 100}%`, width: `${Math.max(1.2, ((t.end - t.start) / meta.duration) * 100)}%`, touchAction: "none" }}
-                            title={`${t.text} · ${fmt(t.start)}–${fmt(t.end)} — arraste pra mover; borda direita estica`}
-                            onPointerDown={(e) => onTrackDown(e, "title", t.id, "move")}
-                            onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
-                            <span className="truncate pointer-events-none">T {t.text || "(texto)"}</span>
-                            <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/40"
-                              style={{ touchAction: "none" }}
-                              onPointerDown={(e) => onTrackDown(e, "title", t.id, "resize")} />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {stickers.length > 0 && (
-                      <div className={`relative h-7 rounded border bg-violet-500/5 overflow-hidden ${faixaOculta("sticker") ? "opacity-40" : ""}`}>
-                        {stickers.map((s) => (
-                          <div key={s.id}
-                            className="absolute top-0.5 bottom-0.5 rounded bg-violet-500/70 border border-violet-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
-                            style={{ left: `${(s.start / meta.duration) * 100}%`, width: `${Math.max(1.2, ((s.end - s.start) / meta.duration) * 100)}%`, touchAction: "none" }}
-                            title={`${s.name} · ${fmt(s.start)}–${fmt(s.end)} — arraste pra mover; borda direita estica`}
-                            onPointerDown={(e) => onTrackDown(e, "sticker", s.id, "move")}
-                            onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
-                            <span className="truncate pointer-events-none">🖼 {s.name}</span>
-                            <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/40"
-                              style={{ touchAction: "none" }}
-                              onPointerDown={(e) => onTrackDown(e, "sticker", s.id, "resize")} />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {pipClips.length > 0 && (
-                      <div className={`relative h-7 rounded border bg-rose-500/5 overflow-hidden ${faixaOculta("pip") ? "opacity-40" : ""}`}>
-                        {pipClips.map((p) => (
-                          <div key={p.id}
-                            className="absolute top-0.5 bottom-0.5 rounded bg-rose-500/70 border border-rose-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
-                            style={{ left: `${(p.start / meta.duration) * 100}%`, width: `${Math.max(1.2, ((p.end - p.start) / meta.duration) * 100)}%`, touchAction: "none" }}
-                            title={`${p.name} · ${fmt(p.start)}–${fmt(p.end)} — arraste pra mover; borda direita estica`}
-                            onPointerDown={(e) => onTrackDown(e, "pip", p.id, "move")}
-                            onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
-                            <span className="truncate pointer-events-none">▶ {p.name}</span>
-                            <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/40"
-                              style={{ touchAction: "none" }}
-                              onPointerDown={(e) => onTrackDown(e, "pip", p.id, "resize")} />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {audioClips.length > 0 && (
-                      <div className={`relative h-7 rounded border bg-sky-500/5 overflow-hidden ${faixaOculta("audio") ? "opacity-40" : ""}`}>
-                        {audioClips.map((c) => (
-                          <div key={c.id}
-                            className="absolute top-0.5 bottom-0.5 rounded bg-sky-500/70 border border-sky-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
-                            style={{ left: `${(c.start / meta.duration) * 100}%`, width: `${Math.max(1.2, ((c.end - c.start) / meta.duration) * 100)}%`, touchAction: "none" }}
-                            title={`${c.name} · ${fmt(c.start)}–${fmt(c.end)} — arraste pra mover; borda direita estica`}
-                            onPointerDown={(e) => onTrackDown(e, "audio", c.id, "move")}
-                            onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
-                            <span className="truncate pointer-events-none">🎧 {c.name}</span>
-                            <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/40"
-                              style={{ touchAction: "none" }}
-                              onPointerDown={(e) => onTrackDown(e, "audio", c.id, "resize")} />
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 </div>
-                </div>
-
-                {/* Adicionar conteúdo às faixas — a resposta de "como adiciono
-                    uma trilha": cada tipo leva à seção que o cria */}
-                <div className="flex items-center gap-1.5 flex-wrap text-xs">
-                  <span className="text-muted-foreground">Adicionar:</span>
-                  <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1"
-                    onClick={() => irParaSecao("sec-legendas")}><Captions className="h-3 w-3" /> Legendas</Button>
-                  <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1"
-                    onClick={() => irParaSecao("sec-textos")}><Type className="h-3 w-3" /> Texto</Button>
-                  <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1"
-                    onClick={() => irParaSecao("sec-stickers")}><ImageIcon className="h-3 w-3" /> Sticker</Button>
-                  <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1"
-                    onClick={() => irParaSecao("sec-audio")}><Headphones className="h-3 w-3" /> Narração/efeito</Button>
-                  <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1"
-                    onClick={() => irParaSecao("sec-musica")}><Music className="h-3 w-3" /> Música</Button>
-                  <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1 border-rose-300/60"
-                    title="Vídeo SOBRE o vídeo (PiP): um 2º vídeo em janela, com posição e som próprios"
-                    onClick={() => setDialogVideo("pip")}>
-                    <Clapperboard className="h-3 w-3" /> + Vídeo (PiP)
-                  </Button>
-                  <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1"
-                    title="Emendar um vídeo DEPOIS do fim da edição atual (juntar takes, fechar com uma chamada)"
-                    onClick={() => setDialogVideo("seq")}>
-                    <Film className="h-3 w-3" /> + Vídeo no fim
-                  </Button>
-                </div>
-
-                {/* Escolha de um 2º vídeo: PiP (sobre) ou sequência (no fim) */}
-                {dialogVideo && (
-                  <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
-                    onClick={() => !pipLoading && setDialogVideo(null)}>
-                    <div className="w-full max-w-sm rounded-xl border bg-background p-4 space-y-3 shadow-lg"
-                      onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center gap-2">
-                        {dialogVideo === "pip"
-                          ? <Clapperboard className="h-4 w-4 text-primary" />
-                          : <Film className="h-4 w-4 text-primary" />}
-                        <span className="font-semibold text-sm">
-                          {dialogVideo === "pip" ? "Vídeo sobre o vídeo (PiP)" : "Emendar vídeo no fim"}
-                        </span>
-                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0 ml-auto"
-                          disabled={pipLoading} onClick={() => setDialogVideo(null)}>✕</Button>
-                      </div>
-                      <p className="text-[11px] text-muted-foreground">
-                        {dialogVideo === "pip"
-                          ? <>Entra no cursor ({fmt(playhead)}) como uma janela sobre o vídeo —
-                             arraste no player para posicionar; mova/estique na faixa rosa.</>
-                          : <>Entra DEPOIS do fim da edição atual, emendado na sequência —
-                             bom para juntar takes ou fechar com uma chamada. Ajuste o trecho
-                             usado na seção "Vídeos em sequência".</>}
-                      </p>
-                      <label className="flex items-center justify-center gap-2 rounded-lg border-2 border-dashed p-2.5 text-xs cursor-pointer hover:border-primary/60 transition">
-                        {pipLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                        Enviar vídeo do computador
-                        <input type="file" className="hidden"
-                          accept="video/mp4,video/quicktime,video/webm,video/x-matroska"
-                          disabled={pipLoading}
-                          onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            if (f) { const fd = new FormData(); fd.append("file", f); (dialogVideo === "pip" ? adicionarPip : adicionarSeq)(fd, f.name.replace(/\.[^.]+$/, "")); }
-                            e.target.value = "";
-                          }} />
-                      </label>
-                      <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
-                        {mp4Videos.length === 0 && (
-                          <p className="text-xs text-muted-foreground">Sem vídeos na galeria — envie um arquivo acima.</p>
-                        )}
-                        {mp4Videos.map((v: any) => (
-                          <button key={v.id} type="button" disabled={pipLoading}
-                            onClick={() => { const fd = new FormData(); fd.append("video_url", v.embed_url); (dialogVideo === "pip" ? adicionarPip : adicionarSeq)(fd, v.title || "Vídeo da galeria", v.embed_url); }}
-                            className="w-full flex items-center gap-2 rounded-lg border p-1.5 text-left text-xs hover:border-primary/60 transition">
-                            {v.thumbnail_url
-                              ? <img src={v.thumbnail_url} className="h-10 w-7 rounded object-cover shrink-0" alt="" />
-                              : <div className="h-10 w-7 rounded bg-muted flex items-center justify-center shrink-0"><VideoIcon className="h-3.5 w-3.5" /></div>}
-                            <span className="truncate">{v.title || "Sem título"}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeSeg && (
-                  <div className="flex items-center gap-2 flex-wrap rounded-lg border bg-muted/30 px-3 py-2 text-xs">
-                    <span className="font-medium">Trecho sob o cursor {activeSeg.keep ? "(mantido)" : "(removido)"}:</span>
-                    <label className="flex items-center gap-1">início
-                      <Input value={startField} onChange={(e) => setStartField(e.target.value)}
-                        onBlur={() => applyBound("start", parseTime(startField))}
-                        onKeyDown={(e) => e.key === "Enter" && applyBound("start", parseTime(startField))}
-                        className="h-7 w-20 text-xs tabular-nums" />
-                    </label>
-                    <label className="flex items-center gap-1">fim
-                      <Input value={endField} onChange={(e) => setEndField(e.target.value)}
-                        onBlur={() => applyBound("end", parseTime(endField))}
-                        onKeyDown={(e) => e.key === "Enter" && applyBound("end", parseTime(endField))}
-                        className="h-7 w-20 text-xs tabular-nums" />
-                    </label>
-                    <Button size="sm" variant="outline" className="h-7" onClick={() => applyBound("start", playhead)}>Início = cursor</Button>
-                    <Button size="sm" variant="outline" className="h-7" onClick={() => applyBound("end", playhead)}>Fim = cursor</Button>
-                    <Button size="sm" variant={activeSeg.keep ? "destructive" : "default"} className="h-7"
-                      onClick={() => toggleSegment(activeSeg.id)}>
-                      {activeSeg.keep ? "Remover trecho" : "Restaurar trecho"}
-                    </Button>
-                    {activeSeg.keep && (
-                      <label className="flex items-center gap-1" title="Câmera lenta ou acelerado só neste trecho">
-                        Velocidade
-                        <select className="h-7 rounded border bg-background px-1"
-                          value={activeSeg.speed ?? 1}
-                          onChange={(e) => {
-                            const sp = Number(e.target.value);
-                            apply((d) => ({ segments: d.segments.map((s) => (s.id === activeSeg.id ? { ...s, speed: sp } : s)) }));
-                          }}>
-                          <option value={0.5}>🐢 0,5× (lenta)</option>
-                          <option value={1}>1× normal</option>
-                          <option value={1.5}>1,5×</option>
-                          <option value={2}>⚡ 2× (rápida)</option>
-                        </select>
-                      </label>
-                    )}
-                  </div>
-                )}
-
-                {/* Capa de entrada (logo) */}
-                <div className="flex items-center gap-3 flex-wrap text-xs rounded-lg border bg-muted/30 px-3 py-2">
-                  <label className="flex items-center gap-1.5 cursor-pointer font-medium">
-                    <input type="checkbox" checked={introOn} onChange={(e) => patch({ introOn: e.target.checked })} />
-                    <Clapperboard className="h-3.5 w-3.5" /> Capa de entrada com a logo
-                  </label>
-                  {introOn && (
-                    <>
-                      <div className="flex gap-1">
-                        {perfilLogo && (
-                          <button type="button" onClick={() => patch({ introSource: "perfil" })}
-                            className={`rounded-full border px-2 py-0.5 transition ${introSource === "perfil" ? "border-primary ring-1 ring-primary font-medium" : "hover:border-primary/50"}`}>
-                            Logo do perfil
-                          </button>
-                        )}
-                        <label className={`rounded-full border px-2 py-0.5 cursor-pointer transition ${introSource === "upload" ? "border-primary ring-1 ring-primary font-medium" : "hover:border-primary/50"}`}>
-                          {introUploadName ? `🖼 ${introUploadName.slice(0, 18)}` : "Enviar imagem"}
-                          <input type="file" className="hidden" accept="image/png,image/jpeg,image/webp"
-                            onChange={async (e) => {
-                              const f = e.target.files?.[0];
-                              e.target.value = "";
-                              if (!f) return;
-                              try {
-                                const fd = new FormData();
-                                fd.append("file", f);
-                                const res = await fetch(`${API}/editor/carregar-logo`, {
-                                  method: "POST", body: fd, headers: await videoApiAuthHeaders(),
-                                });
-                                const data = await res.json();
-                                if (!res.ok) throw new Error(data.detail || "Falha ao enviar a imagem");
-                                patch({ introUploadId: data.logo_upload_id, introUploadName: f.name, introSource: "upload" });
-                              } catch (err: any) { toast.error(err.message); }
-                            }} />
-                        </label>
-                      </div>
-                      <label className="flex items-center gap-1">por
-                        <select className="h-7 rounded border bg-background px-1" value={introDur}
-                          onChange={(e) => patch({ introDur: Number(e.target.value) })}>
-                          <option value={1.5}>1,5s</option><option value={2}>2s</option>
-                          <option value={3}>3s</option><option value={4}>4s</option>
-                        </select>
-                      </label>
-                      <label className="flex items-center gap-1">efeito
-                        <select className="h-7 rounded border bg-background px-1" value={introEffect}
-                          onChange={(e) => patch({ introEffect: e.target.value as "zoom" | "slide" | "fade" })}>
-                          <option value="zoom">Zoom suave</option>
-                          <option value="slide">Deslizar</option>
-                          <option value="fade">Estático</option>
-                        </select>
-                      </label>
-                      <label className="flex items-center gap-1.5">fundo
-                        <input type="color" value={introBg} onPointerDown={checkpoint}
-                          onChange={(e) => update({ introBg: e.target.value })}
-                          className="h-7 w-9 rounded border cursor-pointer" />
-                      </label>
-                      {/* mini prévia da capa */}
-                      <span className="inline-flex items-center justify-center rounded border h-9 w-16 overflow-hidden"
-                        style={{ background: introBg }}>
-                        {(introSource === "perfil" ? perfilLogo : "") && (
-                          <img src={perfilLogo} alt="" className="max-h-6 max-w-12 object-contain" />
-                        )}
-                        {introSource === "upload" && introUploadName && <span className="text-[9px]">🖼</span>}
-                      </span>
-                      {!perfilLogo && introSource === "perfil" && (
-                        <span className="text-muted-foreground">Sem logo no perfil — envie uma imagem.</span>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                {/* Acabamento + Render */}
-                <div className="flex items-center gap-3 flex-wrap text-xs rounded-lg border bg-muted/30 px-3 py-2">
-                  <span className="font-medium">Acabamento:</span>
-                  <label className="flex items-center gap-1.5" title="Como um trecho vira o próximo">
-                    Emendas
-                    <select className="h-7 rounded border bg-background px-1" value={transition}
-                      onChange={(e) => patch({ transition: e.target.value })}>
-                      {TRANSICOES.map((t) => (
-                        <option key={t.id} value={t.id}>{t.label}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="flex items-center gap-1.5 cursor-pointer" title="Leve zoom alternado a cada trecho — disfarça as emendas">
-                    <input type="checkbox" checked={punchIn} onChange={(e) => patch({ punchIn: e.target.checked })} />
-                    Zoom alternado nos cortes
-                  </label>
-                  {segments.filter((s) => s.keep).length < 2 && transition !== "none" && (
-                    <span className="text-muted-foreground">
-                      (a emenda só aparece com 2+ trechos)
-                    </span>
-                  )}
-                </div>
-
-                {/* Filtro de cor (prévia ao vivo no player) + Efeito (prévia
-                    pela amostra real: VHS/granulado/glitch não têm equivalente
-                    fiel em CSS, e aproximar faria a prévia mentir) */}
-                <div className="space-y-2 rounded-lg border bg-muted/30 px-3 py-2">
-                  <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3">
-                    <div className="space-y-2 min-w-0">
-                      <div>
-                        <div className="flex items-center gap-2 text-xs">
-                          <Palette className="h-3.5 w-3.5 text-primary" />
-                          <span className="font-medium">Filtro de cor</span>
-                          <span className="text-muted-foreground">— ao vivo no player</span>
-                        </div>
-                        <div className="flex gap-1.5 flex-wrap mt-1">
-                          {FILTRO_IDS.map((id) => (
-                            <button key={id} type="button"
-                              onClick={() => patch({ filtro: id })}
-                              className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
-                                filtro === id ? "border-primary ring-1 ring-primary font-medium" : "hover:border-primary/50"}`}>
-                              {FILTROS[id].label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 text-xs">
-                          <Sparkles className="h-3.5 w-3.5 text-primary" />
-                          <span className="font-medium">Efeito</span>
-                          <span className="text-muted-foreground">— veja na amostra ao lado</span>
-                        </div>
-                        <div className="flex gap-1.5 flex-wrap mt-1">
-                          {EFEITOS.map((e) => (
-                            <button key={e.id} type="button"
-                              onClick={() => patch({ efeito: e.id })}
-                              className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
-                                efeito === e.id ? "border-primary ring-1 ring-primary font-medium" : "hover:border-primary/50"}`}>
-                              {e.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                    {/* amostra REAL: o frame do cursor passado pelo ffmpeg */}
-                    <div className="shrink-0 space-y-1">
-                      <div className="relative rounded border bg-muted/40 overflow-hidden"
-                        style={{ width: 124, height: 124 }}>
-                        {amostraUrl ? (
-                          <img src={amostraUrl} alt="Amostra com filtro e efeito"
-                            className="h-full w-full object-contain" />
-                        ) : (
-                          <div className="h-full w-full flex items-center justify-center text-[10px] text-muted-foreground text-center px-2">
-                            {amostraErro || "amostra do cursor"}
-                          </div>
-                        )}
-                        {amostraCarregando && (
-                          <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          </div>
-                        )}
-                      </div>
-                      <p className="text-[9px] text-muted-foreground text-center leading-tight">
-                        frame real do<br />seu vídeo
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Stickers/sobreposições + clipes de áudio posicionados */}
-      {meta && (
-        <Card>
-          <CardContent className="pt-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              {/* Stickers */}
-              <div className="space-y-2">
-                <Label id="sec-stickers" className="font-semibold flex items-center gap-2"><ImageIcon className="h-4 w-4" /> Stickers e sobreposições</Label>
-                <p className="text-[11px] text-muted-foreground">
-                  Imagem, GIF animado ou WebM com fundo transparente sobre o vídeo (ex.: um gatinho
-                  andando enquanto você fala). Entra no cursor; mova/estique na <b>faixa roxa</b> da
-                  timeline e <b>arraste no player</b> para posicionar.
-                </p>
-                <div className="flex gap-2 flex-wrap">
-                  <label className="flex items-center gap-1.5 rounded-lg border-2 border-dashed px-3 py-1.5 text-xs cursor-pointer hover:border-primary/60 transition">
-                    {uploadingSticker ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                    Enviar sticker (png · gif · webm)
-                    <input type="file" className="hidden"
-                      accept="image/png,image/webp,image/jpeg,image/gif,video/webm"
-                      disabled={uploadingSticker}
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) uploadSticker(f);
-                        e.target.value = "";
-                      }} />
-                  </label>
-                </div>
-                {/* Gerar com IA (fundo verde → transparência automática) */}
-                <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 space-y-1.5">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Wand2 className="h-4 w-4 text-primary shrink-0" />
-                    <Input value={iaDesc} onChange={(e) => setIaDesc(e.target.value)}
-                      placeholder='Gerar sticker animado com IA — ex.: "um gatinho laranja fofo andando"'
-                      className="h-8 text-xs flex-1 min-w-48" disabled={!!stickerJob} />
-                    <select className="h-8 rounded border bg-background px-1 text-xs" value={iaDur}
-                      disabled={!!stickerJob}
-                      onChange={(e) => setIaDur(Number(e.target.value))}>
-                      <option value={5}>5s</option><option value={10}>10s</option>
-                    </select>
-                    <Button size="sm" className="h-8" disabled={!!stickerJob || !iaDesc.trim()} onClick={gerarStickerIA}>
-                      {stickerJob ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />Gerando…</> : "✨ Gerar"}
-                    </Button>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    A IA cria a animação e remove o fundo sozinha (leva ~2 min). Pode sair da tela —
-                    o sticker entra na timeline quando ficar pronto.
-                    {iaStep && <b> · {iaStep}</b>}
-                  </p>
-                </div>
-                {stickers.map((s) => (
-                  <div key={s.id} className="flex items-center gap-1.5 text-xs flex-wrap rounded border px-2 py-1">
-                    {s.upload_id.endsWith(".webm")
-                      ? <video src={`${API}/editor/sticker/${s.upload_id}`} muted loop autoPlay playsInline className="h-8 w-8 rounded object-contain bg-muted/50 shrink-0" />
-                      : <img src={`${API}/editor/sticker/${s.upload_id}`} alt="" className="h-8 w-8 rounded object-contain bg-muted/50 shrink-0" />}
-                    <span className="truncate max-w-28" title={s.name}>{s.name}</span>
-                    <span className="tabular-nums text-muted-foreground">{fmt(s.start)}–{fmt(s.end)}</span>
-                    <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px] text-muted-foreground"
-                      title="Leva o começo do sticker até o cursor"
-                      onClick={() => apply((d) => ({
-                        stickers: d.stickers.map((p) => {
-                          if (p.id !== s.id || !meta) return p;
-                          const len = p.end - p.start;
-                          const ns = Math.max(0, Math.min(meta.duration - len, playhead));
-                          return { ...p, start: ns, end: ns + len };
-                        }),
-                      }))}>
-                      → cursor
-                    </Button>
-                    <select className="h-7 rounded border bg-background px-1" value={s.scale_pct}
-                      title="Tamanho (fração da largura do vídeo)"
-                      onChange={(e) => apply((d) => ({ stickers: d.stickers.map((p) => (p.id === s.id ? { ...p, scale_pct: Number(e.target.value) } : p)) }))}>
-                      {STICKER_SIZES.map((z) => <option key={z.label} value={z.value}>{z.label}</option>)}
-                    </select>
-                    <select className="h-7 rounded border bg-background px-1" value={s.movement}
-                      onChange={(e) => {
-                        const mv = e.target.value as StickerMovement;
-                        apply((d) => ({
-                          stickers: d.stickers.map((p) => (p.id === s.id
-                            ? { ...p, movement: mv, flip: mv === "walk-left" ? true : mv === "walk-right" ? false : p.flip }
-                            : p)),
-                        }));
-                      }}>
-                      <option value="none">Parado</option>
-                      <option value="walk-right">🚶 Atravessa →</option>
-                      <option value="walk-left">🚶 Atravessa ←</option>
-                    </select>
-                    {s.movement === "none" && (
-                      <select className="h-7 rounded border bg-background px-1" value={stickerPosKey(s)}
-                        onChange={(e) => {
-                          const p = STICKER_POSITIONS.find((p) => p.key === e.target.value);
-                          if (p) apply((d) => ({ stickers: d.stickers.map((x) => (x.id === s.id ? { ...x, x_pct: p.x, y_pct: p.y } : x)) }));
-                        }}>
-                        {STICKER_POSITIONS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
-                        <option value="custom" disabled>Personalizado (arrastado)</option>
-                      </select>
-                    )}
-                    <label className="flex items-center gap-1 cursor-pointer" title="Espelhar horizontalmente">
-                      <input type="checkbox" checked={s.flip}
-                        onChange={(e) => apply((d) => ({ stickers: d.stickers.map((p) => (p.id === s.id ? { ...p, flip: e.target.checked } : p)) }))} />
-                      espelhar
-                    </label>
-                    {s.animated && (
-                      <label className="flex items-center gap-1 cursor-pointer" title="Repete a animação enquanto estiver na tela">
-                        <input type="checkbox" checked={s.loop}
-                          onChange={(e) => apply((d) => ({ stickers: d.stickers.map((p) => (p.id === s.id ? { ...p, loop: e.target.checked } : p)) }))} />
-                        loop
-                      </label>
-                    )}
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground ml-auto"
-                      title="Duplicar este sticker" onClick={() => duplicarSticker(s.id)}>
-                      <Copy className="h-3 w-3" />
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive"
-                      onClick={() => apply((d) => ({ stickers: d.stickers.filter((p) => p.id !== s.id) }))}>
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
+              )}
+              <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+                {mp4Videos.length === 0 && <p className="text-xs text-muted-foreground">Seus vídeos gerados aparecem aqui.</p>}
+                {mp4Videos.map((v: any) => (
+                  <button key={v.id} type="button" disabled={loadingSource}
+                    onClick={() => { const fd = new FormData(); fd.append("video_url", v.embed_url); carregar(fd, v.title || "Vídeo da galeria", v.embed_url); }}
+                    className="w-full flex items-center gap-2 rounded-lg border p-1.5 text-left text-xs hover:border-primary/60 transition">
+                    {v.thumbnail_url
+                      ? <img src={v.thumbnail_url} className="h-10 w-7 rounded object-cover shrink-0" alt="" />
+                      : <div className="h-10 w-7 rounded bg-muted flex items-center justify-center shrink-0"><VideoIcon className="h-3.5 w-3.5" /></div>}
+                    <span className="truncate">{v.title || "Sem título"}</span>
+                  </button>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+        </CollapsibleContent>
+      </Collapsible>
 
-              {/* PiP: vídeo sobre o vídeo (Fase F) */}
-              {pipClips.length > 0 && (
-                <div className="space-y-2">
-                  <Label className="font-semibold flex items-center gap-2"><Clapperboard className="h-4 w-4" /> Vídeo sobre o vídeo (PiP)</Label>
-                  {pipClips.map((p) => (
-                    <div key={p.id} className="flex items-center gap-1.5 text-xs flex-wrap rounded border px-2 py-1">
-                      <span className="truncate max-w-32 font-medium">{p.name}</span>
-                      <span className="tabular-nums text-muted-foreground">{fmt(p.start)}–{fmt(p.end)}</span>
-                      <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px] text-muted-foreground"
-                        title="Leva o começo do clipe até o cursor"
-                        onClick={() => apply((d) => ({ pipClips: d.pipClips.map((x) => (x.id === p.id
-                          ? { ...x, start: playhead, end: Math.min(meta.duration, playhead + (x.end - x.start)) } : x)) }))}>
-                        → cursor
-                      </Button>
-                      <label className="flex items-center gap-1" title="Começar do segundo X do vídeo sobreposto">
-                        a partir de
-                        <Input type="number" min={0} step={0.5} max={Math.max(0, p.natural_dur - 0.3)}
-                          value={p.src_in} className="h-7 w-14 text-xs tabular-nums" onFocus={checkpoint}
-                          onChange={(e) => {
-                            if (e.target.value === "") return;
-                            const v = Math.max(0, Math.min(p.natural_dur - 0.3, Number(e.target.value)));
-                            applyLive((d) => ({ pipClips: d.pipClips.map((x) => (x.id === p.id ? { ...x, src_in: v } : x)) }));
-                          }} />s
-                      </label>
-                      <select className="h-7 rounded border bg-background px-1" value={p.scale_pct}
-                        onChange={(e) => apply((d) => ({ pipClips: d.pipClips.map((x) => (x.id === p.id ? { ...x, scale_pct: Number(e.target.value) } : x)) }))}>
-                        <option value={0.25}>Pequeno</option>
-                        <option value={0.35}>Médio</option>
-                        <option value={0.5}>Grande</option>
-                        {![0.25, 0.35, 0.5].includes(p.scale_pct) && <option value={p.scale_pct} disabled>Personalizado</option>}
-                      </select>
-                      <label className="flex items-center gap-1" title="Volume do áudio do vídeo sobreposto (0 = mudo)">
-                        <Volume2 className="h-3.5 w-3.5 text-muted-foreground" />
-                        <input type="range" min={0} max={1} step={0.05} value={p.volume} className="w-14"
-                          onPointerDown={checkpoint}
-                          onChange={(e) => applyLive((d) => ({ pipClips: d.pipClips.map((x) => (x.id === p.id ? { ...x, volume: Number(e.target.value) } : x)) }))} />
-                      </label>
-                      <label className="flex items-center gap-1" title="Opacidade da janela">
-                        <input type="range" min={0.2} max={1} step={0.05} value={p.opacity} className="w-14"
-                          onPointerDown={checkpoint}
-                          onChange={(e) => applyLive((d) => ({ pipClips: d.pipClips.map((x) => (x.id === p.id ? { ...x, opacity: Number(e.target.value) } : x)) }))} />
-                      </label>
-                      <label className="flex items-center gap-1 cursor-pointer"
-                        title="Transição da janela: entrada/saída suave (fade) ou corte seco">
-                        <input type="checkbox" checked={p.fade ?? true}
-                          onChange={(e) => apply((d) => ({ pipClips: d.pipClips.map((x) => (x.id === p.id ? { ...x, fade: e.target.checked } : x)) }))} />
-                        suave
-                      </label>
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground ml-auto"
-                        title="Duplicar este clipe" onClick={() => duplicarPip(p.id)}>
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive"
-                        onClick={() => apply((d) => ({ pipClips: d.pipClips.filter((x) => x.id !== p.id) }))}>
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Vídeos EMENDADOS no fim (sequência) */}
-              {seqClips.length > 0 && (
-                <div className="space-y-2">
-                  <Label className="font-semibold flex items-center gap-2"><Film className="h-4 w-4" /> Vídeos em sequência (no fim)</Label>
-                  <p className="text-[11px] text-muted-foreground">
-                    Emendados <b>depois</b> do vídeo principal, na ordem abaixo. O render sai completo;
-                    a prévia do trecho emendado chega em breve (como a capa de entrada).
-                  </p>
-                  {seqClips.map((c, i) => (
-                    <div key={c.id} className="flex items-center gap-1.5 text-xs flex-wrap rounded border px-2 py-1">
-                      <span className="text-muted-foreground tabular-nums">{i + 1}º</span>
-                      <span className="truncate max-w-36 font-medium">{c.name}</span>
-                      <label className="flex items-center gap-1" title="Usar a partir do segundo X da fonte">
-                        de
-                        <Input type="number" min={0} step={0.5} max={Math.max(0, c.natural_dur - 0.3)}
-                          value={c.src_in} className="h-7 w-14 text-xs tabular-nums" onFocus={checkpoint}
-                          onChange={(e) => {
-                            if (e.target.value === "") return;
-                            const v = Math.max(0, Math.min(c.natural_dur - 0.3, Number(e.target.value)));
-                            applyLive((d) => ({ seqClips: d.seqClips.map((x) => (x.id === c.id
-                              ? { ...x, src_in: v, src_out: Math.max(v + 0.3, x.src_out) } : x)) }));
-                          }} />
-                      </label>
-                      <label className="flex items-center gap-1" title="Usar até o segundo X da fonte">
-                        até
-                        <Input type="number" min={0.3} step={0.5} max={c.natural_dur}
-                          value={c.src_out} className="h-7 w-14 text-xs tabular-nums" onFocus={checkpoint}
-                          onChange={(e) => {
-                            if (e.target.value === "") return;
-                            const v = Math.max(c.src_in + 0.3, Math.min(c.natural_dur, Number(e.target.value)));
-                            applyLive((d) => ({ seqClips: d.seqClips.map((x) => (x.id === c.id ? { ...x, src_out: v } : x)) }));
-                          }} />s
-                      </label>
-                      <span className="text-muted-foreground tabular-nums">({fmt(Math.max(0, c.src_out - c.src_in))})</span>
-                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0 ml-auto" disabled={i === 0}
-                        title="Mover para antes"
-                        onClick={() => apply((d) => {
-                          const arr = [...d.seqClips];
-                          const j = arr.findIndex((x) => x.id === c.id);
-                          if (j > 0) [arr[j - 1], arr[j]] = [arr[j], arr[j - 1]];
-                          return { seqClips: arr };
-                        })}>↑</Button>
-                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" disabled={i === seqClips.length - 1}
-                        title="Mover para depois"
-                        onClick={() => apply((d) => {
-                          const arr = [...d.seqClips];
-                          const j = arr.findIndex((x) => x.id === c.id);
-                          if (j >= 0 && j < arr.length - 1) [arr[j], arr[j + 1]] = [arr[j + 1], arr[j]];
-                          return { seqClips: arr };
-                        })}>↓</Button>
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive"
-                        onClick={() => apply((d) => ({ seqClips: d.seqClips.filter((x) => x.id !== c.id) }))}>
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Clipes de áudio posicionados */}
-              <div className="space-y-2">
-                <Label id="sec-audio" className="font-semibold flex items-center gap-2"><Headphones className="h-4 w-4" /> Efeitos sonoros e narrações</Label>
-                <p className="text-[11px] text-muted-foreground">
-                  Áudio que toca num <b>ponto exato</b> do vídeo (efeito, vinheta, narração) — além da
-                  trilha global. Entra no cursor; mova/estique na <b>faixa azul</b> da timeline.
-                </p>
-                {/* voice over: grava aqui e vira um clipe na faixa azul */}
-                <Button size="sm" variant={gravando ? "destructive" : "outline"}
-                  className="h-8 gap-1.5 w-fit" disabled={uploadingClip}
-                  onClick={gravarNarracao}
-                  title={gravando ? "Parar e colocar na timeline" : "Gravar narração pelo microfone, a partir do cursor"}>
-                  {gravando ? (
-                    <><Square className="h-3 w-3 fill-current" /> Parar ({fmt(gravSegs)})</>
-                  ) : (
-                    <><Mic className="h-3.5 w-3.5" /> Gravar narração no cursor</>
+      {meta && (
+        <>
+          {/* MESA DE EDIÇÃO: player à esquerda, ferramenta escolhida à
+              direita. Antes tudo vivia empilhado e a pessoa rolava a página
+              inteira para achar cada ajuste. */}
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_400px] gap-4 items-start">
+            <Card>
+              <CardContent className="pt-5">
+                <div className="space-y-2 max-w-md mx-auto w-full">
+                  <div ref={videoWrapRef} className="relative">
+                    {/* o filtro de cor vale só para o VÍDEO: legendas, textos e
+                        stickers são queimados depois no motor, então não são
+                        filtrados (por isso o filter vai aqui, não no wrapper).
+                        SEM controles nativos (Fase C): o relógio mestre rege a
+                        prévia — clicar no vídeo toca/pausa. */}
+                    <video ref={videoRef} src={previewSrc} playsInline
+                      className={isFull
+                        ? "h-full w-full bg-black cursor-pointer object-contain"
+                        : "w-full max-h-72 rounded-lg bg-black cursor-pointer"}
+                      style={{ filter: filtroCss(filtro) }}
+                      onClick={clock.toggle}
+                      onEnded={clock.pause}
+                      onPause={() => clipAudiosRef.current.forEach((el) => el.pause())}
+                      onLoadStart={() => setVideoCarregando(true)}
+                      onWaiting={() => setVideoCarregando(true)}
+                      onCanPlay={() => setVideoCarregando(false)}
+                      onPlaying={() => setVideoCarregando(false)}
+                      onError={() => {
+                        // a CDN da galeria expira — cai na rota do worker, que
+                        // restaura o arquivo do Storage sozinha (era a TELA PRETA
+                        // com o cursor andando: o relógio não depende do vídeo)
+                        if (!meta) return;
+                        const rotaWorker = `${API}/editor/video/${meta.edit_id}`;
+                        if (previewSrc && previewSrc !== rotaWorker) {
+                          console.warn("[editor] preview falhou — trocando para a rota do worker");
+                          setPreviewSrc(rotaWorker);
+                        } else {
+                          setVideoCarregando(false);
+                          toast.error("Não consegui carregar o vídeo da prévia — recarregue a página; se persistir, reenvie o arquivo.", { duration: 8000 });
+                        }
+                      }} />
+                    {/* fonte carregando/travada: sem isto era tela preta muda */}
+                    {videoCarregando && previewSrc && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="flex items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 text-xs text-white">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" /> carregando o vídeo…
+                        </div>
+                      </div>
+                    )}
+                    {/* POOL dos vídeos EMENDADOS: cada um é um <video> oculto que
+                        cobre o player quando o relógio entra na janela dele — a
+                        prévia toca a edição inteira, emendas incluídas */}
+                    {meta && seqClips.map((c, i) => {
+                      const base = basesSeq[i] ?? meta.duration;
+                      const ativo = playhead >= base && playhead < base + Math.max(0, c.src_out - c.src_in);
+                      return (
+                        <video key={c.id}
+                          ref={(el) => {
+                            if (el) seqVideosRef.current.set(c.id, el);
+                            else seqVideosRef.current.delete(c.id);
+                          }}
+                          src={c.source_url || `${API}/editor/video/${c.edit_id}`}
+                          playsInline preload="metadata"
+                          onClick={clock.toggle}
+                          onEnded={clock.pause}
+                          className="absolute inset-0 h-full w-full rounded-lg bg-black object-contain cursor-pointer"
+                          style={{ display: ativo ? "block" : "none" }} />
+                      );
+                    })}
+                    {/* convite de play quando parado (decorativo — o clique é no vídeo) */}
+                    {!clock.playing && previewSrc && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white">
+                          <Play className="h-6 w-6 ml-0.5" />
+                        </div>
+                      </div>
+                    )}
+                    {/* prévia dos stickers EXATAMENTE onde o ffmpeg vai desenhar;
+                        arraste (quando sem movimento) para posicionar */}
+                    {contentRect && activeStickers.map((s) => {
+                      const w = contentRect.w * s.scale_pct;
+                      let cxPct = s.x_pct;
+                      if (s.movement !== "none") {
+                        const p = Math.max(0, Math.min(1, (playhead - s.start) / Math.max(0.1, s.end - s.start)));
+                        const total = contentRect.w + w;
+                        const leftPx = s.movement === "walk-right" ? -w + total * p : contentRect.w - total * p;
+                        cxPct = (leftPx + w / 2) / contentRect.w;
+                      }
+                      const style: React.CSSProperties = {
+                        position: "absolute",
+                        left: contentRect.left + cxPct * contentRect.w,
+                        top: contentRect.top + s.y_pct * contentRect.h,
+                        width: w,
+                        transform: `translate(-50%,-50%)${s.flip ? " scaleX(-1)" : ""}`,
+                        cursor: s.movement === "none" ? "grab" : "default",
+                        pointerEvents: s.movement === "none" ? "auto" : "none",
+                        touchAction: "none",
+                      };
+                      const src = `${API}/editor/sticker/${s.upload_id}`;
+                      return s.upload_id.endsWith(".webm") ? (
+                        <video key={s.id} src={src} muted loop autoPlay playsInline style={style}
+                          onPointerDown={(e) => onStickerPreviewDown(e, s.id)}
+                          onPointerMove={onStickerPreviewMove} onPointerUp={onStickerPreviewUp} />
+                      ) : (
+                        <img key={s.id} src={src} alt="" draggable={false} style={style}
+                          onPointerDown={(e) => onStickerPreviewDown(e, s.id)}
+                          onPointerMove={onStickerPreviewMove} onPointerUp={onStickerPreviewUp} />
+                      );
+                    })}
+                    {/* PiP: vídeo sobre o vídeo (Fase F) — comandado pelo relógio
+                        mestre; arraste para posicionar. Acima dos stickers e
+                        abaixo das legendas, como no motor. */}
+                    {contentRect && !faixaOculta("pip") && pipClips
+                      .filter((p) => playhead >= p.start && playhead <= p.end)
+                      .map((p) => (
+                        <div key={p.id}
+                          style={{
+                            position: "absolute",
+                            left: contentRect.left + p.x_pct * contentRect.w,
+                            top: contentRect.top + p.y_pct * contentRect.h,
+                            width: contentRect.w * p.scale_pct,
+                            transform: "translate(-50%,-50%)",
+                            cursor: "grab",
+                            touchAction: "none",
+                          }}
+                          onPointerDown={(e) => onPipPreviewDown(e, p.id)}
+                          onPointerMove={(e) => { onPipPreviewMove(e); onPipResizeMove(e); }}
+                          onPointerUp={() => { onPipPreviewUp(); onPipResizeUp(); }}>
+                          <video
+                            ref={(el) => {
+                              if (el) pipVideosRef.current.set(p.id, el);
+                              else pipVideosRef.current.delete(p.id);
+                            }}
+                            src={p.source_url || `${API}/editor/video/${p.edit_id}`}
+                            muted={p.volume <= 0.01} playsInline preload="auto"
+                            className="pointer-events-none w-full rounded-md"
+                            style={{ opacity: p.opacity }} />
+                          {/* alça do canto: redimensiona a janela direto no player */}
+                          <div
+                            className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-sm border border-white bg-primary cursor-nwse-resize"
+                            title="Arraste para mudar o tamanho da janela"
+                            style={{ touchAction: "none" }}
+                            onPointerDown={(e) => onPipResizeDown(e, p.id)} />
+                        </div>
+                      ))}
+                    {/* prévia de legendas/textos/selos: desenhada como o ffmpeg
+                        desenha (mesma régua de estilo). Fica ACIMA dos stickers,
+                        como no motor, e não intercepta o mouse (o sticker embaixo
+                        continua arrastável). */}
+                    {contentRect && (
+                      <canvas ref={overlayRef}
+                        className="absolute pointer-events-none"
+                        style={{
+                          left: contentRect.left, top: contentRect.top,
+                          width: contentRect.w, height: contentRect.h,
+                        }} />
+                    )}
+                  </div>
+                  <label className="flex items-center gap-1.5 text-xs cursor-pointer"
+                    title="No play, os trechos removidos são pulados — você vê o resultado antes de renderizar">
+                    <input type="checkbox" checked={previewEdit} onChange={(e) => setPreviewEdit(e.target.checked)} />
+                    ▶ Prévia da edição (pula os trechos removidos)
+                  </label>
+                  <div className="flex items-center gap-2 text-xs">
+                    <Button size="sm" variant="outline" className="h-7 w-7 p-0 rounded-full"
+                      title={clock.playing ? "Pausar" : "Tocar"} onClick={clock.toggle}>
+                      {clock.playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 ml-0.5" />}
+                    </Button>
+                    <span className="tabular-nums" title={seqDurPrevia > 0 ? "Total com os vídeos emendados no fim" : undefined}>
+                      cursor: {fmt(playhead)} / {fmt(meta.duration + seqDurPrevia)}
+                    </span>
+                    <label className="flex items-center gap-1 ml-2" title="Volume da prévia">
+                      <Volume2 className="h-3.5 w-3.5 text-muted-foreground" />
+                      <input type="range" min={0} max={1} step={0.05} value={previewVol}
+                        onChange={(e) => setPreviewVol(Number(e.target.value))} className="w-16" />
+                    </label>
+                    <Button size="sm" variant="outline" className="h-7 w-7 p-0"
+                      title={isFull ? "Sair da tela cheia" : "Expandir (tela cheia)"} onClick={alternarTelaCheia}>
+                      {isFull ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+                    </Button>
+                    <span className="ml-auto text-muted-foreground">{meta.width}x{meta.height}</span>
+                  </div>
+                  {/* a gravação começa na aba Áudio, mas o botão de parar não
+                      pode sumir se a pessoa trocar de aba no meio */}
+                  {gravando && (
+                    <button type="button" onClick={gravarNarracao}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/20 transition">
+                      <Square className="h-3.5 w-3.5" /> Gravando narração — clique para parar
+                    </button>
                   )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="pt-4">
+                <Tabs value={tab} onValueChange={setTab}>
+                  <TabsList className="flex flex-wrap h-auto justify-start gap-1 bg-muted/60 p-1">
+                    <TabsTrigger value="cortes" className="text-xs px-2 py-1">Cortes</TabsTrigger>
+                    <TabsTrigger value="videos" className="text-xs px-2 py-1">Vídeos</TabsTrigger>
+                    <TabsTrigger value="legendas" className="text-xs px-2 py-1">Legendas</TabsTrigger>
+                    <TabsTrigger value="textos" className="text-xs px-2 py-1">Textos</TabsTrigger>
+                    <TabsTrigger value="stickers" className="text-xs px-2 py-1">Stickers</TabsTrigger>
+                    <TabsTrigger value="musica" className="text-xs px-2 py-1">Trilha</TabsTrigger>
+                    <TabsTrigger value="audio" className="text-xs px-2 py-1">Áudio</TabsTrigger>
+                    <TabsTrigger value="acabamento" className="text-xs px-2 py-1">Acabamento</TabsTrigger>
+                  </TabsList>
+                  <div className="mt-3 max-h-[62vh] overflow-y-auto pr-1">
+          <TabsContent value="cortes" className="mt-0 space-y-3">
+            {/* Caixinha FIXA de corte por tempo (sempre visível) */}
+            <div className="flex items-center gap-2 flex-wrap rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+              <Scissors className="h-3.5 w-3.5 text-destructive shrink-0" />
+              <span className="font-medium">Remover trecho:</span>
+              <label className="flex items-center gap-1">de
+                <Input value={cutStart} onChange={(e) => setCutStart(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && cortarIntervalo()}
+                  placeholder="1:56" className="h-7 w-20 text-xs tabular-nums" />
+              </label>
+              <label className="flex items-center gap-1">até
+                <Input value={cutEnd} onChange={(e) => setCutEnd(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && cortarIntervalo()}
+                  placeholder="1:59" className="h-7 w-20 text-xs tabular-nums" />
+              </label>
+              <Button size="sm" variant="destructive" className="h-7"
+                disabled={!cutStart.trim() || !cutEnd.trim()} onClick={cortarIntervalo}>
+                Cortar
+              </Button>
+              <Button size="sm" variant="ghost" className="h-7 text-muted-foreground"
+                onClick={() => setCutStart(fmt(playhead))} title="Preenche o início com o cursor">
+                início = cursor
+              </Button>
+              <Button size="sm" variant="ghost" className="h-7 text-muted-foreground"
+                onClick={() => setCutEnd(fmt(playhead))} title="Preenche o fim com o cursor">
+                fim = cursor
+              </Button>
+            </div>
+
+            {/* Cortar com IA */}
+            <div className="flex items-center gap-2 flex-wrap rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+              <Wand2 className="h-4 w-4 text-primary shrink-0" />
+              <Input value={aiCutText} onChange={(e) => setAiCutText(e.target.value)}
+                placeholder='Cortar com IA — ex.: "tire as pausas e os erros, deixe uns 40 segundos"'
+                className="h-8 text-xs flex-1 min-w-52" />
+              <Button size="sm" className="h-8" disabled={aiCutting} onClick={cortarComIA}>
+                {aiCutting ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />Assistindo o vídeo…</> : "Sugerir cortes"}
+              </Button>
+            </div>
+
+            {activeSeg && (
+              <div className="flex items-center gap-2 flex-wrap rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+                <span className="font-medium">Trecho sob o cursor {activeSeg.keep ? "(mantido)" : "(removido)"}:</span>
+                <label className="flex items-center gap-1">início
+                  <Input value={startField} onChange={(e) => setStartField(e.target.value)}
+                    onBlur={() => applyBound("start", parseTime(startField))}
+                    onKeyDown={(e) => e.key === "Enter" && applyBound("start", parseTime(startField))}
+                    className="h-7 w-20 text-xs tabular-nums" />
+                </label>
+                <label className="flex items-center gap-1">fim
+                  <Input value={endField} onChange={(e) => setEndField(e.target.value)}
+                    onBlur={() => applyBound("end", parseTime(endField))}
+                    onKeyDown={(e) => e.key === "Enter" && applyBound("end", parseTime(endField))}
+                    className="h-7 w-20 text-xs tabular-nums" />
+                </label>
+                <Button size="sm" variant="outline" className="h-7" onClick={() => applyBound("start", playhead)}>Início = cursor</Button>
+                <Button size="sm" variant="outline" className="h-7" onClick={() => applyBound("end", playhead)}>Fim = cursor</Button>
+                <Button size="sm" variant={activeSeg.keep ? "destructive" : "default"} className="h-7"
+                  onClick={() => toggleSegment(activeSeg.id)}>
+                  {activeSeg.keep ? "Remover trecho" : "Restaurar trecho"}
                 </Button>
-                {gravando && (
-                  <p className="text-[10px] text-muted-foreground">
-                    Gravando… fale e clique em Parar. A narração entra em {fmt(playhead)}.
-                  </p>
+                {activeSeg.keep && (
+                  <label className="flex items-center gap-1" title="Câmera lenta ou acelerado só neste trecho">
+                    Velocidade
+                    <select className="h-7 rounded border bg-background px-1"
+                      value={activeSeg.speed ?? 1}
+                      onChange={(e) => {
+                        const sp = Number(e.target.value);
+                        apply((d) => ({ segments: d.segments.map((s) => (s.id === activeSeg.id ? { ...s, speed: sp } : s)) }));
+                      }}>
+                      <option value={0.5}>🐢 0,5× (lenta)</option>
+                      <option value={1}>1× normal</option>
+                      <option value={1.5}>1,5×</option>
+                      <option value={2}>⚡ 2× (rápida)</option>
+                    </select>
+                  </label>
                 )}
-                <label className="flex items-center gap-1.5 rounded-lg border-2 border-dashed px-3 py-1.5 text-xs cursor-pointer hover:border-primary/60 transition w-fit">
-                  {uploadingClip ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                  Enviar áudio (mp3 · wav · m4a)
-                  <input type="file" className="hidden"
-                    accept="audio/mpeg,audio/wav,audio/mp4,audio/ogg,audio/aac"
-                    disabled={uploadingClip || gravando}
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) uploadClip(f);
-                      e.target.value = "";
-                    }} />
-                </label>
-                {audioClips.map((c) => (
+              </div>
+            )}
+          </TabsContent>
+          <TabsContent value="videos" className="mt-0 space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button size="sm" variant="outline" className="h-7 gap-1 text-xs"
+                onClick={() => setDialogVideo("seq")}>
+                <Film className="h-3.5 w-3.5" /> + Vídeos no fim
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 gap-1 text-xs border-rose-300/60"
+                onClick={() => setDialogVideo("pip")}>
+                <Clapperboard className="h-3.5 w-3.5" /> + Vídeo sobre o vídeo (PiP)
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Emende vários vídeos curtos para montar um maior (pode enviar
+              todos de uma vez) ou coloque um vídeo por cima do principal.
+            </p>
+
+            {/* Vídeos EMENDADOS no fim (sequência) */}
+            {seqClips.length > 0 && (
+              <div className="space-y-2">
+                <Label className="font-semibold flex items-center gap-2"><Film className="h-4 w-4" /> Vídeos em sequência (no fim)</Label>
+                <p className="text-[11px] text-muted-foreground">
+                  Emendados <b>depois</b> do vídeo principal, na ordem abaixo — cada um aparece
+                  como bloco na trilha de vídeo e a prévia toca a sequência inteira. Use o
+                  <b> ✂</b> para cortar o clipe antes de montar.
+                </p>
+                {seqClips.map((c, i) => (
                   <div key={c.id} className="flex items-center gap-1.5 text-xs flex-wrap rounded border px-2 py-1">
-                    <Music className="h-3.5 w-3.5 text-sky-500 shrink-0" />
-                    <span className="truncate max-w-32" title={c.name}>{c.name}</span>
-                    <span className="tabular-nums text-muted-foreground">{fmt(c.start)}–{fmt(c.end)}</span>
-                    <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px] text-muted-foreground"
-                      title="Leva o começo do áudio até o cursor"
-                      onClick={() => apply((d) => ({
-                        audioClips: d.audioClips.map((p) => {
-                          if (p.id !== c.id || !meta) return p;
-                          const len = p.end - p.start;
-                          const ns = Math.max(0, Math.min(meta.duration - len, playhead));
-                          return { ...p, start: ns, end: ns + len };
-                        }),
-                      }))}>
-                      → cursor
+                    <span className="text-muted-foreground tabular-nums">{i + 1}º</span>
+                    <span className="truncate max-w-36 font-medium">{c.name}</span>
+                    <span className="text-muted-foreground tabular-nums"
+                      title={`Usa de ${fmt(c.src_in)} até ${fmt(c.src_out)} da fonte`}>
+                      {fmt(c.src_in)}–{fmt(c.src_out)} ({fmt(Math.max(0, c.src_out - c.src_in))})
+                    </span>
+                    <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1"
+                      title="Abrir o cortador deste clipe"
+                      onClick={() => setTrimClip(c)}>
+                      <Scissors className="h-3 w-3" /> Cortar
                     </Button>
-                    <label className="flex items-center gap-1 flex-1 min-w-28" title="Volume do clipe">
-                      <Volume2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      <input type="range" min={0} max={150} value={Math.round(c.volume * 100)}
-                        className="flex-1" onPointerDown={checkpoint}
-                        onChange={(e) => applyLive((d) => ({ audioClips: d.audioClips.map((p) => (p.id === c.id ? { ...p, volume: Number(e.target.value) / 100 } : p)) }))} />
-                      <span className="tabular-nums w-9 text-right">{Math.round(c.volume * 100)}%</span>
-                    </label>
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground"
-                      title="Duplicar este áudio" onClick={() => duplicarClip(c.id)}>
-                      <Copy className="h-3 w-3" />
-                    </Button>
+                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0 ml-auto" disabled={i === 0}
+                      title="Mover para antes"
+                      onClick={() => apply((d) => {
+                        const arr = [...d.seqClips];
+                        const j = arr.findIndex((x) => x.id === c.id);
+                        if (j > 0) [arr[j - 1], arr[j]] = [arr[j], arr[j - 1]];
+                        return { seqClips: arr };
+                      })}>↑</Button>
+                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0" disabled={i === seqClips.length - 1}
+                      title="Mover para depois"
+                      onClick={() => apply((d) => {
+                        const arr = [...d.seqClips];
+                        const j = arr.findIndex((x) => x.id === c.id);
+                        if (j >= 0 && j < arr.length - 1) [arr[j], arr[j + 1]] = [arr[j + 1], arr[j]];
+                        return { seqClips: arr };
+                      })}>↓</Button>
                     <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive"
-                      onClick={() => apply((d) => ({ audioClips: d.audioClips.filter((p) => p.id !== c.id) }))}>
+                      onClick={() => apply((d) => ({ seqClips: d.seqClips.filter((x) => x.id !== c.id) }))}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
                 ))}
               </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            )}
 
-      {/* Legendas + Textos */}
-      {meta && (
-        <Card>
-          <CardContent className="pt-5 space-y-4">
+            {/* PiP: vídeo sobre o vídeo (Fase F) */}
+            {pipClips.length > 0 && (
+              <div className="space-y-2">
+                <Label className="font-semibold flex items-center gap-2"><Clapperboard className="h-4 w-4" /> Vídeo sobre o vídeo (PiP)</Label>
+                {pipClips.map((p) => (
+                  <div key={p.id} className="flex items-center gap-1.5 text-xs flex-wrap rounded border px-2 py-1">
+                    <span className="truncate max-w-32 font-medium">{p.name}</span>
+                    <span className="tabular-nums text-muted-foreground">{fmt(p.start)}–{fmt(p.end)}</span>
+                    <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px] text-muted-foreground"
+                      title="Leva o começo do clipe até o cursor"
+                      onClick={() => apply((d) => ({ pipClips: d.pipClips.map((x) => (x.id === p.id
+                        ? { ...x, start: cursorNoPrincipal(), end: Math.min(meta.duration, cursorNoPrincipal() + (x.end - x.start)) } : x)) }))}>
+                      → cursor
+                    </Button>
+                    <label className="flex items-center gap-1" title="Começar do segundo X do vídeo sobreposto">
+                      a partir de
+                      <Input type="number" min={0} step={0.5} max={Math.max(0, p.natural_dur - 0.3)}
+                        value={p.src_in} className="h-7 w-14 text-xs tabular-nums" onFocus={checkpoint}
+                        onChange={(e) => {
+                          if (e.target.value === "") return;
+                          const v = Math.max(0, Math.min(p.natural_dur - 0.3, Number(e.target.value)));
+                          applyLive((d) => ({ pipClips: d.pipClips.map((x) => (x.id === p.id ? { ...x, src_in: v } : x)) }));
+                        }} />s
+                    </label>
+                    <select className="h-7 rounded border bg-background px-1" value={p.scale_pct}
+                      onChange={(e) => apply((d) => ({ pipClips: d.pipClips.map((x) => (x.id === p.id ? { ...x, scale_pct: Number(e.target.value) } : x)) }))}>
+                      <option value={0.25}>Pequeno</option>
+                      <option value={0.35}>Médio</option>
+                      <option value={0.5}>Grande</option>
+                      {![0.25, 0.35, 0.5].includes(p.scale_pct) && <option value={p.scale_pct} disabled>Personalizado</option>}
+                    </select>
+                    <label className="flex items-center gap-1" title="Volume do áudio do vídeo sobreposto (0 = mudo)">
+                      <Volume2 className="h-3.5 w-3.5 text-muted-foreground" />
+                      <input type="range" min={0} max={1} step={0.05} value={p.volume} className="w-14"
+                        onPointerDown={checkpoint}
+                        onChange={(e) => applyLive((d) => ({ pipClips: d.pipClips.map((x) => (x.id === p.id ? { ...x, volume: Number(e.target.value) } : x)) }))} />
+                    </label>
+                    <label className="flex items-center gap-1" title="Opacidade da janela">
+                      <input type="range" min={0.2} max={1} step={0.05} value={p.opacity} className="w-14"
+                        onPointerDown={checkpoint}
+                        onChange={(e) => applyLive((d) => ({ pipClips: d.pipClips.map((x) => (x.id === p.id ? { ...x, opacity: Number(e.target.value) } : x)) }))} />
+                    </label>
+                    <label className="flex items-center gap-1 cursor-pointer"
+                      title="Transição da janela: entrada/saída suave (fade) ou corte seco">
+                      <input type="checkbox" checked={p.fade ?? true}
+                        onChange={(e) => apply((d) => ({ pipClips: d.pipClips.map((x) => (x.id === p.id ? { ...x, fade: e.target.checked } : x)) }))} />
+                      suave
+                    </label>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground ml-auto"
+                      title="Duplicar este clipe" onClick={() => duplicarPip(p.id)}>
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive"
+                      onClick={() => apply((d) => ({ pipClips: d.pipClips.filter((x) => x.id !== p.id) }))}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+          <TabsContent value="legendas" className="mt-0 space-y-3">
             <div className="flex items-center gap-2 flex-wrap">
-              <Label id="sec-legendas" className="font-semibold flex items-center gap-2"><Captions className="h-4 w-4" /> Legendas</Label>
+              <Label className="font-semibold flex items-center gap-2"><Captions className="h-4 w-4" /> Legendas</Label>
               <Button size="sm" variant="outline" className="h-7 gap-1" disabled={transcribing} onClick={gerarLegendas}>
                 {transcribing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
                 {cues.length ? "Gerar de novo da fala" : "Gerar legendas da fala"}
@@ -3399,10 +2778,11 @@ export default function AdminEditorVideo() {
                 escolhe fonte, tamanho, cor, estilo (contorno ou caixa) e posição antes de queimar no vídeo.
               </p>
             )}
-
+          </TabsContent>
+          <TabsContent value="textos" className="mt-0 space-y-3">
             {/* Textos/títulos manuais */}
             <div className="border-t pt-3 space-y-2">
-              <Label id="sec-textos" className="font-semibold text-sm flex items-center gap-1.5"><Type className="h-3.5 w-3.5" /> Textos no vídeo</Label>
+              <Label className="font-semibold text-sm flex items-center gap-1.5"><Type className="h-3.5 w-3.5" /> Textos no vídeo</Label>
               <p className="text-[11px] text-muted-foreground">
                 Dica: <b>|</b> separa título e subtítulo — a 1ª linha sai grande e o resto menor,
                 automático. Com posição <b>Canto esq. (selo)</b> + estilo <b>Caixa</b>:
@@ -3426,7 +2806,7 @@ export default function AdminEditorVideo() {
                     apply((d) => ({
                       titles: [...d.titles, {
                         id: tid,
-                        start: playhead, end: Math.min(meta.duration, playhead + newTitleDur),
+                        start: cursorNoPrincipal(), end: Math.min(meta.duration, cursorNoPrincipal() + newTitleDur),
                         text: newTitle.trim(), font_id: d.subFont, size: d.subSize,
                         color: d.subColor, style: d.subStyle, position: "center" as TitlePos,
                       }],
@@ -3518,119 +2898,921 @@ export default function AdminEditorVideo() {
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Rodapé: renderizar (pedido do Carlos — o fluxo termina aqui) */}
-      {meta && (
-        <Card className="border-primary/40">
-          <CardContent className="pt-5 space-y-4">
-            {!keepSegments.length && (
-              <div className="flex items-center gap-2 flex-wrap rounded-lg border border-amber-400/60 bg-amber-50/60 dark:bg-amber-950/20 px-3 py-2 text-xs">
-                <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
-                <span>
-                  Todos os trechos do vídeo estão <b>removidos</b> na timeline — por isso o salvar
-                  está travado (duração 0:00). Restaure o que quer manter:
-                </span>
-                <Button size="sm" className="h-7"
-                  onClick={() => {
-                    // 1 trecho [0..duração]: cobre inclusive regiões que algum
-                    // ajuste antigo tenha deixado órfãs
-                    patch({ segments: [{ id: 1, start: 0, end: meta.duration, keep: true }] });
-                    toast.success("Vídeo inteiro restaurado — remova só o que não quiser.");
-                  }}>
-                  Restaurar o vídeo inteiro
-                </Button>
+          </TabsContent>
+          <TabsContent value="stickers" className="mt-0 space-y-3">
+            {/* Stickers */}
+            <div className="space-y-2">
+              <Label className="font-semibold flex items-center gap-2"><ImageIcon className="h-4 w-4" /> Stickers e sobreposições</Label>
+              <p className="text-[11px] text-muted-foreground">
+                Imagem, GIF animado ou WebM com fundo transparente sobre o vídeo (ex.: um gatinho
+                andando enquanto você fala). Entra no cursor; mova/estique na <b>faixa roxa</b> da
+                timeline e <b>arraste no player</b> para posicionar.
+              </p>
+              <div className="flex gap-2 flex-wrap">
+                <label className="flex items-center gap-1.5 rounded-lg border-2 border-dashed px-3 py-1.5 text-xs cursor-pointer hover:border-primary/60 transition">
+                  {uploadingSticker ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                  Enviar sticker (png · gif · webm)
+                  <input type="file" className="hidden"
+                    accept="image/png,image/webp,image/jpeg,image/gif,video/webm"
+                    disabled={uploadingSticker}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) uploadSticker(f);
+                      e.target.value = "";
+                    }} />
+                </label>
               </div>
-            )}
-            <div className="flex items-center gap-2 flex-wrap">
-              <Input value={titulo} onFocus={checkpoint}
-                onChange={(e) => update({ titulo: e.target.value })}
-                placeholder="Título do vídeo editado (opcional)" className="text-sm max-w-xs" />
-              <Button size="lg" onClick={renderizar} disabled={rendering || !keepSegments.length} className="gap-2">
-                {rendering ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                {rendering ? `${renderProgress}% — ${renderStep}` : "Renderizar e salvar"}
+              {/* Gerar com IA (fundo verde → transparência automática) */}
+              <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 space-y-1.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Wand2 className="h-4 w-4 text-primary shrink-0" />
+                  <Input value={iaDesc} onChange={(e) => setIaDesc(e.target.value)}
+                    placeholder='Gerar sticker animado com IA — ex.: "um gatinho laranja fofo andando"'
+                    className="h-8 text-xs flex-1 min-w-48" disabled={!!stickerJob} />
+                  <select className="h-8 rounded border bg-background px-1 text-xs" value={iaDur}
+                    disabled={!!stickerJob}
+                    onChange={(e) => setIaDur(Number(e.target.value))}>
+                    <option value={5}>5s</option><option value={10}>10s</option>
+                  </select>
+                  <Button size="sm" className="h-8" disabled={!!stickerJob || !iaDesc.trim()} onClick={gerarStickerIA}>
+                    {stickerJob ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />Gerando…</> : "✨ Gerar"}
+                  </Button>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  A IA cria a animação e remove o fundo sozinha (leva ~2 min). Pode sair da tela —
+                  o sticker entra na timeline quando ficar pronto.
+                  {iaStep && <b> · {iaStep}</b>}
+                </p>
+              </div>
+              {stickers.map((s) => (
+                <div key={s.id} className="flex items-center gap-1.5 text-xs flex-wrap rounded border px-2 py-1">
+                  {s.upload_id.endsWith(".webm")
+                    ? <video src={`${API}/editor/sticker/${s.upload_id}`} muted loop autoPlay playsInline className="h-8 w-8 rounded object-contain bg-muted/50 shrink-0" />
+                    : <img src={`${API}/editor/sticker/${s.upload_id}`} alt="" className="h-8 w-8 rounded object-contain bg-muted/50 shrink-0" />}
+                  <span className="truncate max-w-28" title={s.name}>{s.name}</span>
+                  <span className="tabular-nums text-muted-foreground">{fmt(s.start)}–{fmt(s.end)}</span>
+                  <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px] text-muted-foreground"
+                    title="Leva o começo do sticker até o cursor"
+                    onClick={() => apply((d) => ({
+                      stickers: d.stickers.map((p) => {
+                        if (p.id !== s.id || !meta) return p;
+                        const len = p.end - p.start;
+                        const ns = Math.max(0, Math.min(meta.duration - len, playhead));
+                        return { ...p, start: ns, end: ns + len };
+                      }),
+                    }))}>
+                    → cursor
+                  </Button>
+                  <select className="h-7 rounded border bg-background px-1" value={s.scale_pct}
+                    title="Tamanho (fração da largura do vídeo)"
+                    onChange={(e) => apply((d) => ({ stickers: d.stickers.map((p) => (p.id === s.id ? { ...p, scale_pct: Number(e.target.value) } : p)) }))}>
+                    {STICKER_SIZES.map((z) => <option key={z.label} value={z.value}>{z.label}</option>)}
+                  </select>
+                  <select className="h-7 rounded border bg-background px-1" value={s.movement}
+                    onChange={(e) => {
+                      const mv = e.target.value as StickerMovement;
+                      apply((d) => ({
+                        stickers: d.stickers.map((p) => (p.id === s.id
+                          ? { ...p, movement: mv, flip: mv === "walk-left" ? true : mv === "walk-right" ? false : p.flip }
+                          : p)),
+                      }));
+                    }}>
+                    <option value="none">Parado</option>
+                    <option value="walk-right">🚶 Atravessa →</option>
+                    <option value="walk-left">🚶 Atravessa ←</option>
+                  </select>
+                  {s.movement === "none" && (
+                    <select className="h-7 rounded border bg-background px-1" value={stickerPosKey(s)}
+                      onChange={(e) => {
+                        const p = STICKER_POSITIONS.find((p) => p.key === e.target.value);
+                        if (p) apply((d) => ({ stickers: d.stickers.map((x) => (x.id === s.id ? { ...x, x_pct: p.x, y_pct: p.y } : x)) }));
+                      }}>
+                      {STICKER_POSITIONS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+                      <option value="custom" disabled>Personalizado (arrastado)</option>
+                    </select>
+                  )}
+                  <label className="flex items-center gap-1 cursor-pointer" title="Espelhar horizontalmente">
+                    <input type="checkbox" checked={s.flip}
+                      onChange={(e) => apply((d) => ({ stickers: d.stickers.map((p) => (p.id === s.id ? { ...p, flip: e.target.checked } : p)) }))} />
+                    espelhar
+                  </label>
+                  {s.animated && (
+                    <label className="flex items-center gap-1 cursor-pointer" title="Repete a animação enquanto estiver na tela">
+                      <input type="checkbox" checked={s.loop}
+                        onChange={(e) => apply((d) => ({ stickers: d.stickers.map((p) => (p.id === s.id ? { ...p, loop: e.target.checked } : p)) }))} />
+                      loop
+                    </label>
+                  )}
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground ml-auto"
+                    title="Duplicar este sticker" onClick={() => duplicarSticker(s.id)}>
+                    <Copy className="h-3 w-3" />
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive"
+                    onClick={() => apply((d) => ({ stickers: d.stickers.filter((p) => p.id !== s.id) }))}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </TabsContent>
+          <TabsContent value="musica" className="mt-0 space-y-3">
+            <Label className="font-semibold flex items-center gap-2"><Music className="h-4 w-4" /> Trilha sonora</Label>
+            <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
+              <button type="button"
+                onClick={() => patch({ musicId: "", musicUploadId: "", musicUploadName: "" })}
+                className={`w-full rounded-lg border px-2 py-1.5 text-left text-xs transition ${!musicId && !musicUploadId ? "border-primary ring-1 ring-primary" : "hover:border-primary/50"}`}>
+                Sem música (só o áudio original)
+              </button>
+              {musicas.map((m) => (
+                <div key={m.id} className={`flex items-center gap-1 rounded-lg border px-2 py-1 transition ${musicId === m.id ? "border-primary ring-1 ring-primary" : ""}`}>
+                  <button type="button" className="flex-1 text-left text-xs py-0.5"
+                    onClick={() => patch({ musicId: m.id, musicUploadId: "", musicUploadName: "" })}>
+                    {m.label}
+                  </button>
+                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => previewTrack(m.id)}>
+                    {previewingTrack === m.id ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <label className="flex items-center gap-2 text-xs cursor-pointer text-muted-foreground hover:text-foreground transition">
+              <Upload className="h-3.5 w-3.5" />
+              {musicUploadName ? `♪ ${musicUploadName}` : "Ou envie sua própria música (mp3)"}
+              <input type="file" className="hidden" accept="audio/mpeg,audio/wav,audio/mp4,audio/ogg,audio/aac"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadMusica(f); e.target.value = ""; }} />
+            </label>
+            <div className="space-y-2 text-xs">
+              <div>
+                <div className="flex justify-between"><span>Volume da música</span><span>{musicVolume}%</span></div>
+                <input type="range" min={0} max={100} value={musicVolume}
+                  onPointerDown={checkpoint}
+                  onChange={(e) => update({ musicVolume: Number(e.target.value) })} className="w-full" />
+                <p className="text-[10px] text-muted-foreground">15-25% = fundo sob a voz · 80%+ = destaque. O ▶ de prévia toca neste volume.</p>
+              </div>
+              <div>
+                <div className="flex justify-between"><span>Volume do áudio original</span><span>{originalVolume}%</span></div>
+                <input type="range" min={0} max={150} value={originalVolume}
+                  onPointerDown={checkpoint}
+                  onChange={(e) => update({ originalVolume: Number(e.target.value) })} className="w-full" />
+              </div>
+              <div className="flex gap-4 flex-wrap">
+                <label className="flex items-center gap-1.5 cursor-pointer" title="O áudio entra subindo no começo">
+                  <input type="checkbox" checked={fadeIn} onChange={(e) => patch({ fadeIn: e.target.checked })} />
+                  Fade in no início
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" checked={fadeOut} onChange={(e) => patch({ fadeOut: e.target.checked })} />
+                  Fade out no final
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer" title="A música abaixa sozinha quando você fala e volta nas pausas">
+                  <input type="checkbox" checked={ducking} onChange={(e) => patch({ ducking: e.target.checked })} />
+                  Música abaixa na fala
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer"
+                  title="Reduz chiado constante da gravação — ar-condicionado, ventilador, ruído de sala">
+                  <input type="checkbox" checked={denoise} onChange={(e) => patch({ denoise: e.target.checked })} />
+                  <Headphones className="h-3.5 w-3.5" /> Limpar ruído de fundo
+                </label>
+              </div>
+            </div>
+          </TabsContent>
+          <TabsContent value="audio" className="mt-0 space-y-3">
+            {/* Clipes de áudio posicionados */}
+            <div className="space-y-2">
+              <Label className="font-semibold flex items-center gap-2"><Headphones className="h-4 w-4" /> Efeitos sonoros e narrações</Label>
+              <p className="text-[11px] text-muted-foreground">
+                Áudio que toca num <b>ponto exato</b> do vídeo (efeito, vinheta, narração) — além da
+                trilha global. Entra no cursor; mova/estique na <b>faixa azul</b> da timeline.
+              </p>
+              {/* voice over: grava aqui e vira um clipe na faixa azul */}
+              <Button size="sm" variant={gravando ? "destructive" : "outline"}
+                className="h-8 gap-1.5 w-fit" disabled={uploadingClip}
+                onClick={gravarNarracao}
+                title={gravando ? "Parar e colocar na timeline" : "Gravar narração pelo microfone, a partir do cursor"}>
+                {gravando ? (
+                  <><Square className="h-3 w-3 fill-current" /> Parar ({fmt(gravSegs)})</>
+                ) : (
+                  <><Mic className="h-3.5 w-3.5" /> Gravar narração no cursor</>
+                )}
               </Button>
-              <span className="text-xs text-muted-foreground tabular-nums">
-                duração final: <b>{fmt(finalDuration)}</b>
-              </span>
-              {rendering && (
-                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                  <AlertCircle className="h-3.5 w-3.5" /> Pode sair da tela — o vídeo cai em Meus Vídeos.
+              {gravando && (
+                <p className="text-[10px] text-muted-foreground">
+                  Gravando… fale e clique em Parar. A narração entra em {fmt(playhead)}.
+                </p>
+              )}
+              <label className="flex items-center gap-1.5 rounded-lg border-2 border-dashed px-3 py-1.5 text-xs cursor-pointer hover:border-primary/60 transition w-fit">
+                {uploadingClip ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                Enviar áudio (mp3 · wav · m4a)
+                <input type="file" className="hidden"
+                  accept="audio/mpeg,audio/wav,audio/mp4,audio/ogg,audio/aac"
+                  disabled={uploadingClip || gravando}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) uploadClip(f);
+                    e.target.value = "";
+                  }} />
+              </label>
+              {audioClips.map((c) => (
+                <div key={c.id} className="flex items-center gap-1.5 text-xs flex-wrap rounded border px-2 py-1">
+                  <Music className="h-3.5 w-3.5 text-sky-500 shrink-0" />
+                  <span className="truncate max-w-32" title={c.name}>{c.name}</span>
+                  <span className="tabular-nums text-muted-foreground">{fmt(c.start)}–{fmt(c.end)}</span>
+                  <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px] text-muted-foreground"
+                    title="Leva o começo do áudio até o cursor"
+                    onClick={() => apply((d) => ({
+                      audioClips: d.audioClips.map((p) => {
+                        if (p.id !== c.id || !meta) return p;
+                        const len = p.end - p.start;
+                        const ns = Math.max(0, Math.min(meta.duration - len, playhead));
+                        return { ...p, start: ns, end: ns + len };
+                      }),
+                    }))}>
+                    → cursor
+                  </Button>
+                  <label className="flex items-center gap-1 flex-1 min-w-28" title="Volume do clipe">
+                    <Volume2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <input type="range" min={0} max={150} value={Math.round(c.volume * 100)}
+                      className="flex-1" onPointerDown={checkpoint}
+                      onChange={(e) => applyLive((d) => ({ audioClips: d.audioClips.map((p) => (p.id === c.id ? { ...p, volume: Number(e.target.value) / 100 } : p)) }))} />
+                    <span className="tabular-nums w-9 text-right">{Math.round(c.volume * 100)}%</span>
+                  </label>
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground"
+                    title="Duplicar este áudio" onClick={() => duplicarClip(c.id)}>
+                    <Copy className="h-3 w-3" />
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive"
+                    onClick={() => apply((d) => ({ audioClips: d.audioClips.filter((p) => p.id !== c.id) }))}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </TabsContent>
+          <TabsContent value="acabamento" className="mt-0 space-y-3">
+            {/* Capa de entrada (logo) */}
+            <div className="flex items-center gap-3 flex-wrap text-xs rounded-lg border bg-muted/30 px-3 py-2">
+              <label className="flex items-center gap-1.5 cursor-pointer font-medium">
+                <input type="checkbox" checked={introOn} onChange={(e) => patch({ introOn: e.target.checked })} />
+                <Clapperboard className="h-3.5 w-3.5" /> Capa de entrada com a logo
+              </label>
+              {introOn && (
+                <>
+                  <div className="flex gap-1">
+                    {perfilLogo && (
+                      <button type="button" onClick={() => patch({ introSource: "perfil" })}
+                        className={`rounded-full border px-2 py-0.5 transition ${introSource === "perfil" ? "border-primary ring-1 ring-primary font-medium" : "hover:border-primary/50"}`}>
+                        Logo do perfil
+                      </button>
+                    )}
+                    <label className={`rounded-full border px-2 py-0.5 cursor-pointer transition ${introSource === "upload" ? "border-primary ring-1 ring-primary font-medium" : "hover:border-primary/50"}`}>
+                      {introUploadName ? `🖼 ${introUploadName.slice(0, 18)}` : "Enviar imagem"}
+                      <input type="file" className="hidden" accept="image/png,image/jpeg,image/webp"
+                        onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          e.target.value = "";
+                          if (!f) return;
+                          try {
+                            const fd = new FormData();
+                            fd.append("file", f);
+                            const res = await fetch(`${API}/editor/carregar-logo`, {
+                              method: "POST", body: fd, headers: await videoApiAuthHeaders(),
+                            });
+                            const data = await res.json();
+                            if (!res.ok) throw new Error(data.detail || "Falha ao enviar a imagem");
+                            patch({ introUploadId: data.logo_upload_id, introUploadName: f.name, introSource: "upload" });
+                          } catch (err: any) { toast.error(err.message); }
+                        }} />
+                    </label>
+                  </div>
+                  <label className="flex items-center gap-1">por
+                    <select className="h-7 rounded border bg-background px-1" value={introDur}
+                      onChange={(e) => patch({ introDur: Number(e.target.value) })}>
+                      <option value={1.5}>1,5s</option><option value={2}>2s</option>
+                      <option value={3}>3s</option><option value={4}>4s</option>
+                    </select>
+                  </label>
+                  <label className="flex items-center gap-1">efeito
+                    <select className="h-7 rounded border bg-background px-1" value={introEffect}
+                      onChange={(e) => patch({ introEffect: e.target.value as "zoom" | "slide" | "fade" })}>
+                      <option value="zoom">Zoom suave</option>
+                      <option value="slide">Deslizar</option>
+                      <option value="fade">Estático</option>
+                    </select>
+                  </label>
+                  <label className="flex items-center gap-1.5">fundo
+                    <input type="color" value={introBg} onPointerDown={checkpoint}
+                      onChange={(e) => update({ introBg: e.target.value })}
+                      className="h-7 w-9 rounded border cursor-pointer" />
+                  </label>
+                  {/* mini prévia da capa */}
+                  <span className="inline-flex items-center justify-center rounded border h-9 w-16 overflow-hidden"
+                    style={{ background: introBg }}>
+                    {(introSource === "perfil" ? perfilLogo : "") && (
+                      <img src={perfilLogo} alt="" className="max-h-6 max-w-12 object-contain" />
+                    )}
+                    {introSource === "upload" && introUploadName && <span className="text-[9px]">🖼</span>}
+                  </span>
+                  {!perfilLogo && introSource === "perfil" && (
+                    <span className="text-muted-foreground">Sem logo no perfil — envie uma imagem.</span>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Acabamento + Render */}
+            <div className="flex items-center gap-3 flex-wrap text-xs rounded-lg border bg-muted/30 px-3 py-2">
+              <span className="font-medium">Acabamento:</span>
+              <label className="flex items-center gap-1.5" title="Como um trecho vira o próximo">
+                Emendas
+                <select className="h-7 rounded border bg-background px-1" value={transition}
+                  onChange={(e) => patch({ transition: e.target.value })}>
+                  {TRANSICOES.map((t) => (
+                    <option key={t.id} value={t.id}>{t.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer" title="Leve zoom alternado a cada trecho — disfarça as emendas">
+                <input type="checkbox" checked={punchIn} onChange={(e) => patch({ punchIn: e.target.checked })} />
+                Zoom alternado nos cortes
+              </label>
+              {segments.filter((s) => s.keep).length < 2 && transition !== "none" && (
+                <span className="text-muted-foreground">
+                  (a emenda só aparece com 2+ trechos)
                 </span>
               )}
             </div>
 
-            {resultUrl && (
-              <div className="pt-1 space-y-2">
-                <Label className="font-semibold text-primary flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4" /> Edição pronta</Label>
-                <video src={resultUrl} controls playsInline className="w-full max-h-72 rounded-lg bg-black" />
+            {/* Filtro de cor (prévia ao vivo no player) + Efeito (prévia
+                pela amostra real: VHS/granulado/glitch não têm equivalente
+                fiel em CSS, e aproximar faria a prévia mentir) */}
+            <div className="space-y-2 rounded-lg border bg-muted/30 px-3 py-2">
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3">
+                <div className="space-y-2 min-w-0">
+                  <div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <Palette className="h-3.5 w-3.5 text-primary" />
+                      <span className="font-medium">Filtro de cor</span>
+                      <span className="text-muted-foreground">— ao vivo no player</span>
+                    </div>
+                    <div className="flex gap-1.5 flex-wrap mt-1">
+                      {FILTRO_IDS.map((id) => (
+                        <button key={id} type="button"
+                          onClick={() => patch({ filtro: id })}
+                          className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
+                            filtro === id ? "border-primary ring-1 ring-primary font-medium" : "hover:border-primary/50"}`}>
+                          {FILTROS[id].label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <Sparkles className="h-3.5 w-3.5 text-primary" />
+                      <span className="font-medium">Efeito</span>
+                      <span className="text-muted-foreground">— veja na amostra ao lado</span>
+                    </div>
+                    <div className="flex gap-1.5 flex-wrap mt-1">
+                      {EFEITOS.map((e) => (
+                        <button key={e.id} type="button"
+                          onClick={() => patch({ efeito: e.id })}
+                          className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
+                            efeito === e.id ? "border-primary ring-1 ring-primary font-medium" : "hover:border-primary/50"}`}>
+                          {e.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                {/* amostra REAL: o frame do cursor passado pelo ffmpeg */}
+                <div className="shrink-0 space-y-1">
+                  <div className="relative rounded border bg-muted/40 overflow-hidden"
+                    style={{ width: 124, height: 124 }}>
+                    {amostraUrl ? (
+                      <img src={amostraUrl} alt="Amostra com filtro e efeito"
+                        className="h-full w-full object-contain" />
+                    ) : (
+                      <div className="h-full w-full flex items-center justify-center text-[10px] text-muted-foreground text-center px-2">
+                        {amostraErro || "amostra do cursor"}
+                      </div>
+                    )}
+                    {amostraCarregando && (
+                      <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[9px] text-muted-foreground text-center leading-tight">
+                    frame real do<br />seu vídeo
+                  </p>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+                  </div>
+                </Tabs>
+              </CardContent>
+            </Card>
+          </div>
 
-                {/* opções de saída (spec 22) */}
-                <div className="flex items-center gap-2 flex-wrap text-xs rounded-lg border bg-muted/30 px-3 py-2">
-                  <span className="font-medium">Opções de saída:</span>
-                  <label className="flex items-center gap-1">Qualidade
-                    <select className="h-7 rounded border bg-background px-1"
-                      value={expFormato === "gif" ? "480p" : expRes}
-                      disabled={expFormato === "gif"}
-                      onChange={(e) => setExpRes(e.target.value)}>
-                      {(expFormato === "gif" ? [{ id: "480p", label: "480p" }] : EXPORT_RESOLUCOES)
-                        .map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-                    </select>
-                  </label>
-                  <label className="flex items-center gap-1">FPS
-                    <select className="h-7 rounded border bg-background px-1" value={expFps}
-                      disabled={expFormato === "gif"}
-                      onChange={(e) => setExpFps(Number(e.target.value))}>
-                      {EXPORT_FPS.map((f) => <option key={f} value={f}>{f}</option>)}
-                    </select>
-                  </label>
-                  <label className="flex items-center gap-1">Formato
-                    <select className="h-7 rounded border bg-background px-1" value={expFormato}
-                      onChange={(e) => setExpFormato(e.target.value)}>
-                      {EXPORT_FORMATOS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
-                    </select>
-                  </label>
-                  {expFormato !== "gif" && codecsDisp.length > 1 && (
-                    <label className="flex items-center gap-1">Codec
-                      <select className="h-7 rounded border bg-background px-1" value={expCodec}
-                        onChange={(e) => setExpCodec(e.target.value)}>
-                        {EXPORT_CODECS.filter((c) => codecsDisp.includes(c.id))
-                          .map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-                      </select>
-                    </label>
-                  )}
-                  {expFormato === "gif" && (
-                    <span className="text-muted-foreground">GIF sai curto, sem som, em 480p</span>
-                  )}
+          {/* TIMELINE em largura total (o zoom só serve para algo assim) */}
+          <Card>
+            <CardContent className="pt-5 space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Label className="font-semibold">Timeline</Label>
+              <Button size="sm" variant="outline" className="h-7 gap-1" onClick={splitAtPlayhead}>
+                <Scissors className="h-3.5 w-3.5" /> Dividir no cursor
+              </Button>
+              <Button size="sm" variant="ghost" className="h-7 gap-1" disabled={!state.past.length} onClick={undo}
+                title="Cada clique volta UM passo de edição (agora cobre a edição inteira, não só os cortes)">
+                <Undo2 className="h-3.5 w-3.5" /> Desfazer{state.past.length ? ` (${state.past.length})` : ""}
+              </Button>
+              <span className="text-xs text-muted-foreground ml-auto">
+                duração final: <b>{fmt(finalDuration)}</b>
+              </span>
+            </div>
+
+            {/* Zoom + snap (Fase 1). Tudo abaixo vive no MESMO container
+                rolável e com a mesma largura — as faixas ficam alinhadas
+                com a timeline em qualquer zoom. */}
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-muted-foreground">Zoom</span>
+              <Button size="sm" variant="outline" className="h-6 w-6 p-0"
+                disabled={zoom <= 1} onClick={() => aplicarZoom(zoom / 2)} title="Afastar">
+                <Minus className="h-3 w-3" />
+              </Button>
+              <span className="tabular-nums w-9 text-center">{zoom}×</span>
+              <Button size="sm" variant="outline" className="h-6 w-6 p-0"
+                disabled={zoom >= 16} onClick={() => aplicarZoom(zoom * 2)} title="Aproximar (mais precisão no corte)">
+                <Plus className="h-3 w-3" />
+              </Button>
+              {zoom > 1 && (
+                <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
+                  onClick={() => { setZoom(1); if (scrollRef.current) scrollRef.current.scrollLeft = 0; }}>
+                  ver tudo
+                </Button>
+              )}
+              {zoom > 1 && winThumbs && (
+                // deixa claro que o zoom mostra um RECORTE navegável do vídeo
+                <span className="text-[10px] text-muted-foreground tabular-nums">
+                  trecho {Math.floor(winThumbs.t0 / 60)}:{String(Math.round(winThumbs.t0 % 60)).padStart(2, "0")}–{Math.floor(winThumbs.t1 / 60)}:{String(Math.round(winThumbs.t1 % 60)).padStart(2, "0")}
+                </span>
+              )}
+              <label className="flex items-center gap-1.5 cursor-pointer ml-auto"
+                title="Ao arrastar, os blocos grudam no cursor, nos cortes e nas bordas dos outros — sem frestas">
+                <input type="checkbox" checked={snapOn} onChange={(e) => setSnapOn(e.target.checked)} />
+                <Magnet className="h-3.5 w-3.5" /> Encaixe
+              </label>
+            </div>
+
+            {/* Timeline multi-faixa (Fase E): gutter de CABEÇALHOS à esquerda
+                (fora do scroll — não some no zoom) + faixas à direita. A
+                ordem/condições do gutter ESPELHAM as faixas: régua, fita de
+                vídeo, legendas, textos, stickers, áudio. */}
+            <div className="grid grid-cols-[56px_minmax(0,1fr)] gap-1">
+              <div className="space-y-1">
+                <div className="h-4" /> {/* espaço da régua */}
+                <div className="flex items-center gap-1 rounded border bg-muted/40 px-1.5 text-[9px] text-muted-foreground transition-[height] duration-200"
+                  style={{ height: alturaFita }}>
+                  <Clapperboard className="h-3 w-3 shrink-0" /> <span className="truncate">Vídeo</span>
+                </div>
+                {subsOn && cues.length > 0 && (
+                  <div className="flex h-7 items-center gap-1 rounded border bg-emerald-500/10 px-1.5 text-[9px] text-muted-foreground">
+                    <Captions className="h-3 w-3 shrink-0" /> <span className="truncate">Legenda</span> {olhoFaixa("subs")}
+                  </div>
+                )}
+                {titles.length > 0 && (
+                  <div className="flex h-7 items-center gap-1 rounded border bg-amber-500/10 px-1.5 text-[9px] text-muted-foreground">
+                    <Type className="h-3 w-3 shrink-0" /> <span className="truncate">Texto</span> {olhoFaixa("text")}
+                  </div>
+                )}
+                {stickers.length > 0 && (
+                  <div className="flex h-7 items-center gap-1 rounded border bg-violet-500/10 px-1.5 text-[9px] text-muted-foreground">
+                    <ImageIcon className="h-3 w-3 shrink-0" /> <span className="truncate">Sticker</span> {olhoFaixa("sticker")}
+                  </div>
+                )}
+                {pipClips.length > 0 && (
+                  <div className="flex h-7 items-center gap-1 rounded border bg-rose-500/10 px-1.5 text-[9px] text-muted-foreground">
+                    <Clapperboard className="h-3 w-3 shrink-0" /> <span className="truncate">Vídeo 2</span> {olhoFaixa("pip")}
+                  </div>
+                )}
+                {audioClips.length > 0 && (
+                  <div className="flex h-7 items-center gap-1 rounded border bg-sky-500/10 px-1.5 text-[9px] text-muted-foreground">
+                    <Headphones className="h-3 w-3 shrink-0" /> <span className="truncate">Áudio</span> {olhoFaixa("audio")}
+                  </div>
+                )}
+              </div>
+            <div ref={scrollRef} onScroll={pedirJanelaThumbs} className="overflow-x-auto overflow-y-hidden pb-1">
+              <div className="relative space-y-1" style={{ width: `${zoom * 100}%` }}>
+                {/* régua */}
+                <div className="relative h-4 select-none">
+                  {rulerMarks.map((t) => (
+                    <div key={t} className="absolute top-0 flex flex-col items-start"
+                      style={{ left: `${(t / durTL) * 100}%` }}>
+                      <div className="h-1.5 w-px bg-muted-foreground/50" />
+                      <span className="text-[9px] text-muted-foreground tabular-nums -translate-x-1/2 ml-px whitespace-nowrap">
+                        {rotuloRegua(t)}
+                      </span>
+                    </div>
+                  ))}
                 </div>
 
-                <div className="flex items-center gap-2 flex-wrap text-xs">
-                  <span className="text-muted-foreground">Gerar para:</span>
-                  {(["9:16", "1:1", "16:9"] as const).map((f) => (
-                    <Button key={f} size="sm" variant="outline" className="h-7"
-                      disabled={!!exporting} onClick={() => exportarFormato(f)}>
-                      {exporting === f ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
-                      {f === "9:16" ? "📱 Reels 9:16" : f === "1:1" ? "◻ Feed 1:1" : "🖥 YouTube 16:9"}
+                <div ref={timelineRef} className="relative select-none cursor-col-resize" onMouseDown={onTimelineDown}>
+                  <div className="relative rounded-lg overflow-hidden border bg-neutral-800 transition-[height] duration-200"
+                    style={{ height: alturaFita }}>
+                    {/* quadros do vídeo PRINCIPAL: ocupam só a fatia dele na
+                        fita quando há vídeos emendados depois (o resto da
+                        largura são os blocos da sequência) */}
+                    <div className="absolute inset-y-0 left-0 overflow-hidden"
+                      style={{ width: `${(meta.duration / durTL) * 100}%` }}>
+                      {zoom <= 1 ? (
+                        // 1×: fita inteira preenche a largura (slot ~natural)
+                        <div className="flex h-full w-full">
+                          {(meta.thumbs.length ? meta.thumbs : Array(20).fill("")).map((t, i, arr) =>
+                            t ? <img key={i} src={t} draggable={false} className="h-full object-cover" style={{ width: `${100 / arr.length}%` }} alt="" />
+                              : <div key={i} className={`h-full bg-muted ${thumbsErro ? "" : "animate-pulse"}`}
+                                  style={{ width: `${100 / arr.length}%` }} />,
+                          )}
+                        </div>
+                      ) : winThumbs ? (
+                        // ampliado: cada quadro em LARGURA NATURAL (w-auto = a proporção
+                        // REAL da imagem manda; nunca estica), começando no tempo t0
+                        <div className="absolute top-0 bottom-0 flex"
+                          style={{ left: `${(winThumbs.t0 / meta.duration) * 100}%` }}>
+                          {winThumbs.list.map((t, i) =>
+                            t ? <img key={i} src={t} draggable={false} className="h-full w-auto shrink-0" alt="" />
+                              : <div key={i} className="h-full shrink-0 bg-muted" style={{ width: Math.round(alturaFita * 0.5625) }} />,
+                          )}
+                        </div>
+                      ) : (
+                        <span className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground pointer-events-none animate-pulse">
+                          carregando os quadros do trecho…
+                        </span>
+                      )}
+                    </div>
+
+                    {/* blocos dos vídeos EMENDADOS, na ordem da sequência.
+                        Sem miniaturas de propósito: cada bloco pediria uma
+                        extração de quadros ao worker a cada projeto aberto —
+                        nome + duração já identificam (se faltar detalhe, o
+                        endpoint /editor/thumbs aceita count/height por clipe). */}
+                    {seqClips.map((c, i) => {
+                      const dur = Math.max(0, c.src_out - c.src_in);
+                      const dentro = playhead >= basesSeq[i] && playhead < basesSeq[i] + dur;
+                      return (
+                        <div key={c.id}
+                          className={`absolute inset-y-0 flex flex-col justify-center gap-0.5 overflow-hidden border-l-2 border-background px-1.5 text-[9px] text-white/90 ${
+                            dentro ? "bg-neutral-600" : "bg-neutral-700"}`}
+                          style={{ left: `${(basesSeq[i] / durTL) * 100}%`, width: `${(dur / durTL) * 100}%` }}
+                          title={`${c.name} — ${fmt(dur)} (emendado ${i + 1}º)`}>
+                          <span className="truncate font-medium leading-tight">{c.name}</span>
+                          <span className="tabular-nums opacity-70 leading-tight">{fmt(dur)}</span>
+                          <div className="flex gap-1">
+                            <button type="button" title="Cortar este clipe antes de montar"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => { e.stopPropagation(); setTrimClip(c); }}
+                              className="rounded bg-black/50 px-1 py-0.5 hover:bg-primary transition">
+                              <Scissors className="h-3 w-3" />
+                            </button>
+                            <button type="button" title="Remover este vídeo da sequência"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                apply((d) => ({ seqClips: d.seqClips.filter((x) => x.id !== c.id) }));
+                              }}
+                              className="rounded bg-black/50 px-1 py-0.5 hover:bg-destructive transition">
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {thumbsErro && !meta.thumbs.length && (
+                    <span className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground pointer-events-none">
+                      (sem miniaturas — a timeline funciona normalmente)
+                    </span>
+                  )}
+                  <div className="absolute inset-0 pointer-events-none">
+                    {segments.map((s) => (
+                      <div key={s.id}
+                        className={`absolute top-0 h-full border-2 rounded-sm ${
+                          s.keep
+                            ? (activeSeg?.id === s.id ? "border-primary" : "border-emerald-400/70")
+                            : "border-red-500/70 bg-black/60 backdrop-grayscale"}`}
+                        style={{ left: `${(s.start / durTL) * 100}%`, width: `${((s.end - s.start) / durTL) * 100}%` }}>
+                        <button type="button"
+                          title={s.keep ? "Remover este trecho" : "Restaurar este trecho"}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => { e.stopPropagation(); toggleSegment(s.id); }}
+                          className={`pointer-events-auto absolute top-0.5 right-0.5 rounded p-0.5 ${
+                            s.keep ? "bg-black/50 text-white hover:bg-red-600" : "bg-red-600 text-white hover:bg-emerald-600"}`}>
+                          {s.keep ? <Trash2 className="h-3 w-3" /> : <RotateCcw className="h-3 w-3" />}
+                        </button>
+                        {s.keep && (s.speed ?? 1) !== 1 && (
+                          <span className="absolute bottom-0.5 left-0.5 rounded bg-black/70 text-white text-[8px] px-1 leading-tight">
+                            {(s.speed ?? 1) < 1 ? "🐢" : "⚡"}{String(s.speed).replace(".", ",")}×
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                    {/* alças das FRONTEIRAS entre trechos: arraste para mover
+                        o ponto de corte (o vizinho acompanha) */}
+                    {segments.slice(0, -1).map((s) => (
+                      <div key={`b${s.id}`}
+                        className="pointer-events-auto absolute top-0 bottom-0 w-2 -translate-x-1/2 cursor-ew-resize group"
+                        style={{ left: `${(s.end / durTL) * 100}%`, touchAction: "none" }}
+                        title="Arraste para ajustar onde o corte acontece"
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => onBorderDown(e, s.id)}
+                        onPointerMove={onBorderMove}
+                        onPointerUp={onBorderUp}
+                        onPointerCancel={onBorderUp}>
+                        <div className="mx-auto h-full w-0.5 bg-white/70 group-hover:bg-primary group-hover:w-1 transition-all" />
+                      </div>
+                    ))}
+                    <div className="absolute top-[-4px] bottom-[-4px] w-0.5 bg-primary"
+                      style={{ left: `${Math.min(100, (playhead / durTL) * 100)}%` }}>
+                      <div className="h-2.5 w-2.5 rounded-full bg-primary -translate-x-[45%]" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* guia do encaixe: mostra em que ponto o bloco grudou */}
+                {snapGuide !== null && (
+                  <div className="absolute top-4 bottom-0 w-px bg-amber-400 pointer-events-none z-10"
+                    style={{ left: `${(snapGuide / durTL) * 100}%` }} />
+                )}
+
+                {/* Faixas (estilo CapCut): legendas, textos, stickers e áudio.
+                    Arraste o bloco pra mover no tempo; borda direita estica. */}
+                {subsOn && cues.length > 0 && (
+                  <div className={`relative h-7 rounded border bg-emerald-500/5 overflow-hidden ${faixaOculta("subs") ? "opacity-40" : ""}`}>
+                    {cues.map((c, i) => (
+                      <div key={i}
+                        className="absolute top-0.5 bottom-0.5 rounded bg-emerald-600/70 border border-emerald-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
+                        style={{ left: `${(c.start / durTL) * 100}%`, width: `${Math.max(1.2, ((c.end - c.start) / durTL) * 100)}%`, touchAction: "none" }}
+                        title={`${c.text} · ${fmt(c.start)}–${fmt(c.end)} — arraste pra mover; borda direita estica`}
+                        onPointerDown={(e) => onTrackDown(e, "cue", String(i), "move")}
+                        onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
+                        <span className="truncate pointer-events-none">{c.text || "(legenda)"}</span>
+                        <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/40"
+                          style={{ touchAction: "none" }}
+                          onPointerDown={(e) => onTrackDown(e, "cue", String(i), "resize")} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {titles.length > 0 && (
+                  <div className={`relative h-7 rounded border bg-amber-500/5 overflow-hidden ${faixaOculta("text") ? "opacity-40" : ""}`}>
+                    {titles.map((t) => (
+                      <div key={t.id}
+                        className="absolute top-0.5 bottom-0.5 rounded bg-amber-500/70 border border-amber-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
+                        style={{ left: `${(t.start / durTL) * 100}%`, width: `${Math.max(1.2, ((t.end - t.start) / durTL) * 100)}%`, touchAction: "none" }}
+                        title={`${t.text} · ${fmt(t.start)}–${fmt(t.end)} — arraste pra mover; borda direita estica`}
+                        onPointerDown={(e) => onTrackDown(e, "title", t.id, "move")}
+                        onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
+                        <span className="truncate pointer-events-none">T {t.text || "(texto)"}</span>
+                        <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/40"
+                          style={{ touchAction: "none" }}
+                          onPointerDown={(e) => onTrackDown(e, "title", t.id, "resize")} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {stickers.length > 0 && (
+                  <div className={`relative h-7 rounded border bg-violet-500/5 overflow-hidden ${faixaOculta("sticker") ? "opacity-40" : ""}`}>
+                    {stickers.map((s) => (
+                      <div key={s.id}
+                        className="absolute top-0.5 bottom-0.5 rounded bg-violet-500/70 border border-violet-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
+                        style={{ left: `${(s.start / durTL) * 100}%`, width: `${Math.max(1.2, ((s.end - s.start) / durTL) * 100)}%`, touchAction: "none" }}
+                        title={`${s.name} · ${fmt(s.start)}–${fmt(s.end)} — arraste pra mover; borda direita estica`}
+                        onPointerDown={(e) => onTrackDown(e, "sticker", s.id, "move")}
+                        onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
+                        <span className="truncate pointer-events-none">🖼 {s.name}</span>
+                        <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/40"
+                          style={{ touchAction: "none" }}
+                          onPointerDown={(e) => onTrackDown(e, "sticker", s.id, "resize")} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {pipClips.length > 0 && (
+                  <div className={`relative h-7 rounded border bg-rose-500/5 overflow-hidden ${faixaOculta("pip") ? "opacity-40" : ""}`}>
+                    {pipClips.map((p) => (
+                      <div key={p.id}
+                        className="absolute top-0.5 bottom-0.5 rounded bg-rose-500/70 border border-rose-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
+                        style={{ left: `${(p.start / durTL) * 100}%`, width: `${Math.max(1.2, ((p.end - p.start) / durTL) * 100)}%`, touchAction: "none" }}
+                        title={`${p.name} · ${fmt(p.start)}–${fmt(p.end)} — arraste pra mover; borda direita estica`}
+                        onPointerDown={(e) => onTrackDown(e, "pip", p.id, "move")}
+                        onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
+                        <span className="truncate pointer-events-none">▶ {p.name}</span>
+                        <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/40"
+                          style={{ touchAction: "none" }}
+                          onPointerDown={(e) => onTrackDown(e, "pip", p.id, "resize")} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {audioClips.length > 0 && (
+                  <div className={`relative h-7 rounded border bg-sky-500/5 overflow-hidden ${faixaOculta("audio") ? "opacity-40" : ""}`}>
+                    {audioClips.map((c) => (
+                      <div key={c.id}
+                        className="absolute top-0.5 bottom-0.5 rounded bg-sky-500/70 border border-sky-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
+                        style={{ left: `${(c.start / durTL) * 100}%`, width: `${Math.max(1.2, ((c.end - c.start) / durTL) * 100)}%`, touchAction: "none" }}
+                        title={`${c.name} · ${fmt(c.start)}–${fmt(c.end)} — arraste pra mover; borda direita estica`}
+                        onPointerDown={(e) => onTrackDown(e, "audio", c.id, "move")}
+                        onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
+                        <span className="truncate pointer-events-none">🎧 {c.name}</span>
+                        <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/40"
+                          style={{ touchAction: "none" }}
+                          onPointerDown={(e) => onTrackDown(e, "audio", c.id, "resize")} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            </div>
+
+            {/* Adicionar conteúdo às faixas — a resposta de "como adiciono
+                isto?": cada botão ABRE A ABA da ferramenta ao lado do player
+                (antes rolava a página até a seção, e a pessoa se perdia). */}
+            <div className="flex items-center gap-1.5 flex-wrap text-xs">
+              <span className="text-muted-foreground">Adicionar:</span>
+              <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1"
+                onClick={() => setTab("legendas")}>
+                <Captions className="h-3 w-3" /> Legendas
+              </Button>
+              <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1"
+                onClick={() => setTab("textos")}>
+                <Type className="h-3 w-3" /> Texto
+              </Button>
+              <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1"
+                onClick={() => setTab("stickers")}>
+                <ImageIcon className="h-3 w-3" /> Sticker
+              </Button>
+              <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1"
+                onClick={() => setTab("audio")}>
+                <Headphones className="h-3 w-3" /> Narração/efeito
+              </Button>
+              <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1"
+                onClick={() => setTab("musica")}>
+                <Music className="h-3 w-3" /> Música
+              </Button>
+              <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1 border-rose-300/60"
+                onClick={() => setDialogVideo("pip")}>
+                <Clapperboard className="h-3 w-3" /> + Vídeo (PiP)
+              </Button>
+              <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1"
+                onClick={() => setDialogVideo("seq")}>
+                <Film className="h-3 w-3" /> + Vídeos no fim
+              </Button>
+            </div>
+            </CardContent>
+          </Card>
+
+          {/* Rodapé: renderizar (pedido do Carlos — o fluxo termina aqui) */}
+          {meta && (
+            <Card className="border-primary/40">
+              <CardContent className="pt-5 space-y-4">
+                {!keepSegments.length && (
+                  <div className="flex items-center gap-2 flex-wrap rounded-lg border border-amber-400/60 bg-amber-50/60 dark:bg-amber-950/20 px-3 py-2 text-xs">
+                    <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
+                    <span>
+                      Todos os trechos do vídeo estão <b>removidos</b> na timeline — por isso o salvar
+                      está travado (duração 0:00). Restaure o que quer manter:
+                    </span>
+                    <Button size="sm" className="h-7"
+                      onClick={() => {
+                        // 1 trecho [0..duração]: cobre inclusive regiões que algum
+                        // ajuste antigo tenha deixado órfãs
+                        patch({ segments: [{ id: 1, start: 0, end: meta.duration, keep: true }] });
+                        toast.success("Vídeo inteiro restaurado — remova só o que não quiser.");
+                      }}>
+                      Restaurar o vídeo inteiro
                     </Button>
-                  ))}
-                  {exporting && (
-                    <span className="text-muted-foreground flex items-center gap-1">
-                      <AlertCircle className="h-3 w-3" /> Pode sair da tela — cai em Meus Vídeos.
+                  </div>
+                )}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Input value={titulo} onFocus={checkpoint}
+                    onChange={(e) => update({ titulo: e.target.value })}
+                    placeholder="Título do vídeo editado (opcional)" className="text-sm max-w-xs" />
+                  <Button size="lg" onClick={renderizar} disabled={rendering || !keepSegments.length} className="gap-2">
+                    {rendering ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                    {rendering ? `${renderProgress}% — ${renderStep}` : "Renderizar e salvar"}
+                  </Button>
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    duração final: <b>{fmt(finalDuration)}</b>
+                  </span>
+                  {rendering && (
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <AlertCircle className="h-3.5 w-3.5" /> Pode sair da tela — o vídeo cai em Meus Vídeos.
                     </span>
                   )}
                 </div>
-                {gifUrl && (
-                  <a href={gifUrl} download
-                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-                    <Download className="h-3.5 w-3.5" /> Baixar o GIF de novo (não vai para Meus Vídeos)
-                  </a>
+
+                {resultUrl && (
+                  <div className="pt-1 space-y-2">
+                    <Label className="font-semibold text-primary flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4" /> Edição pronta</Label>
+                    <video src={resultUrl} controls playsInline className="w-full max-h-72 rounded-lg bg-black" />
+
+                    {/* opções de saída (spec 22) */}
+                    <div className="flex items-center gap-2 flex-wrap text-xs rounded-lg border bg-muted/30 px-3 py-2">
+                      <span className="font-medium">Opções de saída:</span>
+                      <label className="flex items-center gap-1">Qualidade
+                        <select className="h-7 rounded border bg-background px-1"
+                          value={expFormato === "gif" ? "480p" : expRes}
+                          disabled={expFormato === "gif"}
+                          onChange={(e) => setExpRes(e.target.value)}>
+                          {(expFormato === "gif" ? [{ id: "480p", label: "480p" }] : EXPORT_RESOLUCOES)
+                            .map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+                        </select>
+                      </label>
+                      <label className="flex items-center gap-1">FPS
+                        <select className="h-7 rounded border bg-background px-1" value={expFps}
+                          disabled={expFormato === "gif"}
+                          onChange={(e) => setExpFps(Number(e.target.value))}>
+                          {EXPORT_FPS.map((f) => <option key={f} value={f}>{f}</option>)}
+                        </select>
+                      </label>
+                      <label className="flex items-center gap-1">Formato
+                        <select className="h-7 rounded border bg-background px-1" value={expFormato}
+                          onChange={(e) => setExpFormato(e.target.value)}>
+                          {EXPORT_FORMATOS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+                        </select>
+                      </label>
+                      {expFormato !== "gif" && codecsDisp.length > 1 && (
+                        <label className="flex items-center gap-1">Codec
+                          <select className="h-7 rounded border bg-background px-1" value={expCodec}
+                            onChange={(e) => setExpCodec(e.target.value)}>
+                            {EXPORT_CODECS.filter((c) => codecsDisp.includes(c.id))
+                              .map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                          </select>
+                        </label>
+                      )}
+                      {expFormato === "gif" && (
+                        <span className="text-muted-foreground">GIF sai curto, sem som, em 480p</span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap text-xs">
+                      <span className="text-muted-foreground">Gerar para:</span>
+                      {(["9:16", "1:1", "16:9"] as const).map((f) => (
+                        <Button key={f} size="sm" variant="outline" className="h-7"
+                          disabled={!!exporting} onClick={() => exportarFormato(f)}>
+                          {exporting === f ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+                          {f === "9:16" ? "📱 Reels 9:16" : f === "1:1" ? "◻ Feed 1:1" : "🖥 YouTube 16:9"}
+                        </Button>
+                      ))}
+                      {exporting && (
+                        <span className="text-muted-foreground flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" /> Pode sair da tela — cai em Meus Vídeos.
+                        </span>
+                      )}
+                    </div>
+                    {gifUrl && (
+                      <a href={gifUrl} download
+                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                        <Download className="h-3.5 w-3.5" /> Baixar o GIF de novo (não vai para Meus Vídeos)
+                      </a>
+                    )}
+                  </div>
                 )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          )}
+        </>
+      )}
+
+      {/* Escolha de um 2º vídeo: PiP (sobre) ou sequência (no fim) */}
+      {dialogVideo && (
+        <VideoAddDialog
+          modo={dialogVideo}
+          galeria={mp4Videos as any}
+          ocupado={pipLoading}
+          fila={filaSeq}
+          playhead={playhead}
+          onEnviarArquivos={(files) => {
+            if (dialogVideo === "pip") {
+              const fd = new FormData(); fd.append("file", files[0]);
+              adicionarPip(fd, files[0].name.replace(/\.[^.]+$/, ""));
+            } else {
+              adicionarSeqLote(files);
+            }
+          }}
+          onEscolherGaleria={(v) => {
+            const fd = new FormData(); fd.append("video_url", v.embed_url);
+            (dialogVideo === "pip" ? adicionarPip : adicionarSeq)(
+              fd, v.title || "Vídeo da galeria", v.embed_url);
+          }}
+          onFechar={() => { setDialogVideo(null); setFilaSeq(null); }}
+        />
+      )}
+      {/* Cortador de clipe da sequência (tela sobreposta) */}
+      {trimClip && (
+        <SeqTrimDialog clip={trimClip}
+          onConcluir={concluirTrim}
+          onCancelar={() => setTrimClip(null)} />
       )}
     </div>
   );

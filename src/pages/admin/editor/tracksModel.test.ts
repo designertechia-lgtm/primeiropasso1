@@ -8,7 +8,7 @@
  * garante que a timeline final do modelo novo bate com a do modelo provado.
  */
 import { describe, it, expect } from "vitest";
-import { timelineFinalDe, origToFinal, docFlatToTracks, type VideoClip, type TextClip, type AudioClipT } from "./tracksModel";
+import { timelineFinalDe, origToFinal, docFlatToTracks, duracaoFinalDe, type VideoClip, type TextClip, type AudioClipT } from "./tracksModel";
 import { emptyDoc, type EditorDoc } from "./documentReducer";
 import { snapshotFromStored, aplicarFaixasOcultas } from "./serialize";
 import type { Segment } from "./types";
@@ -235,6 +235,126 @@ describe("vídeos em SEQUÊNCIA (Fase F) — emendados na faixa base", () => {
     // keep 4s + seq de 0.3s: xf = min(0.4, 0.3*0.9) = 0.27
     const { xf } = timelineFinalDe([seg(1, 0, 4, true, 1)], true, 0, [0.3]);
     expect(xf).toBeCloseTo(0.27, 3);
+  });
+});
+
+describe("emenda por PARTES da mesma fonte — corte seco (cortador de clipe)", () => {
+  // o cortador divide UM vídeo em "parte 1 / parte 2": crossfadear o vídeo com
+  // ele mesmo faria fantasma e comeria duração que o usuário não pediu
+  const partes = (t: string): EditorDoc => ({
+    ...emptyDoc(),
+    segments: [seg(1, 0, 4, true, 1)],
+    transition: t,
+    seqClips: [
+      { id: "p1", edit_id: "vidB", name: "take (parte 1)", natural_dur: 6,
+        source_url: "", src_in: 1, src_out: 4 },
+      { id: "p2", edit_id: "vidB", name: "take (parte 2)", natural_dur: 6,
+        source_url: "", src_in: 4, src_out: 6 },
+      { id: "c", edit_id: "vidC", name: "fecho", natural_dur: 2,
+        source_url: "", src_in: 0, src_out: 2 },
+    ],
+  });
+
+  it("seco entre as partes; crossfade nas emendas entre fontes diferentes", () => {
+    const base = docFlatToTracks(partes("dissolve"), "fonteA")
+      .find((t) => t.id === "video-base")!;
+    const [, p1, p2, c] = base.clips as VideoClip[];
+    // principal → parte 1: fontes diferentes, crossfada (4 - 0.4)
+    expect(p1.timeline_start).toBeCloseTo(3.6, 3);
+    expect(p1.transition_in).toBe("dissolve");
+    // parte 1 → parte 2: MESMA fonte, contíguo e SEM transição
+    expect(p1.timeline_end).toBeCloseTo(6.6, 3);
+    expect(p2.timeline_start).toBeCloseTo(6.6, 3);
+    expect(p2.transition_in).toBeUndefined();
+    expect(p2.timeline_end).toBeCloseTo(8.6, 3);
+    // parte 2 → outra fonte: volta a crossfadar
+    expect(c.timeline_start).toBeCloseTo(8.2, 3);
+    expect(c.transition_in).toBe("dissolve");
+  });
+
+  it("a regra é por ADJACÊNCIA: reordenar separa as partes e o fade volta", () => {
+    const doc = partes("dissolve");
+    const [p1, p2, c] = doc.seqClips;
+    const base = docFlatToTracks({ ...doc, seqClips: [p1, c, p2] }, "fonteA")
+      .find((t) => t.id === "video-base")!;
+    const clips = base.clips as VideoClip[];
+    expect(clips[2].transition_in).toBe("dissolve");   // p1 → c (fontes difs)
+    expect(clips[3].transition_in).toBe("dissolve");   // c → p2 (fontes difs)
+  });
+
+  it("transição none: tudo seco e contíguo, mesmo entre fontes diferentes", () => {
+    const base = docFlatToTracks(partes("none"), "fonteA")
+      .find((t) => t.id === "video-base")!;
+    const [, p1, p2, c] = base.clips as VideoClip[];
+    expect(p1.timeline_start).toBeCloseTo(4.0, 3);
+    expect(p2.timeline_start).toBeCloseTo(7.0, 3);
+    expect(c.timeline_start).toBeCloseTo(9.0, 3);
+    expect(p1.transition_in).toBeUndefined();
+    expect(c.transition_in).toBeUndefined();
+  });
+
+  it("parte CURTA da mesma fonte ainda clampa o xf global (min sobre parts)", () => {
+    const doc: EditorDoc = {
+      ...emptyDoc(),
+      segments: [seg(1, 0, 4, true, 1)],
+      transition: "dissolve",
+      seqClips: [
+        { id: "p1", edit_id: "vidB", name: "a", natural_dur: 6, source_url: "",
+          src_in: 0, src_out: 3 },
+        { id: "p2", edit_id: "vidB", name: "b", natural_dur: 6, source_url: "",
+          src_in: 3, src_out: 3.3 },                    // 0,3s → xf = 0.27
+      ],
+    };
+    const base = docFlatToTracks(doc, "fonteA").find((t) => t.id === "video-base")!;
+    const [, p1, p2] = base.clips as VideoClip[];
+    expect(p1.timeline_start).toBeCloseTo(3.73, 3);     // 4 - 0.27
+    expect(p2.timeline_start).toBeCloseTo(p1.timeline_end, 3);   // seco
+  });
+});
+
+describe("duracaoFinalDe — o contador da tela bate com o arquivo que sai", () => {
+  it("sem emendados: é o totalFinal dos cortes", () => {
+    const doc: EditorDoc = {
+      ...emptyDoc(),
+      segments: [seg(1, 0, 2, true, 1), seg(2, 4, 7, true, 1)],
+      transition: "dissolve",
+    };
+    expect(duracaoFinalDe(doc)).toBeCloseTo(4.6, 3);    // 2 + 3 - 0.4
+  });
+
+  it("com emendados mistos (fade + seco): bate com o fim do último clipe", () => {
+    const doc: EditorDoc = {
+      ...emptyDoc(),
+      segments: [seg(1, 0, 4, true, 1)],
+      transition: "dissolve",
+      seqClips: [
+        { id: "p1", edit_id: "vidB", name: "a", natural_dur: 6, source_url: "",
+          src_in: 1, src_out: 4 },
+        { id: "p2", edit_id: "vidB", name: "b", natural_dur: 6, source_url: "",
+          src_in: 4, src_out: 6 },
+        { id: "c", edit_id: "vidC", name: "c", natural_dur: 2, source_url: "",
+          src_in: 0, src_out: 2 },
+      ],
+    };
+    const base = docFlatToTracks(doc, "fonteA").find((t) => t.id === "video-base")!;
+    const ultimo = base.clips[base.clips.length - 1] as VideoClip;
+    expect(duracaoFinalDe(doc)).toBeCloseTo(ultimo.timeline_end, 3);
+    expect(duracaoFinalDe(doc)).toBeCloseTo(10.2, 3);   // 3.6+3 | +2 | -0.4 +2
+  });
+
+  it("emendado menor que 0,15s é ignorado (mesmo piso do adaptador)", () => {
+    const doc: EditorDoc = {
+      ...emptyDoc(),
+      segments: [seg(1, 0, 4, true, 1)],
+      transition: "none",
+      seqClips: [
+        { id: "x", edit_id: "vidB", name: "poeira", natural_dur: 6,
+          source_url: "", src_in: 1, src_out: 1.1 },
+      ],
+    };
+    expect(duracaoFinalDe(doc)).toBeCloseTo(4, 3);
+    const base = docFlatToTracks(doc, "fonteA").find((t) => t.id === "video-base")!;
+    expect(base.clips).toHaveLength(1);
   });
 });
 

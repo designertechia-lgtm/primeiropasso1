@@ -78,6 +78,14 @@ import {
   updateEditorProject, deleteEditorProject,
 } from "./editor/projects";
 
+/** n itens uniformemente espaçados da lista (1º e último inclusos): a fita
+ *  mostra só os quadros que CABEM em largura ~natural, sem espremer. */
+function amostrarQuadros(lista: string[], n: number): string[] {
+  if (n >= lista.length || lista.length === 0) return lista;
+  if (n <= 1) return [lista[0]];
+  return Array.from({ length: n }, (_, k) => lista[Math.round((k * (lista.length - 1)) / (n - 1))]);
+}
+
 export default function AdminEditorVideo() {
   const { data: professional } = useProfessional();
   const queryClient = useQueryClient();
@@ -126,6 +134,14 @@ export default function AdminEditorVideo() {
   // a imagem em zoom alto). null/zoom 1× = usa a fita base de meta.thumbs.
   const [winThumbs, setWinThumbs] = useState<{ t0: number; t1: number; list: string[] } | null>(null);
   const winTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // largura visível da timeline (px): decide QUANTOS quadros cabem na fita em
+  // largura ~natural — com emendados a fatia do principal encolhe e espremer
+  // os 40 quadros nela vira lascas ilegíveis
+  const [boxW, setBoxW] = useState(0);
+  // miniaturas dos vídeos EMENDADOS, por fonte+janela (o cortador gera N partes
+  // da MESMA fonte — cada parte pede só a janela dela; o worker cacheia em disco)
+  const [seqThumbs, setSeqThumbs] = useState<Record<string, string[]>>({});
+  const seqThumbsPedidos = useRef<Set<string>>(new Set());
   const [amostraUrl, setAmostraUrl] = useState("");
   const [amostraCarregando, setAmostraCarregando] = useState(false);
   const [amostraErro, setAmostraErro] = useState("");
@@ -613,6 +629,18 @@ export default function AdminEditorVideo() {
   // Fonte nova = janela antiga não vale mais
   useEffect(() => { setWinThumbs(null); }, [meta?.edit_id]);
 
+  // Mede a largura visível da timeline (e acompanha redimensionar a janela):
+  // o nº de quadros exibidos na fita é derivado dela
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const medir = () => setBoxW(el.clientWidth || 0);
+    medir();
+    const ro = new ResizeObserver(medir);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [meta?.edit_id]);
+
   // ── domínio da timeline/prévia: principal + vídeos EMENDADOS ───────────────
   // Declarado aqui em cima porque a timeline INTEIRA (régua, fita, blocos,
   // cursor, zoom, miniaturas) mede por ele. Sem emendados é igual a
@@ -687,6 +715,34 @@ export default function AdminEditorVideo() {
     return () => { if (winTimerRef.current) clearTimeout(winTimerRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoom, meta?.edit_id, meta?.duration, seqDurPrevia]);
+
+  // Miniaturas dos EMENDADOS: 1 pedido por fonte+janela (o Set evita repetir;
+  // o worker cacheia a extração em disco). Falha é SILENCIOSA: o bloco fica
+  // como era — nome + duração — sem pulsar "carregando".
+  useEffect(() => {
+    for (const c of seqClips) {
+      const durC = Math.max(0, c.src_out - c.src_in);
+      if (durC <= 0) continue;
+      const key = `${c.edit_id}|${c.src_in.toFixed(2)}|${c.src_out.toFixed(2)}`;
+      if (seqThumbsPedidos.current.has(key)) continue;
+      seqThumbsPedidos.current.add(key);
+      (async () => {
+        try {
+          // ~2 quadros/s cobre bem blocos curtos; o worker impõe mínimo de 10
+          const n = Math.max(10, Math.min(24, Math.ceil(durC * 2)));
+          const res = await fetch(
+            `${API}/editor/thumbs/${c.edit_id}?count=${n}&start=${c.src_in.toFixed(2)}&end=${c.src_out.toFixed(2)}&height=120`,
+            { headers: await videoApiAuthHeaders() });
+          if (!res.ok) { seqThumbsPedidos.current.delete(key); return; }
+          const lista: string[] = (await res.json()).thumbs || [];
+          // "" é frame que o ffmpeg não conseguiu — lista quase vazia não vira fita
+          if (lista.length && lista.filter(Boolean).length >= lista.length / 2)
+            setSeqThumbs((m) => ({ ...m, [key]: lista }));
+          else seqThumbsPedidos.current.delete(key);
+        } catch { seqThumbsPedidos.current.delete(key); }
+      })();
+    }
+  }, [seqClips]);
 
   // ── amostra REAL do efeito (Fase efeitos) ─────────────────────────────────
   // O efeito não tem prévia ao vivo (VHS/glitch não existem em CSS), então o
@@ -3442,13 +3498,23 @@ export default function AdminEditorVideo() {
                     <div className="absolute inset-y-0 left-0 overflow-hidden"
                       style={{ width: `${(meta.duration / durTL) * 100}%` }}>
                       {zoom <= 1 ? (
-                        // 1×: fita inteira preenche a largura (slot ~natural)
+                        // 1×: fita preenche a fatia. Com emendados a fatia
+                        // encolhe — mostra só os quadros que CABEM em largura
+                        // ~natural (amostrados ao longo do vídeo inteiro) em
+                        // vez de espremer os 40 em lascas ilegíveis
                         <div className="flex h-full w-full">
-                          {(meta.thumbs.length ? meta.thumbs : Array(20).fill("")).map((t, i, arr) =>
-                            t ? <img key={i} src={t} draggable={false} className="h-full object-cover" style={{ width: `${100 / arr.length}%` }} alt="" />
-                              : <div key={i} className={`h-full bg-muted ${thumbsErro ? "" : "animate-pulse"}`}
-                                  style={{ width: `${100 / arr.length}%` }} />,
-                          )}
+                          {(() => {
+                            const base = meta.thumbs.length ? meta.thumbs : Array(20).fill("");
+                            const quadroW = Math.max(24, alturaFita * (meta.width && meta.height ? meta.width / meta.height : 0.5625));
+                            const fatiaPx = boxW * zoom * (meta.duration / durTL);
+                            const arr = seqClips.length && boxW && meta.thumbs.length
+                              ? amostrarQuadros(base, Math.max(4, Math.round(fatiaPx / quadroW)))
+                              : base;
+                            return arr.map((t, i) =>
+                              t ? <img key={i} src={t} draggable={false} className="h-full object-cover" style={{ width: `${100 / arr.length}%` }} alt="" />
+                                : <div key={i} className={`h-full bg-muted ${thumbsErro ? "" : "animate-pulse"}`}
+                                    style={{ width: `${100 / arr.length}%` }} />);
+                          })()}
                         </div>
                       ) : winThumbs ? (
                         // ampliado: cada quadro em LARGURA NATURAL (w-auto = a proporção
@@ -3467,20 +3533,34 @@ export default function AdminEditorVideo() {
                       )}
                     </div>
 
-                    {/* blocos dos vídeos EMENDADOS, na ordem da sequência.
-                        Sem miniaturas de propósito: cada bloco pediria uma
-                        extração de quadros ao worker a cada projeto aberto —
-                        nome + duração já identificam (se faltar detalhe, o
-                        endpoint /editor/thumbs aceita count/height por clipe). */}
+                    {/* blocos dos vídeos EMENDADOS, na ordem da sequência,
+                        com fita de miniaturas própria (seqThumbs; 1 extração
+                        por fonte+janela, cacheada). Enquanto não chega — ou se
+                        falhar — o bloco fica só com nome + duração. */}
                     {seqClips.map((c, i) => {
                       const dur = Math.max(0, c.src_out - c.src_in);
                       const dentro = playhead >= basesSeq[i] && playhead < basesSeq[i] + dur;
+                      const fita = seqThumbs[`${c.edit_id}|${c.src_in.toFixed(2)}|${c.src_out.toFixed(2)}`];
+                      const blocoPx = boxW * zoom * (dur / durTL);
+                      const quadros = fita && boxW
+                        ? amostrarQuadros(fita, Math.max(2, Math.round(blocoPx / Math.max(24, alturaFita * 0.5625))))
+                        : null;
                       return (
                         <div key={c.id}
-                          className={`absolute inset-y-0 flex flex-col justify-center gap-0.5 overflow-hidden border-l-2 border-background px-1.5 text-[9px] text-white/90 ${
+                          className={`absolute inset-y-0 overflow-hidden border-l-2 border-background text-[9px] text-white/90 ${
                             dentro ? "bg-neutral-600" : "bg-neutral-700"}`}
                           style={{ left: `${(basesSeq[i] / durTL) * 100}%`, width: `${(dur / durTL) * 100}%` }}
                           title={`${c.name} — ${fmt(dur)} (emendado ${i + 1}º)`}>
+                          {quadros && (
+                            <div className="absolute inset-0 flex pointer-events-none">
+                              {quadros.map((t, k) =>
+                                t ? <img key={k} src={t} draggable={false} className="h-full object-cover" style={{ width: `${100 / quadros.length}%` }} alt="" />
+                                  : <div key={k} className="h-full bg-neutral-700" style={{ width: `${100 / quadros.length}%` }} />)}
+                            </div>
+                          )}
+                          {/* véu para nome/botões continuarem legíveis sobre os quadros */}
+                          {quadros && <div className={`absolute inset-0 pointer-events-none ${dentro ? "bg-black/25" : "bg-black/45"}`} />}
+                          <div className="relative flex h-full flex-col justify-center gap-0.5 px-1.5">
                           <span className="truncate font-medium leading-tight">{c.name}</span>
                           <span className="tabular-nums opacity-70 leading-tight">{fmt(dur)}</span>
                           <div className="flex gap-1">
@@ -3499,6 +3579,7 @@ export default function AdminEditorVideo() {
                               className="rounded bg-black/50 px-1 py-0.5 hover:bg-destructive transition">
                               <Trash2 className="h-3 w-3" />
                             </button>
+                          </div>
                           </div>
                         </div>
                       );

@@ -9,6 +9,7 @@
  * fechamento fica TRAVADO (`ocupado`) — o upload em curso não sobrevive ao
  * desmonte, e o Dialog fecharia no Esc/clique fora.
  */
+import { useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Clapperboard, Film, Upload, Loader2, Video as VideoIcon, AlertTriangle,
@@ -38,9 +39,21 @@ export default function VideoAddDialog({
   onEnviarArquivos, onEscolherGaleria, onFechar,
 }: Props) {
   const ehPip = modo === "pip";
+  // Fechar no backdrop exige um clique DELIBERADO: o gesto tem de começar E
+  // terminar no backdrop, e nunca logo após abrir — mouse com defeito dispara
+  // um clique fantasma milissegundos depois do clique que abriu o diálogo, e o
+  // fantasma caía no backdrop fechando na hora ("não abre nada").
+  const abertoEmRef = useRef(Date.now());
+  const downNoBackdropRef = useRef(false);
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
-      onClick={() => !ocupado && onFechar()}>
+      onMouseDown={(e) => { downNoBackdropRef.current = e.target === e.currentTarget; }}
+      onClick={(e) => {
+        if (ocupado) return;
+        if (e.target !== e.currentTarget || !downNoBackdropRef.current) return;
+        if (Date.now() - abertoEmRef.current < 400) return;
+        onFechar();
+      }}>
       <div className="w-full max-w-sm rounded-xl border bg-background p-4 space-y-3 shadow-lg"
         onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2">

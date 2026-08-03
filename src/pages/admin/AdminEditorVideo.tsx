@@ -914,6 +914,7 @@ export default function AdminEditorVideo() {
         }],
       }));
       setDialogVideo(null);
+      setTab("videos");   // a lista da sequência (ordem/✂) fica nesta aba
       toast.success("Vídeo emendado no FIM da edição — o bloco já está na trilha de vídeo. Clique no ✂ dele para cortar o trecho.", { duration: 8000 });
     } catch (e: any) {
       toast.error(e.message, { duration: 7000 });
@@ -958,6 +959,7 @@ export default function AdminEditorVideo() {
     if (!erros.length) {
       setFilaSeq(null);
       setDialogVideo(null);
+      setTab("videos");   // a lista da sequência (ordem/✂) fica nesta aba
       toast.success(files.length > 1
         ? `${files.length} vídeos emendados na sequência — os blocos estão na trilha de vídeo, na ordem. Use o ✂ de cada um para cortar.`
         : "Vídeo emendado no FIM da edição — o bloco já está na trilha de vídeo.",
@@ -2270,14 +2272,29 @@ export default function AdminEditorVideo() {
               <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
                 {mp4Videos.length === 0 && <p className="text-xs text-muted-foreground">Seus vídeos gerados aparecem aqui.</p>}
                 {mp4Videos.map((v: any) => (
-                  <button key={v.id} type="button" disabled={loadingSource}
-                    onClick={() => { const fd = new FormData(); fd.append("video_url", v.embed_url); carregar(fd, v.title || "Vídeo da galeria", v.embed_url); }}
-                    className="w-full flex items-center gap-2 rounded-lg border p-1.5 text-left text-xs hover:border-primary/60 transition">
-                    {v.thumbnail_url
-                      ? <img src={v.thumbnail_url} className="h-10 w-7 rounded object-cover shrink-0" alt="" />
-                      : <div className="h-10 w-7 rounded bg-muted flex items-center justify-center shrink-0"><VideoIcon className="h-3.5 w-3.5" /></div>}
-                    <span className="truncate">{v.title || "Sem título"}</span>
-                  </button>
+                  <div key={v.id}
+                    className="flex items-center gap-2 rounded-lg border p-1.5 text-xs hover:border-primary/60 transition">
+                    <button type="button" disabled={loadingSource}
+                      title={meta ? "Abrir como vídeo principal (substitui a edição atual)" : "Abrir este vídeo no editor"}
+                      onClick={() => { const fd = new FormData(); fd.append("video_url", v.embed_url); carregar(fd, v.title || "Vídeo da galeria", v.embed_url); }}
+                      className="flex-1 min-w-0 flex items-center gap-2 text-left">
+                      {v.thumbnail_url
+                        ? <img src={v.thumbnail_url} className="h-10 w-7 rounded object-cover shrink-0" alt="" />
+                        : <div className="h-10 w-7 rounded bg-muted flex items-center justify-center shrink-0"><VideoIcon className="h-3.5 w-3.5" /></div>}
+                      <span className="truncate">{v.title || "Sem título"}</span>
+                    </button>
+                    {/* com um vídeo já aberto, o clique no item SUBSTITUI a
+                        edição — este atalho EMENDA no fim da trilha sem trocar
+                        nada (1 clique, sem diálogo) */}
+                    {meta && (
+                      <Button size="sm" variant="outline" className="h-6 px-1.5 text-[10px] gap-0.5 shrink-0"
+                        disabled={pipLoading}
+                        title="Adicionar no FIM da trilha de vídeo (mantém o vídeo principal)"
+                        onClick={() => { const fd = new FormData(); fd.append("video_url", v.embed_url); adicionarSeq(fd, v.title || "Vídeo da galeria", v.embed_url); }}>
+                        <Plus className="h-3 w-3" /> trilha
+                      </Button>
+                    )}
+                  </div>
                 ))}
               </div>
             </CardContent>
@@ -3486,6 +3503,15 @@ export default function AdminEditorVideo() {
                         </div>
                       );
                     })}
+                    {/* + no FIM da trilha: o jeito direto de emendar mais
+                        vídeos e montar um maior (o mesmo fluxo do botão
+                        "+ Vídeos no fim") */}
+                    <button type="button" title="Adicionar vídeos no FIM da trilha (montar um vídeo maior)"
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); setDialogVideo("seq"); }}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg hover:scale-110 transition">
+                      <Plus className="h-4 w-4" />
+                    </button>
                   </div>
                   {thumbsErro && !meta.thumbs.length && (
                     <span className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground pointer-events-none">

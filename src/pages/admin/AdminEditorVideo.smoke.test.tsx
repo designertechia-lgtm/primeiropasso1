@@ -120,4 +120,14 @@ describe("Editor de Vídeo — mesa de edição", () => {
     expect(screen.getByTitle("Cortar este clipe antes de montar")).toBeInTheDocument();
     expect(screen.getByTitle("Remover este vídeo da sequência")).toBeInTheDocument();
   });
+
+  it("a trilha tem o + no fim, que abre o diálogo de emendar vídeos", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    localStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(projetoSalvo));
+    montar();
+    const mais = await screen.findByTitle(/Adicionar vídeos no FIM da trilha/);
+    fireEvent.click(mais);
+    expect(await screen.findByText("Emendar vídeos no fim")).toBeInTheDocument();
+    expect(screen.getByText(/Enviar vídeos do computador/)).toBeInTheDocument();
+  });
 });

@@ -35,7 +35,10 @@ const moverCursor = (t: number) => {
   fireEvent.timeUpdate(video);
 };
 
-describe("SeqTrimDialog", () => {
+// 20s (o padrão do vitest é 5): estes casos montam o diálogo inteiro no jsdom —
+// player, fita e o seletor com 28 cartões de transição — e passam dos 5s quando
+// a suíte toda roda em paralelo nesta máquina. Isolados levam ~1s.
+describe("SeqTrimDialog", { timeout: 20000 }, () => {
   it("abre com o clipe inteiro e conclui devolvendo a janela original", () => {
     const onConcluir = vi.fn();
     render(<SeqTrimDialog clip={CLIPE} onConcluir={onConcluir} onCancelar={vi.fn()} />);

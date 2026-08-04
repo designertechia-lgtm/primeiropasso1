@@ -121,6 +121,15 @@ export default function SeqTrimDialog({ clip, onConcluir, onCancelar, principal 
     else { v.pause(); setTocando(false); }
   };
 
+  /** O quadro da fita mais próximo do instante `t` — os cartões de transição
+   *  usam isto para mostrar os DOIS LADOS REAIS da emenda. */
+  const quadroEm = (t: number): string | undefined => {
+    const bons = thumbs.filter(Boolean);
+    if (!bons.length || dur <= 0) return undefined;
+    const i = Math.round((Math.max(0, Math.min(dur, t)) / dur) * (bons.length - 1));
+    return bons[i];
+  };
+
   const dividir = () => {
     const novo = dividirEm(segs, playhead);
     if (novo === segs) return;
@@ -371,7 +380,13 @@ export default function SeqTrimDialog({ clip, onConcluir, onCancelar, principal 
             {abriuTransicao && (
               <div className="mt-2 space-y-2">
                 <TransicaoPicker value={transicao} onChange={setTransicao}
-                  labelNone="Corte seco" compacto />
+                  labelNone="Corte seco" compacto
+                  quadros={{
+                    // fim da 1ª parte → início da 2ª: os dois lados da emenda
+                    // que este seletor controla, com os quadros do próprio clipe
+                    a: quadroEm(partes[0]?.src_out ?? 0),
+                    b: quadroEm(partes[1]?.src_in ?? 0),
+                  }} />
                 <AvisoPrevia />
               </div>
             )}

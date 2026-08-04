@@ -354,32 +354,40 @@
    video: o render e' quem aplica o xfade de verdade.
    O elemento .pp-tr e' a moldura; .pp-tr-b e' o clipe de cima (B), que entra.
    ============================================================ */
-.pp-tr { position: relative; overflow: hidden; background: #2563eb; }
-.pp-tr-b { position: absolute; inset: 0; background: #f59e0b; }
+/* O clipe A (que sai) e o B (que entra) sao os QUADROS REAIS do video quando o
+   painel consegue passa-los; as cores abaixo sao so o fundo de quando ainda nao
+   chegaram. Sem isso o cartao virava "dois retangulos coloridos" e ninguem
+   entendia o que estava vendo (achado real: Carlos perguntou "o que sao os
+   campos amarelos?" — todos os cartoes tinham parado no estado final ambar). */
+.pp-tr { position: relative; overflow: hidden; background: #1e3a8a; }
+.pp-tr-b { position: absolute; inset: 0; background: #b45309; }
+.pp-tr img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* Ciclo: mostra A, faz a transicao, segura B pouco e VOLTA para A. Antes ficava
+   ~40% do ciclo parado no estado final — e como todos os cartoes comecavam
+   juntos, a tela inteira virava um bloco ambar ao mesmo tempo. */
 /* basicas */
-@keyframes pp-tr-fade   { 0%,15% { opacity: 0 } 60%,100% { opacity: 1 } }
-@keyframes pp-tr-corte  { 0%,49% { opacity: 0 } 50%,100% { opacity: 1 } }
-@keyframes pp-tr-preto  { 0%,10% { opacity: 0; background: #000 } 45% { opacity: 1; background: #000 } 55% { opacity: 1; background: #000 } 90%,100% { opacity: 1; background: #f59e0b } }
-@keyframes pp-tr-branco { 0%,10% { opacity: 0; background: #fff } 45% { opacity: 1; background: #fff } 55% { opacity: 1; background: #fff } 90%,100% { opacity: 1; background: #f59e0b } }
+@keyframes pp-tr-fade   { 0%,10% { opacity: 0 } 45%,72% { opacity: 1 } 90%,100% { opacity: 0 } }
+@keyframes pp-tr-corte  { 0%,44% { opacity: 0 } 45%,80% { opacity: 1 } 81%,100% { opacity: 0 } }
+@keyframes pp-tr-preto  { 0%,10% { opacity: 0; background: #000 } 30%,40% { opacity: 1; background: #000 } 55%,75% { opacity: 1; background: transparent } 92%,100% { opacity: 0; background: #000 } }
+@keyframes pp-tr-branco { 0%,10% { opacity: 0; background: #fff } 30%,40% { opacity: 1; background: #fff } 55%,75% { opacity: 1; background: transparent } 92%,100% { opacity: 0; background: #fff } }
 /* movimento: o clipe B entra deslizando */
-@keyframes pp-tr-desl-esq   { 0%,10% { transform: translateX(100%) } 70%,100% { transform: translateX(0) } }
-@keyframes pp-tr-desl-dir   { 0%,10% { transform: translateX(-100%) } 70%,100% { transform: translateX(0) } }
-@keyframes pp-tr-desl-cima  { 0%,10% { transform: translateY(100%) } 70%,100% { transform: translateY(0) } }
-@keyframes pp-tr-desl-baixo { 0%,10% { transform: translateY(-100%) } 70%,100% { transform: translateY(0) } }
+@keyframes pp-tr-desl-esq   { 0%,10% { transform: translateX(100%) } 50%,75% { transform: translateX(0) } 95%,100% { transform: translateX(100%) } }
+@keyframes pp-tr-desl-dir   { 0%,10% { transform: translateX(-100%) } 50%,75% { transform: translateX(0) } 95%,100% { transform: translateX(-100%) } }
+@keyframes pp-tr-desl-cima  { 0%,10% { transform: translateY(100%) } 50%,75% { transform: translateY(0) } 95%,100% { transform: translateY(100%) } }
+@keyframes pp-tr-desl-baixo { 0%,10% { transform: translateY(-100%) } 50%,75% { transform: translateY(0) } 95%,100% { transform: translateY(-100%) } }
 /* formas: B e' revelado por um recorte que cresce */
-@keyframes pp-tr-varre-esq   { 0%,10% { clip-path: inset(0 0 0 100%) } 70%,100% { clip-path: inset(0 0 0 0) } }
-@keyframes pp-tr-varre-dir   { 0%,10% { clip-path: inset(0 100% 0 0) } 70%,100% { clip-path: inset(0 0 0 0) } }
-@keyframes pp-tr-varre-cima  { 0%,10% { clip-path: inset(100% 0 0 0) } 70%,100% { clip-path: inset(0 0 0 0) } }
-@keyframes pp-tr-varre-baixo { 0%,10% { clip-path: inset(0 0 100% 0) } 70%,100% { clip-path: inset(0 0 0 0) } }
-@keyframes pp-tr-circ-abre   { 0%,10% { clip-path: circle(0% at 50% 50%) } 70%,100% { clip-path: circle(75% at 50% 50%) } }
-@keyframes pp-tr-circ-fecha  { 0%,10% { clip-path: circle(75% at 50% 50%); opacity: 0 } 11% { opacity: 1 } 70%,100% { clip-path: circle(0% at 50% 50%); opacity: 1 } }
-@keyframes pp-tr-diag        { 0%,10% { clip-path: polygon(0 0, 0 0, 0 0) } 70%,100% { clip-path: polygon(0 0, 200% 0, 0 200%) } }
+@keyframes pp-tr-varre-esq   { 0%,10% { clip-path: inset(0 0 0 100%) } 50%,75% { clip-path: inset(0 0 0 0) } 95%,100% { clip-path: inset(0 0 0 100%) } }
+@keyframes pp-tr-varre-dir   { 0%,10% { clip-path: inset(0 100% 0 0) } 50%,75% { clip-path: inset(0 0 0 0) } 95%,100% { clip-path: inset(0 100% 0 0) } }
+@keyframes pp-tr-varre-cima  { 0%,10% { clip-path: inset(100% 0 0 0) } 50%,75% { clip-path: inset(0 0 0 0) } 95%,100% { clip-path: inset(100% 0 0 0) } }
+@keyframes pp-tr-varre-baixo { 0%,10% { clip-path: inset(0 0 100% 0) } 50%,75% { clip-path: inset(0 0 0 0) } 95%,100% { clip-path: inset(0 0 100% 0) } }
+@keyframes pp-tr-circ-abre   { 0%,10% { clip-path: circle(0% at 50% 50%) } 50%,75% { clip-path: circle(75% at 50% 50%) } 95%,100% { clip-path: circle(0% at 50% 50%) } }
+@keyframes pp-tr-circ-fecha  { 0%,10% { clip-path: inset(0 0 0 0); opacity: 1 } 50%,75% { clip-path: circle(0% at 50% 50%); opacity: 1 } 95%,100% { clip-path: inset(0 0 0 0); opacity: 1 } }
+@keyframes pp-tr-diag        { 0%,10% { clip-path: polygon(0 0, 0 0, 0 0) } 50%,75% { clip-path: polygon(0 0, 220% 0, 0 220%) } 95%,100% { clip-path: polygon(0 0, 0 0, 0 0) } }
 /* efeito */
-@keyframes pp-tr-zoom   { 0%,10% { opacity: 0; transform: scale(2.2) } 70%,100% { opacity: 1; transform: scale(1) } }
-@keyframes pp-tr-blur   { 0%,10% { opacity: 0; filter: blur(6px) } 70%,100% { opacity: 1; filter: blur(0) } }
-@keyframes pp-tr-pixel  { 0%,10% { opacity: 0; filter: contrast(3) saturate(3) } 45% { opacity: .7; filter: contrast(6) saturate(6) } 70%,100% { opacity: 1; filter: none } }
-@keyframes pp-tr-espreme{ 0%,10% { opacity: 0; transform: scaleX(.05) } 70%,100% { opacity: 1; transform: scaleX(1) } }
-@keyframes pp-tr-fatias { 0%,10% { clip-path: repeating-linear-gradient(0deg, #000 0 0) ; opacity: 0 } 11% { opacity: 1 } 70%,100% { opacity: 1 } }
+@keyframes pp-tr-zoom   { 0%,10% { opacity: 0; transform: scale(2.4) } 50%,75% { opacity: 1; transform: scale(1) } 95%,100% { opacity: 0; transform: scale(2.4) } }
+@keyframes pp-tr-blur   { 0%,10% { opacity: 0; filter: blur(7px) } 50%,75% { opacity: 1; filter: blur(0) } 95%,100% { opacity: 0; filter: blur(7px) } }
+@keyframes pp-tr-pixel  { 0%,10% { opacity: 0; filter: contrast(4) saturate(4) } 30% { opacity: .6; filter: contrast(7) saturate(7) } 50%,75% { opacity: 1; filter: none } 95%,100% { opacity: 0; filter: contrast(4) saturate(4) } }
+@keyframes pp-tr-espreme{ 0%,10% { opacity: 0; transform: scaleX(.04) } 50%,75% { opacity: 1; transform: scaleX(1) } 95%,100% { opacity: 0; transform: scaleX(.04) } }
 .pp-tr-a-corte   { animation: pp-tr-corte 2.4s steps(1,end) infinite }
 .pp-tr-a-fade    { animation: pp-tr-fade 2.4s ease-in-out infinite }
 .pp-tr-a-preto   { animation: pp-tr-preto 2.4s ease-in-out infinite }
@@ -400,8 +408,20 @@
 .pp-tr-a-pixel   { animation: pp-tr-pixel 2.4s ease-in-out infinite }
 .pp-tr-a-espreme { animation: pp-tr-espreme 2.4s ease-in-out infinite }
 .pp-tr-a-fatias  { animation: pp-tr-varre-dir 2.4s steps(5,end) infinite }
-/* Aqui o "reduzir movimento" VALE: sao dezenas de cartoes animando ao mesmo
-   tempo numa ferramenta de trabalho — o cartao vira o estado final, legivel. */
+/* DESSINCRONIZA os cartoes: comecando todos juntos, os 28 mostravam o mesmo
+   quadro no mesmo instante e a tela virava um bloco de cor so (foi o que o
+   Carlos viu). O atraso e' por posicao na grade — sem JS. */
+.pp-tr-b { animation-delay: 0s }
+.pp-tr-d1 .pp-tr-b { animation-delay: -.30s }
+.pp-tr-d2 .pp-tr-b { animation-delay: -.60s }
+.pp-tr-d3 .pp-tr-b { animation-delay: -.90s }
+.pp-tr-d4 .pp-tr-b { animation-delay: -1.2s }
+/* "Reduzir movimento" ligado: para as animacoes no MEIO da transicao (nao no
+   fim). Parar no fim mostrava so o clipe B cobrindo tudo — exatamente o
+   retangulo chapado que nao explicava nada. No meio da-se para VER a forma. */
 @media (prefers-reduced-motion: reduce) {
-  [class*="pp-tr-a-"] { animation: none !important; opacity: 1; transform: none; clip-path: none; filter: none; }
+  [class*="pp-tr-a-"] {
+    animation-play-state: paused !important;
+    animation-delay: -1.05s !important;   /* ~44% de um ciclo de 2,4s */
+  }
 }

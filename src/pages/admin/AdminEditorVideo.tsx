@@ -681,6 +681,21 @@ export default function AdminEditorVideo() {
       seqClips: d.seqClips.map((x) => (x.id === id ? { ...x, transition_in: tr } : x)),
     }));
 
+  /** Os quadros REAIS desta emenda: o último do clipe que sai e o primeiro do
+   *  que entra. É o que faz o cartão de transição mostrar "este quadro vira
+   *  aquele" em vez de dois retângulos coloridos. Sem miniatura carregada,
+   *  devolve vazio e o cartão cai no desenho ilustrativo. */
+  const quadrosDaEmenda = (i: number) => {
+    const fitaDe = (c: SeqClip) =>
+      seqThumbs[`${c.edit_id}|${c.src_in.toFixed(2)}|${c.src_out.toFixed(2)}`];
+    const anterior = i === 0 ? (meta?.thumbs ?? []) : (fitaDe(seqClips[i - 1]) ?? []);
+    const atual = fitaDe(seqClips[i]) ?? [];
+    return {
+      a: anterior.filter(Boolean).slice(-1)[0],   // último quadro do que sai
+      b: atual.filter(Boolean)[0],                // primeiro do que entra
+    };
+  };
+
   /** Duração do domínio ESTENDIDO. É tempo ORIGINAL: não desconta o crossfade
    *  das emendas, do mesmo jeito que a timeline sempre mostrou o tempo original
    *  dos cortes (o relógio não tem como "tocar" um crossfade). Quem sabe a
@@ -3401,7 +3416,13 @@ export default function AdminEditorVideo() {
               {abriuTransicaoGlobal && (
                 <div className="w-full space-y-2 border-t pt-2">
                   <TransicaoPicker value={transition}
-                    onChange={(tr) => patch({ transition: tr })} compacto />
+                    onChange={(tr) => patch({ transition: tr })} compacto
+                    quadros={{
+                      // a global vale para os cortes do principal: mostra dois
+                      // quadros distantes dele (o "antes" e o "depois" típicos)
+                      a: (meta?.thumbs ?? []).filter(Boolean)[8],
+                      b: (meta?.thumbs ?? []).filter(Boolean).slice(-8)[0],
+                    }} />
                   {seqClips.length > 0 && (
                     <p className="text-[10px] text-muted-foreground">
                       Vale para as emendas que não têm escolha própria. Para mudar uma
@@ -3919,7 +3940,8 @@ export default function AdminEditorVideo() {
                       onClick={() => setEmendaAberta(null)}>Fechar</Button>
                   </div>
                   <TransicaoPicker value={efetiva}
-                    onChange={(tr) => setTransicaoDe(c.id, tr)} compacto />
+                    onChange={(tr) => setTransicaoDe(c.id, tr)} compacto
+                    quadros={quadrosDaEmenda(i)} />
                   <AvisoPrevia />
                 </div>
               );

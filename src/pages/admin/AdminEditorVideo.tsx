@@ -2224,14 +2224,7 @@ export default function AdminEditorVideo() {
         },
       });
       if (error) throw error;
-      // "Campo inválido" = a edge no ar ainda não conhece `legenda_formatar`
-      // (deploy dela pendente). Falar isso é melhor que um "erro" genérico.
-      if (data?.error) {
-        throw new Error(
-          String(data.error).includes("inválido")
-            ? "A formatação com IA ainda não está publicada no servidor. Enquanto isso, dá para escrever as legendas à mão na lista abaixo."
-            : String(data.error));
-      }
+      if (data?.error) throw new Error(String(data.error));
       const falas = falasDaResposta(data?.result);
       const novos = distribuirCues(falas, 0, duracaoFinalDe(doc) || meta.duration);
       if (!novos.length) throw new Error("A IA não devolveu falas aproveitáveis.");

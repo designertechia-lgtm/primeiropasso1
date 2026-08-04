@@ -3612,6 +3612,23 @@ export default function AdminEditorVideo() {
                               className="rounded bg-black/50 px-1 py-0.5 hover:bg-primary transition">
                               <Scissors className="h-3 w-3" />
                             </button>
+                            {/* transição de ENTRADA aqui também: o losango ✦ na
+                                borda é discreto demais para uma ação tão usada
+                                (e some quando o bloco fica estreito). Mesmo
+                                estado do losango — abre o mesmo seletor. */}
+                            <button type="button"
+                              title={`Transição ao entrar neste clipe: ${transicaoLabel(transicaoEfetiva(i))}`}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEmendaAberta(emendaAberta === c.id ? null : c.id);
+                              }}
+                              className={`rounded px-1 py-0.5 transition ${
+                                emendaAberta === c.id
+                                  ? "bg-primary text-primary-foreground"
+                                  : "bg-black/50 hover:bg-primary"}`}>
+                              <Shuffle className="h-3 w-3" />
+                            </button>
                             <button type="button" title="Remover este vídeo da sequência"
                               onMouseDown={(e) => e.stopPropagation()}
                               onClick={(e) => {

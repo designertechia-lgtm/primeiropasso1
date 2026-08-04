@@ -91,6 +91,9 @@ describe("Editor de Vídeo — mesa de edição", () => {
     expect(screen.queryByRole("tab", { name: "Cortes" })).not.toBeInTheDocument();
   });
 
+  // 20s (o padrão do vitest é 5): este caso monta a PÁGINA INTEIRA no jsdom —
+  // player, 8 abas, timeline, diálogos — e, quando roda junto com a suíte toda
+  // em paralelo, passa dos 5s numa máquina modesta. Isolado leva ~2s.
   it("com projeto restaurado: player, 8 abas, timeline e render na tela", async () => {
     localStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(projetoSalvo));
     montar();
@@ -110,7 +113,10 @@ describe("Editor de Vídeo — mesa de edição", () => {
     // rodapé de render (a duração final aparece na timeline e no rodapé)
     expect(screen.getByRole("button", { name: /Renderizar/ })).toBeInTheDocument();
     expect(screen.getAllByText(/duração final/).length).toBeGreaterThan(0);
-  });
+
+    // Leva 4: o vídeo principal tem a MESMA tesoura dos outros clipes
+    expect(screen.getByTitle(/Cortar \/ ajustar velocidade deste vídeo/)).toBeInTheDocument();
+  }, 20000);
 
   it("o vídeo emendado aparece como BLOCO na trilha, com ✂ e lixeira", async () => {
     localStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(projetoSalvo));
@@ -119,7 +125,9 @@ describe("Editor de Vídeo — mesa de edição", () => {
       expect(screen.getByTitle(/encerramento — 0:08.0 \(emendado 1º\)/)).toBeInTheDocument());
     expect(screen.getByTitle("Cortar este clipe antes de montar")).toBeInTheDocument();
     expect(screen.getByTitle("Remover este vídeo da sequência")).toBeInTheDocument();
-  });
+    // e o 3º botão da fileira: a transição de entrada (pedido do Carlos)
+    expect(screen.getByTitle(/Transição ao entrar neste clipe/)).toBeInTheDocument();
+  }, 20000);
 
   it("a trilha tem o + no fim, que abre o diálogo de emendar vídeos", async () => {
     const { fireEvent } = await import("@testing-library/react");

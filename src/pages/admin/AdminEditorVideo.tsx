@@ -72,7 +72,9 @@ import { FILTROS, FILTRO_IDS, EFEITOS, TRANSICOES, filtroCss, transicaoLabel,
 import TransicaoPicker, { TransicaoDemo, AvisoPrevia } from "./editor/TransicaoPicker";
 import EditorOnboarding, { onboardingPendente } from "./editor/EditorOnboarding";
 import VideoAddDialog, { type FilaUpload } from "./editor/VideoAddDialog";
-import SeqTrimDialog from "./editor/SeqTrimDialog";
+import SeqTrimDialog, {
+  type ParteCortada, type LegendasClipe,
+} from "./editor/SeqTrimDialog";
 import { usePreviewClock } from "./editor/previewClock";
 import { duracaoFinalDe } from "./editor/tracksModel";
 import {
@@ -1055,7 +1057,7 @@ export default function AdminEditorVideo() {
   // no transition_in da 2ª parte em diante — a 1ª conserva a transição de
   // ENTRADA do clipe original, que é a emenda dele com o que vem antes.
   const concluirTrim = (
-    partes: { src_in: number; src_out: number }[], transicao: string,
+    partes: ParteCortada[], transicao: string, legendas?: LegendasClipe,
   ) => {
     const alvo = trimClip;
     if (!alvo || !partes.length) return;
@@ -1067,16 +1069,67 @@ export default function AdminEditorVideo() {
         ...alvo, id: newId(),
         name: partes.length > 1 ? `${base} (parte ${j + 1})` : base,
         src_in: p.src_in, src_out: p.src_out,
+        speed: p.speed === 1 ? undefined : p.speed,
         transition_in: j === 0 ? alvo.transition_in : transicao,
+        // as legendas são da FONTE inteira; cada parte fica com as suas (o
+        // adaptador já recorta pela janela [src_in, src_out] da parte)
+        cues: legendas?.cues, words: legendas?.words,
       }));
       const arr = [...d.seqClips];
       arr.splice(i, 1, ...novos);
       return { seqClips: arr };
     });
     setTrimClip(null);
-    toast.success(partes.length > 1
-      ? `Clipe cortado em ${partes.length} partes — emendadas com "${transicaoLabel(transicao)}", na mesma posição da sequência.`
-      : "Trecho do clipe ajustado.", { duration: 6000 });
+    const extras = [
+      partes.some((p) => p.speed !== 1) ? "velocidade aplicada" : "",
+      legendas?.cues.length ? `${legendas.cues.length} legendas` : "",
+    ].filter(Boolean).join(" · ");
+    toast.success(
+      (partes.length > 1
+        ? `Clipe cortado em ${partes.length} partes — emendadas com "${transicaoLabel(transicao)}".`
+        : "Trecho do clipe ajustado.") + (extras ? ` (${extras})` : ""),
+      { duration: 6000 });
+  };
+
+  // ── o VÍDEO PRINCIPAL abre o MESMO cortador (Leva 4) ──────────────────────
+  // Ele não é um SeqClip, então entra no cortador como um clipe "virtual" da
+  // fonte principal cobrindo o vídeo inteiro. A partição que volta vira
+  // `doc.segments` — inclusive os trechos REMOVIDOS, que o cortador devolve
+  // como buracos entre as partes (é o mesmo desenho da timeline).
+  const [trimPrincipal, setTrimPrincipal] = useState(false);
+  const clipeDoPrincipal = useMemo((): SeqClip | null => {
+    if (!meta) return null;
+    const keep = segments.filter((s) => s.keep);
+    return {
+      id: "__principal__", edit_id: meta.edit_id, name: sourceLabel || "vídeo principal",
+      natural_dur: meta.duration, source_url: sourceUrl,
+      src_in: keep.length ? keep[0].start : 0,
+      src_out: keep.length ? keep[keep.length - 1].end : meta.duration,
+      speed: keep.find((s) => (s.speed ?? 1) !== 1)?.speed,
+    };
+  }, [meta, segments, sourceLabel, sourceUrl]);
+
+  const concluirTrimPrincipal = (partes: ParteCortada[]) => {
+    if (!meta || !partes.length) return;
+    // partição COMPLETA da fonte: o que está fora das partes mantidas vira
+    // trecho removido (restaurável), exatamente como a timeline sempre fez
+    const novos: Segment[] = [];
+    let id = 1;
+    let cursor = 0;
+    for (const p of partes) {
+      if (p.src_in - cursor > 0.05)
+        novos.push({ id: id++, start: cursor, end: p.src_in, keep: false });
+      novos.push({
+        id: id++, start: p.src_in, end: p.src_out, keep: true,
+        speed: p.speed === 1 ? undefined : p.speed,
+      });
+      cursor = p.src_out;
+    }
+    if (meta.duration - cursor > 0.05)
+      novos.push({ id: id++, start: cursor, end: meta.duration, keep: false });
+    patch({ segments: normalizarSegments(novos, meta.duration) });
+    setTrimPrincipal(false);
+    toast.success("Cortes do vídeo principal atualizados.", { duration: 5000 });
   };
 
   // ── projetos salvos ────────────────────────────────────────────────────────
@@ -1165,7 +1218,10 @@ export default function AdminEditorVideo() {
       ...seqClips.map((c, i) => ({
         id: nid++, start: basesSeq[i],
         end: basesSeq[i] + Math.max(0, c.src_out - c.src_in),
-        keep: true, speed: 1,
+        // a velocidade do emendado entra aqui: `avancarPlayhead` já anda na
+        // velocidade do trecho e o clock ajusta o playbackRate da fonte, então
+        // a prévia toca em câmera lenta/acelerada sem mais nada
+        keep: true, speed: c.speed ?? 1,
       })),
     ];
   }, [segments, seqClips, basesSeq, meta]);
@@ -3573,6 +3629,16 @@ export default function AdminEditorVideo() {
                           carregando os quadros do trecho…
                         </span>
                       )}
+                      {/* TESOURA do vídeo principal (Leva 4): abre o MESMO
+                          cortador dos emendados. Todo vídeo da trilha tem a
+                          dele — o principal deixou de ser um caso à parte. */}
+                      <button type="button"
+                        title="Cortar / ajustar velocidade deste vídeo (mesma tela dos outros clipes)"
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => { e.stopPropagation(); setTrimPrincipal(true); }}
+                        className="absolute left-1 top-1 z-10 rounded bg-black/60 px-1 py-0.5 text-white hover:bg-primary transition">
+                        <Scissors className="h-3 w-3" />
+                      </button>
                     </div>
 
                     {/* blocos dos vídeos EMENDADOS, na ordem da sequência,
@@ -4038,6 +4104,13 @@ export default function AdminEditorVideo() {
         <SeqTrimDialog clip={trimClip}
           onConcluir={concluirTrim}
           onCancelar={() => setTrimClip(null)} />
+      )}
+      {/* MESMO cortador para o vídeo principal (Leva 4): a tesoura de todo
+          vídeo abre a mesma tela — o principal deixou de ser um caso à parte */}
+      {trimPrincipal && clipeDoPrincipal && (
+        <SeqTrimDialog clip={clipeDoPrincipal} principal
+          onConcluir={concluirTrimPrincipal}
+          onCancelar={() => setTrimPrincipal(false)} />
       )}
     </div>
   );

@@ -10,8 +10,9 @@
  */
 import type { SeqClip } from "./types";
 
-/** Um pedaço da FONTE dentro do cortador: mantido (entra no vídeo) ou não. */
-export type TrimSeg = { id: number; start: number; end: number; keep: boolean };
+/** Um pedaço da FONTE dentro do cortador: mantido (entra no vídeo) ou não.
+ *  `speed` espelha o Segment do vídeo principal (1 = normal); ausente = 1. */
+export type TrimSeg = { id: number; start: number; end: number; keep: boolean; speed?: number };
 
 /** Piso de duração de uma parte — o mesmo do adaptador (docFlatToTracks). */
 export const MIN_PARTE = 0.15;
@@ -22,15 +23,16 @@ export const MARGEM_DIVISAO = 0.2;
  *  de [src_in, src_out] entra como removido (dá para restaurar dentro do
  *  cortador — reabrir uma "parte" mostra a fonte inteira com a janela dela). */
 export function segsIniciais(
-  clip: Pick<SeqClip, "src_in" | "src_out" | "natural_dur">,
+  clip: Pick<SeqClip, "src_in" | "src_out" | "natural_dur"> & { speed?: number },
 ): TrimSeg[] {
   const dur = Math.max(clip.natural_dur, clip.src_out);
   const a = Math.max(0, Math.min(clip.src_in, dur));
   const b = Math.max(a, Math.min(clip.src_out, dur));
+  const sp = clip.speed ?? 1;
   const segs: TrimSeg[] = [];
   let id = 1;
   if (a > MIN_PARTE) segs.push({ id: id++, start: 0, end: a, keep: false });
-  segs.push({ id: id++, start: a, end: b, keep: true });
+  segs.push({ id: id++, start: a, end: b, keep: true, speed: sp });
   if (dur - b > MIN_PARTE) segs.push({ id: id++, start: b, end: dur, keep: false });
   return segs;
 }
@@ -45,7 +47,9 @@ export function dividirEm(segs: TrimSeg[], t: number): TrimSeg[] {
   for (const s of segs) {
     if (s.id === alvo.id) {
       out.push({ ...s, end: t });
-      out.push({ id: nid++, start: t, end: s.end, keep: s.keep });
+      // o pedaço novo HERDA keep e velocidade (dividir não muda o conteúdo —
+      // espelha o splitAtPlayhead da timeline principal)
+      out.push({ id: nid++, start: t, end: s.end, keep: s.keep, speed: s.speed });
     } else out.push(s);
   }
   return out;
@@ -53,20 +57,33 @@ export function dividirEm(segs: TrimSeg[], t: number): TrimSeg[] {
 
 /** As janelas que vão virar partes: mantidas, em ordem, sem migalhas. Pedaços
  *  mantidos ENCOSTADOS viram uma janela só (dividir e não remover nada tem de
- *  devolver o clipe inteiro, não duas partes iguais emendadas). */
-export function janelasMantidas(segs: TrimSeg[]): { src_in: number; src_out: number }[] {
+ *  devolver o clipe inteiro, não duas partes iguais emendadas) — MAS só quando
+ *  têm a MESMA velocidade: encostados com velocidades diferentes são duas
+ *  partes de verdade (é assim que se acelera só um pedaço do clipe). */
+export function janelasMantidas(
+  segs: TrimSeg[],
+): { src_in: number; src_out: number; speed: number }[] {
   const keep = segs.filter((s) => s.keep && s.end - s.start >= MIN_PARTE)
     .sort((a, b) => a.start - b.start);
-  const out: { src_in: number; src_out: number }[] = [];
+  const out: { src_in: number; src_out: number; speed: number }[] = [];
   for (const s of keep) {
+    const sp = s.speed ?? 1;
     const ultimo = out[out.length - 1];
-    if (ultimo && s.start - ultimo.src_out < 1e-3) ultimo.src_out = s.end;
-    else out.push({ src_in: s.start, src_out: s.end });
+    if (ultimo && s.start - ultimo.src_out < 1e-3 && Math.abs(ultimo.speed - sp) < 1e-6)
+      ultimo.src_out = s.end;
+    else out.push({ src_in: s.start, src_out: s.end, speed: sp });
   }
   return out;
 }
 
-/** Duração somada das partes mantidas (o "vai ficar com X" do cortador). */
+/** Duração somada das partes mantidas, em tempo ORIGINAL (o "vai ficar com X"
+ *  do cortador). Não divide pela velocidade: é a mesma leitura da timeline. */
 export function duracaoMantida(segs: TrimSeg[]): number {
   return janelasMantidas(segs).reduce((a, j) => a + (j.src_out - j.src_in), 0);
+}
+
+/** Duração das partes mantidas no VÍDEO FINAL (já com a velocidade aplicada) —
+ *  é esta que muda quando o usuário acelera um pedaço. */
+export function duracaoFinalMantida(segs: TrimSeg[]): number {
+  return janelasMantidas(segs).reduce((a, j) => a + (j.src_out - j.src_in) / (j.speed || 1), 0);
 }

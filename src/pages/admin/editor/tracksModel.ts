@@ -174,7 +174,8 @@ export function haTransicao(doc: EditorDoc): boolean {
  *  parts do motor. */
 export function posicionarSeqs(
   totalFinal: number, xf: number, transition: string,
-  seqs: { edit_id: string; src_in: number; src_out: number; transition_in?: string }[],
+  seqs: { edit_id: string; src_in: number; src_out: number;
+          transition_in?: string; speed?: number }[],
 ): { start: number; end: number; transitionIn?: string }[] {
   const out: { start: number; end: number; transitionIn?: string }[] = [];
   let cursor = totalFinal;
@@ -184,12 +185,21 @@ export function posicionarSeqs(
     const escolhida = c.transition_in ?? (mesmaFonte ? "none" : transition);
     const secaAqui = !escolhida || escolhida === "none";
     const start = secaAqui ? cursor : cursor - xf;
-    const end = start + (c.src_out - c.src_in);
+    // a velocidade encurta/estica o clipe no vídeo FINAL (o motor faz
+    // setpts=PTS/speed e devolve durations (b-a)/speed) — aqui é o mesmo `/speed`
+    // que o principal já aplica em timelineFinalDe
+    const end = start + (c.src_out - c.src_in) / (c.speed ?? 1);
     out.push({ start, end, transitionIn: secaAqui ? undefined : escolhida });
     cursor = end;
   });
   return out;
 }
+
+/** Duração FINAL de cada emendado (com a velocidade). É o que entra no clamp do
+ *  xf — um clipe acelerado fica mais curto e pode passar a ser ele o menor. */
+export const dursFinaisSeqs = (
+  seqs: { src_in: number; src_out: number; speed?: number }[],
+): number[] => seqs.map((c) => (c.src_out - c.src_in) / (c.speed ?? 1));
 
 /** Duração final EXATA do vídeo de saída — a MESMA conta do render (cortes,
  *  velocidade, capa, emendas com o desconto de xf onde há crossfade). O contador
@@ -200,7 +210,7 @@ export function duracaoFinalDe(doc: EditorDoc): number {
   const seqs = (doc.seqClips ?? []).filter((c) => c.src_out - c.src_in >= 0.15);
   const { xf, totalFinal } = timelineFinalDe(
     keep, doc.transition !== "none", introDur,
-    seqs.map((c) => c.src_out - c.src_in), haTransicao(doc));
+    dursFinaisSeqs(seqs), haTransicao(doc));
   const pos = posicionarSeqs(totalFinal, xf, doc.transition, seqs);
   return pos.length ? pos[pos.length - 1].end : totalFinal;
 }
@@ -227,7 +237,7 @@ export function docFlatToTracks(doc: EditorDoc, sourceId: string): Track[] {
   const seqs = (doc.seqClips ?? []).filter((c) => c.src_out - c.src_in >= 0.15);
   const { segs, xf, totalFinal } = timelineFinalDe(
     keep, doc.transition !== "none", introDur,
-    seqs.map((c) => c.src_out - c.src_in), haTransicao(doc));
+    dursFinaisSeqs(seqs), haTransicao(doc));
 
   // faixa base de vídeo (z=0): cada trecho keep vira um VideoClip da fonte única
   const videoBase: VideoClip[] = segs.map(({ seg, finalStart, speed }, i) => ({
@@ -246,11 +256,12 @@ export function docFlatToTracks(doc: EditorDoc, sourceId: string): Track[] {
   // ÚLTIMO keep porque não havia nada depois — agora há); entre partes da mesma
   // fonte a emenda é seca (ver posicionarSeqs). Filtro/efeito/volume globais
   // valem para eles também (a edição é uma só).
-  posicionarSeqs(totalFinal, xf, doc.transition, seqs).forEach((p, i) => {
+  const posSeqs = posicionarSeqs(totalFinal, xf, doc.transition, seqs);
+  posSeqs.forEach((p, i) => {
     const c = seqs[i];
     videoBase.push({
       id: uid("q", i), kind: "video", source_id: c.edit_id,
-      src_in: c.src_in, src_out: c.src_out, speed: 1,
+      src_in: c.src_in, src_out: c.src_out, speed: c.speed ?? 1,
       timeline_start: p.start, timeline_end: p.end,
       volume: doc.originalVolume / 100,
       transform: { ...TRANSFORM_NEUTRO },
@@ -310,6 +321,39 @@ export function docFlatToTracks(doc: EditorDoc, sourceId: string): Track[] {
           karaoke: doc.cueMode === "karaoke",
         });
     }
+    // legendas dos vídeos EMENDADOS: vivem NO clipe, em tempo da FONTE dele
+    // (doc.cues é do principal e vive no tempo do principal). Aqui elas viram
+    // clipes da MESMA faixa "subs", com o MESMO estilo global — para o motor
+    // são legendas iguais às outras, só que posicionadas na região do emendado.
+    // A conta é a mesma de `push`, com o clipe no papel de trecho keep:
+    // instante da fonte → (t - src_in)/speed + timeline_start.
+    posSeqs.forEach((p, i) => {
+      const c = seqs[i];
+      const sp = c.speed ?? 1;
+      for (const cue of (c.cues ?? []) as Cue[]) {
+        const s = Math.max(cue.start, c.src_in);
+        const e = Math.min(cue.end, c.src_out);
+        if (e - s < 0.15) continue;          // mesmo piso do remap_cues
+        const dentro = doc.cueMode === "karaoke"
+          ? (c.words ?? []).filter((w) => w.end > s && w.start < e)
+          : [];
+        subClips.push({
+          id: uid("qc", subClips.length), kind: "text",
+          text: cue.text, font_id: doc.subFont, size: doc.subSize,
+          color: doc.subColor, style: doc.subStyle,
+          position: doc.subPos as TitlePos, karaoke: doc.cueMode === "karaoke",
+          timeline_start: (s - c.src_in) / sp + p.start,
+          timeline_end: (e - c.src_in) / sp + p.start,
+          words: dentro.length
+            ? dentro.map((w) => ({
+                start: (Math.max(w.start, s) - c.src_in) / sp + p.start,
+                end: (Math.min(w.end, e) - c.src_in) / sp + p.start,
+                text: w.text,
+              }))
+            : undefined,
+        });
+      }
+    });
   }
 
   // stickers → clipes de vídeo PiP. ESPELHO do remap_spans (estica=True): o

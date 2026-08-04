@@ -42,7 +42,8 @@ describe("SeqTrimDialog", () => {
     expect(screen.getByText(/Cortar "take 2"/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Concluir/ }));
     // 1 parte só = não há emenda entre partes: a transição vai como "none"
-    expect(onConcluir).toHaveBeenCalledWith([{ src_in: 0, src_out: 10 }], "none");
+    expect(onConcluir).toHaveBeenCalledWith(
+      [{ src_in: 0, src_out: 10, speed: 1 }], "none", undefined);
   });
 
   it("dividir + tirar o miolo devolve DUAS partes", () => {
@@ -63,7 +64,8 @@ describe("SeqTrimDialog", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Concluir/ }));
     expect(onConcluir).toHaveBeenCalledWith(
-      [{ src_in: 0, src_out: 3 }, { src_in: 6, src_out: 10 }], "none");
+      [{ src_in: 0, src_out: 3, speed: 1 }, { src_in: 6, src_out: 10, speed: 1 }],
+      "none", undefined);
   });
 
   it("com 2+ partes dá para escolher a transição ENTRE ELAS", () => {
@@ -85,7 +87,8 @@ describe("SeqTrimDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Dissolver" }));
     fireEvent.click(screen.getByRole("button", { name: /Concluir/ }));
     expect(onConcluir).toHaveBeenCalledWith(
-      [{ src_in: 0, src_out: 3 }, { src_in: 6, src_out: 10 }], "dissolve");
+      [{ src_in: 0, src_out: 3, speed: 1 }, { src_in: 6, src_out: 10, speed: 1 }],
+      "dissolve", undefined);
   });
 
   it("o aviso diz que a prévia NÃO toca a transição", () => {
@@ -116,6 +119,37 @@ describe("SeqTrimDialog", () => {
     render(<SeqTrimDialog clip={{ ...CLIPE, src_in: 6, src_out: 10 }}
       onConcluir={onConcluir} onCancelar={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /Concluir/ }));
-    expect(onConcluir).toHaveBeenCalledWith([{ src_in: 6, src_out: 10 }], "none");
+    expect(onConcluir).toHaveBeenCalledWith(
+      [{ src_in: 6, src_out: 10, speed: 1 }], "none", undefined);
+  });
+
+  it("VELOCIDADE do trecho vai junto na parte (Leva 4)", () => {
+    const onConcluir = vi.fn();
+    render(<SeqTrimDialog clip={CLIPE} onConcluir={onConcluir} onCancelar={vi.fn()} />);
+    moverCursor(5);
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: /Concluir/ }));
+    expect(onConcluir).toHaveBeenCalledWith(
+      [{ src_in: 0, src_out: 10, speed: 2 }], "none", undefined);
+  });
+
+  it("modo PRINCIPAL esconde a emenda de entrada e a legenda do clipe", () => {
+    // o principal é o primeiro (não tem emenda de entrada) e as legendas dele
+    // vivem na aba Legendas — o resto da tela é idêntico
+    render(<SeqTrimDialog clip={CLIPE} principal
+      onConcluir={vi.fn()} onCancelar={vi.fn()} />);
+    expect(screen.queryByText(/Legenda deste clipe/)).not.toBeInTheDocument();
+    moverCursor(3);
+    fireEvent.click(screen.getByRole("button", { name: /Dividir no cursor/ }));
+    moverCursor(6);
+    fireEvent.click(screen.getByRole("button", { name: /Dividir no cursor/ }));
+    moverCursor(4.5);
+    fireEvent.click(screen.getByRole("button", { name: /Tirar do clipe/ }));
+    expect(screen.queryByText(/Entre as partes/)).not.toBeInTheDocument();
+    // mas a velocidade continua lá: é o privilégio que o principal já tinha.
+    // (o cursor precisa estar num trecho que FICA — acelerar o que sai não
+    // faria sentido, então o seletor some no trecho removido)
+    moverCursor(1);
+    expect(screen.getByRole("combobox")).toBeInTheDocument();
   });
 });

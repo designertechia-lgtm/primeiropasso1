@@ -106,6 +106,20 @@ export type SeqClip = {
    *  salvo antes desta feature tem, e o que mantém o comportamento de sempre.
    *  "none" é uma escolha EXPLÍCITA de corte seco e vence a global. */
   transition_in?: string;
+  /** Velocidade deste clipe (1 = normal, 0.5 = lenta, 2 = acelerado), como o
+   *  `speed` de um Segment do principal. Ausente = 1. O motor sempre soube
+   *  aplicar velocidade por clipe (video_editor.py); era o painel que mandava
+   *  1 fixo. A TIMELINE segue medindo em tempo ORIGINAL (igual ao principal,
+   *  onde a velocidade também não encolhe o trecho na tela) — quem divide pela
+   *  velocidade é o adaptador, ao montar a timeline FINAL. */
+  speed?: number;
+  /** Legendas DESTE clipe, em tempo da FONTE dele (não da timeline).
+   *  Ficam aqui, e não em `doc.cues`, porque doc.cues é do vídeo principal e
+   *  vive no tempo dele: misturar os dois obrigaria a remapear tudo a cada
+   *  corte. O adaptador desloca estas para a posição final do clipe. */
+  cues?: Cue[];
+  /** Palavras com tempo (karaokê) do clipe, também em tempo da FONTE. */
+  words?: Cue[];
 };
 
 export const ANIM_IN_OPTS: { id: AnimIn; label: string }[] = [

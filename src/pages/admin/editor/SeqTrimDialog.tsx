@@ -15,23 +15,37 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Scissors, Play, Pause, Trash2, RotateCcw, Check, Shuffle, ChevronDown } from "lucide-react";
-import { API, fmt, parseTime, type SeqClip } from "./types";
+import {
+  Scissors, Play, Pause, Trash2, RotateCcw, Check, Shuffle, ChevronDown,
+  Gauge, Captions, Wand2, Loader2,
+} from "lucide-react";
+import { toast } from "sonner";
+import { API, fmt, parseTime, groupWords, type SeqClip, type Cue } from "./types";
 import { videoApiAuthHeaders } from "@/lib/videoApi";
 import {
-  segsIniciais, dividirEm, janelasMantidas, duracaoMantida, type TrimSeg,
+  segsIniciais, dividirEm, janelasMantidas, duracaoMantida, duracaoFinalMantida,
+  type TrimSeg,
 } from "./seqTrim";
 import TransicaoPicker, { TransicaoDemo, AvisoPrevia } from "./TransicaoPicker";
 import { TRANSICOES, transicaoLabel } from "./filtros";
 
+export type ParteCortada = { src_in: number; src_out: number; speed: number };
+
 type Props = {
   clip: SeqClip;
   /** `transicao` = como as PARTES emendam entre si ("none" = corte seco). */
-  onConcluir: (partes: { src_in: number; src_out: number }[], transicao: string) => void;
+  onConcluir: (partes: ParteCortada[], transicao: string, legendas?: LegendasClipe) => void;
   onCancelar: () => void;
+  /** Modo "vídeo principal": ele não tem emenda de ENTRADA (é o primeiro), e as
+   *  legendas dele já vivem em doc.cues — o cortador esconde os dois controles.
+   *  O resto (cortar, dividir, velocidade) é idêntico: é o que faz TODO vídeo
+   *  ser editado pela mesma tela. */
+  principal?: boolean;
 };
 
-export default function SeqTrimDialog({ clip, onConcluir, onCancelar }: Props) {
+export type LegendasClipe = { cues: Cue[]; words: Cue[] };
+
+export default function SeqTrimDialog({ clip, onConcluir, onCancelar, principal }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const fitaRef = useRef<HTMLDivElement>(null);
   const arrastandoRef = useRef(false);
@@ -47,11 +61,18 @@ export default function SeqTrimDialog({ clip, onConcluir, onCancelar }: Props) {
   // sempre — partes só existem quando o usuário tirou um pedaço do MEIO.
   const [transicao, setTransicao] = useState(clip.transition_in ?? "none");
   const [abriuTransicao, setAbriuTransicao] = useState(false);
+  // legendas DESTE clipe (tempo da fonte). Só no modo emendado: as do principal
+  // já vivem em doc.cues e têm a aba Legendas inteira para elas.
+  const [legendas, setLegendas] = useState<LegendasClipe | null>(
+    clip.cues?.length ? { cues: clip.cues, words: clip.words ?? [] } : null);
+  const [transcrevendo, setTranscrevendo] = useState(false);
 
   const dur = Math.max(clip.natural_dur, clip.src_out, 0.1);
   const partes = useMemo(() => janelasMantidas(segs), [segs]);
   const totalMantido = useMemo(() => duracaoMantida(segs), [segs]);
+  const totalFinal = useMemo(() => duracaoFinalMantida(segs), [segs]);
   const segAtual = segs.find((s) => playhead >= s.start && playhead < s.end);
+  const mudouVelocidade = Math.abs(totalFinal - totalMantido) > 0.05;
 
   // fita de quadros do clipe (o worker cacheia por edit_id+count)
   useEffect(() => {
@@ -105,6 +126,48 @@ export default function SeqTrimDialog({ clip, onConcluir, onCancelar }: Props) {
     if (novo === segs) return;
     setSegs(novo);
   };
+
+  /** Transcreve a FONTE deste clipe (mesmo endpoint do vídeo principal, com o
+   *  edit_id dele). Os tempos que voltam são da fonte — é assim que ficam
+   *  guardados; quem desloca para a posição final é o adaptador.
+   *  O job é curto e a tela é modal: fica no componente mesmo, sem permanência
+   *  (fechar o cortador cancela, e refazer não custa dinheiro de API). */
+  const transcrever = async () => {
+    setTranscrevendo(true);
+    try {
+      const res = await fetch(`${API}/editor/transcrever`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await videoApiAuthHeaders()) },
+        body: JSON.stringify({ edit_id: clip.edit_id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Falha ao transcrever");
+      const timer = setInterval(async () => {
+        try {
+          const st = await (await fetch(`${API}/status/${data.job_id}`)).json();
+          if (st.status === "done") {
+            clearInterval(timer);
+            setTranscrevendo(false);
+            const words: Cue[] = st.words || [];
+            // reagrupa localmente como o principal faz: os cues do worker não
+            // carregam `words`, e sem elas o karaokê não teria tempo por palavra
+            setLegendas({
+              cues: words.length ? groupWords(words, "frases") : (st.cues || []),
+              words,
+            });
+            toast.success(`${(st.cues || []).length} legendas geradas para este clipe.`);
+          } else if (st.status === "error") {
+            clearInterval(timer);
+            setTranscrevendo(false);
+            toast.error(st.message || "A transcrição falhou", { duration: 8000 });
+          }
+        } catch { /* transitório */ }
+      }, 3000);
+    } catch (e: any) {
+      setTranscrevendo(false);
+      toast.error(e.message);
+    }
+  };
   const alternarSeg = (id: number) =>
     setSegs((ss) => ss.map((s) => (s.id === id ? { ...s, keep: !s.keep } : s)));
 
@@ -128,12 +191,17 @@ export default function SeqTrimDialog({ clip, onConcluir, onCancelar }: Props) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <Scissors className="h-4 w-4 text-primary" />
-            Cortar "{clip.name}" antes de montar
+            Cortar "{clip.name}"{principal ? "" : " antes de montar"}
           </DialogTitle>
           <DialogDescription className="text-[11px]">
-            Marque o que fica e o que sai deste clipe. Ao concluir, ele volta para a
-            posição dele na sequência — se sobrar mais de um trecho, vira "parte 1",
-            "parte 2"… emendadas em corte seco (sem transição entre elas).
+            {principal
+              ? <>Marque o que fica e o que sai, e ajuste a velocidade de cada trecho.
+                  Ao concluir, os cortes voltam para a trilha — legendas, textos e
+                  stickers acompanham, como sempre.</>
+              : <>Marque o que fica e o que sai deste clipe, e ajuste a velocidade de
+                  cada trecho. Ao concluir, ele volta para a posição dele na sequência —
+                  se sobrar mais de um trecho, vira "parte 1", "parte 2"… com a emenda
+                  que você escolher abaixo.</>}
           </DialogDescription>
         </DialogHeader>
 
@@ -222,12 +290,71 @@ export default function SeqTrimDialog({ clip, onConcluir, onCancelar }: Props) {
               onClick={() => alternarSeg(segAtual.id)}>
               {segAtual.keep ? "Tirar do clipe" : "Trazer de volta"}
             </Button>
+            {/* VELOCIDADE do trecho — o mesmo controle que o vídeo principal
+                sempre teve. Só faz sentido em trecho que fica. */}
+            {segAtual.keep && (
+              <label className="flex items-center gap-1 w-full" title="Câmera lenta ou acelerado neste trecho">
+                <Gauge className="h-3.5 w-3.5 text-primary shrink-0" />
+                Velocidade
+                <select className="h-7 rounded border bg-background px-1 text-xs"
+                  value={String(segAtual.speed ?? 1)}
+                  onChange={(e) => {
+                    const sp = Number(e.target.value);
+                    setSegs((ss) => ss.map((s) => (s.id === segAtual.id ? { ...s, speed: sp } : s)));
+                  }}>
+                  <option value="0.5">0,5× (bem lenta)</option>
+                  <option value="0.75">0,75× (lenta)</option>
+                  <option value="1">1× (normal)</option>
+                  <option value="1.5">1,5× (rápido)</option>
+                  <option value="2">2× (bem rápido)</option>
+                </select>
+                {(segAtual.speed ?? 1) !== 1 && (
+                  <span className="text-[10px] text-muted-foreground">
+                    este trecho vai durar {fmt((segAtual.end - segAtual.start) / (segAtual.speed ?? 1))} no vídeo
+                  </span>
+                )}
+              </label>
+            )}
+          </div>
+        )}
+
+        {/* LEGENDA deste clipe (só emendados: as do principal vivem na aba
+            Legendas, com estilo, karaokê e edição de texto). Transcreve a fonte
+            DESTE clipe — o mesmo endpoint do principal, com o edit_id dele. */}
+        {!principal && (
+          <div className="flex items-center gap-2 flex-wrap rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+            <Captions className="h-3.5 w-3.5 text-primary shrink-0" />
+            <span className="font-medium">Legenda deste clipe:</span>
+            {legendas?.cues.length ? (
+              <>
+                <span className="text-muted-foreground">
+                  {legendas.cues.length} legendas prontas
+                </span>
+                <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px] ml-auto"
+                  onClick={() => setLegendas(null)}>
+                  Remover
+                </Button>
+              </>
+            ) : (
+              <>
+                <span className="text-muted-foreground">
+                  {transcrevendo ? "transcrevendo a fala…" : "ainda não tem"}
+                </span>
+                <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px] ml-auto"
+                  disabled={transcrevendo} onClick={transcrever}>
+                  {transcrevendo
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <Wand2 className="h-3.5 w-3.5" />}
+                  Gerar legenda
+                </Button>
+              </>
+            )}
           </div>
         )}
 
         {/* Como as PARTES emendam entre si. Só aparece quando existem 2+ partes
             — com uma parte só não há emenda nenhuma para configurar. */}
-        {partes.length > 1 && (
+        {partes.length > 1 && !principal && (
           <div className="rounded-lg border bg-muted/30 px-3 py-2">
             <button type="button"
               onClick={() => setAbriuTransicao((v) => !v)}
@@ -256,12 +383,19 @@ export default function SeqTrimDialog({ clip, onConcluir, onCancelar }: Props) {
             {partes.length === 0
               ? "Nada sobrou — mantenha ao menos um trecho."
               : <>Vai ficar com <b className="tabular-nums">{fmt(totalMantido)}</b>
-                 {partes.length > 1 ? ` em ${partes.length} partes` : ""}</>}
+                 {partes.length > 1 ? ` em ${partes.length} partes` : ""}
+                 {mudouVelocidade && (
+                   <> — <b className="tabular-nums">{fmt(totalFinal)}</b> no vídeo (velocidade)</>
+                 )}</>}
           </span>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={onCancelar}>Cancelar</Button>
             <Button size="sm" className="gap-1" disabled={partes.length === 0}
-              onClick={() => onConcluir(partes, partes.length > 1 ? transicao : "none")}>
+              onClick={() => onConcluir(
+                partes,
+                partes.length > 1 ? transicao : "none",
+                legendas ?? undefined,
+              )}>
               <Check className="h-3.5 w-3.5" /> Concluir
             </Button>
           </div>

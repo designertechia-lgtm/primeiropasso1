@@ -270,6 +270,28 @@ Regras:
 - Termine com uma chamada para ação suave (ex.: convidar a cuidar da saúde mental ou buscar apoio).
 - NÃO use emojis, hashtags, marcações de cena, nome de locutor nem títulos.
 Responda APENAS com o texto corrido do roteiro que será narrado, sem aspas e sem explicações.`,
+
+  // Editor de Vídeo → aba Legendas: o usuário COLA um texto pronto e a IA só o
+  // prepara para virar legenda. NÃO é para reescrever o conteúdo: quem escreveu
+  // foi o profissional, e trocar as palavras dele seria trair o que ele quis
+  // dizer. A tarefa é de FORMA — quebrar em falas curtas e pontuar.
+  legenda_formatar: (ctx) =>
+    `Você prepara TEXTO PARA LEGENDA de vídeo vertical (Reels/TikTok/Shorts), em português do Brasil.
+
+Texto do usuário:
+"""
+${ctx.topic || ""}
+"""
+
+Sua tarefa é de FORMA, não de conteúdo. Regras:
+- PRESERVE as palavras do usuário. Corrija apenas pontuação, acentuação e maiúsculas/minúsculas óbvias.
+- NÃO reescreva, não resuma, não acrescente ideias, não troque o vocabulário dele.
+- Quebre o texto em FALAS CURTAS de legenda: 3 a 7 palavras cada, quebrando em pontos naturais da fala (fim de frase, vírgula, conjunção).
+- Uma fala nunca corta uma expressão no meio de um jeito estranho (ex.: não separe "não" do verbo, nem artigo do substantivo).
+- Sem emojis, sem hashtags, sem aspas, sem numeração, sem marcações.
+
+Responda APENAS com um array JSON de strings, uma por fala, na ordem.
+Exemplo do formato: ["primeira fala curta", "segunda fala curta"]`,
 };
 
 // Geração de texto via Anthropic (Claude) — mesmo padrão das demais edge functions do projeto.
@@ -351,7 +373,7 @@ Deno.serve(async (req) => {
     }
 
     // Se for um dos campos que espera JSON, tenta parsear
-    const jsonFields = ["pain_items", "solution_items", "pain_icons", "solution_icons", "article_with_carousel", "faq_items", "offer_steps", "audience_lists"];
+    const jsonFields = ["pain_items", "solution_items", "pain_icons", "solution_icons", "article_with_carousel", "faq_items", "offer_steps", "audience_lists", "legenda_formatar"];
     if (jsonFields.includes(field)) {
       try {
         console.log(`Tentando parsear JSON para o campo: ${field}`);

@@ -62,6 +62,11 @@ export type EditorDoc = {
   introBg: string;
   introEffect: "zoom" | "slide" | "fade";
   titulo: string;
+  /** Texto escrito pelo usuário na aba Legendas. Vive no documento (e não em
+   *  estado local) porque é matéria-prima de DUAS coisas: as legendas formatadas
+   *  e a narração da aba Áudio — perder isso ao trocar de aba seria perder
+   *  trabalho de escrita. */
+  roteiro: string;
   // Multi-track (Fase A): ainda NÃO usados pelo editor — o modelo flat acima
   // continua sendo a fonte de verdade. tracks é derivado por docFlatToTracks
   // quando preciso; canvasW/H é a resolução do PROJETO (default = da 1ª fonte).
@@ -108,6 +113,7 @@ export const emptyDoc = (): EditorDoc => ({
   introBg: "#FFFFFF",
   introEffect: "zoom",
   titulo: "",
+  roteiro: "",
   tracks: [],
   canvasW: 0,
   canvasH: 0,

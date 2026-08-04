@@ -57,7 +57,7 @@ import {
   ANIM_IN_OPTS, ANIM_OUT_OPTS, ANIM_LOOP_OPTS,
   type Segment, type EditMeta, type SubSize, type SubStyle, type SubPos,
   type TitlePos, type Sticker, type StickerMovement, type StickerJob,
-  type AnimIn, type AnimOut, type AnimLoop, type SeqClip,
+  type AnimIn, type AnimOut, type AnimLoop, type SeqClip, type Cue,
 } from "./editor/types";
 import {
   editorReducer, initialEditorState, type EditorDoc,
@@ -77,6 +77,7 @@ import SeqTrimDialog, {
 } from "./editor/SeqTrimDialog";
 import { usePreviewClock } from "./editor/previewClock";
 import { duracaoFinalDe } from "./editor/tracksModel";
+import { distribuirCues, falasDaResposta } from "./editor/roteiro";
 import {
   listEditorProjects, fetchEditorProject, insertEditorProject,
   updateEditorProject, deleteEditorProject,
@@ -103,7 +104,7 @@ export default function AdminEditorVideo() {
     originalVolume, fadeOut, fadeIn, denoise, subsOn, cues, words, cueMode, subFont, subSize,
     subColor, subStyle, subPos, titles, stickers, audioClips, pipClips, seqClips, transition,
     filtro, efeito, ducking, punchIn, introOn, introSource, introUploadId,
-    introUploadName, introDur, introBg, introEffect, titulo,
+    introUploadName, introDur, introBg, introEffect, titulo, roteiro,
   } = doc;
   const patch = (changes: Partial<EditorDoc>) => dispatch({ type: "patch", changes });
   const apply = (fn: (d: EditorDoc) => Partial<EditorDoc>) => dispatch({ type: "apply", fn });
@@ -189,6 +190,8 @@ export default function AdminEditorVideo() {
   const [previewingTrack, setPreviewingTrack] = useState("");
   const [fontes, setFontes] = useState<{ id: string; label: string }[]>([]);
   const [transcribing, setTranscribing] = useState(false);
+  const [formatandoTexto, setFormatandoTexto] = useState(false);
+  const [narrando, setNarrando] = useState(false);
   const [loadedFonts, setLoadedFonts] = useState<Set<string>>(new Set());
 
   const [newTitle, setNewTitle] = useState("");
@@ -2199,6 +2202,103 @@ export default function AdminEditorVideo() {
     }
   };
 
+  // ── roteiro escrito → legendas formatadas pela IA ─────────────────────────
+  // A IA devolve as FALAS já quebradas; o tempo de cada uma sai daqui, não
+  // dela: distribuímos ao longo do vídeo proporcionalmente ao tamanho da fala
+  // (fala maior fica mais tempo na tela). Se depois o usuário gerar a narração,
+  // `narrarComMinhaVoz` REDISTRIBUI na duração real do áudio — aí fica exato.
+  const formatarTextoIA = async () => {
+    const texto = roteiro.trim();
+    if (!texto || !meta || !professional) return;
+    setFormatandoTexto(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-text", {
+        body: {
+          field: "legenda_formatar",
+          professional_id: professional.id,
+          context: {
+            name: (professional as any).full_name || "Profissional",
+            specialty: professional.approaches?.[0] || "",
+            topic: texto,
+          },
+        },
+      });
+      if (error) throw error;
+      // "Campo inválido" = a edge no ar ainda não conhece `legenda_formatar`
+      // (deploy dela pendente). Falar isso é melhor que um "erro" genérico.
+      if (data?.error) {
+        throw new Error(
+          String(data.error).includes("inválido")
+            ? "A formatação com IA ainda não está publicada no servidor. Enquanto isso, dá para escrever as legendas à mão na lista abaixo."
+            : String(data.error));
+      }
+      const falas = falasDaResposta(data?.result);
+      const novos = distribuirCues(falas, 0, duracaoFinalDe(doc) || meta.duration);
+      if (!novos.length) throw new Error("A IA não devolveu falas aproveitáveis.");
+      apply(() => ({ cues: novos, words: [], cueMode: "frases" as const, subsOn: true }));
+      toast.success(
+        `${novos.length} falas prontas e distribuídas no vídeo. Ajuste os tempos arrastando na faixa verde da timeline.`,
+        { duration: 8000 });
+    } catch (e: any) {
+      toast.error(e.message || "Não consegui formatar o texto agora.");
+    } finally {
+      setFormatandoTexto(false);
+    }
+  };
+
+  // ── roteiro escrito → narração na voz clonada (ElevenLabs) ────────────────
+  // Custa dinheiro real por caractere: o worker exige JWT do dono e debita
+  // antes de gerar (estornando se falhar). Aqui só avisamos o tamanho.
+  const narrarComMinhaVoz = async () => {
+    const texto = roteiro.trim();
+    if (!texto || !meta || !professional) return;
+    const voiceId = (professional as any).elevenlabs_voice_id as string | undefined;
+    if (!voiceId) {
+      toast.error(
+        "Você ainda não tem uma voz clonada. Grave sua voz em Configurações → Minha Voz e volte aqui.",
+        { duration: 9000 });
+      return;
+    }
+    setNarrando(true);
+    try {
+      const res = await fetch(`${API}/editor/narrar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await videoApiAuthHeaders()) },
+        body: JSON.stringify({
+          professional_slug: professional.slug, text: texto, voice_id: voiceId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Falha ao gerar a narração");
+      const nat = Number(data.duration) || 5;
+      const start = Math.min(playhead, Math.max(0, meta.duration - 0.5));
+      apply((d) => {
+        const clip = {
+          id: newId(), upload_id: data.music_upload_id,
+          name: "Narração (minha voz)", natural_dur: nat, start,
+          end: Math.min(meta.duration, start + nat), volume: 1,
+        };
+        // com a duração REAL do áudio, as legendas deixam de ser estimativa:
+        // redistribui as falas exatamente na janela em que a voz fala
+        const recalcular = d.cues.length > 0;
+        return {
+          audioClips: [...d.audioClips, clip],
+          ...(recalcular
+            ? { cues: distribuirCues(d.cues.map((c) => c.text), start, start + nat), words: [] }
+            : {}),
+        };
+      });
+      toast.success(
+        `Narração pronta (${fmt(nat)}) na faixa azul, a partir do cursor.` +
+        (cues.length ? " As legendas foram realinhadas com a voz." : ""),
+        { duration: 9000 });
+    } catch (e: any) {
+      toast.error(e.message || "Não consegui gerar a narração agora.", { duration: 9000 });
+    } finally {
+      setNarrando(false);
+    }
+  };
+
   const sampleFontFamily = loadedFonts.has(subFont) ? `edfont-${subFont}` : "inherit";
   const sampleStyle: React.CSSProperties = {
     fontFamily: sampleFontFamily,
@@ -2870,6 +2970,37 @@ export default function AdminEditorVideo() {
             )}
           </TabsContent>
           <TabsContent value="legendas" className="mt-0 space-y-3">
+            {/* Roteiro escrito: o caminho para vídeo SEM fala (b-roll, tela
+                gravada) ou para quem prefere escrever a legenda. A IA aqui só
+                FORMATA — quebra em falas curtas e pontua, preservando as
+                palavras do usuário (trocar o texto dele seria trair o que
+                quis dizer). O mesmo texto vira a narração na aba Áudio. */}
+            <div className="rounded-lg border bg-muted/30 p-2.5 space-y-2">
+              <Label className="text-xs font-semibold flex items-center gap-1.5">
+                <Type className="h-3.5 w-3.5 text-primary" /> Escrever a legenda (sem depender da fala)
+              </Label>
+              <textarea
+                value={roteiro}
+                onChange={(e) => patch({ roteiro: e.target.value })}
+                placeholder="Cole ou escreva aqui o texto que deve aparecer como legenda…"
+                rows={4}
+                className="w-full rounded border bg-background px-2 py-1.5 text-xs leading-relaxed resize-y" />
+              <div className="flex items-center gap-2 flex-wrap text-xs">
+                <Button size="sm" variant="outline" className="h-7 gap-1"
+                  disabled={formatandoTexto || !roteiro.trim() || !meta}
+                  onClick={formatarTextoIA}
+                  title="A IA quebra o texto em falas curtas de legenda e corrige a pontuação — sem trocar suas palavras">
+                  {formatandoTexto
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <Sparkles className="h-3.5 w-3.5" />}
+                  Formatar com IA e virar legenda
+                </Button>
+                <span className="text-[10px] text-muted-foreground">
+                  {roteiro.trim() ? `${roteiro.trim().length} caracteres` : "as falas são distribuídas ao longo do vídeo"}
+                </span>
+              </div>
+            </div>
+
             <div className="flex items-center gap-2 flex-wrap">
               <Label className="font-semibold flex items-center gap-2"><Captions className="h-4 w-4" /> Legendas</Label>
               <Button size="sm" variant="outline" className="h-7 gap-1" disabled={transcribing} onClick={gerarLegendas}>
@@ -3256,6 +3387,46 @@ export default function AdminEditorVideo() {
                 Áudio que toca num <b>ponto exato</b> do vídeo (efeito, vinheta, narração) — além da
                 trilha global. Entra no cursor; mova/estique na <b>faixa azul</b> da timeline.
               </p>
+              {/* Narração pela VOZ CLONADA a partir do texto da aba Legendas.
+                  Fica aqui (e não em Legendas) porque o resultado é ÁUDIO — vira
+                  um clipe na faixa azul, como a gravação pelo microfone. */}
+              <div className="rounded-lg border border-primary/40 bg-primary/5 p-2.5 space-y-1.5">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-primary" /> Narrar com a minha voz (ElevenLabs)
+                </Label>
+                {roteiro.trim() ? (
+                  <>
+                    <p className="text-[11px] text-muted-foreground line-clamp-2">
+                      Texto da aba <b>Legendas</b>: "{roteiro.trim().slice(0, 120)}
+                      {roteiro.trim().length > 120 ? "…" : ""}"
+                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button size="sm" variant="outline" className="h-8 gap-1.5"
+                        disabled={narrando || uploadingClip || gravando}
+                        onClick={narrarComMinhaVoz}>
+                        {narrando
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <Mic className="h-3.5 w-3.5" />}
+                        Gerar narração no cursor
+                      </Button>
+                      <span className="text-[10px] text-muted-foreground">
+                        {roteiro.trim().length} caracteres · cobra créditos por caractere
+                      </span>
+                    </div>
+                    {narrando && (
+                      <p className="text-[10px] text-muted-foreground">
+                        Gerando a voz… pode levar alguns segundos. Não feche a página.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    Escreva o texto na aba <b>Legendas</b> primeiro — a narração é gerada a
+                    partir dele, na sua voz clonada.
+                  </p>
+                )}
+              </div>
+
               {/* voice over: grava aqui e vira um clipe na faixa azul */}
               <Button size="sm" variant={gravando ? "destructive" : "outline"}
                 className="h-8 gap-1.5 w-fit" disabled={uploadingClip}

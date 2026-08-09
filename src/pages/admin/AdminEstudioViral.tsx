@@ -48,13 +48,18 @@ const PLATAFORMA_FORMATO_PADRAO: Record<"geral" | "instagram" | "tiktok" | "link
   linkedin:  "square",
 };
 
-// Custo estimado em R$ por tier × duração — Kling VIA FAL.AI (06/07):
-//   Premium (Kling 1.6 standard): ~$0.028/seg × 5.5 (BRL/USD)
-//   Pro     (Kling 3.0 pro):      ~$0.20/seg  × 5.5 (BRL/USD) — o topo atual
-// Fonte do nº de slides × duração de clipe: roteiro_agent.py duracao_override.
-const CUSTO_KLING_BRL: Record<"premium" | "pro", Record<"10s" | "15s" | "30s" | "45s" | "60s", number>> = {
-  premium: { "10s": 1.5, "15s": 2.3, "30s": 4.6, "45s": 6.9, "60s": 9.2 },
-  pro:     { "10s": 11.0, "15s": 16.5, "30s": 33.0, "45s": 49.5, "60s": 66.0 },
+// Preço de VENDA em créditos — espelho do service_pricing (decisão 08/08):
+//   premium: base R$4,60 × (1+100%) = 9,2 por ~30s de cenas
+//   pro:     base R$33,00 × (1+50%) = 49,5 por ~30s de cenas
+// O débito real da RPC consume_credits é CEIL(venda30 × segundos/30) por CHAMADA
+// (units = segundos/30, cenas agrupadas num débito só). O vídeo base do caminho
+// rápido pago debita units=1 (valor cheio de 30s), independente da duração.
+const VENDA_KLING_CREDITOS30: Record<"premium" | "pro", number> = { premium: 9.2, pro: 49.5 };
+const creditosCenas = (tier: "premium" | "pro", totalS: number) =>
+  Math.ceil(VENDA_KLING_CREDITOS30[tier] * (totalS / 30));
+const CREDITOS_VIDEO_BASE: Record<"premium" | "pro", number> = {
+  premium: Math.ceil(VENDA_KLING_CREDITOS30.premium),
+  pro: Math.ceil(VENDA_KLING_CREDITOS30.pro),
 };
 
 function loadSaved() {
@@ -1234,7 +1239,7 @@ export default function AdminEstudioViral() {
               <p className="font-semibold text-sm">Premium</p>
               <p className="text-xs text-muted-foreground">Legendas karaokê + avatar</p>
               <Badge variant="outline" className="text-xs border-amber-400 text-amber-600">
-                ~R$ {CUSTO_KLING_BRL.premium[duracaoAlvo]?.toFixed(2).replace(".", ",") ?? "8,40"}/vídeo
+                {CREDITOS_VIDEO_BASE.premium} créditos/vídeo + cenas IA
               </Badge>
             </CardContent>
           </Card>
@@ -1247,7 +1252,7 @@ export default function AdminEstudioViral() {
               <p className="font-semibold text-sm">Pro</p>
               <p className="text-xs text-muted-foreground">Karaokê + avatar topo de linha</p>
               <Badge variant="outline" className="text-xs border-purple-400 text-purple-600">
-                ~R$ {CUSTO_KLING_BRL.pro[duracaoAlvo]?.toFixed(2).replace(".", ",") ?? "33,00"}/vídeo
+                {CREDITOS_VIDEO_BASE.pro} créditos/vídeo + cenas IA
               </Badge>
             </CardContent>
           </Card>
@@ -1264,8 +1269,8 @@ export default function AdminEstudioViral() {
           <div className="rounded-lg border border-amber-300/50 bg-amber-50/40 dark:bg-amber-950/20 px-3 py-2 flex items-start gap-2 text-xs">
             <Zap className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
             <p className="text-muted-foreground leading-relaxed">
-              <strong>Modo teste ativo</strong> — vídeo curto pra economizar nos clipes pagos.
-              Custo estimado: <strong>~R$ {CUSTO_KLING_BRL[videoModel === "pro" ? "pro" : "premium"][duracaoAlvo]?.toFixed(2).replace(".", ",")}</strong> em vez do valor cheio.
+              <strong>Modo teste ativo</strong> — vídeo curto pra economizar nas cenas em vídeo IA
+              (menos segundos pagos). O vídeo base debita o valor cheio.
             </p>
           </div>
         )}
@@ -1582,14 +1587,13 @@ export default function AdminEstudioViral() {
             if (!pagas.length) return null;
             const totalS = pagas.reduce((a, s) => a + s.dur, 0);
             const temFala = pagas.some((s) => s.tipo === "fala");
-            const base30 = (CUSTO_KLING_BRL as Record<string, Record<string, number>>)[videoModel === "pro" ? "pro" : "premium"]?.["30s"] ?? (videoModel === "pro" ? 22 : 8.4);
-            const estimativa = (totalS / 30) * base30;
+            const creditos = creditosCenas(videoModel === "pro" ? "pro" : "premium", totalS);
             return (
               <div className="rounded-lg border border-amber-300/50 bg-amber-50/40 dark:bg-amber-950/20 px-3 py-2 text-xs flex items-start gap-2">
                 <AlertCircle className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
                 <p className="text-muted-foreground leading-relaxed">
-                  <strong>{pagas.length} cena(s) em vídeo IA ({totalS}s)</strong> ≈{" "}
-                  <strong>+R$ {estimativa.toFixed(2).replace(".", ",")}</strong> em créditos,
+                  <strong>{pagas.length} cena(s) em vídeo IA ({totalS}s)</strong> ={" "}
+                  <strong>+{creditos} crédito{creditos === 1 ? "" : "s"}</strong>,
                   somados ao custo do vídeo e debitados ao clicar em Gerar.
                   {temFala && <> Nas cenas <strong>🗣️ Falando</strong>, o personagem diz a narração
                   do slide com sincronia labial — funciona melhor com até <strong>~20 palavras</strong> no slide.</>}
@@ -1719,7 +1723,7 @@ export default function AdminEstudioViral() {
           avatars={avatars}
           draftId={draftId}
           onDraftId={setDraftId}
-          custoBase30={CUSTO_KLING_BRL[videoModel === "pro" ? "pro" : "premium"]["30s"]}
+          vendaCreditos30={VENDA_KLING_CREDITOS30[videoModel === "pro" ? "pro" : "premium"]}
           voice={{
             voice: edgeVoice,
             provider: voiceMode === "elevenlabs" && cloneVoiceId ? "elevenlabs" : "edge",

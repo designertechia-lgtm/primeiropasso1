@@ -47,8 +47,9 @@ type Props = {
   avatars: AvatarLite[];
   draftId: string | null;
   onDraftId: (id: string) => void;
-  /** R$ estimado de 30s de cena no tier atual (base p/ custo por cena) */
-  custoBase30: number;
+  /** Venda em créditos de ~30s de cena no tier atual (espelho do service_pricing;
+      o débito real é CEIL(venda30 × segundos/30) por chamada de animar) */
+  vendaCreditos30: number;
   voice: { voice: string; provider: "edge" | "elevenlabs"; elevenlabsVoiceId?: string | null };
   /** Montagem final disparada: o pai assume o job (polling + Step 3) */
   onMontarJob: (jobId: string) => void;
@@ -58,7 +59,7 @@ const BUSY: CenaStatus[] = ["gerando_imagem", "animando"];
 
 export default function EstudioCenas({
   api, professionalSlug, script, videoModel, estilo, format,
-  avatars, draftId, onDraftId, custoBase30, voice, onMontarJob,
+  avatars, draftId, onDraftId, vendaCreditos30, voice, onMontarJob,
 }: Props) {
   const [cenas, setCenas] = useState<Cena[]>([]);
   const [aberto, setAberto] = useState(false);
@@ -71,8 +72,9 @@ export default function EstudioCenas({
   const [editText, setEditText] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const custoCena = (dur: number) => (dur / 30) * custoBase30;
-  const fmtBRL = (v: number) => v.toFixed(2).replace(".", ",");
+  // Débito real de UMA chamada de animar (CEIL é por chamada — cenas juntas custam
+  // menos que separadas): espelha CEIL(base×units×(1+markup)) da RPC consume_credits.
+  const creditosDe = (totalS: number) => Math.ceil(vendaCreditos30 * (totalS / 30));
 
   const authJson = async () => ({
     "Content-Type": "application/json",
@@ -175,8 +177,8 @@ export default function EstudioCenas({
   const animar = async (idxs: number[]) => {
     if (!draftId || !idxs.length) return;
     const pedido = idxs.map((i) => ({ slide_idx: i, dur: durs[i] ?? 5 }));
-    const total = pedido.reduce((a, p) => a + custoCena(p.dur), 0);
-    if (!confirm(`Animar ${pedido.length} cena(s) por ~R$ ${fmtBRL(total)} em créditos?`)) return;
+    const creditos = creditosDe(pedido.reduce((a, p) => a + p.dur, 0));
+    if (!confirm(`Animar ${pedido.length} cena(s) por ${creditos} crédito(s)?`)) return;
     try {
       const res = await fetch(`${api}/cenas/${draftId}/animar`, {
         method: "POST",
@@ -257,7 +259,7 @@ export default function EstudioCenas({
 
   const prontasCount = cenas.filter((c) => c.status === "pronta").length;
   const animaveis = cenas.filter((c) => c.status === "imagem_pronta").map((c) => c.slide_idx);
-  const custoAnimarTodas = animaveis.reduce((a, i) => a + custoCena(durs[i] ?? 5), 0);
+  const custoAnimarTodas = creditosDe(animaveis.reduce((a, i) => a + (durs[i] ?? 5), 0));
 
   // ── Abertura: escolher o modo de consistência ──────────────────────────────
   if (!aberto) {
@@ -339,7 +341,7 @@ export default function EstudioCenas({
               <ImagePlus className="h-4 w-4 mr-1" />Gerar imagens que faltam
             </Button>
             <Button size="sm" variant="outline" disabled={!animaveis.length} onClick={() => animar(animaveis)}>
-              <Play className="h-4 w-4 mr-1" />Animar todas (~R$ {fmtBRL(custoAnimarTodas)})
+              <Play className="h-4 w-4 mr-1" />Animar todas ({custoAnimarTodas} créditos)
             </Button>
             <Button size="sm" disabled={!prontasCount || montando} onClick={montar}>
               {montando ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Film className="h-4 w-4 mr-1" />}
@@ -349,7 +351,7 @@ export default function EstudioCenas({
         </div>
         <p className="text-xs text-muted-foreground">
           A imagem é grátis de regenerar até você aprovar. Animar debita por cena
-          (~R$ {fmtBRL(custoCena(5))} por 5s, ~R$ {fmtBRL(custoCena(10))} por 10s) — cena que
+          ({creditosDe(5)} crédito{creditosDe(5) === 1 ? "" : "s"} por 5s, {creditosDe(10)} por 10s) — cena que
           falhar é <b>estornada automaticamente</b>. Regenerar a imagem descarta o clipe da cena.
         </p>
 
@@ -407,7 +409,7 @@ export default function EstudioCenas({
                           </select>
                           <Button size="sm" className="h-7 px-2" onClick={() => animar([c.slide_idx])}>
                             <Play className="h-3 w-3 mr-1" />
-                            {c.status === "pronta" ? "Re-animar" : "Animar"} R$ {fmtBRL(custoCena(durs[c.slide_idx] ?? 5))}
+                            {c.status === "pronta" ? "Re-animar" : "Animar"} · {creditosDe(durs[c.slide_idx] ?? 5)} cr
                           </Button>
                         </>
                       )}

@@ -129,6 +129,14 @@
     --sidebar-border: 165 30% 18%;
     --sidebar-ring: 160 70% 50%;
   }
+
+  /* ── Diretor IA ────────────────────────────────────────────────────────────
+     Âmbar de "esperando VOCÊ confirmar" — o único momento em que o sistema
+     para e aguarda uma decisão que custa crédito. Não pode ser `accent`
+     (= acontecendo agora), nem `primary` (= já confirmado), nem `destructive`.
+     Declarado só em :root/.dark: cascateia para o container .theme-admin. */
+  :root { --pp-hold: 33 92% 36%; }  /* ≈ #B45309 — 5.0:1 sobre card branco */
+  .dark { --pp-hold: 43 96% 56%; }  /* ≈ #FBBF24 */
 }
 
 @layer base {
@@ -424,4 +432,17 @@
     animation-play-state: paused !important;
     animation-delay: -1.05s !important;   /* ~44% de um ciclo de 2,4s */
   }
+}
+/* ── Diretor IA: barra "o servidor está trabalhando agora" ───────────────────
+   Usada no fio da estação ativa da Régua e nos cards em gerando_imagem/animando.
+   Só existe enquanto há trabalho real no backend — é sinal, não enfeite. */
+@keyframes pp-dir-run { from { transform: translateX(-100%) } to { transform: translateX(300%) } }
+.pp-dir-run { position: relative; overflow: hidden; }
+.pp-dir-run::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 35%;
+  background: linear-gradient(90deg, transparent, hsl(var(--accent) / .9), transparent);
+  animation: pp-dir-run 1.8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pp-dir-run::after { animation: none; left: 0; width: 100%; opacity: .45; }
 }

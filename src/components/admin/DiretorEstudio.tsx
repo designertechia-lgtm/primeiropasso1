@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import {
   Clapperboard, Loader2, Send, Sparkles, Film, RotateCcw,
@@ -53,13 +54,19 @@ const BUSY = ["gerando_imagem", "animando"];
 
 type JobState = { status: "processing" | "done" | "error"; progress?: number; step?: string; video_url?: string; message?: string } | null;
 
-function loadSaved(): { draftId: string | null; montarJobId: string | null } {
+type Modelo = "premium" | "pro";
+
+function loadSaved(): { draftId: string | null; montarJobId: string | null; model: Modelo } {
   try {
     const s = localStorage.getItem(STORAGE);
-    if (!s) return { draftId: null, montarJobId: null };
+    if (!s) return { draftId: null, montarJobId: null, model: "premium" };
     const p = JSON.parse(s);
-    return { draftId: p.draftId ?? null, montarJobId: p.montarJobId ?? null };
-  } catch { return { draftId: null, montarJobId: null }; }
+    return {
+      draftId: p.draftId ?? null,
+      montarJobId: p.montarJobId ?? null,
+      model: p.model === "pro" ? "pro" : "premium",
+    };
+  } catch { return { draftId: null, montarJobId: null, model: "premium" }; }
 }
 
 const SUGESTOES = [
@@ -82,14 +89,32 @@ export default function DiretorEstudio() {
   const [montarJobId, setMontarJobId] = useState<string | null>(saved.current.montarJobId);
   const [job, setJob] = useState<JobState>(null);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [model, setModel] = useState<Modelo>(saved.current.model);
+  // Preços vivos por cena (fonte única: service_pricing, mesma conta da RPC de débito)
+  const [precos, setPrecos] = useState<Record<string, { c5: number; c10: number }>>({});
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const cenasPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const jobPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE, JSON.stringify({ draftId, montarJobId }));
-  }, [draftId, montarJobId]);
+    localStorage.setItem(STORAGE, JSON.stringify({ draftId, montarJobId, model }));
+  }, [draftId, montarJobId, model]);
+
+  useEffect(() => {
+    supabase.from("service_pricing")
+      .select("service_key, base_cost_brl, markup_pct")
+      .in("service_key", ["kling_premium", "kling_pro"])
+      .eq("active", true)
+      .then(({ data }) => {
+        const map: Record<string, { c5: number; c10: number }> = {};
+        (data || []).forEach((r: any) => {
+          const venda30 = Number(r.base_cost_brl) * (1 + (r.markup_pct ?? 100) / 100);
+          map[r.service_key] = { c5: Math.ceil(venda30 * 5 / 30), c10: Math.ceil(venda30 * 10 / 30) };
+        });
+        setPrecos(map);
+      });
+  }, []);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -196,7 +221,7 @@ export default function DiretorEstudio() {
     setSending(true);
     setMsgs((prev) => [...prev, { role: "user", content: message }]);
     try {
-      const data = await invoke({ message, draft_id: draftId });
+      const data = await invoke({ message, draft_id: draftId, model_hint: model });
       aplicarResposta(data);
     } catch {
       // Erro honesto: a edge respondeu != 2xx (LLM fora do ar etc.) — oferecer retry.
@@ -363,6 +388,23 @@ export default function DiretorEstudio() {
             <Button size="sm" className="h-10" disabled={!input.trim() || sending} onClick={() => sendMessage()}>
               <Send className="h-4 w-4" />
             </Button>
+          </div>
+          {/* Modelo de geração — o Diretor recebe a escolha junto com cada mensagem */}
+          <div className="border-t px-2 py-1.5 flex items-center gap-2">
+            <span className="text-[11px] text-muted-foreground shrink-0">Modelo:</span>
+            <Select value={model} onValueChange={(v) => setModel(v === "pro" ? "pro" : "premium")}>
+              <SelectTrigger className="h-7 text-xs flex-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="premium" className="text-xs">
+                  ⭐ Premium — Kling 1.6{precos.kling_premium ? ` · cena 5s = ${precos.kling_premium.c5} cr / 10s = ${precos.kling_premium.c10} cr` : ""}
+                </SelectItem>
+                <SelectItem value="pro" className="text-xs">
+                  👑 PRO — Kling 3.0{precos.kling_pro ? ` · cena 5s = ${precos.kling_pro.c5} cr / 10s = ${precos.kling_pro.c10} cr` : ""}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </Card>
 

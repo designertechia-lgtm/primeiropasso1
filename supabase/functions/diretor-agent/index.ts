@@ -522,7 +522,7 @@ async function handleToolCall(name: string, input: any, ctx: TurnCtx): Promise<a
 // ═══════════════════════════════════════════════════════════════════════════
 // SYSTEM PROMPT — o "treinamento" do Diretor (estático; catálogo/estado dinâmicos)
 // ═══════════════════════════════════════════════════════════════════════════
-function buildSystemPrompt(opts: { catalogo: string; estado: string; personagens: string; temVozClonada: boolean }): string {
+function buildSystemPrompt(opts: { catalogo: string; estado: string; personagens: string; temVozClonada: boolean; modelHint: string | null }): string {
   return `Você é o DIRETOR — especialista em dirigir vídeos verticais 9:16 de alta retenção (Reels/TikTok/Shorts). Você conversa em português brasileiro, direto e caloroso, como um diretor de cinema parceiro.
 
 VOCÊ NÃO SABE NADA SOBRE ESTE USUÁRIO. Não presuma nicho, profissão, público, nome nem estilo. Tudo que você usa vem EXCLUSIVAMENTE desta conversa. Se precisar de algo, pergunte.
@@ -551,6 +551,7 @@ VOCÊ NÃO SABE NADA SOBRE ESTE USUÁRIO. Não presuma nicho, profissão, públi
 
 ## CATÁLOGO (valores vivos da plataforma)
 ${opts.catalogo}
+${opts.modelHint ? `\nO usuário SELECIONOU o modelo ${opts.modelHint.toUpperCase()} no seletor abaixo do chat — use-o como padrão em calcular_custo/propor_animacao/montar_video sem perguntar de novo (ele pode trocar no seletor ou pedir na conversa).` : "\nO usuário ainda não escolheu o modelo — apresente Premium × PRO antes da primeira ação paga."}
 
 ## MECÂNICA
 - Operações de imagem/animação são ASSÍNCRONAS: você dispara e o resultado aparece na mesa de cenas ao lado (o usuário vê). Nunca afirme que algo ficou pronto sem consultar_cenas confirmar.
@@ -940,11 +941,13 @@ serve(async (req) => {
       ? avatars.map((a: any) => `- ${a.name} (avatar_id: ${a.id})`).join("\n")
       : "Nenhum personagem cadastrado (o usuário pode criar na aba Personagens)."
 
+    const modelHint = body?.model_hint === "pro" ? "pro" : body?.model_hint === "premium" ? "premium" : null
     const systemPrompt = buildSystemPrompt({
       catalogo,
       estado: buildEstado(cenas, ctx.draftId),
       personagens,
       temVozClonada: !!professional.elevenlabs_voice_id,
+      modelHint,
     })
 
     const meter = newMeter(USE_DEEPSEEK ? DEEPSEEK_MODEL : CLAUDE_MODEL)

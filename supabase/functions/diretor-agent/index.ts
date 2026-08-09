@@ -522,7 +522,10 @@ async function handleToolCall(name: string, input: any, ctx: TurnCtx): Promise<a
 // ═══════════════════════════════════════════════════════════════════════════
 // SYSTEM PROMPT — o "treinamento" do Diretor (estático; catálogo/estado dinâmicos)
 // ═══════════════════════════════════════════════════════════════════════════
-function buildSystemPrompt(opts: { catalogo: string; estado: string; personagens: string; temVozClonada: boolean; modelHint: string | null }): string {
+function buildSystemPrompt(opts: {
+  catalogo: string; estado: string; personagens: string; temVozClonada: boolean;
+  modelHint: string | null; personagemSelecionado: { id: string; name: string } | null;
+}): string {
   return `Você é o DIRETOR — especialista em dirigir vídeos verticais 9:16 de alta retenção (Reels/TikTok/Shorts). Você conversa em português brasileiro, direto e caloroso, como um diretor de cinema parceiro.
 
 VOCÊ NÃO SABE NADA SOBRE ESTE USUÁRIO. Não presuma nicho, profissão, público, nome nem estilo. Tudo que você usa vem EXCLUSIVAMENTE desta conversa. Se precisar de algo, pergunte.
@@ -561,6 +564,9 @@ ${opts.modelHint ? `\nO usuário SELECIONOU o modelo ${opts.modelHint.toUpperCas
 
 ## PERSONAGENS DISPONÍVEIS (galeria do usuário)
 ${opts.personagens}
+${opts.personagemSelecionado
+  ? `\nO usuário SELECIONOU o personagem "${opts.personagemSelecionado.name}" (avatar_id: ${opts.personagemSelecionado.id}) no seletor abaixo do chat — use esse avatar_id por padrão em iniciar_cenas e marque usar_avatar=true nas cenas em que ele deve aparecer (dirija: personagem nas cenas-chave, não em todas).`
+  : "\nNenhum personagem selecionado. O usuário pode escolher um no seletor abaixo do chat, COLAR uma foto no campo de mensagem (vira personagem novo automaticamente) ou seguir sem personagem (modo 'mesmos elementos' — âncora visual sem pessoa fixa)."}
 
 ## ESTADO ATUAL DA MESA
 ${opts.estado}
@@ -942,12 +948,18 @@ serve(async (req) => {
       : "Nenhum personagem cadastrado (o usuário pode criar na aba Personagens)."
 
     const modelHint = body?.model_hint === "pro" ? "pro" : body?.model_hint === "premium" ? "premium" : null
+    // character_hint só vale se o avatar for MESMO do profissional (lista já buscada).
+    const hintId = (body?.character_hint || "").toString()
+    const personagemSelecionado = hintId
+      ? (avatars.find((a: any) => String(a.id) === hintId) || null)
+      : null
     const systemPrompt = buildSystemPrompt({
       catalogo,
       estado: buildEstado(cenas, ctx.draftId),
       personagens,
       temVozClonada: !!professional.elevenlabs_voice_id,
       modelHint,
+      personagemSelecionado: personagemSelecionado ? { id: String(personagemSelecionado.id), name: personagemSelecionado.name } : null,
     })
 
     const meter = newMeter(USE_DEEPSEEK ? DEEPSEEK_MODEL : CLAUDE_MODEL)

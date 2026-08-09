@@ -23,7 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import {
   Clapperboard, Loader2, Send, Sparkles, Film, RotateCcw,
-  Scissors, Video, AlertCircle, CheckCircle2, Plus,
+  Scissors, Video, AlertCircle, CheckCircle2, Plus, ImagePlus, UserX,
 } from "lucide-react";
 
 const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
@@ -55,18 +55,20 @@ const BUSY = ["gerando_imagem", "animando"];
 type JobState = { status: "processing" | "done" | "error"; progress?: number; step?: string; video_url?: string; message?: string } | null;
 
 type Modelo = "premium" | "pro";
+type AvatarLite = { id: string; name: string; photo_url: string | null };
 
-function loadSaved(): { draftId: string | null; montarJobId: string | null; model: Modelo } {
+function loadSaved(): { draftId: string | null; montarJobId: string | null; model: Modelo; characterId: string | null } {
   try {
     const s = localStorage.getItem(STORAGE);
-    if (!s) return { draftId: null, montarJobId: null, model: "premium" };
+    if (!s) return { draftId: null, montarJobId: null, model: "premium", characterId: null };
     const p = JSON.parse(s);
     return {
       draftId: p.draftId ?? null,
       montarJobId: p.montarJobId ?? null,
       model: p.model === "pro" ? "pro" : "premium",
+      characterId: p.characterId ?? null,
     };
-  } catch { return { draftId: null, montarJobId: null, model: "premium" }; }
+  } catch { return { draftId: null, montarJobId: null, model: "premium", characterId: null }; }
 }
 
 const SUGESTOES = [
@@ -92,14 +94,30 @@ export default function DiretorEstudio() {
   const [model, setModel] = useState<Modelo>(saved.current.model);
   // Preços vivos por cena (fonte única: service_pricing, mesma conta da RPC de débito)
   const [precos, setPrecos] = useState<Record<string, { c5: number; c10: number }>>({});
+  const [avatars, setAvatars] = useState<AvatarLite[]>([]);
+  const [characterId, setCharacterId] = useState<string | null>(saved.current.characterId);
+  const [criandoPersonagem, setCriandoPersonagem] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const cenasPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const jobPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE, JSON.stringify({ draftId, montarJobId, model }));
-  }, [draftId, montarJobId, model]);
+    localStorage.setItem(STORAGE, JSON.stringify({ draftId, montarJobId, model, characterId }));
+  }, [draftId, montarJobId, model, characterId]);
+
+  // Galeria de personagens (tabela avatars — mesma da sub-aba Personagens)
+  const carregarAvatars = useCallback(async () => {
+    if (!professional?.id) return;
+    // "as any": avatars ainda não está no types.ts gerado (mesma pendência de outras tabelas)
+    const { data } = await (supabase.from("avatars" as any) as any)
+      .select("id, name, photo_url")
+      .eq("professional_id", professional.id)
+      .order("created_at", { ascending: false });
+    setAvatars((data as AvatarLite[]) || []);
+  }, [professional?.id]);
+  useEffect(() => { carregarAvatars(); }, [carregarAvatars]);
 
   useEffect(() => {
     supabase.from("service_pricing")
@@ -197,6 +215,45 @@ export default function DiretorEstudio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [montarJobId]);
 
+  // ── Personagem a partir de foto colada/enviada: vira um avatar da galeria
+  //    (reusa /criar-avatar + /upload-foto-avatar do worker — sem código novo lá) ──
+  const criarPersonagemDaFoto = async (file: File) => {
+    if (!professional?.slug || criandoPersonagem) return;
+    if (!file.type.startsWith("image/")) { toast.error("Cole ou envie uma imagem."); return; }
+    setCriandoPersonagem(true);
+    try {
+      const resCriar = await fetch(`${API}/criar-avatar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          professional_slug: professional.slug,
+          name: `Personagem ${avatars.length + 1}`,
+        }),
+      });
+      const criado = await resCriar.json();
+      if (!resCriar.ok) throw new Error(criado.detail || "Não consegui criar o personagem");
+      const fd = new FormData();
+      fd.append("professional_slug", professional.slug);
+      fd.append("file", file);
+      const resFoto = await fetch(`${API}/upload-foto-avatar/${criado.avatar_id}`, { method: "POST", body: fd });
+      const foto = await resFoto.json();
+      if (!resFoto.ok) throw new Error(foto.detail || "Não consegui subir a foto");
+      await carregarAvatars();
+      setCharacterId(criado.avatar_id);
+      toast.success("Personagem criado da sua foto e selecionado! Ele também aparece na aba Personagens.");
+    } catch (e: any) {
+      toast.error(e.message || "Falha ao criar o personagem da foto");
+    } finally {
+      setCriandoPersonagem(false);
+    }
+  };
+
+  const onPaste = (e: React.ClipboardEvent) => {
+    const item = Array.from(e.clipboardData?.items || []).find((i) => i.type.startsWith("image/"));
+    const file = item?.getAsFile();
+    if (file) { e.preventDefault(); criarPersonagemDaFoto(file); }
+  };
+
   // ── Chat ──
   const invoke = async (body: Record<string, unknown>) => {
     const { data, error } = await supabase.functions.invoke("diretor-agent", { body });
@@ -221,7 +278,7 @@ export default function DiretorEstudio() {
     setSending(true);
     setMsgs((prev) => [...prev, { role: "user", content: message }]);
     try {
-      const data = await invoke({ message, draft_id: draftId, model_hint: model });
+      const data = await invoke({ message, draft_id: draftId, model_hint: model, character_hint: characterId });
       aplicarResposta(data);
     } catch {
       // Erro honesto: a edge respondeu != 2xx (LLM fora do ar etc.) — oferecer retry.
@@ -381,7 +438,8 @@ export default function DiretorEstudio() {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
               }}
-              placeholder="Fale com o Diretor…"
+              onPaste={onPaste}
+              placeholder="Fale com o Diretor… (cole uma foto para criar seu personagem)"
               className="min-h-[40px] max-h-28 resize-none text-sm"
               rows={1}
             />
@@ -405,6 +463,57 @@ export default function DiretorEstudio() {
                 </SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          {/* Personagem: galeria + colar/enviar foto (a foto vira um avatar novo) */}
+          <div className="border-t px-2 py-1.5 flex items-center gap-2 overflow-x-auto">
+            <span className="text-[11px] text-muted-foreground shrink-0">Personagem:</span>
+            <button
+              type="button"
+              onClick={() => setCharacterId(null)}
+              title="Sem personagem"
+              className={`shrink-0 h-8 w-8 rounded-full border-2 flex items-center justify-center transition ${
+                characterId === null ? "border-purple-500 bg-purple-500/10" : "border-border hover:border-purple-400/50"
+              }`}
+            >
+              <UserX className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+            {avatars.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => setCharacterId(a.id)}
+                title={a.name}
+                className={`shrink-0 h-8 w-8 rounded-full border-2 overflow-hidden transition ${
+                  characterId === a.id ? "border-purple-500 ring-2 ring-purple-500/30" : "border-border hover:border-purple-400/50"
+                }`}
+              >
+                {a.photo_url
+                  ? <img src={a.photo_url} alt={a.name} className="w-full h-full object-cover" />
+                  : <span className="text-[10px] font-medium">{a.name.slice(0, 2).toUpperCase()}</span>}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={criandoPersonagem}
+              title="Colar (Ctrl+V no chat) ou enviar uma foto — vira um personagem novo"
+              className="shrink-0 h-8 w-8 rounded-full border-2 border-dashed border-border hover:border-purple-400/60 flex items-center justify-center"
+            >
+              {criandoPersonagem
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                : <ImagePlus className="h-3.5 w-3.5 text-muted-foreground" />}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) criarPersonagemDaFoto(f);
+                e.target.value = "";
+              }}
+            />
           </div>
         </Card>
 

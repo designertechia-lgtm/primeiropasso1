@@ -304,7 +304,7 @@ function VoiceRecorder({
 // ── Página principal ─────────────────────────────────────────
 export default function AdminEstudioViral() {
   const { data: professional } = useProfessional();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const editVideoId = searchParams.get("edit");
   // Tier pré-selecionado via URL (?model=) — usado pelo Axel ao preparar roteiro por molde
   const tierParam = searchParams.get("model");
@@ -1689,9 +1689,11 @@ export default function AdminEstudioViral() {
         </Collapsible>
       )}
 
-      {/* ── Caminho de criação (Premium/PRO): UM botão de criar por modo ── */}
+      {/* ── Caminho de criação (Premium/PRO): UM botão de criar por modo.
+           O 3º card é ATALHO pro Diretor IA (sub-aba própria, chat) — não muda
+           o creationPath deste wizard, navega pra ?sub=diretor. ── */}
       {videoModel !== "gratuito" && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <button type="button" onClick={() => setCreationPath("rapido")}
             className={`rounded-xl border-2 p-3 text-left transition ${creationPath === "rapido" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}>
             <p className="font-semibold text-sm flex items-center gap-2">⚡ Criação Rápida</p>
@@ -1706,6 +1708,15 @@ export default function AdminEstudioViral() {
             <p className="text-xs text-muted-foreground mt-0.5">
               Cena a cena com o MESMO personagem: você aprova cada imagem, anima só o
               que gostar (custo por cena) e monta no final.
+            </p>
+          </button>
+          <button type="button"
+            onClick={() => { searchParams.set("sub", "diretor"); setSearchParams(searchParams); }}
+            className="rounded-xl border-2 p-3 text-left transition border-border hover:border-purple-400/60">
+            <p className="font-semibold text-sm flex items-center gap-2">✨ Diretor IA <Badge variant="outline" className="text-[10px] border-purple-400 text-purple-600">novo</Badge></p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Crie por conversa: o Diretor escreve o roteiro com você, gera imagens
+              grátis e só anima com custo confirmado. Abre em aba própria.
             </p>
           </button>
         </div>

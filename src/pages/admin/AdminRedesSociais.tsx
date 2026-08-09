@@ -1,6 +1,6 @@
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Link2, Video, Drama, Database, FileImage, Flame, Clapperboard, Copy, Scissors } from "lucide-react";
+import { FileText, Link2, Video, Drama, Database, FileImage, Flame, Clapperboard, Copy, Scissors, Sparkles } from "lucide-react";
 import { ConnectedAccounts } from "@/components/dashboard/ConnectedAccounts";
 import AdminArtigos from "./AdminArtigos";
 import AdminEstudioViral from "./AdminEstudioViral";
@@ -10,12 +10,14 @@ import AdminAvatares from "./AdminAvatares";
 import AdminEditorVideo from "./AdminEditorVideo";
 import AdminDocumentos from "./AdminDocumentos";
 import PostsTab from "@/components/admin/redes-sociais/PostsTab";
+import DiretorEstudio from "@/components/admin/DiretorEstudio";
 
 const VALID_TABS = ["posts", "videos", "contas", "rag"] as const;
 type TabValue = (typeof VALID_TABS)[number];
 
-// Sub-abas do guarda-chuva "Estúdio Viral": criação, clonagem, personagens, artigos/carrosséis, editor, galeria.
-const SUB_TABS = ["criar", "clonar", "personagens", "artigos", "editor", "meus-videos"] as const;
+// Sub-abas do guarda-chuva "Estúdio Viral": criação, diretor por chat, clonagem,
+// personagens, artigos/carrosséis, editor, galeria.
+const SUB_TABS = ["criar", "diretor", "clonar", "personagens", "artigos", "editor", "meus-videos"] as const;
 type SubValue = (typeof SUB_TABS)[number];
 
 // Abas/atalhos antigos que foram consolidados dentro de "Estúdio Viral" — links salvos
@@ -98,6 +100,9 @@ export default function AdminRedesSociais() {
               <TabsTrigger value="criar" className="gap-2">
                 <Clapperboard className="h-4 w-4 text-orange-500" /> Criar Vídeos
               </TabsTrigger>
+              <TabsTrigger value="diretor" className="gap-2">
+                <Sparkles className="h-4 w-4 text-purple-500" /> Diretor IA
+              </TabsTrigger>
               <TabsTrigger value="clonar" className="gap-2">
                 <Copy className="h-4 w-4 text-orange-500" /> Clonar Vídeo
               </TabsTrigger>
@@ -110,6 +115,9 @@ export default function AdminRedesSociais() {
             </TabsList>
             <TabsContent value="criar" className="mt-4">
               <AdminEstudioViral />
+            </TabsContent>
+            <TabsContent value="diretor" className="mt-4">
+              <DiretorEstudio />
             </TabsContent>
             <TabsContent value="clonar" className="mt-4">
               <AdminClonarVideo />

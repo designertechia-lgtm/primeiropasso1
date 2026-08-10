@@ -2587,8 +2587,13 @@ export default function AdminEditorVideo() {
               inteira para achar cada ajuste. */}
           <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_400px] gap-4 items-start">
             <Card>
-              <CardContent className="pt-5">
-                <div className="space-y-2 max-w-md mx-auto w-full">
+              <CardContent className="pt-4 pb-4">
+                {/* O player ocupa a coluna inteira (Carlos 09/08: "o vídeo pode
+                    ocupar o máximo de espaço"). A ALTURA é o teto (52vh) para a
+                    timeline continuar visível logo abaixo sem rolar a página;
+                    o <video> letterboxa sozinho no palco preto e o contentRect
+                    dos stickers/legendas se recalcula por ResizeObserver. */}
+                <div className="space-y-2 w-full">
                   <div ref={videoWrapRef} className="relative">
                     {/* o filtro de cor vale só para o VÍDEO: legendas, textos e
                         stickers são queimados depois no motor, então não são
@@ -2598,7 +2603,7 @@ export default function AdminEditorVideo() {
                     <video ref={videoRef} src={previewSrc} playsInline
                       className={isFull
                         ? "h-full w-full bg-black cursor-pointer object-contain"
-                        : "w-full max-h-72 rounded-lg bg-black cursor-pointer"}
+                        : "w-full max-h-[52vh] lg:min-h-72 rounded-lg bg-black cursor-pointer"}
                       style={{ filter: filtroCss(filtro) }}
                       onClick={clock.toggle}
                       onEnded={clock.pause}

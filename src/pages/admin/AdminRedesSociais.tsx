@@ -1,6 +1,7 @@
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Link2, Video, Drama, Database, FileImage, Flame, Clapperboard, Copy, Scissors, Sparkles } from "lucide-react";
+import { FileText, Link2, Video, Drama, Database, FileImage, Flame, Clapperboard, Copy, Scissors, Sparkles, Loader2 } from "lucide-react";
+import { useCloneJobAtivo } from "@/lib/cloneJobs";
 import { ConnectedAccounts } from "@/components/dashboard/ConnectedAccounts";
 import AdminArtigos from "./AdminArtigos";
 import AdminEstudioViral from "./AdminEstudioViral";
@@ -31,6 +32,10 @@ const LEGACY_TAB_ALIASES: Record<string, { tab: TabValue; sub?: SubValue }> = {
 
 export default function AdminRedesSociais() {
   const [searchParams, setSearchParams] = useSearchParams();
+  // Clonagem em andamento: a sub-aba mostra o progresso mesmo com a tela do
+  // Clonar Vídeo desmontada (o Radix Tabs descarta o conteúdo inativo), pra
+  // ninguém achar que a geração paga se perdeu ao navegar.
+  const cloneAtivo = useCloneJobAtivo();
   const rawTab = searchParams.get("tab") ?? "";
   const alias = LEGACY_TAB_ALIASES[rawTab];
   const tabParam = alias?.tab ?? rawTab;
@@ -104,7 +109,15 @@ export default function AdminRedesSociais() {
                 <Sparkles className="h-4 w-4 text-purple-500" /> Diretor IA
               </TabsTrigger>
               <TabsTrigger value="clonar" className="gap-2">
-                <Copy className="h-4 w-4 text-orange-500" /> Clonar Vídeo
+                {cloneAtivo
+                  ? <Loader2 className="h-4 w-4 text-orange-500 animate-spin" />
+                  : <Copy className="h-4 w-4 text-orange-500" />}
+                Clonar Vídeo
+                {cloneAtivo && (
+                  <span className="text-[10px] font-medium text-orange-600">
+                    {cloneAtivo.status.progress ?? 5}%
+                  </span>
+                )}
               </TabsTrigger>
               <TabsTrigger value="editor" className="gap-2">
                 <Scissors className="h-4 w-4" /> Editor

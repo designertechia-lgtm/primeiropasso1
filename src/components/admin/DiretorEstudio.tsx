@@ -105,6 +105,10 @@ const MAPA = [
   { n: "05", Icon: Film, t: "Montagem", d: "Junto tudo com narração e legendas.", tag: "incluso", tom: "free" },
 ] as const;
 
+/** Campo de mensagem: piso de 1 linha folgada e teto de ~6 linhas (depois rola). */
+const CAMPO_MIN = 46;
+const CAMPO_MAX = 168;
+
 /** Quadriculado dos palcos vazios e dos slots fantasma — amarra os dois. */
 const GRADE_VAZIA =
   "bg-[linear-gradient(hsl(var(--border)/0.4)_1px,transparent_1px),linear-gradient(90deg,hsl(var(--border)/0.4)_1px,transparent_1px)] bg-[size:10px_10px]";
@@ -305,12 +309,17 @@ export default function DiretorEstudio() {
     if (data.montar_job_id) { setJob({ status: "processing" }); setMontarJobId(data.montar_job_id); }
   };
 
-  /** Auto-grow do campo: 1 → 5 linhas, sem lib e sem scrollbar nativa. */
+  /** Auto-grow do campo: 1 → 6 linhas, sem lib e sem scrollbar nativa.
+   *  O piso (CAMPO_MIN) impede que o cálculo encolha a caixa abaixo da linha
+   *  única e corte o texto; acima do teto o próprio campo rola. */
   const autoGrow = (el: HTMLTextAreaElement | null) => {
     if (!el) return;
     el.style.height = "0px";
-    el.style.height = Math.min(el.scrollHeight, 132) + "px";
+    el.style.height = Math.max(CAMPO_MIN, Math.min(el.scrollHeight, CAMPO_MAX)) + "px";
   };
+
+  // Altura inicial (e após reidratar o rascunho) sai do mesmo cálculo do digitar.
+  useEffect(() => { autoGrow(taRef.current); }, [historyLoaded]);
 
   const sendMessage = async (texto?: string) => {
     const message = (texto ?? input).trim();
@@ -530,7 +539,7 @@ export default function DiretorEstudio() {
 
       <div className="grid gap-3 lg:grid-cols-[minmax(360px,400px)_1fr] lg:items-start">
         {/* ── C. Cabine (chat) ── */}
-        <Card className="flex h-[60vh] min-h-[400px] flex-col overflow-hidden rounded-xl lg:h-[calc(100vh-21rem)] lg:min-h-[440px] lg:max-h-[720px]">
+        <Card className="flex h-[68vh] min-h-[460px] flex-col overflow-hidden rounded-xl lg:h-[calc(100vh-15rem)] lg:min-h-[580px] lg:max-h-[880px]">
           <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-3">
             {historyLoaded && msgs.length === 0 && (
               <div className="space-y-4 pt-6">
@@ -687,8 +696,9 @@ export default function DiretorEstudio() {
                 onPaste={onPaste}
                 placeholder="Fale com o Diretor…"
                 aria-label="Mensagem para o Diretor"
-                className="block h-[38px] max-h-[132px] min-h-0 w-full resize-none overflow-y-auto border-0 bg-transparent
-                           px-3 pb-1 pt-2.5 text-[13px] leading-[1.5] shadow-none ring-offset-0
+                style={{ height: CAMPO_MIN, maxHeight: CAMPO_MAX }}
+                className="block min-h-0 w-full resize-none overflow-y-auto border-0 bg-transparent
+                           px-3 py-3 text-[13.5px] leading-[1.5] shadow-none ring-offset-0
                            placeholder:text-muted-foreground/70 focus-visible:ring-0 focus-visible:ring-offset-0
                            [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               />

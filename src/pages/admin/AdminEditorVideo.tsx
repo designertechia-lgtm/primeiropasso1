@@ -1489,6 +1489,36 @@ export default function AdminEditorVideo() {
     }));
   };
 
+  // "Excluir de vez": o trecho removido já está fora do vídeo final — isto só
+  // torna o descarte DEFINITIVO (sai da lista de recortados e perde os botões
+  // de restaurar). Arrependimento imediato = Desfazer (o apply guarda undo).
+  const descartarSegment = (id: number) => {
+    apply((d) => ({
+      segments: d.segments.map((s) => (s.id === id ? { ...s, dismissed: true } : s)),
+    }));
+  };
+
+  const descartarTodosRemovidos = () => {
+    apply((d) => ({
+      segments: d.segments.map((s) => (!s.keep && !s.dismissed ? { ...s, dismissed: true } : s)),
+    }));
+    toast.success("Lista de recortes limpa — os trechos seguem fora do vídeo. Desfazer traz a lista de volta.");
+  };
+
+  // Restaurar da lista: o trecho volta a entrar no vídeo final.
+  const restaurarSegment = (id: number) => {
+    apply((d) => ({
+      segments: d.segments.map((s) => (s.id === id ? { ...s, keep: true, dismissed: false } : s)),
+    }));
+  };
+
+  // Lista do painel "Cortes": só os removidos que ainda não foram excluídos de vez.
+  const trechosRemovidos = useMemo(
+    () => segments.filter((s) => !s.keep && !s.dismissed),
+    [segments],
+  );
+  const totalRemovidoS = trechosRemovidos.reduce((a, s) => a + (s.end - s.start), 0);
+
   // Caixinha FIXA (Carlos 06/07): remove o intervalo [a,b] digitado, dividindo
   // os trechos que ele atravessa — não depende de onde o cursor está.
   const cortarIntervalo = () => {
@@ -2800,7 +2830,9 @@ export default function AdminEditorVideo() {
 
             {activeSeg && (
               <div className="flex items-center gap-2 flex-wrap rounded-lg border bg-muted/30 px-3 py-2 text-xs">
-                <span className="font-medium">Trecho sob o cursor {activeSeg.keep ? "(mantido)" : "(removido)"}:</span>
+                <span className="font-medium">
+                  Trecho sob o cursor {activeSeg.keep ? "(mantido)" : activeSeg.dismissed ? "(excluído de vez)" : "(removido)"}:
+                </span>
                 <label className="flex items-center gap-1">início
                   <Input value={startField} onChange={(e) => setStartField(e.target.value)}
                     onBlur={() => applyBound("start", parseTime(startField))}
@@ -2815,10 +2847,12 @@ export default function AdminEditorVideo() {
                 </label>
                 <Button size="sm" variant="outline" className="h-7" onClick={() => applyBound("start", playhead)}>Início = cursor</Button>
                 <Button size="sm" variant="outline" className="h-7" onClick={() => applyBound("end", playhead)}>Fim = cursor</Button>
-                <Button size="sm" variant={activeSeg.keep ? "destructive" : "default"} className="h-7"
-                  onClick={() => toggleSegment(activeSeg.id)}>
-                  {activeSeg.keep ? "Remover trecho" : "Restaurar trecho"}
-                </Button>
+                {(activeSeg.keep || !activeSeg.dismissed) && (
+                  <Button size="sm" variant={activeSeg.keep ? "destructive" : "default"} className="h-7"
+                    onClick={() => (activeSeg.keep ? toggleSegment(activeSeg.id) : restaurarSegment(activeSeg.id))}>
+                    {activeSeg.keep ? "Remover trecho" : "Restaurar trecho"}
+                  </Button>
+                )}
                 {activeSeg.keep && (
                   <label className="flex items-center gap-1" title="Câmera lenta ou acelerado só neste trecho">
                     Velocidade
@@ -2835,6 +2869,53 @@ export default function AdminEditorVideo() {
                     </select>
                   </label>
                 )}
+              </div>
+            )}
+
+            {/* Lista dos trechos recortados (Carlos 09/08): visão geral do que
+                saiu do vídeo — restaura com 1 clique ou encerra a revisão com
+                "excluir de vez" (a região continua cortada; volta só no Desfazer). */}
+            {trechosRemovidos.length > 0 && (
+              <div className="rounded-lg border bg-muted/30 px-3 py-2 space-y-1.5">
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="font-medium flex items-center gap-1.5">
+                    <Scissors className="h-3.5 w-3.5 text-destructive" />
+                    Trechos removidos ({trechosRemovidos.length}) · {fmt(totalRemovidoS)} no total
+                  </span>
+                  {trechosRemovidos.length > 1 && (
+                    <Button size="sm" variant="ghost" className="h-6 text-[11px] text-muted-foreground"
+                      onClick={descartarTodosRemovidos}
+                      title="Limpa a lista inteira; os trechos continuam fora do vídeo">
+                      Excluir todos de vez
+                    </Button>
+                  )}
+                </div>
+                <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
+                  {trechosRemovidos.map((s) => (
+                    <div key={s.id} className="flex items-center gap-1.5 rounded border bg-background px-2 py-1 text-xs">
+                      <button type="button"
+                        className="flex-1 text-left tabular-nums transition-colors hover:text-primary"
+                        onClick={() => seekTo(s.start)}
+                        title="Levar o cursor até o trecho para rever">
+                        {fmt(s.start)} – {fmt(s.end)}{" "}
+                        <span className="text-muted-foreground">({(s.end - s.start).toFixed(1).replace(".", ",")}s)</span>
+                      </button>
+                      <Button size="sm" variant="outline" className="h-6 gap-1 text-[11px]"
+                        onClick={() => restaurarSegment(s.id)} title="O trecho volta a entrar no vídeo final">
+                        <RotateCcw className="h-3 w-3" /> Restaurar
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-6 gap-1 text-[11px] text-destructive hover:text-destructive"
+                        onClick={() => descartarSegment(s.id)}
+                        title="Some da lista e da timeline como opção — só o Desfazer traz de volta">
+                        <Trash2 className="h-3 w-3" /> Excluir de vez
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10.5px] leading-snug text-muted-foreground">
+                  Trecho removido já está fora do vídeo final. <b>Restaurar</b> devolve ao vídeo;
+                  <b> excluir de vez</b> só encerra a revisão (a região continua cortada).
+                </p>
               </div>
             )}
           </TabsContent>
@@ -3944,14 +4025,17 @@ export default function AdminEditorVideo() {
                             ? (activeSeg?.id === s.id ? "border-primary" : "border-emerald-400/70")
                             : "border-red-500/70 bg-black/60 backdrop-grayscale"}`}
                         style={{ left: `${(s.start / durTL) * 100}%`, width: `${((s.end - s.start) / durTL) * 100}%` }}>
-                        <button type="button"
-                          title={s.keep ? "Remover este trecho" : "Restaurar este trecho"}
-                          onMouseDown={(e) => e.stopPropagation()}
-                          onClick={(e) => { e.stopPropagation(); toggleSegment(s.id); }}
-                          className={`pointer-events-auto absolute top-0.5 right-0.5 rounded p-0.5 ${
-                            s.keep ? "bg-black/50 text-white hover:bg-red-600" : "bg-red-600 text-white hover:bg-emerald-600"}`}>
-                          {s.keep ? <Trash2 className="h-3 w-3" /> : <RotateCcw className="h-3 w-3" />}
-                        </button>
+                        {/* excluído de vez não oferece mais restauração aqui (só o Desfazer) */}
+                        {(s.keep || !s.dismissed) && (
+                          <button type="button"
+                            title={s.keep ? "Remover este trecho" : "Restaurar este trecho"}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => { e.stopPropagation(); s.keep ? toggleSegment(s.id) : restaurarSegment(s.id); }}
+                            className={`pointer-events-auto absolute top-0.5 right-0.5 rounded p-0.5 ${
+                              s.keep ? "bg-black/50 text-white hover:bg-red-600" : "bg-red-600 text-white hover:bg-emerald-600"}`}>
+                            {s.keep ? <Trash2 className="h-3 w-3" /> : <RotateCcw className="h-3 w-3" />}
+                          </button>
+                        )}
                         {s.keep && (s.speed ?? 1) !== 1 && (
                           <span className="absolute bottom-0.5 left-0.5 rounded bg-black/70 text-white text-[8px] px-1 leading-tight">
                             {(s.speed ?? 1) < 1 ? "🐢" : "⚡"}{String(s.speed).replace(".", ",")}×

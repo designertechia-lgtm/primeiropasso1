@@ -33,7 +33,11 @@ export const EDITOR_CONTRACT_VERSION = 10;
 
 // speed: velocidade do trecho (1 = normal, 0.5 = câmera lenta, 2 = acelerado).
 // Ausente = 1 (retrocompat com projetos salvos antes desta feature).
-export type Segment = { id: number; start: number; end: number; keep: boolean; speed?: number };
+// dismissed: trecho removido "excluído de vez" — some da lista de recortados e
+// perde os botões de restaurar (o caminho de volta é o Desfazer). Campo 100%
+// LOCAL de UI: o payload do render só envia os `keep` (buildRenderPayload),
+// então o worker nunca vê este campo. Ausente = false (retrocompat).
+export type Segment = { id: number; start: number; end: number; keep: boolean; speed?: number; dismissed?: boolean };
 export type EditMeta = {
   edit_id: string; duration: number; width: number; height: number;
   has_audio: boolean; thumbs: string[]; preview_url?: string;

@@ -541,7 +541,15 @@ export default function DiretorEstudio() {
       <div className="grid gap-3 lg:grid-cols-[minmax(360px,400px)_1fr] lg:items-start">
         {/* ── C. Cabine (chat) ── */}
         <Card className="flex h-[68vh] min-h-[460px] flex-col overflow-hidden rounded-xl lg:h-[calc(100vh-15rem)] lg:min-h-[580px] lg:max-h-[880px]">
-          <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-3">
+          {/* Papel de parede da conversa: duas luzes suaves nos cantos opostos
+              (verde da marca em cima, âmbar embaixo) sobre a base do tema. Como
+              usa os tokens, o mesmo gradiente serve ao claro e ao escuro — e
+              fica atrás dos balões sem disputar leitura com eles. */}
+          <div
+            ref={scrollRef}
+            className="flex-1 space-y-3 overflow-y-auto bg-muted/25 p-3
+                       bg-[radial-gradient(120%_75%_at_0%_0%,hsl(var(--primary)/0.10),transparent_62%),radial-gradient(105%_70%_at_100%_100%,hsl(var(--accent)/0.09),transparent_66%)]"
+          >
             {historyLoaded && msgs.length === 0 && (
               <div className="space-y-4 pt-6">
                 <div className="text-center">
@@ -559,7 +567,7 @@ export default function DiretorEstudio() {
                       key={s.t}
                       type="button"
                       onClick={() => sendMessage(s.envia)}
-                      className="group flex items-center gap-2.5 rounded-md border border-border/70 bg-background px-2.5 py-2 text-left
+                      className="group flex items-center gap-2.5 rounded-md border border-border/70 bg-card px-2.5 py-2 text-left shadow-sm
                                  transition-colors hover:border-accent/50 hover:bg-accent/[0.06]
                                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
                                  focus-visible:ring-offset-card motion-reduce:transition-none"
@@ -586,12 +594,15 @@ export default function DiretorEstudio() {
               <div key={i} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
                 <div
                   className={cn(
-                    "max-w-[92%] break-words rounded-xl px-3 py-2 font-chat text-[13.5px] leading-[1.55]",
+                    // Balão OPACO sobre o papel de parede: translúcido deixaria o
+                    // gradiente atravessar o texto. A sombra é o que faz o balão
+                    // pousar sobre o fundo, como num mensageiro.
+                    "max-w-[92%] break-words rounded-xl px-3 py-2 font-chat text-[13.5px] leading-[1.55] shadow-sm",
                     m.role === "user"
-                      ? "rounded-tr-md bg-primary text-primary-foreground"
+                      ? "rounded-tr-md bg-primary text-primary-foreground shadow-primary/20"
                       : m.failed
                         ? "rounded-tl-md border border-destructive/30 bg-destructive/10"
-                        : "rounded-tl-md border border-border/60 bg-muted/70",
+                        : "rounded-tl-md border border-border/60 bg-card",
                   )}
                 >
                   <ChatTexto texto={m.content} />

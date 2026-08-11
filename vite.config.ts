@@ -27,17 +27,22 @@ export default defineConfig({
     //
     // Os grupos são por biblioteca, não por tela: assim um pedaço só é
     // reconstruído (e rebaixado pelo usuário) quando aquela lib muda.
+    // REGRA DE SEGURANÇA (aprendida com tela branca em produção, 11/08): só
+    // sai do vendor quem é FOLHA — biblioteca que ninguém no vendor importa.
+    // Separar react/radix do vendor criou importação circular entre os pedaços
+    // (react ↔ vendor, radix ↔ vendor), e ciclo entre módulos ESM quebra a
+    // inicialização: o app inteiro morre em tela branca antes do primeiro
+    // render. Agravante: o filtro `/react/` também capturava
+    // "@fullcalendar/react", misturando os grupos. Folha → vendor pode;
+    // vendor → folha nunca acontece, então não há ciclo possível.
     rollupOptions: {
       output: {
         manualChunks(id) {
           if (!id.includes("node_modules")) return;
-          if (id.includes("/react-dom/") || id.includes("/react/") || id.includes("/scheduler/")) return "react";
           if (id.includes("/@fullcalendar/")) return "calendario";
           if (id.includes("/recharts/") || id.includes("/d3-") || id.includes("/victory-")) return "graficos";
-          if (id.includes("/@supabase/")) return "supabase";
-          if (id.includes("/@radix-ui/")) return "radix";
-          if (id.includes("/lucide-react/")) return "icones";
           if (id.includes("/html2canvas/")) return "html2canvas";
+          if (id.includes("/lucide-react/")) return "icones";
           return "vendor";
         },
       },

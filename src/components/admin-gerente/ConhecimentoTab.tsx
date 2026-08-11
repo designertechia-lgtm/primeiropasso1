@@ -184,7 +184,10 @@ export default function ConhecimentoTab() {
             sections.map((s) => (
               <div
                 key={s.id}
-                className="flex items-start justify-between gap-3 p-4 rounded-xl border border-white/10 bg-white/5"
+                // Tokens do tema no lugar de branco translúcido: sobre bg-card
+                // claro, white/5 sumia (card sem separação visível); os tokens
+                // funcionam no claro e no escuro.
+                className="flex items-start justify-between gap-3 p-4 rounded-xl border border-border bg-muted/40"
               >
                 <div className="min-w-0 space-y-1">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -194,7 +197,7 @@ export default function ConhecimentoTab() {
                       <Badge variant="secondary" className="text-[10px]">{s.category}</Badge>
                     )}
                     {!s.enabled && (
-                      <Badge variant="outline" className="text-[10px] text-amber-400 border-amber-500/30">
+                      <Badge variant="outline" className="text-[10px] text-amber-600 dark:text-amber-400 border-amber-500/30">
                         oculta
                       </Badge>
                     )}

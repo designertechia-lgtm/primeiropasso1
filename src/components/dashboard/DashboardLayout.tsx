@@ -88,7 +88,6 @@ function DashboardShell({ children }: DashboardLayoutProps) {
   const { profile, signOut } = useAuth();
   const { confirmNavigation } = useUnsavedChangesGuard();
   const { data: professional } = useProfessional();
-  const darkModeEnabled = (professional as any)?.dark_mode ?? false;
 
   const [dark, setDark] = useState(() => {
     const stored = localStorage.getItem("admin_dark_mode");
@@ -129,16 +128,21 @@ function DashboardShell({ children }: DashboardLayoutProps) {
           <header className="h-14 flex items-center justify-between border-b px-4 bg-card">
             <SidebarTrigger className="ml-0" />
             <div className="flex items-center gap-3">
-              {darkModeEnabled && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setDark(!dark)}
-                  className="h-8 w-8"
-                >
-                  {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                </Button>
-              )}
+              {/* O tema do PAINEL é preferência de quem usa o painel — vale para
+                  qualquer conta, em qualquer rota do layout (inclusive o Painel
+                  do Gerente). O gate antigo (professional.dark_mode) era o campo
+                  do tema escuro da LANDING pública: conta sem essa opção ficava
+                  sem o botão aqui, sem relação nenhuma entre as duas coisas. */}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setDark(!dark)}
+                className="h-8 w-8"
+                title={dark ? "Mudar para o tema claro" : "Mudar para o tema escuro"}
+                aria-label={dark ? "Mudar para o tema claro" : "Mudar para o tema escuro"}
+              >
+                {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </Button>
               <span className="text-sm text-muted-foreground">
                 {profile?.full_name || "Profissional"}
               </span>

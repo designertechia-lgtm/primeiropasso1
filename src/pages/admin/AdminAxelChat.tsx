@@ -71,6 +71,7 @@ import type { Lead } from "@/hooks/useLeadsKanban";
 import { useToggleAgentEnabled } from "@/hooks/useUpdateLeadStage";
 import { useWhatsAppAvatar } from "@/hooks/useWhatsAppAvatar";
 import AxelChat from "@/components/admin/AxelChat";
+import ChatTexto from "@/components/admin/ChatTexto";
 
 type TabType = "axel" | "leads" | "feedback";
 
@@ -90,7 +91,7 @@ export default function AdminAxelChat() {
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] sm:h-[calc(100vh-5rem)]">
       {/* Tab Navigation - compacta */}
-      <div className="flex gap-1 mb-2 sm:mb-3 p-0.5 sm:p-1 rounded-xl bg-white/5 backdrop-blur-xl border border-white/10 shadow-lg overflow-x-auto shrink-0">
+      <div className="flex gap-1 mb-2 sm:mb-3 p-0.5 sm:p-1 rounded-xl bg-muted border border-border/60 shadow-sm overflow-x-auto shrink-0">
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -98,7 +99,7 @@ export default function AdminAxelChat() {
             className={`relative flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-all duration-300 text-[11px] sm:text-sm font-semibold whitespace-nowrap ${
               activeTab === tab.id
                 ? `bg-gradient-to-r ${tab.gradient} text-white shadow-md ${tab.glow}`
-                : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                : "text-muted-foreground hover:text-foreground hover:bg-background/70"
             }`}
           >
             <tab.icon className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -119,9 +120,9 @@ export default function AdminAxelChat() {
 function AxelTab() {
   const { memory } = useAxelMemory();
   return (
-    <div className="flex flex-col h-full rounded-lg sm:rounded-xl overflow-hidden border border-white/10 bg-gradient-to-br from-background via-background to-purple-950/5 dark:to-purple-950/10 shadow-lg backdrop-blur-sm">
+    <div className="flex flex-col h-full rounded-lg sm:rounded-xl overflow-hidden border border-border/60 bg-card shadow-lg">
       {/* Header - compacto */}
-      <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/5 shrink-0">
+      <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5 border-b border-border/60 shrink-0">
         <Avatar className="h-7 w-7 sm:h-8 sm:w-8 ring-1 ring-purple-500/20">
           <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-600 text-white text-[9px] sm:text-[10px] font-bold">AX</AvatarFallback>
         </Avatar>
@@ -131,7 +132,7 @@ function AxelTab() {
             {memory.name ? `Assistente de ${memory.name.split(" ")[0]}` : "IA • PrimeiroPasso"}
           </p>
         </div>
-        <Badge className="gap-1 bg-white/5 border border-white/10 text-foreground/60 px-1.5 py-0 text-[9px] sm:text-[10px] shrink-0">
+        <Badge className="gap-1 bg-muted border border-border/60 text-muted-foreground px-1.5 py-0 text-[9px] sm:text-[10px] shrink-0">
           <span className="relative flex h-1.5 w-1.5">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-purple-500" />
@@ -173,9 +174,9 @@ function LeadsTab() {
         {selectedLeadId ? (
           <LeadChat leadId={selectedLeadId} onDeleted={() => setSelectedLeadId(null)} />
         ) : (
-          <div className="h-full hidden sm:flex items-center justify-center rounded-lg sm:rounded-xl border border-white/10 bg-gradient-to-br from-background via-background to-emerald-950/5 backdrop-blur-sm shadow-lg">
+          <div className="h-full hidden sm:flex items-center justify-center rounded-lg sm:rounded-xl border border-border/60 bg-card shadow-lg">
             <div className="text-center p-6">
-              <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto mb-3 rounded-full bg-white/5 backdrop-blur-md border border-white/10 flex items-center justify-center">
+              <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto mb-3 rounded-full bg-muted border border-border/60 flex items-center justify-center">
                 <MessageCircle className="h-7 w-7 sm:h-8 sm:w-8 text-muted-foreground/30" />
               </div>
               <p className="text-sm text-muted-foreground font-medium">Selecione um lead</p>
@@ -208,7 +209,7 @@ function LeadItem({ lead, onSelect, isSelected }: { lead: Lead; onSelect: (id: s
       className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg transition-all duration-150 text-left ${
         isSelected
           ? "bg-emerald-500/10 border border-emerald-500/20"
-          : "hover:bg-white/5 border border-transparent"
+          : "hover:bg-muted border border-transparent"
       }`}
     >
       <Avatar className="h-8 w-8 sm:h-9 sm:w-9 shrink-0 ring-1 ring-emerald-500/20">
@@ -236,7 +237,7 @@ function LeadItem({ lead, onSelect, isSelected }: { lead: Lead; onSelect: (id: s
             </span>
           )}
           {lead.pipeline_stage && (
-            <span className="capitalize bg-white/5 px-1 py-0 rounded text-[9px]">{lead.pipeline_stage.replace(/_/g, " ")}</span>
+            <span className="capitalize bg-muted px-1 py-0 rounded text-[9px]">{lead.pipeline_stage.replace(/_/g, " ")}</span>
           )}
         </div>
       </div>
@@ -263,8 +264,8 @@ function LeadList({ onSelect, selectedId }: { onSelect: (id: string) => void; se
   });
 
   return (
-    <div className="h-full rounded-lg sm:rounded-xl overflow-hidden border border-white/10 bg-gradient-to-br from-background via-background to-emerald-950/5 backdrop-blur-sm shadow-lg flex flex-col">
-      <div className="px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/5 flex items-center justify-between shrink-0">
+    <div className="h-full rounded-lg sm:rounded-xl overflow-hidden border border-border/60 bg-card shadow-lg flex flex-col">
+      <div className="px-3 sm:px-4 py-2 sm:py-2.5 border-b border-border/60 flex items-center justify-between shrink-0">
         <h3 className="font-semibold text-xs sm:text-sm flex items-center gap-1.5">
           <MessageSquare className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-emerald-400" />
           Conversas
@@ -374,9 +375,9 @@ function LeadChat({ leadId, onDeleted }: { leadId: string; onDeleted?: () => voi
   if (!lead) return null;
 
   return (
-    <div className="h-full flex flex-col rounded-lg sm:rounded-xl overflow-hidden border border-white/10 bg-gradient-to-br from-background via-background to-emerald-950/5 backdrop-blur-sm shadow-lg">
+    <div className="h-full flex flex-col rounded-lg sm:rounded-xl overflow-hidden border border-border/60 bg-card shadow-lg">
       {/* Header - compacto */}
-      <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/5 shrink-0">
+      <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5 border-b border-border/60 shrink-0">
         <Avatar className="h-7 w-7 sm:h-8 sm:w-8 ring-1 ring-emerald-500/20">
           {headerAvatarSrc ? (
             <AvatarImage src={headerAvatarSrc} alt={lead.name} className="object-cover" />
@@ -390,14 +391,14 @@ function LeadChat({ leadId, onDeleted }: { leadId: string; onDeleted?: () => voi
           <p className="text-[10px] sm:text-xs text-muted-foreground truncate">{lead.whatsapp || lead.email || "Sem contato"}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <div className="flex items-center gap-1.5 bg-white/5 rounded-full px-2 py-1 border border-white/5">
+          <div className="flex items-center gap-1.5 bg-muted rounded-full px-2 py-1 border border-border/60">
             <Bot className={`h-3 w-3 ${lead.agent_enabled ? "text-emerald-400" : "text-muted-foreground"}`} />
             <Switch checked={lead.agent_enabled} onCheckedChange={(checked) => toggleAgent.mutate({ leadId: lead.id, enabled: checked })} className="scale-75 data-[state=checked]:bg-emerald-500" />
           </div>
-          <Badge className="bg-white/5 border-white/10 text-[10px] sm:text-xs capitalize px-1.5 py-0">{lead.pipeline_stage?.replace(/_/g, " ")}</Badge>
+          <Badge className="bg-muted border-border/60 text-[10px] sm:text-xs capitalize px-1.5 py-0">{lead.pipeline_stage?.replace(/_/g, " ")}</Badge>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="text-muted-foreground/60 hover:text-foreground transition-colors p-1 rounded-md hover:bg-white/5" aria-label="Ações do lead">
+              <button className="text-muted-foreground/60 hover:text-foreground transition-colors p-1 rounded-md hover:bg-muted" aria-label="Ações do lead">
                 <MoreVertical className="h-4 w-4" />
               </button>
             </DropdownMenuTrigger>
@@ -417,7 +418,7 @@ function LeadChat({ leadId, onDeleted }: { leadId: string; onDeleted?: () => voi
 
       {/* Collected Info - compacto */}
       {lead.collected_info && typeof lead.collected_info === "object" && Object.keys(lead.collected_info).length > 0 && (
-        <div className="px-3 sm:px-4 py-1.5 border-b border-white/5 bg-white/[0.01] shrink-0">
+        <div className="px-3 sm:px-4 py-1.5 border-b border-border/60 bg-muted shrink-0">
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] sm:text-xs">
             {Object.entries(lead.collected_info).map(([key, value]) => (
               <span key={key} className="text-muted-foreground"><span className="font-medium capitalize text-foreground/80">{key.replace(/_/g, " ")}:</span> {String(value)}</span>
@@ -432,34 +433,34 @@ function LeadChat({ leadId, onDeleted }: { leadId: string; onDeleted?: () => voi
           <div className="flex items-center justify-center h-full"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando...</div></div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="w-12 h-12 sm:w-14 sm:h-14 mx-auto mb-2 rounded-full bg-white/5 backdrop-blur-md border border-white/5 flex items-center justify-center"><Bot className="h-6 w-6 sm:h-7 sm:w-7 text-muted-foreground/30" /></div>
+            <div className="w-12 h-12 sm:w-14 sm:h-14 mx-auto mb-2 rounded-full bg-muted backdrop-blur-md border border-border/60 flex items-center justify-center"><Bot className="h-6 w-6 sm:h-7 sm:w-7 text-muted-foreground/30" /></div>
             <p className="text-xs sm:text-sm text-muted-foreground font-medium">Nenhuma mensagem ainda</p>
             <p className="text-[10px] sm:text-xs text-muted-foreground/50 mt-0.5">Envie a primeira mensagem para este lead</p>
           </div>
         ) : (
-          <div className="space-y-3 max-w-3xl mx-auto">
+          <div className="mx-auto max-w-3xl space-y-3 rounded-xl bg-muted/20 p-3 bg-[radial-gradient(120%_75%_at_0%_0%,hsl(var(--primary)/0.10),transparent_62%),radial-gradient(105%_70%_at_100%_100%,hsl(var(--accent)/0.09),transparent_66%)]">
             {messages.map((msg) => {
               const isUser = msg.role === "user";
               const isAssistant = msg.role === "assistant";
               return (
                 <div key={msg.id} className={`flex gap-2 ${isUser ? "justify-start" : "justify-end"}`}>
                   {isUser && (
-                    <Avatar className="h-7 w-7 sm:h-8 sm:w-8 shrink-0 ring-1 ring-white/10">
+                    <Avatar className="h-7 w-7 sm:h-8 sm:w-8 shrink-0 ring-1 ring-border">
                       {headerAvatarSrc ? <AvatarImage src={headerAvatarSrc} alt={lead.name} className="object-cover" /> : null}
                       <AvatarFallback className="text-[10px] sm:text-xs bg-gradient-to-br from-emerald-400 to-teal-500 text-white"><User className="h-3 w-3 sm:h-3.5 sm:w-3.5" /></AvatarFallback>
                     </Avatar>
                   )}
                   <div className={`rounded-2xl px-3 py-2 sm:px-4 sm:py-3 text-xs sm:text-sm max-w-[80%] sm:max-w-[70%] backdrop-blur-sm ${
-                    isUser ? "bg-white/5 border border-white/10 rounded-tl-md" : "bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-tr-md shadow-lg shadow-emerald-500/10"
+                    isUser ? "bg-card border border-border/60 rounded-tl-md shadow-sm" : "bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-tr-md shadow-md shadow-emerald-500/20"
                   }`}>
-                    <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                    <ChatTexto texto={msg.content} className="font-chat leading-relaxed" />
                     <p className={`text-[9px] sm:text-[10px] mt-1.5 ${isUser ? "text-muted-foreground" : "text-white/50"}`}>
                       {format(new Date(msg.created_at), "HH:mm", { locale: ptBR })}
                     </p>
                   </div>
                   {!isUser && (
-                    <Avatar className="h-7 w-7 sm:h-8 sm:w-8 shrink-0 ring-1 ring-white/10">
-                      <AvatarFallback className={`text-[10px] sm:text-xs ${isAssistant ? "bg-white/5 text-muted-foreground" : "bg-gradient-to-br from-emerald-400 to-teal-500 text-white"}`}>
+                    <Avatar className="h-7 w-7 sm:h-8 sm:w-8 shrink-0 ring-1 ring-border">
+                      <AvatarFallback className={`text-[10px] sm:text-xs ${isAssistant ? "bg-muted text-muted-foreground" : "bg-gradient-to-br from-emerald-400 to-teal-500 text-white"}`}>
                         {isAssistant ? <Bot className="h-3 w-3 sm:h-3.5 sm:w-3.5" /> : <User className="h-3 w-3 sm:h-3.5 sm:w-3.5" />}
                       </AvatarFallback>
                     </Avatar>
@@ -472,14 +473,14 @@ function LeadChat({ leadId, onDeleted }: { leadId: string; onDeleted?: () => voi
       </ScrollArea>
 
       {/* Input - compacto */}
-      <div className="border-t border-white/5 p-2 sm:p-2.5 bg-white/[0.01] shrink-0">
+      <div className="border-t border-border/60 p-2 sm:p-2.5 bg-muted shrink-0">
         <div className="flex gap-2 items-center">
           <Input
             placeholder="Digite sua mensagem..."
             value={messageText}
             onChange={(e) => setMessageText(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="h-9 sm:h-10 text-xs sm:text-sm bg-white/5 border-white/10 rounded-xl focus:border-emerald-500/50 transition-all"
+            className="h-9 sm:h-10 text-xs sm:text-sm bg-muted border-border/60 rounded-xl focus:border-emerald-500/50 transition-all"
             disabled={sending}
           />
           <Button
@@ -545,7 +546,7 @@ function getStatusBadge(status: string) {
     novo: { icon: Clock, label: "Novo", className: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
     em_analise: { icon: AlertCircle, label: "Em Análise", className: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20" },
     resolvido: { icon: CheckCircle2, label: "Resolvido", className: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
-    arquivado: { icon: FileText, label: "Arquivado", className: "bg-white/5 text-muted-foreground border-white/10" },
+    arquivado: { icon: FileText, label: "Arquivado", className: "bg-muted text-muted-foreground border-border/60" },
   };
   const c = config[status] || config.novo;
   const Icon = c.icon;
@@ -600,9 +601,9 @@ function FeedbackTab() {
   const stats = { total: feedbacks.length, resolvido: feedbacks.filter((f) => f.status === "resolvido").length, emAnalise: feedbacks.filter((f) => f.status === "em_analise").length, novo: feedbacks.filter((f) => f.status === "novo").length };
 
   return (
-    <div className="h-full rounded-xl sm:rounded-2xl overflow-hidden border border-white/10 bg-gradient-to-br from-background via-background to-amber-950/5 backdrop-blur-sm shadow-lg flex flex-col">
+    <div className="h-full rounded-xl sm:rounded-2xl overflow-hidden border border-border/60 bg-gradient-to-br from-background via-background to-amber-950/5 backdrop-blur-sm shadow-lg flex flex-col">
       {/* Header - compacto */}
-      <div className="px-4 sm:px-5 py-2.5 sm:py-3 border-b border-white/5 flex items-center justify-between shrink-0">
+      <div className="px-4 sm:px-5 py-2.5 sm:py-3 border-b border-border/60 flex items-center justify-between shrink-0">
         <div>
           <h2 className="text-sm sm:text-base font-semibold flex items-center gap-2">
             <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center"><Star className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-white" /></div>
@@ -612,7 +613,7 @@ function FeedbackTab() {
         </div>
         <Button onClick={() => { setShowForm(!showForm); setExpandedId(null); }}
           className={`gap-1.5 rounded-lg text-xs sm:text-sm transition-all duration-300 ${
-            showForm ? "bg-white/5 hover:bg-white/10 border border-white/10 h-8 sm:h-9" : "bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 shadow-lg shadow-orange-500/20 h-8 sm:h-9"
+            showForm ? "bg-muted hover:bg-muted border border-border/60 h-8 sm:h-9" : "bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 shadow-lg shadow-orange-500/20 h-8 sm:h-9"
           }`}
         >
           {showForm ? "Cancelar" : <><MessageSquareText className="h-3.5 w-3.5" />Novo</>}
@@ -620,7 +621,7 @@ function FeedbackTab() {
       </div>
 
       {/* Stats Bar - compacto */}
-      <div className="px-4 sm:px-5 py-1.5 sm:py-2 border-b border-white/5 bg-white/[0.01] shrink-0">
+      <div className="px-4 sm:px-5 py-1.5 sm:py-2 border-b border-border/60 bg-muted shrink-0">
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           {[
             { key: "all", label: "Todos", count: stats.total, color: "" },
@@ -630,7 +631,7 @@ function FeedbackTab() {
           ].map(({ key, label, count, color }) => (
             <button key={key} onClick={() => setStatusFilter(key)}
               className={`text-[10px] sm:text-xs font-medium px-2 sm:px-2.5 py-1 rounded-md transition-all flex items-center gap-1 ${
-                statusFilter === key ? "bg-white/10 text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                statusFilter === key ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-background/70"
               }`}
             >
               {color && <span className={`w-1.5 h-1.5 rounded-full ${color}`} />}
@@ -646,7 +647,7 @@ function FeedbackTab() {
           {/* New Feedback Form */}
           {showForm && (
             <div ref={formRef} className="mb-4">
-              <Card className="backdrop-blur-xl bg-white/[0.02] border-white/10 shadow-xl overflow-hidden">
+              <Card className="backdrop-blur-xl bg-muted border-border/60 shadow-xl overflow-hidden">
                 <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500" />
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base sm:text-lg font-semibold flex items-center gap-2">
@@ -658,7 +659,7 @@ function FeedbackTab() {
                   <div className="space-y-1.5">
                     <label className="text-xs sm:text-sm font-medium flex items-center gap-1.5"><Filter className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-muted-foreground" />Tipo</label>
                     <Select value={type} onValueChange={setType}>
-                      <SelectTrigger className="bg-white/5 border-white/10 rounded-lg text-xs sm:text-sm h-9"><SelectValue placeholder="Selecione o tipo" /></SelectTrigger>
+                      <SelectTrigger className="bg-muted border-border/60 rounded-lg text-xs sm:text-sm h-9"><SelectValue placeholder="Selecione o tipo" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="sugestao">💡 Sugestão</SelectItem>
                         <SelectItem value="bug">🐞 Bug / Erro</SelectItem>
@@ -670,26 +671,26 @@ function FeedbackTab() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs sm:text-sm font-medium flex items-center gap-1.5"><MessageSquareText className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-muted-foreground" />Sua mensagem</label>
-                    <Textarea placeholder="Conte-nos em detalhes..." value={message} onChange={(e) => setMessage(e.target.value)} className="min-h-[100px] bg-white/5 border-white/10 rounded-lg resize-none focus:border-amber-500/50 text-xs sm:text-sm" />
+                    <Textarea placeholder="Conte-nos em detalhes..." value={message} onChange={(e) => setMessage(e.target.value)} className="min-h-[100px] bg-muted border-border/60 rounded-lg resize-none focus:border-amber-500/50 text-xs sm:text-sm" />
                   </div>
                   <div className="space-y-2.5">
                     <label className="text-xs sm:text-sm font-medium flex items-center gap-1.5"><ThumbsUp className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-muted-foreground" />O quanto recomendaria? (0-10)</label>
                     <div className="flex justify-between gap-0.5 sm:gap-1">
                       {[...Array(11)].map((_, i) => (
                         <button key={i} onClick={() => setNps(i)} className={`flex-1 h-8 sm:h-10 rounded-lg text-[10px] sm:text-sm font-semibold transition-all duration-200 ${
-                          nps === i ? "bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-orange-500/20 scale-105" : "bg-white/5 hover:bg-white/10 text-muted-foreground hover:text-foreground"
+                          nps === i ? "bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-orange-500/20 scale-105" : "bg-muted hover:bg-muted text-muted-foreground hover:text-foreground"
                         }`}>{i}</button>
                       ))}
                     </div>
                     {nps !== null && (
                       <div className="flex items-center gap-2 text-[10px] sm:text-xs text-muted-foreground">
-                        <div className="flex-1 h-1 sm:h-1.5 rounded-full bg-white/5 overflow-hidden"><div className="h-full rounded-full bg-gradient-to-r from-amber-400 to-orange-500 transition-all duration-500" style={{ width: `${(nps / 10) * 100}%` }} /></div>
+                        <div className="flex-1 h-1 sm:h-1.5 rounded-full bg-muted overflow-hidden"><div className="h-full rounded-full bg-gradient-to-r from-amber-400 to-orange-500 transition-all duration-500" style={{ width: `${(nps / 10) * 100}%` }} /></div>
                         <span className="font-semibold text-foreground">{nps}/10</span>
                       </div>
                     )}
                   </div>
                   <div className="flex gap-2 pt-1">
-                    <Button onClick={() => setShowForm(false)} variant="outline" className="flex-1 rounded-lg border-white/10 hover:bg-white/5 text-xs sm:text-sm h-9">Cancelar</Button>
+                    <Button onClick={() => setShowForm(false)} variant="outline" className="flex-1 rounded-lg border-border/60 hover:bg-muted text-xs sm:text-sm h-9">Cancelar</Button>
                     <Button onClick={handleSubmit} disabled={!message || sending} className="flex-1 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 shadow-lg shadow-orange-500/20 gap-1.5 text-xs sm:text-sm h-9">
                       {sending ? <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" /> : <Send className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
                       {sending ? "Enviando..." : "Enviar"}
@@ -703,7 +704,7 @@ function FeedbackTab() {
           {/* Empty */}
           {!isLoading && filteredFeedbacks.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-white/5 backdrop-blur-md border border-white/5 flex items-center justify-center mb-3">
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-muted backdrop-blur-md border border-border/60 flex items-center justify-center mb-3">
                 {statusFilter === "all" ? <Star className="h-7 w-7 sm:h-8 sm:w-8 text-muted-foreground/20" /> : <Filter className="h-7 w-7 sm:h-8 sm:w-8 text-muted-foreground/20" />}
               </div>
               <p className="text-sm text-muted-foreground font-medium">{statusFilter === "all" ? "Nenhum feedback enviado ainda" : `Nenhum feedback "${statusFilter}"`}</p>
@@ -726,7 +727,7 @@ function FeedbackTab() {
                 const isExpanded = expandedId === f.id;
                 const hasResponse = !!f.response;
                 return (
-                  <div key={f.id} className="rounded-xl overflow-hidden border border-white/10 bg-white/[0.02] backdrop-blur-md hover:bg-white/[0.04] transition-all duration-200">
+                  <div key={f.id} className="rounded-xl overflow-hidden border border-border/60 bg-muted backdrop-blur-md hover:bg-muted transition-all duration-200">
                     <button onClick={() => setExpandedId(isExpanded ? null : f.id)} className="w-full text-left">
                       <div className="p-3 sm:p-4">
                         <div className="flex items-start gap-3">
@@ -754,8 +755,8 @@ function FeedbackTab() {
                       </div>
                     </button>
                     {isExpanded && (
-                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-white/5 pt-3 space-y-3">
-                        <div className="bg-white/[0.02] rounded-lg p-3 border border-white/5">
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-border/60 pt-3 space-y-3">
+                        <div className="bg-muted rounded-lg p-3 border border-border/60">
                           <p className="text-[10px] sm:text-xs text-muted-foreground mb-1">Mensagem completa:</p>
                           <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap">{f.message}</p>
                         </div>

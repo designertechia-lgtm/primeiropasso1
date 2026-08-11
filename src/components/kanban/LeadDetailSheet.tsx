@@ -7,6 +7,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import ChatTexto from "@/components/admin/ChatTexto";
 import { Phone, Mail, Bot, MessageSquare, User, ClipboardList } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -139,7 +140,7 @@ export function LeadDetailSheet({
               </p>
             ) : (
               <ScrollArea className="h-[400px] pr-3" ref={scrollRef}>
-                <div className="space-y-3">
+                <div className="space-y-3 rounded-xl bg-muted/20 p-3 bg-[radial-gradient(120%_75%_at_0%_0%,hsl(var(--primary)/0.10),transparent_62%),radial-gradient(105%_70%_at_100%_100%,hsl(var(--accent)/0.09),transparent_66%)]">
                   {messages.map((msg) => (
                     <div
                       key={msg.id}
@@ -151,13 +152,13 @@ export function LeadDetailSheet({
                         <Bot className="h-5 w-5 text-primary shrink-0 mt-1" />
                       )}
                       <div
-                        className={`rounded-lg px-3 py-2 text-sm max-w-[80%] ${
+                        className={`max-w-[80%] rounded-xl px-3 py-2 font-chat text-[13.5px] leading-[1.55] shadow-sm ${
                           msg.role === "assistant"
-                            ? "bg-muted"
-                            : "bg-primary text-primary-foreground"
+                            ? "rounded-tl-md border border-border/60 bg-card"
+                            : "rounded-tr-md bg-primary text-primary-foreground shadow-primary/20"
                         }`}
                       >
-                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                        <ChatTexto texto={msg.content} />
                         <p className="text-[10px] opacity-60 mt-1">
                           {format(new Date(msg.created_at), "HH:mm", { locale: ptBR })}
                         </p>

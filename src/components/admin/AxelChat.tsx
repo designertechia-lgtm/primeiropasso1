@@ -476,7 +476,8 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
           num display:table que estoura a largura no widget estreito (380px) e corta os
           balões da direita. Forçar block faz respeitar 100% da largura. */}
       <ScrollArea className="flex-1 min-w-0 [&_[data-radix-scroll-area-viewport]>div]:!block" ref={scrollRef}>
-        <div className="p-3 sm:p-4 space-y-0.5 min-w-0">
+        <div className="min-w-0 space-y-0.5 bg-muted/20 p-3 sm:p-4
+                        bg-[radial-gradient(120%_75%_at_0%_0%,theme(colors.purple.500/0.10),transparent_62%),radial-gradient(105%_70%_at_100%_100%,theme(colors.blue.500/0.09),transparent_66%)]">
           {displayMessages.map((msg, idx) => {
             const isAxel = msg.role === "axel";
             const prevMsg = idx > 0 ? displayMessages[idx - 1] : null;
@@ -521,8 +522,8 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
                   <div
                     className={`rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 text-sm leading-relaxed ${
                       isAxel
-                        ? "bg-white/[0.03] backdrop-blur-md border border-white/10 rounded-tl-md"
-                        : "bg-gradient-to-r from-purple-500 to-blue-600 text-white rounded-tr-md shadow-lg shadow-purple-500/10"
+                        ? "bg-card border border-border/60 rounded-tl-md shadow-sm"
+                        : "bg-gradient-to-r from-purple-500 to-blue-600 text-white rounded-tr-md shadow-md shadow-purple-500/20"
                     }`}
                   >
                     <ChatTexto texto={msg.content} className="font-chat text-[13.5px] sm:text-[14px]" />
@@ -536,7 +537,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
                           key={i}
                           variant="outline"
                           size="sm"
-                          className="text-[11px] sm:text-xs h-7 sm:h-8 gap-1 sm:gap-1.5 rounded-xl bg-white/[0.02] backdrop-blur-md border-white/10 hover:bg-white/10 hover:border-purple-500/30 transition-all duration-200"
+                          className="text-[11px] sm:text-xs h-7 sm:h-8 gap-1 sm:gap-1.5 rounded-xl bg-card border-border/60 shadow-sm hover:bg-purple-500/10 hover:border-purple-500/40 transition-all duration-200"
                           onClick={() => handleAction(action)}
                         >
                           <ChevronRight className="h-3 w-3 text-purple-400" />
@@ -554,7 +555,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
                           key={i}
                           onClick={() => sendMessage(q)}
                           disabled={isProcessing}
-                          className="text-[10px] sm:text-[11px] px-2.5 py-1 rounded-full border border-purple-500/20 bg-purple-500/5 text-purple-200/90 hover:bg-purple-500/15 hover:border-purple-500/40 transition-all duration-200 disabled:opacity-40"
+                          className="text-[10px] sm:text-[11px] px-2.5 py-1 rounded-full border border-purple-500/25 bg-purple-500/5 text-purple-700 dark:text-purple-300 hover:bg-purple-500/15 hover:border-purple-500/45 transition-all duration-200 disabled:opacity-40"
                         >
                           {q}
                         </button>
@@ -588,7 +589,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
               <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
                 <button
                   onClick={() => handleAction({ label: "Onboarding", action: "onboarding" })}
-                  className="flex flex-col items-center gap-2 p-4 rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md hover:bg-white/[0.05] hover:border-purple-500/20 transition-all duration-200 group"
+                  className="flex flex-col items-center gap-2 p-4 rounded-2xl border border-border/60 bg-card shadow-sm hover:bg-purple-500/[0.06] hover:border-purple-500/30 transition-all duration-200 group"
                 >
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
                     <Sparkles className="h-5 w-5 text-purple-400" />
@@ -598,7 +599,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
                 </button>
                 <button
                   onClick={() => handleAction({ label: "Conteúdo", action: "content-creation" })}
-                  className="flex flex-col items-center gap-2 p-4 rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md hover:bg-white/[0.05] hover:border-yellow-500/20 transition-all duration-200 group"
+                  className="flex flex-col items-center gap-2 p-4 rounded-2xl border border-border/60 bg-card shadow-sm hover:bg-amber-500/[0.06] hover:border-amber-500/30 transition-all duration-200 group"
                 >
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-yellow-500/20 to-orange-500/20 flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
                     <Lightbulb className="h-5 w-5 text-yellow-400" />
@@ -608,7 +609,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
                 </button>
                 <button
                   onClick={() => handleAction({ label: "FAQ", action: "faq" })}
-                  className="flex flex-col items-center gap-2 p-4 rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md hover:bg-white/[0.05] hover:border-blue-500/20 transition-all duration-200 group"
+                  className="flex flex-col items-center gap-2 p-4 rounded-2xl border border-border/60 bg-card shadow-sm hover:bg-blue-500/[0.06] hover:border-blue-500/30 transition-all duration-200 group"
                 >
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
                     <HelpCircle className="h-5 w-5 text-blue-400" />
@@ -618,7 +619,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
                 </button>
                 <button
                   onClick={() => handleAction({ label: "Feedback", action: "open-feedback" })}
-                  className="flex flex-col items-center gap-2 p-4 rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md hover:bg-white/[0.05] hover:border-amber-500/20 transition-all duration-200 group"
+                  className="flex flex-col items-center gap-2 p-4 rounded-2xl border border-border/60 bg-card shadow-sm hover:bg-amber-500/[0.06] hover:border-amber-500/30 transition-all duration-200 group"
                 >
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-500/20 flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
                     <Star className="h-5 w-5 text-amber-400" />
@@ -634,7 +635,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
           {pendingUser && !displayMessages.some((m) => m.role === "user" && m.content === pendingUser) && (
             <div className="flex gap-2 sm:gap-2.5 mt-3 sm:mt-4 justify-end">
               <div className="max-w-[85%] sm:max-w-[75%]">
-                <div className="rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 text-sm leading-relaxed bg-gradient-to-r from-purple-500 to-blue-600 text-white rounded-tr-md shadow-lg shadow-purple-500/10">
+                <div className="rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 text-sm leading-relaxed bg-gradient-to-r from-purple-500 to-blue-600 text-white rounded-tr-md shadow-md shadow-purple-500/20">
                   <p className="whitespace-pre-wrap break-words font-chat text-[13.5px] sm:text-[14px]">{pendingUser}</p>
                 </div>
               </div>
@@ -656,7 +657,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
                   AX
                 </AvatarFallback>
               </Avatar>
-              <div className="bg-white/[0.03] backdrop-blur-md border border-white/10 rounded-2xl rounded-tl-md px-3 py-2.5 sm:px-4 sm:py-3">
+              <div className="bg-card border border-border/60 shadow-sm rounded-2xl rounded-tl-md px-3 py-2.5 sm:px-4 sm:py-3">
                 <div className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "0ms" }} />
                   <span className="w-2 h-2 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "150ms" }} />
@@ -669,7 +670,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
       </ScrollArea>
 
       {/* Input Area */}
-      <div className="border-t border-white/5 p-2.5 sm:p-3 bg-white/[0.01] backdrop-blur-xl safe-bottom">
+      <div className="border-t border-border/60 p-2.5 sm:p-3 bg-card safe-bottom">
         <div className="flex gap-2 items-center">
           <div className="flex-1 relative">
             <Input
@@ -678,7 +679,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              className="h-10 text-sm bg-white/5 border-white/10 rounded-xl focus:border-purple-500/50 focus:ring-purple-500/20 transition-all pr-4 placeholder:text-xs sm:placeholder:text-sm"
+              className="h-10 text-sm bg-background border-border/60 rounded-xl focus:border-purple-500/50 focus:ring-purple-500/20 transition-all pr-4 placeholder:text-xs sm:placeholder:text-sm"
               disabled={isProcessing}
             />
           </div>
@@ -748,7 +749,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
         open={feedback.open}
         onOpenChange={(open) => setFeedback((prev) => ({ ...prev, open }))}
       >
-        <DialogContent className="sm:max-w-[450px] backdrop-blur-2xl bg-white/[0.03] border-white/10 shadow-2xl">
+        <DialogContent className="sm:max-w-[450px] shadow-2xl">
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-400 via-pink-500 to-amber-400" />
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold flex items-center gap-2">
@@ -769,7 +770,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
                 value={feedback.type}
                 onValueChange={(v) => setFeedback((prev) => ({ ...prev, type: v }))}
               >
-                <SelectTrigger className="bg-white/5 border-white/10 rounded-xl">
+                <SelectTrigger className="bg-background border-border/60 rounded-xl">
                   <SelectValue placeholder="Selecione o tipo" />
                 </SelectTrigger>
                 <SelectContent>
@@ -790,7 +791,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
                 onChange={(e) =>
                   setFeedback((prev) => ({ ...prev, message: e.target.value }))
                 }
-                className="min-h-[100px] bg-white/5 border-white/10 rounded-xl resize-none focus:border-purple-500/50"
+                className="min-h-[100px] bg-background border-border/60 rounded-xl resize-none focus:border-purple-500/50"
               />
             </div>
 
@@ -806,7 +807,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
                     className={`flex-1 h-9 text-xs rounded-xl transition-all duration-200 ${
                       feedback.nps === i
                         ? "bg-gradient-to-r from-purple-500 to-blue-600 text-white font-bold shadow-lg shadow-purple-500/20 scale-105"
-                        : "bg-white/5 hover:bg-white/10 text-muted-foreground hover:text-foreground"
+                        : "bg-muted hover:bg-muted/70 text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     {i}

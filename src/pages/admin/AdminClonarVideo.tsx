@@ -80,6 +80,78 @@ const fmtDuracao = (s: number) => {
   return m > 0 ? `${m}min ${r}s` : `${r}s`;
 };
 
+const ACEITA_VIDEO = "video/mp4,video/quicktime,video/webm,video/x-matroska";
+
+/** Textura do palco vazio — define a área de solta sem pesar. */
+const TRAMA_PALCO = {
+  backgroundImage: "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.07) 1px, transparent 0)",
+  backgroundSize: "22px 22px",
+};
+
+/** Rótulo de seção do painel de direção. */
+function Secao({ children, obrigatorio }: { children: React.ReactNode; obrigatorio?: boolean }) {
+  return (
+    <p className="mb-2 flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+      {children}
+      {obrigatorio && <span className="text-[9px] font-medium normal-case tracking-normal text-primary">obrigatório</span>}
+    </p>
+  );
+}
+
+/**
+ * Cartão de escolha (personagem, tom, estilo). Um só componente para os três
+ * grupos: o mesmo gesto deve ter sempre a mesma aparência e o mesmo alvo de
+ * clique, o que a versão anterior não garantia (cada grupo tinha seu tamanho).
+ */
+function Escolha({
+  ativo, onClick, disabled, Icon, titulo, descricao, compacto,
+}: {
+  ativo: boolean; onClick: () => void; disabled?: boolean;
+  Icon: React.ComponentType<{ className?: string }>;
+  titulo: string; descricao?: string; compacto?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={ativo}
+      disabled={disabled}
+      onClick={onClick}
+      className={[
+        "group relative w-full rounded-xl border bg-card text-left transition-all",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+        "disabled:cursor-not-allowed disabled:opacity-50",
+        "active:scale-[0.985] motion-reduce:transition-none motion-reduce:active:scale-100",
+        compacto ? "p-2" : "p-2.5",
+        // Laranja é a cor de marcação desta tela (a assinatura da sub-aba):
+        // seleção e ação em accent, verde fica para o resto do admin.
+        ativo
+          ? "border-accent/60 bg-accent/[0.06] shadow-sm ring-1 ring-accent/30"
+          : "border-border/70 hover:border-accent/40 hover:shadow-sm",
+      ].join(" ")}
+    >
+      <div className={compacto ? "flex flex-col items-center gap-1.5" : "flex items-start gap-2.5"}>
+        <span
+          className={[
+            "grid shrink-0 place-items-center rounded-lg transition-colors",
+            compacto ? "h-7 w-7" : "h-8 w-8",
+            ativo ? "bg-accent/15 text-accent" : "bg-muted text-muted-foreground group-hover:text-foreground",
+          ].join(" ")}
+        >
+          <Icon className={compacto ? "h-3.5 w-3.5" : "h-4 w-4"} />
+        </span>
+        <span className={compacto ? "text-center" : "min-w-0"}>
+          <span className={["block font-medium leading-tight", compacto ? "text-[11px]" : "text-sm"].join(" ")}>
+            {titulo}
+          </span>
+          {descricao && !compacto && (
+            <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">{descricao}</span>
+          )}
+        </span>
+      </div>
+    </button>
+  );
+}
+
 /**
  * POST com progresso REAL de upload. O `fetch` não expõe quanto do corpo já
  * subiu, e aqui o arquivo chega a 200MB: sem isso o botão ficava parado em
@@ -142,6 +214,8 @@ export default function AdminClonarVideo() {
 
   const [enviando, setEnviando] = useState(false);
   const [uploadPct, setUploadPct] = useState(0);
+  const [arrastando, setArrastando] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   /** True enquanto conferimos banco + worker ao abrir com ?video=. Sem isso a
    *  tela acusava "clonagem não concluída" na janela entre montar e receber a
    *  primeira resposta — com o job rodando e cobrando normalmente. */
@@ -195,6 +269,20 @@ export default function AdminClonarVideo() {
     setRefPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [refFile]);
+
+  // A tela CONVIDA a arrastar um vídeo — e o padrão do navegador, se a solta
+  // errar o palco por 40px, é NAVEGAR para o arquivo e descartar o formulário
+  // inteiro. O guard neutraliza o default na janela toda; o onDrop do palco
+  // continua funcionando por rodar antes, no alvo.
+  useEffect(() => {
+    const bloqueia = (e: DragEvent) => e.preventDefault();
+    window.addEventListener("dragover", bloqueia);
+    window.addEventListener("drop", bloqueia);
+    return () => {
+      window.removeEventListener("dragover", bloqueia);
+      window.removeEventListener("drop", bloqueia);
+    };
+  }, []);
 
   // Link colado: pergunta ao worker a duração/título/thumb ANTES de qualquer
   // gasto. Quem envia arquivo já via o custo (o navegador sabe a duração);
@@ -496,6 +584,21 @@ export default function AdminClonarVideo() {
     }
   };
 
+  /** Entrada única de arquivo — vale para o seletor e para o arrastar-e-soltar. */
+  const receberArquivo = (f: File | null) => {
+    if (!f) return;
+    // Windows sem player registrado devolve MIME vazio para .mkv/.mov — aí a
+    // extensão decide. A trava continua barrando PDF/zip arrastado por engano.
+    const ehVideo = f.type.startsWith("video/") || (!f.type && /\.(mp4|mov|m4v|webm|mkv)$/i.test(f.name));
+    if (!ehVideo) {
+      toast.error("Esse arquivo não é um vídeo. Envie mp4, mov, webm ou mkv.");
+      return;
+    }
+    if (refUrl.trim()) toast.info("Troquei o link pelo arquivo enviado.");
+    setRefFile(f);
+    setRefUrl("");   // arquivo e link são caminhos exclusivos
+  };
+
   const irParaMeusVideos = () => {
     setSearchParams((prev) => { prev.set("sub", "meus-videos"); prev.delete("video"); return prev; }, { replace: true });
   };
@@ -516,15 +619,15 @@ export default function AdminClonarVideo() {
     const srcVisor = vendo === "antes" ? (originalUrl || previewUrl) : previewUrl;
 
     return (
-      <div className="max-w-5xl mx-auto rounded-2xl bg-card border border-border overflow-hidden shadow-sm">
-        <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border">
-          <div className="flex items-center gap-2 min-w-0">
-            <Button variant="ghost" size="icon" onClick={voltarParaForm} title="Voltar"><ArrowLeft className="h-4 w-4" /></Button>
+      <div className="mx-auto max-w-6xl overflow-hidden rounded-2xl border border-border/70 bg-card shadow-lg shadow-black/5 dark:shadow-black/40">
+        <div className="flex items-center justify-between gap-2 border-b border-border/70 bg-gradient-to-r from-orange-500/[0.07] via-transparent to-transparent px-4 py-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <Button variant="ghost" size="icon" className="shrink-0" onClick={voltarParaForm} title="Voltar"><ArrowLeft className="h-4 w-4" /></Button>
             <Input
               value={tituloDraft}
               onChange={(e) => setTituloDraft(e.target.value)}
               onBlur={handleSalvarTitulo}
-              className="h-8 text-base font-semibold border-transparent hover:border-input focus-visible:border-input max-w-xs"
+              className="h-8 max-w-xs border-transparent bg-transparent text-base font-semibold tracking-tight hover:border-input focus-visible:border-input"
             />
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
@@ -543,34 +646,33 @@ export default function AdminClonarVideo() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr]">
-          <div className="p-4 space-y-4 border-b lg:border-b-0 lg:border-r border-border bg-muted/20">
+        <div className="grid grid-cols-1 lg:grid-cols-[288px_1fr]">
+          <div className="space-y-4 border-b border-border/70 bg-muted/30 p-4 lg:border-b-0 lg:border-r">
+            <dl className="space-y-3 rounded-xl border border-border/70 bg-card p-3">
+              {[
+                { rotulo: "Tema", valor: state.tema?.trim() || "Não informado" },
+                { rotulo: "Tom da narração", valor: TONS.find((t) => t.value === state.tom)?.label || "—" },
+                { rotulo: "Personagem", valor: state.manter_original ? "Original do vídeo" : "Meu personagem" },
+              ].map(({ rotulo, valor }) => (
+                <div key={rotulo}>
+                  <dt className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{rotulo}</dt>
+                  <dd className="mt-0.5 text-sm leading-snug">{valor}</dd>
+                </div>
+              ))}
+            </dl>
             <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Tema</p>
-              <p className="text-sm">{state.tema?.trim() || "Não informado"}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Tom da narração</p>
-              <p className="text-sm">{TONS.find((t) => t.value === state.tom)?.label || "—"}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Personagem</p>
-              <p className="text-sm">{state.manter_original ? "Original do vídeo" : "Meu personagem"}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1.5">Estilo (próxima versão)</p>
+              <Secao>Estilo da próxima versão</Secao>
               <div className="grid grid-cols-3 gap-1.5">
                 {ESTILOS.map(({ value, label, Icon }) => (
-                  <button
+                  <Escolha
                     key={value}
-                    type="button"
+                    compacto
+                    ativo={estiloRefinar === value}
                     disabled={processando}
                     onClick={() => setEstiloRefinar(value)}
-                    className={`rounded-lg border p-1.5 flex flex-col items-center gap-1 text-center transition ${estiloRefinar === value ? "border-primary ring-1 ring-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
-                  >
-                    <Icon className={`h-3.5 w-3.5 ${estiloRefinar === value ? "text-primary" : "text-muted-foreground"}`} />
-                    <span className="text-[10px] leading-none">{label}</span>
-                  </button>
+                    Icon={Icon}
+                    titulo={label}
+                  />
                 ))}
               </div>
             </div>
@@ -580,36 +682,55 @@ export default function AdminClonarVideo() {
             {/* Barra Antes/Depois: comparar com a referência é o jeito mais direto
                 de julgar uma clonagem — os dois vídeos já estão hospedados. */}
             {comparavel && (
-              <div className="flex items-center gap-1 px-3 py-2 border-b border-border bg-muted/20">
-                {(["antes", "depois"] as const).map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => setVendo(v)}
-                    className={`rounded-md px-3 py-1 text-xs font-medium transition ${vendo === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-                  >
-                    {v === "antes" ? "Antes (referência)" : "Depois (seu clone)"}
-                  </button>
-                ))}
+              <div className="flex items-center gap-1 border-b border-border/70 bg-muted/30 px-3 py-2">
+                <div className="inline-flex rounded-lg bg-muted p-0.5 ring-1 ring-inset ring-border/60">
+                  {(["antes", "depois"] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      aria-pressed={vendo === v}
+                      onClick={() => setVendo(v)}
+                      className={[
+                        "rounded-[7px] px-3 py-1 text-xs font-medium transition-all",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        vendo === v
+                          ? "bg-card text-foreground shadow-sm ring-1 ring-border/60"
+                          : "text-muted-foreground hover:text-foreground",
+                      ].join(" ")}
+                    >
+                      {v === "antes" ? "Antes" : "Depois"}
+                    </button>
+                  ))}
+                </div>
+                <span className="ml-1 text-[11px] text-muted-foreground">
+                  {vendo === "antes" ? "vídeo de referência" : "o seu clone"}
+                </span>
               </div>
             )}
 
-            <div className="flex-1 min-h-[420px] flex items-center justify-center bg-black relative">
+            <div className="relative flex min-h-[460px] flex-1 items-center justify-center overflow-hidden bg-[#0a0e0d]">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-x-0 -top-32 h-72 bg-[radial-gradient(55%_100%_at_50%_0%,hsl(var(--accent)/0.26),transparent_72%)]"
+              />
               {processando ? (
                 <>
                   {/* Enquanto processa, o visor mostra o vídeo de REFERÊNCIA em vez
                       de um retângulo preto: dá contexto do que está sendo clonado
                       e deixa a espera concreta. */}
                   {originalUrl && (
-                    <video src={originalUrl} className="max-h-[65vh] w-auto opacity-30" muted loop autoPlay playsInline />
+                    <video src={originalUrl} className="relative z-10 max-h-[65vh] w-auto rounded-lg opacity-25" muted loop autoPlay playsInline />
                   )}
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white p-8">
-                    <Loader2 className="h-8 w-8 animate-spin" />
-                    <p className="text-sm text-center font-medium">{jobStatus.step || "Processando..."}</p>
-                    <div className="w-full max-w-xs space-y-1.5">
+                  <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 p-8 text-white">
+                    <span className="grid h-14 w-14 place-items-center rounded-2xl bg-white/10 ring-1 ring-white/15">
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                    </span>
+                    <p className="text-center text-sm font-medium">{jobStatus.step || "Processando…"}</p>
+                    <div className="w-full max-w-xs space-y-2">
                       <Progress value={jobStatus.progress ?? 5} className="h-1.5" />
-                      <p className="text-[11px] text-white/60 text-center">
-                        {jobStatus.progress ?? 5}% — pode ir fazendo outra coisa, avisamos quando ficar pronto.
+                      <p className="text-center text-[11px] leading-relaxed text-white/60">
+                        <span className="tabular-nums">{jobStatus.progress ?? 5}%</span> — pode ir fazendo outra coisa,
+                        avisamos quando ficar pronto.
                       </p>
                     </div>
                   </div>
@@ -620,16 +741,18 @@ export default function AdminClonarVideo() {
                   controls
                   poster={vendo === "depois" ? videoRow?.thumbnail_url || undefined : undefined}
                   src={srcVisor}
-                  className="max-h-[65vh] w-auto"
+                  className="relative z-10 max-h-[65vh] w-auto rounded-lg shadow-2xl"
                 />
               ) : jobStatus.status === "error" || (videoRow && !reidratando) ? (
                 // Clone sem vídeo pronto e que não está processando = não
                 // concluído (job falhou, ou o worker reiniciou e perdeu o job
                 // da memória). "Sem vídeo ainda" nunca é um estado normal
                 // persistente aqui — ou está processando, ou tem vídeo, ou falhou.
-                <div className="flex flex-col items-center justify-center gap-3 text-white/80 p-8 text-center max-w-md">
-                  <AlertTriangle className="h-8 w-8 text-amber-400" />
-                  <p className="text-sm font-medium">Esta clonagem não foi concluída</p>
+                <div className="relative z-10 flex max-w-md flex-col items-center justify-center gap-3 p-8 text-center text-white/80">
+                  <span className="grid h-14 w-14 place-items-center rounded-2xl bg-amber-500/10 ring-1 ring-amber-400/25">
+                    <AlertTriangle className="h-6 w-6 text-amber-400" />
+                  </span>
+                  <p className="text-sm font-medium text-white">Esta clonagem não foi concluída</p>
                   {/* Nada de prometer estorno: o worker só estorna quando o job
                       DELE falha. Se o processo morreu no meio (redeploy), o
                       débito fica — afirmar devolução automática seria mentir
@@ -647,32 +770,32 @@ export default function AdminClonarVideo() {
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center gap-3 text-white/60 p-8">
+                <div className="relative z-10 flex flex-col items-center justify-center gap-3 p-8 text-white/60">
                   <Loader2 className="h-6 w-6 animate-spin" />
-                  <p className="text-sm">Carregando...</p>
+                  <p className="text-sm">Carregando…</p>
                 </div>
               )}
             </div>
 
-            <div className="p-3 border-t border-border space-y-2 bg-card">
+            <div className="space-y-2 border-t border-border/70 bg-card p-3">
               <div className="flex gap-2">
                 <Textarea
                   rows={2}
                   value={instrucaoRefinar}
                   onChange={(e) => setInstrucaoRefinar(e.target.value)}
-                  placeholder='O que você quer mudar? Ex.: "mude a cor da parede"...'
+                  placeholder='O que você quer mudar? Ex.: "mude a cor da parede"…'
                   disabled={processando}
-                  className="text-sm"
+                  className="resize-none bg-background text-sm"
                 />
                 <Button
                   size="icon"
-                  className="shrink-0 self-end"
+                  className="h-11 w-11 shrink-0 self-end bg-accent text-accent-foreground shadow-md shadow-accent/25 transition-all hover:bg-accent/90 active:scale-[0.97] disabled:shadow-none motion-reduce:transition-none motion-reduce:active:scale-100"
                   onClick={() => setConfirmarRefinar(true)}
                   disabled={processando || !previewUrl || !instrucaoRefinar.trim() || saldoInsuficienteRefinar}
                   title={
                     !previewUrl ? "Só é possível refinar depois que houver um vídeo pronto"
                       : saldoInsuficienteRefinar ? `Saldo insuficiente: são ~${custoRefinar} créditos e você tem ${saldo}`
-                      : undefined
+                      : "Gerar nova versão"
                   }
                 >
                   <Send className="h-4 w-4" />
@@ -772,41 +895,93 @@ export default function AdminClonarVideo() {
 
   // ── Modo entrada: upload/link + configuração inicial ────────────────
   return (
-    <div className="max-w-5xl mx-auto rounded-2xl bg-card border border-border overflow-hidden shadow-sm">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
-        <Clapperboard className="h-5 w-5 text-orange-500" />
-        <span className="font-semibold">Clonar Vídeo</span>
-        <Badge variant="outline" className="text-xs font-normal border-purple-400 text-purple-600 ml-1">Kling O1 Edit</Badge>
-        <span className="ml-auto text-xs text-muted-foreground flex items-center gap-1.5">
-          <Coins className="h-3.5 w-3.5" /> {saldo} créditos
+    <div className="mx-auto max-w-6xl overflow-hidden rounded-2xl border border-border/70 bg-card shadow-lg shadow-black/5 dark:shadow-black/40">
+      <div className="flex items-center gap-3 border-b border-border/70 bg-gradient-to-r from-orange-500/[0.07] via-transparent to-transparent px-4 py-3">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-orange-500/10 text-orange-600 ring-1 ring-inset ring-orange-500/25 dark:text-orange-400">
+          <Clapperboard className="h-[18px] w-[18px]" />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-[15px] font-semibold leading-none tracking-tight">Clonar Vídeo</h2>
+          <p className="mt-1.5 truncate text-[11px] leading-none text-muted-foreground">
+            Refaz um vídeo de referência com a sua narração e o seu estilo
+          </p>
+        </div>
+        <Badge
+          variant="outline"
+          className="ml-1 hidden shrink-0 gap-1.5 border-purple-400/40 bg-purple-500/5 text-[10px] font-medium text-purple-600 sm:inline-flex dark:text-purple-300"
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-purple-500" /> Kling O1 Edit
+        </Badge>
+        <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-semibold tabular-nums ring-1 ring-inset ring-border/60">
+          <Coins className="h-3.5 w-3.5 text-amber-500" />
+          {saldo}
+          <span className="font-normal text-muted-foreground">créditos</span>
         </span>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr]">
-        <div className="p-4 space-y-5 border-b lg:border-b-0 lg:border-r border-border bg-muted/20">
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide">Vídeo de referência</p>
+      {/* O seletor de arquivo é único: serve ao botão do painel e ao palco. */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={ACEITA_VIDEO}
+        className="hidden"
+        disabled={enviando}
+        onChange={(e) => { receberArquivo(e.target.files?.[0] ?? null); e.target.value = ""; }}
+      />
+
+      <div className="grid grid-cols-1 lg:grid-cols-[336px_1fr]">
+        <div className="space-y-5 border-b border-border/70 bg-muted/30 p-4 lg:border-b-0 lg:border-r">
+          <div>
+            <Secao obrigatorio>Vídeo de referência</Secao>
             <div className="relative">
               <Link2 className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
               <Input
                 value={refUrl}
                 onChange={(e) => setRefUrl(e.target.value)}
                 placeholder="Cole o link (YouTube, TikTok, Instagram)…"
-                className="text-sm pl-8"
+                className="bg-background pl-8 text-sm"
                 disabled={!!refFile || enviando}
               />
             </div>
-            <label className="flex items-center gap-2 text-xs rounded-md border border-input bg-background px-3 py-2 cursor-pointer transition hover:bg-muted">
-              <Upload className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              <span className="truncate">{refFile ? refFile.name : "Ou envie um arquivo…"}</span>
-              <input
-                type="file"
-                accept="video/mp4,video/quicktime,video/webm,video/x-matroska"
-                className="hidden"
+            <div className="my-2 flex items-center gap-2">
+              <span className="h-px flex-1 bg-border/70" />
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">ou</span>
+              <span className="h-px flex-1 bg-border/70" />
+            </div>
+            {refFile ? (
+              <div className="flex items-center gap-2 rounded-lg border border-accent/40 bg-accent/[0.05] px-2.5 py-2">
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-accent/15 text-accent">
+                  <Clapperboard className="h-3.5 w-3.5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-medium">{refFile.name}</span>
+                  <span className="block text-[10.5px] text-muted-foreground">
+                    {(refFile.size / 1024 / 1024).toFixed(1)} MB
+                    {duracaoRef != null && ` · ${fmtDuracao(duracaoRef)}`}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  disabled={enviando}
+                  onClick={() => setRefFile(null)}
+                  className="shrink-0 rounded-md p-1 text-muted-foreground transition hover:bg-muted hover:text-destructive disabled:opacity-50"
+                  title="Remover o arquivo"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
                 disabled={enviando}
-                onChange={(e) => setRefFile(e.target.files?.[0] ?? null)}
-              />
-            </label>
+                onClick={() => fileInputRef.current?.click()}
+                className="flex w-full items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-xs transition hover:border-accent/40 hover:bg-muted disabled:opacity-50"
+              >
+                <Upload className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate">Escolher um arquivo do computador</span>
+              </button>
+            )}
+            <div className="mt-2 space-y-1.5">
             {!refFile && !!refUrl.trim() && (
               inspecionando ? (
                 <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
@@ -843,200 +1018,245 @@ export default function AdminClonarVideo() {
                 Este vídeo tem {fmtDuracao(duracaoRef!)} — o limite é {limiteDuracao}s. Corte antes de {refFile ? "enviar" : "clonar"}.
               </p>
             )}
-          </div>
-
-          {/* Custo antes de gastar: a clonagem cobra por segundo de vídeo, então
-              o valor só aparecia num erro 402 DEPOIS do upload e da transcrição. */}
-          <div className="rounded-lg border border-border bg-background p-2.5 space-y-1">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs text-muted-foreground flex items-center gap-1.5">
-                <Coins className="h-3.5 w-3.5" /> Custo estimado
-              </span>
-              <span className={`text-sm font-semibold ${saldoInsuficiente ? "text-destructive" : ""}`}>
-                {!klingAtivo ? "Sem custo"
-                  : custoEstimado != null ? `~${custoEstimado} créditos`
-                  : custoTeto != null ? `até ${custoTeto} créditos`
-                  : "—"}
-              </span>
             </div>
-            <p className="text-[11px] text-muted-foreground">
-              {!klingAtivo
-                ? "Manter o original em Realista, sem pedido de mudança, apenas redubla o áudio — não usa a IA de vídeo."
-                : custoEstimado != null
-                  ? `${fmtDuracao(duracaoRef!)} de vídeo. O valor final acompanha a duração processada.`
-                  : creditosPorSegundo != null
-                    ? `Cerca de ${creditosPorSegundo.toFixed(2).replace(".", ",")} créditos por segundo de vídeo (até ${limiteDuracao}s).`
-                    : "Cobrado por segundo de vídeo processado."}
-            </p>
-            {saldoInsuficiente && (
-              <p className="text-[11px] text-destructive flex items-start gap-1.5">
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
-                Seu saldo é de {saldo} créditos. Compre créditos antes de clonar.
-              </p>
-            )}
-            {!saldoInsuficiente && saldoNaoConferido && (
-              <p className="text-[11px] text-amber-600 dark:text-amber-500 flex items-start gap-1.5">
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
-                Sem a duração deste link, não deu para conferir se o seu saldo cobre —
-                você tem {saldo} créditos.
-              </p>
-            )}
           </div>
 
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide">Sobre o que será o SEU vídeo? (opcional)</p>
+          <div>
+            <Secao>Tema do seu vídeo</Secao>
             <Input
               value={refTema}
               onChange={(e) => setRefTema(e.target.value)}
-              placeholder="Tema do seu vídeo…"
-              className="text-sm"
+              placeholder="Opcional — ex.: ansiedade no trabalho"
+              className="bg-background text-sm"
               disabled={enviando}
             />
           </div>
 
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide">Personagem</p>
+          <div>
+            <Secao>Quem aparece</Secao>
             <div className="space-y-1.5">
-              <button
-                type="button"
+              <Escolha
+                ativo={modo === "original"}
                 disabled={enviando}
                 onClick={() => setModo("original")}
-                className={`w-full rounded-lg border p-2.5 text-left text-sm transition ${modo === "original" ? "border-primary ring-1 ring-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
-              >
-                <div className="flex items-center gap-2 font-medium"><Sparkles className="h-3.5 w-3.5" />Manter o original</div>
-                <p className="text-xs text-muted-foreground mt-0.5">A pessoa do vídeo continua na cena.</p>
-              </button>
-              <button
-                type="button"
+                Icon={Sparkles}
+                titulo="Manter o original"
+                descricao="A pessoa do vídeo continua na cena."
+              />
+              <Escolha
+                ativo={modo === "personagem"}
                 disabled={enviando}
                 onClick={() => setModo("personagem")}
-                className={`w-full rounded-lg border p-2.5 text-left text-sm transition ${modo === "personagem" ? "border-primary ring-1 ring-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
-              >
-                <div className="flex items-center gap-2 font-medium"><Users className="h-3.5 w-3.5" />Meu personagem</div>
-                <p className="text-xs text-muted-foreground mt-0.5">Troca a pessoa pelo seu personagem.</p>
-              </button>
+                Icon={Users}
+                titulo="Meu personagem"
+                descricao="Troca a pessoa pelo seu personagem."
+              />
             </div>
             {modo === "personagem" && (
               avatars.length ? (
-                <div className="flex gap-2 flex-wrap pt-1">
+                <div className="flex flex-wrap gap-2 pt-2">
                   {avatars.map((a) => (
                     <button
                       key={a.id}
                       type="button"
                       disabled={enviando}
+                      aria-pressed={avatarId === a.id}
                       onClick={() => setAvatarId(a.id)}
-                      className={`rounded-lg border p-0.5 transition ${avatarId === a.id ? "border-primary ring-1 ring-primary" : "border-border hover:border-primary/40"}`}
+                      className={[
+                        "relative rounded-xl p-0.5 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        "active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100",
+                        avatarId === a.id
+                          ? "ring-2 ring-accent ring-offset-1 ring-offset-muted"
+                          : "opacity-75 ring-1 ring-border hover:opacity-100 hover:ring-accent/40",
+                      ].join(" ")}
                       title={a.name}
                     >
                       {a.photo_url
-                        ? <img src={a.photo_url} alt={a.name} className="h-12 w-12 rounded object-cover" />
-                        : <div className="h-12 w-12 rounded bg-muted flex items-center justify-center text-xs">{a.name.slice(0, 2)}</div>}
+                        ? <img src={a.photo_url} alt={a.name} className="h-12 w-12 rounded-[10px] object-cover" />
+                        : <div className="grid h-12 w-12 place-items-center rounded-[10px] bg-muted text-xs font-medium">{a.name.slice(0, 2)}</div>}
                     </button>
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground pt-1">
+                <p className="pt-2 text-xs text-muted-foreground">
                   Sem personagens ainda — crie um em <b>Personagens</b> ou use "Manter o original".
                 </p>
               )
             )}
           </div>
 
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide">Tom da narração</p>
+          <div>
+            <Secao>Tom da narração</Secao>
             <div className="grid grid-cols-2 gap-1.5">
               {TONS.map(({ value, label, Icon }) => (
-                <button
+                <Escolha
                   key={value}
-                  type="button"
+                  compacto
+                  ativo={tom === value}
                   disabled={enviando}
                   onClick={() => setTom(value)}
-                  className={`rounded-lg border p-2 flex flex-col items-center gap-1 text-center transition ${tom === value ? "border-primary ring-1 ring-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
-                >
-                  <Icon className={`h-4 w-4 ${tom === value ? "text-primary" : "text-muted-foreground"}`} />
-                  <span className="text-[11px]">{label}</span>
-                </button>
+                  Icon={Icon}
+                  titulo={label}
+                />
               ))}
             </div>
           </div>
 
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide">Estilo visual</p>
+          <div>
+            <Secao>Estilo visual</Secao>
             <div className="grid grid-cols-3 gap-1.5">
               {ESTILOS.map(({ value, label, Icon }) => (
-                <button
+                <Escolha
                   key={value}
-                  type="button"
+                  compacto
+                  ativo={estilo === value}
                   disabled={enviando}
                   onClick={() => setEstilo(value)}
-                  className={`rounded-lg border p-2 flex flex-col items-center gap-1 text-center transition ${estilo === value ? "border-primary ring-1 ring-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
-                >
-                  <Icon className={`h-4 w-4 ${estilo === value ? "text-primary" : "text-muted-foreground"}`} />
-                  <span className="text-[11px]">{label}</span>
-                </button>
+                  Icon={Icon}
+                  titulo={label}
+                />
               ))}
             </div>
-            <p className="text-[11px] text-muted-foreground">"Realista" mantém a aparência original — Cartoon/Pixar transformam a cena inteira.</p>
+            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+              <b className="font-medium text-foreground">Realista</b> mantém a aparência original.
+              Cartoon e Pixar transformam a cena inteira — e passam a usar a IA de vídeo, que é cobrada.
+            </p>
           </div>
         </div>
 
         <div className="flex flex-col">
-          <div className="flex-1 min-h-[420px] flex items-center justify-center bg-black relative">
+          {/* O palco é a maior área da tela e antes ficava um retângulo preto
+              inerte: a única porta de entrada do arquivo era um link pequeno no
+              painel. Agora ele é a porta — arrastar para cá funciona. */}
+          <div
+            onDragOver={(e) => { e.preventDefault(); if (!enviando) setArrastando(true); }}
+            onDragLeave={(e) => {
+              if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+              setArrastando(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setArrastando(false);
+              if (enviando) { toast.info("Aguarde o envio terminar para trocar o vídeo."); return; }
+              const fs = e.dataTransfer.files;
+              if (fs && fs.length > 1) toast.info("Um vídeo por vez — usei o primeiro da seleção.");
+              receberArquivo(fs?.[0] ?? null);
+            }}
+            className="relative flex min-h-[460px] flex-1 items-center justify-center overflow-hidden bg-[#0a0e0d]"
+          >
+            {/* O palco aceita solta em QUALQUER estado (trocar o vídeo é 1
+                gesto), então o realce também precisa existir em qualquer
+                estado — não só no vazio, cujo cartão tem realce próprio. */}
+            {arrastando && !enviando && (refPreviewUrl || refUrl.trim()) && (
+              <div className="pointer-events-none absolute inset-0 z-30 m-3 grid place-items-center rounded-xl border-2 border-dashed border-accent bg-accent/15 backdrop-blur-[1px]">
+                <p className="rounded-full bg-black/65 px-4 py-2 text-sm font-medium text-white">
+                  Solte para trocar o vídeo
+                </p>
+              </div>
+            )}
+            {/* Luz de cena: dá profundidade ao palco sem competir com o vídeo. */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 -top-32 h-72 bg-[radial-gradient(55%_100%_at_50%_0%,hsl(var(--accent)/0.26),transparent_72%)]"
+            />
+
             {refPreviewUrl ? (
               <video
                 controls={!enviando}
                 src={refPreviewUrl}
                 onLoadedMetadata={(e) => setRefDuracao(e.currentTarget.duration)}
-                className={`max-h-[65vh] w-auto ${enviando ? "opacity-30" : ""}`}
+                className={`relative z-10 max-h-[65vh] w-auto rounded-lg shadow-2xl transition-opacity ${enviando ? "opacity-25" : ""}`}
               />
             ) : refUrl.trim() ? (
-              // O link agora é conferido antes: mostramos capa, nome e duração
-              // do vídeo pra o profissional confirmar que é o vídeo certo — e
-              // pra o preço ao lado deixar de ser abstrato.
-              <div className="flex flex-col items-center gap-3 text-white/70 text-sm p-8 text-center max-w-sm">
+              // O link é conferido antes de clonar: capa, nome e duração deixam
+              // o profissional confirmar que é o vídeo certo — e o preço ao lado
+              // deixa de ser abstrato.
+              <div className="relative z-10 flex max-w-sm flex-col items-center gap-3 p-8 text-center text-sm text-white/70">
                 {inspecionando ? (
                   <>
-                    <Loader2 className="h-8 w-8 animate-spin" />
+                    <span className="grid h-14 w-14 place-items-center rounded-2xl bg-white/[0.06] ring-1 ring-white/10">
+                      <Loader2 className="h-6 w-6 animate-spin text-white/80" />
+                    </span>
                     <p>Conferindo o link…</p>
                   </>
                 ) : urlErro ? (
                   <>
-                    <AlertTriangle className="h-8 w-8 text-amber-400" />
-                    <p className="text-white/90">{urlErro}</p>
+                    <span className="grid h-14 w-14 place-items-center rounded-2xl bg-amber-500/10 ring-1 ring-amber-400/25">
+                      <AlertTriangle className="h-6 w-6 text-amber-400" />
+                    </span>
+                    <p className="leading-snug text-white/90">{urlErro}</p>
+                    <p className="text-xs text-white/60">Você ainda pode tentar clonar — o link é conferido de novo na hora.</p>
                   </>
                 ) : urlInfo ? (
                   <>
                     {urlInfo.thumbnail
-                      ? <img src={urlInfo.thumbnail} alt="" className="max-h-[45vh] w-auto rounded-lg object-contain" />
-                      : <Link2 className="h-8 w-8" />}
-                    {urlInfo.titulo && <p className="text-white/90 font-medium leading-snug">{urlInfo.titulo}</p>}
-                    <p className="text-xs text-white/50">
+                      ? <img src={urlInfo.thumbnail} alt="" className="max-h-[45vh] w-auto rounded-xl object-contain shadow-2xl ring-1 ring-white/10" />
+                      : <span className="grid h-14 w-14 place-items-center rounded-2xl bg-white/[0.06] ring-1 ring-white/10"><Link2 className="h-6 w-6" /></span>}
+                    {urlInfo.titulo && <p className="font-medium leading-snug text-white/90">{urlInfo.titulo}</p>}
+                    <p className="text-xs text-white/45">
                       {urlInfo.duracao_conhecida ? fmtDuracao(urlInfo.duracao_s) : "duração não informada pela plataforma"}
-                      {" · o vídeo é baixado quando você clicar em Clonar"}
+                      {" · baixamos o vídeo quando você clicar em Clonar"}
                     </p>
                   </>
                 ) : (
                   <>
-                    <Link2 className="h-8 w-8" />
-                    <p>Link colado — o preview aparece depois de clonar.</p>
+                    <span className="grid h-14 w-14 place-items-center rounded-2xl bg-white/[0.06] ring-1 ring-white/10">
+                      <Link2 className="h-6 w-6" />
+                    </span>
+                    <p>Link colado — a capa aparece depois da conferência.</p>
                   </>
                 )}
               </div>
             ) : (
-              <div className="flex flex-col items-center gap-2 text-white/30 text-sm p-8">
-                <Clapperboard className="h-10 w-10" />
-                <p>Envie um vídeo ou cole um link para começar.</p>
-              </div>
+              <button
+                type="button"
+                disabled={enviando}
+                onClick={() => fileInputRef.current?.click()}
+                style={TRAMA_PALCO}
+                className={[
+                  "group relative z-10 m-6 flex w-[min(440px,88%)] flex-col items-center gap-4 rounded-2xl border-2 border-dashed px-8 py-12 text-center",
+                  "transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+                  "motion-reduce:transition-none",
+                  arrastando
+                    ? "scale-[1.02] border-accent bg-accent/10 shadow-[0_0_60px_-12px_hsl(var(--accent)/0.55)]"
+                    : "border-white/15 hover:border-accent/60 hover:bg-white/[0.03]",
+                ].join(" ")}
+              >
+                <span
+                  className={[
+                    "grid h-16 w-16 place-items-center rounded-2xl ring-1 transition-all duration-200",
+                    arrastando
+                      ? "scale-110 bg-accent/25 text-white ring-accent/40"
+                      : "bg-white/[0.06] text-white/70 ring-white/10 group-hover:bg-accent/20 group-hover:text-white",
+                  ].join(" ")}
+                >
+                  <Clapperboard className="h-7 w-7" />
+                </span>
+                <span>
+                  <span className="block text-[15px] font-medium text-white">
+                    {arrastando ? "Solte o vídeo aqui" : "Arraste um vídeo para começar"}
+                  </span>
+                  <span className="mt-1.5 block text-xs leading-relaxed text-white/45">
+                    ou clique para escolher no computador
+                    <br />
+                    mp4, mov, webm ou mkv · até {limiteDuracao}s
+                  </span>
+                </span>
+                <span className="text-[11px] text-white/60">Também dá para colar um link no painel ao lado</span>
+              </button>
             )}
+
             {enviando && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white p-8">
-                <Loader2 className="h-8 w-8 animate-spin" />
-                <p className="text-sm font-medium">
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-black/45 p-8 backdrop-blur-[2px]">
+                <span className="grid h-14 w-14 place-items-center rounded-2xl bg-white/10 ring-1 ring-white/15">
+                  <Loader2 className="h-6 w-6 animate-spin text-white" />
+                </span>
+                <p className="text-sm font-medium text-white">
                   {uploadPct < 1 ? "Enviando o vídeo…" : "Analisando o vídeo e preparando a narração…"}
                 </p>
-                <div className="w-full max-w-xs space-y-1.5">
+                <div className="w-full max-w-xs space-y-2">
                   <Progress value={uploadPct < 1 ? Math.round(uploadPct * 100) : 100} className="h-1.5" />
-                  <p className="text-[11px] text-white/60 text-center">
+                  <p className="text-center text-[11px] text-white/60">
                     {uploadPct < 1
                       ? `${Math.round(uploadPct * 100)}% enviado`
                       : "Transcrevendo a fala do vídeo — isso leva alguns instantes."}
@@ -1045,31 +1265,84 @@ export default function AdminClonarVideo() {
               </div>
             )}
           </div>
-          <div className="p-3 border-t border-border space-y-2 bg-card">
+
+          {/* Régua de produção: instrução, preço e ação juntos. O custo ficava
+              perdido no meio do painel, longe do botão que o cobra. */}
+          <div className="space-y-2.5 border-t border-border/70 bg-card p-3">
             <Textarea
               rows={2}
               value={instrucaoInicial}
               onChange={(e) => setInstrucaoInicial(e.target.value)}
-              placeholder='O que você quer mudar? (opcional) Ex.: "mude a cor da parede"...'
+              placeholder='O que você quer mudar? (opcional) Ex.: "mude a cor da parede"…'
               disabled={enviando}
-              className="text-sm"
+              className="resize-none bg-background text-sm"
             />
-            {/* A conferência do link NÃO bloqueia o botão. Ela é uma
-                conveniência: o worker refaz a mesma validação no /iniciar, e o
-                download acontece ANTES de qualquer débito — então tentar com um
-                link problemático não custa crédito. Já um erro transitório
-                (timeout, rate-limit momentâneo) também chega aqui como 400;
-                travar o CTA por causa dele proibiria uma clonagem que
-                funcionaria. Avisar, sim; impedir, não. */}
-            <Button
-              onClick={handleClonar}
-              disabled={enviando || duracaoExcedida || saldoInsuficiente}
-              className="w-full gap-2"
-            >
-              {enviando
-                ? <><Loader2 className="h-4 w-4 animate-spin" /> {uploadPct < 1 ? `Enviando… ${Math.round(uploadPct * 100)}%` : "Analisando o vídeo…"}</>
-                : <><Wand2 className="h-4 w-4" /> {urlErro ? "Clonar mesmo assim" : "Clonar vídeo"}{!urlErro && klingAtivo && custoEstimado != null ? ` (~${custoEstimado} créditos)` : ""}</>}
-            </Button>
+
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <div className="min-w-0 flex-1">
+                <span
+                  className={[
+                    "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums ring-1 ring-inset",
+                    saldoInsuficiente
+                      ? "bg-destructive/10 text-destructive ring-destructive/25"
+                      : !klingAtivo
+                        ? "bg-emerald-500/10 text-emerald-700 ring-emerald-500/25 dark:text-emerald-400"
+                        : "bg-muted text-foreground ring-border/60",
+                  ].join(" ")}
+                >
+                  <Coins className="h-3.5 w-3.5" />
+                  {!klingAtivo ? "Sem custo"
+                    : custoEstimado != null ? `~${custoEstimado} créditos`
+                    : custoTeto != null ? `até ${custoTeto} créditos`
+                    : "Cobrado por segundo"}
+                </span>
+                <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+                  {!klingAtivo
+                    ? "Manter o original em Realista, sem pedido de mudança, só redubla o áudio."
+                    : custoEstimado != null
+                      ? `${fmtDuracao(duracaoRef!)} de vídeo — o valor final acompanha a duração processada.`
+                      : creditosPorSegundo != null
+                        ? `Cerca de ${creditosPorSegundo.toFixed(2).replace(".", ",")} créditos por segundo de vídeo.`
+                        : "Cobrado por segundo de vídeo processado."}
+                </p>
+              </div>
+
+              {/* A conferência do link NÃO bloqueia o botão. Ela é uma
+                  conveniência: o worker refaz a mesma validação no /iniciar, e o
+                  download acontece ANTES de qualquer débito — então tentar com um
+                  link problemático não custa crédito. Já um erro transitório
+                  (timeout, rate-limit momentâneo) também chega aqui como 400;
+                  travar o CTA por causa dele proibiria uma clonagem que
+                  funcionaria. Avisar, sim; impedir, não. */}
+              <Button
+                size="lg"
+                onClick={handleClonar}
+                disabled={enviando || duracaoExcedida || saldoInsuficiente}
+                title={
+                  duracaoExcedida ? `O vídeo passa do limite de ${limiteDuracao}s — corte antes de clonar`
+                    : saldoInsuficiente ? `Saldo insuficiente: ~${custoEstimado} créditos e você tem ${saldo}`
+                    : undefined
+                }
+                className="h-11 shrink-0 gap-2 bg-accent px-5 text-accent-foreground shadow-md shadow-accent/25 transition-all hover:bg-accent/90 active:scale-[0.98] disabled:shadow-none motion-reduce:transition-none motion-reduce:active:scale-100"
+              >
+                {enviando
+                  ? <><Loader2 className="h-4 w-4 animate-spin" /> {uploadPct < 1 ? `Enviando… ${Math.round(uploadPct * 100)}%` : "Analisando…"}</>
+                  : <><Wand2 className="h-4 w-4" /> {urlErro ? "Clonar mesmo assim" : "Clonar vídeo"}</>}
+              </Button>
+            </div>
+
+            {saldoInsuficiente && (
+              <p className="flex items-start gap-1.5 text-[11px] text-destructive">
+                <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+                Seu saldo é de {saldo} créditos. Compre créditos antes de clonar.
+              </p>
+            )}
+            {!saldoInsuficiente && saldoNaoConferido && (
+              <p className="flex items-start gap-1.5 text-[11px] text-amber-600 dark:text-amber-500">
+                <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+                Sem a duração deste link, não deu para conferir se o seu saldo cobre — você tem {saldo} créditos.
+              </p>
+            )}
           </div>
         </div>
       </div>

@@ -16,10 +16,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import {
   Film, Loader2, CheckCircle2, AlertCircle,
-  ChevronRight, ChevronLeft, ChevronDown, Mic, Monitor, Smartphone,
-  Circle, Square, RotateCcw, Sparkles, BookOpen,
-  ImagePlus, X, ArrowUp, ArrowDown, Images, Wand2,
-  Zap, Crown, Star, Minus, Triangle,
+  ChevronLeft, ChevronDown, Mic, Monitor, Smartphone,
+  Circle, Square, RotateCcw, Sparkles, BookOpen, Wand2,
   Heart, BookOpenCheck, Flame, TrendingUp,
   Copy, Scissors, Download, Share2, Search, RefreshCw,
   Instagram, Youtube, Linkedin, Facebook, Drama,
@@ -34,7 +32,6 @@ function TikTokIcon({ className }: { className?: string }) {
 }
 
 import { videoApiAuthHeaders } from "@/lib/videoApi";
-import EstudioCenas from "@/components/admin/EstudioCenas";
 import { STORAGE_KEY } from "@/lib/criarVideoDraft";
 
 const API = import.meta.env.VITE_VIDEO_API_URL || "https://video-api.primeiropasso.online";
@@ -46,20 +43,6 @@ const PLATAFORMA_FORMATO_PADRAO: Record<"geral" | "instagram" | "tiktok" | "link
   instagram: "portrait",   // Reels/Stories — formato dominante no IG
   tiktok:    "portrait",
   linkedin:  "square",
-};
-
-// Preço de VENDA em créditos — espelho do service_pricing (decisão 08/08):
-//   premium: base R$4,60 × (1+100%) = 9,2 por ~30s de cenas
-//   pro:     base R$33,00 × (1+50%) = 49,5 por ~30s de cenas
-// O débito real da RPC consume_credits é CEIL(venda30 × segundos/30) por CHAMADA
-// (units = segundos/30, cenas agrupadas num débito só). O vídeo base do caminho
-// rápido pago debita units=1 (valor cheio de 30s), independente da duração.
-const VENDA_KLING_CREDITOS30: Record<"premium" | "pro", number> = { premium: 9.2, pro: 49.5 };
-const creditosCenas = (tier: "premium" | "pro", totalS: number) =>
-  Math.ceil(VENDA_KLING_CREDITOS30[tier] * (totalS / 30));
-const CREDITOS_VIDEO_BASE: Record<"premium" | "pro", number> = {
-  premium: Math.ceil(VENDA_KLING_CREDITOS30.premium),
-  pro: Math.ceil(VENDA_KLING_CREDITOS30.pro),
 };
 
 function loadSaved() {
@@ -84,15 +67,8 @@ const EDGE_VOICES = [
 ];
 
 type VoiceMode    = "edge" | "gravacao" | "elevenlabs";
-type VideoModel   = "gratuito" | "premium" | "pro";
-type EstiloIA     = "cinematico" | "realista" | "animacao" | "pixar" | "paisagem" | "neon" | "minimalista" | "vintage" | "motion_graphics" | "dramatico" | "aquarela" | "espaco" | "psicodelico";
-// Estilos ILUSTRADOS: não existem em banco de clipes — a IA gera a imagem de
-// cada cena no estilo (FLUX) e o motor dá movimento. Os demais temperam a
-// busca dos clipes reais. (Espelho do VIDEO_STYLES do backend.)
-const ESTILOS_IA = new Set<EstiloIA>(["pixar", "animacao", "aquarela", "psicodelico", "neon", "minimalista", "espaco", "motion_graphics"]);
-type VisualStyle  = "images";  // backgrounds animados (Remotion) removidos — só imagens reais
 type Tom          = "acolhedor" | "educativo" | "provocador" | "motivacional";
-type DuracaoAlvo  = "10s" | "15s" | "30s" | "45s" | "60s";
+type DuracaoAlvo  = "30s" | "45s" | "60s";
 type PlataformaAlvo = "geral" | "instagram" | "linkedin" | "tiktok";
 type Legenda   = { tempo: number; texto: string };
 type Slide     = {
@@ -301,15 +277,68 @@ function VoiceRecorder({
   );
 }
 
+// ── Blocos visuais do wizard (mesma linguagem do Clonar Vídeo) ───────────────
+
+/** Rótulo de seção padronizado. */
+function Secao({ children, opcional }: { children: React.ReactNode; opcional?: boolean }) {
+  return (
+    <p className="mb-2 flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+      {children}
+      {opcional && <span className="text-[9px] font-medium normal-case tracking-normal">opcional</span>}
+    </p>
+  );
+}
+
+/** Cartão de escolha único para tom, voz e formato — mesmo gesto, mesma cara. */
+function Escolha({
+  ativo, onClick, disabled, Icon, titulo, descricao, extra,
+}: {
+  ativo: boolean; onClick: () => void; disabled?: boolean;
+  Icon?: ComponentType<{ className?: string }>;
+  titulo: string; descricao?: string; extra?: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={ativo}
+      disabled={disabled}
+      onClick={onClick}
+      className={[
+        "group relative w-full rounded-xl border bg-card p-3 text-left transition-all",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+        "disabled:cursor-not-allowed disabled:opacity-50",
+        "active:scale-[0.985] motion-reduce:transition-none motion-reduce:active:scale-100",
+        ativo
+          ? "border-primary/70 bg-primary/[0.045] shadow-sm ring-1 ring-primary/30"
+          : "border-border/70 hover:border-primary/40 hover:shadow-sm",
+      ].join(" ")}
+    >
+      <div className="flex items-start gap-2.5">
+        {Icon && (
+          <span
+            className={[
+              "grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors",
+              ativo ? "bg-primary/12 text-primary" : "bg-muted text-muted-foreground group-hover:text-foreground",
+            ].join(" ")}
+          >
+            <Icon className="h-4 w-4" />
+          </span>
+        )}
+        <span className="min-w-0">
+          <span className="block text-sm font-medium leading-tight">{titulo}</span>
+          {descricao && <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">{descricao}</span>}
+          {extra}
+        </span>
+      </div>
+    </button>
+  );
+}
+
 // ── Página principal ─────────────────────────────────────────
 export default function AdminEstudioViral() {
   const { data: professional } = useProfessional();
   const [searchParams, setSearchParams] = useSearchParams();
   const editVideoId = searchParams.get("edit");
-  // Tier pré-selecionado via URL (?model=) — usado pelo Axel ao preparar roteiro por molde
-  const tierParam = searchParams.get("model");
-  const initialTier: VideoModel | null =
-    tierParam === "gratuito" || tierParam === "premium" || tierParam === "pro" ? tierParam : null;
 
   // Inicializa do localStorage para persistir entre navegações
   const saved = useRef(editVideoId ? null : loadSaved()).current;
@@ -317,12 +346,12 @@ export default function AdminEstudioViral() {
   const [objetivo, setObjetivo]     = useState<string>(saved?.objetivo ?? "");
   const [tom, setTom]               = useState<Tom>(saved?.tom ?? "acolhedor");
   const [formato, setFormato]       = useState<FormatoId>(saved?.formato ?? "livre");
-  const [duracaoAlvo, setDuracaoAlvo] = useState<DuracaoAlvo>(saved?.duracaoAlvo ?? "45s");
+  const [duracaoAlvo, setDuracaoAlvo] = useState<DuracaoAlvo>(
+    saved?.duracaoAlvo === "30s" || saved?.duracaoAlvo === "45s" || saved?.duracaoAlvo === "60s" ? saved.duracaoAlvo : "45s",
+  );
   const [plataformaAlvo, setPlataformaAlvo] = useState<PlataformaAlvo>(saved?.plataformaAlvo ?? "geral");
   const [iaLoading, setIaLoading]   = useState(false);
   const [script, setScript]         = useState<Script | null>(saved?.script ?? null);
-  const [videoModel, setVideoModel] = useState<VideoModel>(initialTier ?? saved?.videoModel ?? "gratuito");
-  const [estiloIA, setEstiloIA]     = useState<EstiloIA>(saved?.estiloIA ?? "cinematico");
   const [voiceMode, setVoiceMode]   = useState<VoiceMode>(saved?.voiceMode ?? "edge");
   const [edgeVoice, setEdgeVoice]   = useState<string>(saved?.edgeVoice ?? "pt-BR-FranciscaNeural");
   const [voiceBlob, setVoiceBlob]   = useState<Blob | null>(null);
@@ -334,14 +363,11 @@ export default function AdminEstudioViral() {
   const [vozStatus, setVozStatus] = useState<{ used: number; quota: number; remaining: number } | null>(null);
   // Estourou a cota: "edge" (voz automática, grátis) | "creditos" (cobra por caractere)
   const [overQuotaChoice, setOverQuotaChoice] = useState<"edge" | "creditos">("edge");
-  // Personagem/avatar — cena de ABERTURA do vídeo (Premium/Pro, herdado do Estúdio Viral)
+  // Personagem/avatar — abre e fecha o vídeo (foto com movimento suave)
   const [avatars, setAvatars] = useState<{ id: string; name: string; photo_url: string | null }[]>([]);
   const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(null);
   // Cenas do vídeo: clipe real sugerido/escolhido por slide (preview + troca)
   const [previewClips, setPreviewClips] = useState<(ClipInfo | null)[]>([]);
-  // Aba Cenas (Premium/PRO): tipo escolhido POR CENA — ausente = "auto" (clipe
-  // real/estilo). "video"/"personagens" são cobrados por cena (custo visível).
-  const [sceneTypes, setSceneTypes] = useState<Record<number, { tipo: "imagem" | "video" | "personagens" | "fala"; dur: number }>>({});
   const [clipsLoading, setClipsLoading] = useState(false);
   const [swapClipSlide, setSwapClipSlide] = useState<number | null>(null);
   const [swapClipQuery, setSwapClipQuery] = useState("");
@@ -349,27 +375,8 @@ export default function AdminEstudioViral() {
   const [swapClipLoading, setSwapClipLoading] = useState(false);
   // Personagem escolhido por cena (galeria no "Trocar"): índice do slide -> avatar_id.
   // A foto do personagem vira a cena com movimento (Ken Burns) no backend.
-  // Caminho de criação nos tiers pagos (Carlos 07/07: "2 botões de criar"
-  // confundia): "rapido" = fluxo automático (Gerar Vídeo) | "estudio" =
-  // Estúdio de Cenas (cena a cena; o botão de criar é o Montar de lá).
-  const [creationPath, setCreationPath] = useState<"rapido" | "estudio">(saved?.creationPath ?? "rapido");
   const [sceneAvatarIds, setSceneAvatarIds] = useState<Record<number, string>>({});
   const queryClient = useQueryClient();
-  const [imageMode, setImageMode]     = useState<"auto" | "custom" | "ia">(saved?.imageMode ?? "auto");
-  const [iaTier, setIaTier]           = useState<"premium" | "pro">(saved?.iaTier ?? "premium");
-  const [visualStyle, setVisualStyle] = useState<VisualStyle>(saved?.visualStyle ?? "images");
-  const [imageStyle, setImageStyle]   = useState<string>(saved?.imageStyle ?? "realistic");
-  const [imageTheme, setImageTheme]   = useState<string>(saved?.imageTheme ?? "");  // tema livre da busca
-  const [userImages, setUserImages] = useState<{ file: File; preview: string }[]>([]);
-  // Pré-visualização das imagens (Gratuito) — mostra/troca antes de gerar
-  const [previewImgs, setPreviewImgs] = useState<{ index: number; text: string; url: string | null; source: string | null; file?: File }[]>([]);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [swapSlide, setSwapSlide]     = useState<number | null>(null);
-  const [swapQuery, setSwapQuery]     = useState("");
-  const [swapSource, setSwapSource]   = useState<"all" | "pexels" | "unsplash" | "pixabay" | "ia">("all");
-  const [swapResults, setSwapResults] = useState<{ source: string; url: string; thumb: string }[]>([]);
-  const [swapLoading, setSwapLoading] = useState(false);
-  const [iaSuggesting, setIaSuggesting] = useState(false);  // loading do "Sugerir com IA"
   const [format, setFormat]         = useState<"portrait" | "landscape" | "square">(saved?.format ?? "portrait");
   // Marca quando o usuário escolhe um formato manualmente. Enquanto false,
   // o formato segue a plataforma do Step 1 automaticamente.
@@ -395,6 +402,17 @@ export default function AdminEstudioViral() {
     }
   }, [publishTrimData]);
 
+  // Premium e PRO moraram no Diretor IA (decisão 11/08) — esta tela é só o
+  // fluxo gratuito. Links antigos com ?model=premium|pro (Axel, favoritos)
+  // caem direto na aba certa em vez de abrir um formulário que não vende mais.
+  useEffect(() => {
+    const model = searchParams.get("model");
+    if (model === "premium" || model === "pro") {
+      setSearchParams((prev) => { prev.set("sub", "diretor"); prev.delete("model"); return prev; }, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Carrega a voz ElevenLabs salva no perfil para reuso (sem reclonar a cada vídeo).
   // `as any` porque a coluna elevenlabs_voice_id ainda não está no types.ts gerado
   // (mesmo padrão de AdminLandingPage onde o vídeo institucional já reusa a voz).
@@ -403,22 +421,17 @@ export default function AdminEstudioViral() {
     if (saved) setCloneVoiceId(saved);
   }, [professional]);
 
-  // Roteiro novo → zera os tipos de cena (evita cobrança fantasma de um
-  // "vídeo IA" marcado num roteiro anterior com outros slides).
+  // Roteiro novo → zera os clipes e os personagens por cena do roteiro
+  // ANTERIOR. Sem isso, o vídeo novo herdava as cenas do roteiro velho:
+  // selected_clip_urls saía com clipes sem relação com os slides atuais (e até
+  // com contagem diferente), e um personagem marcado numa cena antiga
+  // reaparecia no vídeo novo sem ninguém pedir.
   useEffect(() => {
-    setSceneTypes({});
+    setPreviewClips([]);
+    setSceneAvatarIds({});
   }, [script?.titulo, script?.slides?.length]);
 
-  // Saiu do estilo Pixar → remove cenas "fala" órfãs (o backend recusaria com 400).
-  useEffect(() => {
-    if (estiloIA === "pixar") return;
-    setSceneTypes((prev) => {
-      if (!Object.values(prev).some((v) => v.tipo === "fala")) return prev;
-      return Object.fromEntries(Object.entries(prev).filter(([, v]) => v.tipo !== "fala")) as typeof prev;
-    });
-  }, [estiloIA]);
-
-  // Avatares do profissional (aba Personagens) — cena de abertura nos tiers pagos.
+  // Avatares do profissional (aba Personagens) — abre e fecha o vídeo.
   useEffect(() => {
     if (!professional?.id) return;
     (supabase as any)
@@ -448,20 +461,11 @@ export default function AdminEstudioViral() {
     try {
       const persistedJobStatus = jobStatus.status === "loading" ? { status: "idle" } : jobStatus;
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        step, objetivo, tom, formato, duracaoAlvo, plataformaAlvo, script, videoModel, estiloIA, voiceMode, edgeVoice, format, formatTouched, imageMode, visualStyle, imageStyle, creationPath,
+        step, objetivo, tom, formato, duracaoAlvo, plataformaAlvo, script, voiceMode, edgeVoice, format, formatTouched,
         jobStatus: persistedJobStatus, activeJobId, draftId,
       }));
     } catch {}
-  }, [step, objetivo, tom, formato, duracaoAlvo, plataformaAlvo, script, videoModel, estiloIA, voiceMode, edgeVoice, format, formatTouched, imageMode, visualStyle, imageStyle, creationPath, jobStatus, activeJobId]);
-
-  // Se o usuário voltar de Premium/Pro para Gratuito com duração de teste
-  // (10s/15s) selecionada, normaliza para 30s. Essas durações curtas só
-  // fazem sentido com motor premium onde cada slide custa.
-  useEffect(() => {
-    if (videoModel === "gratuito" && (duracaoAlvo === "10s" || duracaoAlvo === "15s")) {
-      setDuracaoAlvo("30s");
-    }
-  }, [videoModel, duracaoAlvo]);
+  }, [step, objetivo, tom, formato, duracaoAlvo, plataformaAlvo, script, voiceMode, edgeVoice, format, formatTouched, jobStatus, activeJobId, draftId]);
 
   // Auto-sincroniza formato com a plataforma escolhida enquanto o usuário
   // não tiver mexido no seletor de formato manualmente.
@@ -631,110 +635,6 @@ export default function AdminEstudioViral() {
     }
   };
 
-  const buscarTroca = async (q: string, source: "all" | "pexels" | "unsplash" | "pixabay") => {
-    if (!q.trim()) return;
-    setSwapLoading(true);
-    try {
-      const sources = source === "all" ? undefined : [source];
-      const res = await fetch(`${API}/buscar-imagens`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: q, format, sources }),
-      });
-      const data = await res.json();
-      setSwapResults(data.results || []);
-    } catch {
-      toast.error("Erro ao buscar imagens.");
-    } finally {
-      setSwapLoading(false);
-    }
-  };
-
-  const gerarTrocaIA = async () => {
-    if (!swapQuery.trim()) return;
-    setSwapLoading(true);
-    try {
-      const res = await fetch(`${API}/gerar-imagem-ia`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: swapQuery, tier: iaTier, format }),
-      });
-      const data = await res.json();
-      if (data.url) {
-        setSwapResults((prev) => [{ source: "ia", url: data.url, thumb: data.url }, ...prev]);
-      } else {
-        toast.error("Não foi possível gerar a imagem por IA.");
-      }
-    } catch {
-      toast.error("Erro ao gerar imagem por IA.");
-    } finally {
-      setSwapLoading(false);
-    }
-  };
-
-  const sugerirPromptIA = async () => {
-    setIaSuggesting(true);
-    try {
-      const res = await fetch(`${API}/sugerir-prompt-imagem`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ texto: swapQuery, professional_slug: professional?.slug }),
-      });
-      const data = await res.json();
-      if (data.prompt) setSwapQuery(data.prompt);
-      else toast.error("Não foi possível sugerir um prompt.");
-    } catch {
-      toast.error("Erro ao sugerir prompt com IA.");
-    } finally {
-      setIaSuggesting(false);
-    }
-  };
-
-  const abrirTroca = (index: number, text: string) => {
-    setSwapSlide(index);
-    setSwapQuery(text);
-    setSwapSource("all");
-    setSwapResults([]);
-    buscarTroca(text, "all");
-  };
-
-  const escolherImg = (url: string, source: string, file?: File) => {
-    setPreviewImgs((prev) => prev.map((p) => (p.index === swapSlide ? { ...p, url, source, file } : p)));
-    setSwapSlide(null);
-    setSwapResults([]);
-  };
-
-  const carregarPreview = async () => {
-    if (!script) return;
-    setPreviewLoading(true);
-    try {
-      const res = await fetch(`${API}/preview-imagens`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ script, format, image_style: imageStyle || "realistic", professional_slug: professional?.slug, tema: imageTheme }),
-      });
-      const data = await res.json();
-      setPreviewImgs(data.slides || []);
-    } catch {
-      toast.error("Erro ao carregar a pré-visualização das imagens.");
-    } finally {
-      setPreviewLoading(false);
-    }
-  };
-
-  const gerarImagensIA = async () => {
-    if (!script) return;
-    setPreviewLoading(true);
-    try {
-      const res = await fetch(`${API}/preview-imagens-ia`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ script, format, tier: iaTier, professional_slug: professional?.slug, tema: imageTheme }),
-      });
-      const data = await res.json();
-      setPreviewImgs(data.slides || []);
-    } catch {
-      toast.error("Erro ao gerar imagens por IA.");
-    } finally {
-      setPreviewLoading(false);
-    }
-  };
-
   const handleGenerate = async () => {
     if (!professional?.slug || !script) return;
 
@@ -757,17 +657,6 @@ export default function AdminEstudioViral() {
     try {
       let voiceId: string | null = null;
       let narrationPath: string | null = null;
-      let customImagePaths: string[] | null = null;
-
-      // Upload imagens do usuário
-      if (imageMode === "custom" && userImages.length > 0) {
-        setJobStatus({ status: "processing", progress: 3, step: "Enviando imagens..." });
-        const form = new FormData();
-        userImages.forEach((img) => form.append("files", img.file));
-        const res  = await fetch(`${API}/upload-imagens`, { method: "POST", body: form });
-        const data = await res.json();
-        customImagePaths = data.paths;
-      }
 
       // Upload gravação do roteiro
       if (voiceMode === "gravacao" && narBlob) {
@@ -814,20 +703,6 @@ export default function AdminEstudioViral() {
         }
       }
 
-      // Imagens aprovadas no preview (Gratuito): sobe uploads pontuais e monta as URLs/paths.
-      let selectedImageUrls: (string | null)[] | null = null;
-      if (videoModel === "gratuito" && previewImgs.length > 0) {
-        selectedImageUrls = await Promise.all(previewImgs.map(async (p) => {
-          if (p.file) {
-            const form = new FormData(); form.append("files", p.file);
-            const r = await fetch(`${API}/upload-imagens`, { method: "POST", body: form });
-            const d = await r.json(); return (d.paths || [])[0] || null;
-          }
-          return p.url;
-        }));
-      }
-      const iaCount = videoModel === "gratuito" ? previewImgs.filter((p) => p.source === "ia").length : 0;
-
       const res = await fetch(`${API}/gerar-video`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(await videoApiAuthHeaders()) },
@@ -840,41 +715,25 @@ export default function AdminEstudioViral() {
           voice_provider: voiceMode,
           elevenlabs_voice_id: voiceId,
           narration_audio_path: narrationPath,
-          // custom_image_paths só faz sentido no Gratuito; Premium/Pro geram
-          // todo o visual via Kling, então omitimos pra não confundir.
-          custom_image_paths: videoModel === "gratuito" ? customImagePaths : undefined,
-          selected_image_urls: selectedImageUrls,
-          search_theme: videoModel === "gratuito" ? imageTheme : undefined,
-          ia_image_tier: iaCount > 0 ? iaTier : undefined,
-          ia_image_count: iaCount,
           format,
           formato,
-          model: videoModel,
-          visual_style: visualStyle,
-          // estilo_visual: Premium/PRO — stock tempera a busca; estilos IA ilustram
-          // as cenas. Grátis vai fixo no cinemático (seletor oculto; evita estilo
-          // residual de sessão paga anterior disparar geração IA no free).
-          estilo_visual: videoModel === "gratuito" ? "cinematico" : estiloIA,
-          image_style: videoModel === "gratuito" ? (imageStyle || "realistic") : undefined,
-          // Personagem em TODOS os tiers: pagos = animado (Kling); grátis = foto com movimento
+          // Esta tela é SÓ o fluxo gratuito — Premium/PRO moraram no Diretor IA.
+          model: "gratuito",
+          visual_style: "images",
+          estilo_visual: "cinematico",
+          image_style: "realistic",
+          // Personagem: a foto abre/fecha o vídeo com movimento suave.
           avatar_id: selectedAvatarId || undefined,
-          // Clipes escolhidos no preview de cenas (null = busca automática naquele
-          // slide). Estilos ILUSTRADOS ignoram o preview — não enviar, senão os
-          // clipes reais venceriam as cenas geradas no estilo.
-          selected_clip_urls: !ESTILOS_IA.has(estiloIA) && previewClips.length
+          // Clipes escolhidos no preview de cenas (null = busca automática naquele slide)
+          selected_clip_urls: previewClips.length
             ? previewClips.map((c) => c?.url ?? null)
-            : undefined,
-          // Aba Cenas (Premium/PRO): tipo por slide; cenas em vídeo IA são
-          // debitadas por cena no backend (custo já exibido acima dos slides)
-          scene_plan: videoModel !== "gratuito" && script.slides?.length && Object.keys(sceneTypes).length
-            ? script.slides.map((_, i) => (sceneTypes[i] ? { tipo: sceneTypes[i].tipo, dur: sceneTypes[i].dur } : { tipo: "auto" }))
             : undefined,
           // Personagem escolhido por cena (galeria do "Trocar"): id do avatar por
           // slide (null = clipe/auto). A foto vira cena com movimento no backend.
           scene_avatar_ids: Object.keys(sceneAvatarIds).length && script.slides?.length
             ? script.slides.map((_, i) => sceneAvatarIds[i] || null)
             : undefined,
-          // Voz clonada no Gratuito após a cota: gastar créditos ou cair pra voz Edge
+          // Voz clonada após a cota do mês: gastar créditos ou cair pra voz Edge
           cloned_voice_over_quota: overQuotaChoice,
         }),
       });
@@ -939,7 +798,7 @@ export default function AdminEstudioViral() {
   };
 
   const openSwapClip = (slideIndex: number) => {
-    const q = script?.slides?.[slideIndex]?.visual_prompt || imageTheme || objetivo;
+    const q = script?.slides?.[slideIndex]?.visual_prompt || objetivo;
     setSwapClipSlide(slideIndex);
     setSwapClipQuery(q || "");
     setSwapClipResults([]);
@@ -991,9 +850,15 @@ export default function AdminEstudioViral() {
 
   const pollStatus = (id: string) => {
     stopPolling(); // garante que só um interval roda por vez
+    // Um soluço de rede não pode encerrar o acompanhamento: o vídeo continua
+    // sendo gerado no servidor, e desistir no primeiro erro deixava a tela
+    // gritando "Erro de conexão" com o vídeo chegando logo depois. Só desiste
+    // depois de vários ticks seguidos sem resposta.
+    let falhasSeguidas = 0;
     pollRef.current = setInterval(async () => {
       try {
         const data = await (await fetch(`${API}/status/${id}`)).json();
+        falhasSeguidas = 0;
         setJobStatus(data);
         if (data.status === "done" || data.status === "error" || data.status === "cancelled") {
           stopPolling();
@@ -1002,20 +867,17 @@ export default function AdminEstudioViral() {
           if (data.status === "error") toast.error("Erro: " + data.message);
         }
       } catch {
-        stopPolling();
-        setJobStatus({ status: "error", message: "Erro de conexão" });
+        falhasSeguidas += 1;
+        if (falhasSeguidas >= 5) {   // ~15s sem rede
+          stopPolling();
+          stopStopwatch();
+          setJobStatus({
+            status: "error",
+            message: "Perdi a conexão com o servidor — o vídeo pode ter continuado. Confira em Meus Vídeos antes de gerar de novo.",
+          });
+        }
       }
     }, 3000);
-  };
-
-  // Montagem final disparada pelo Estúdio de Cenas → o wizard assume o job
-  // (mesmo polling/Step 3 do fluxo normal).
-  const startCenasJob = (jobId: string) => {
-    setActiveJobId(jobId);
-    setJobStatus({ status: "processing", progress: 5, step: "Montando o vídeo..." });
-    startStopwatch(0);
-    pollStatus(jobId);
-    setStep(3);
   };
 
   const handleCancel = async () => {
@@ -1086,12 +948,12 @@ export default function AdminEstudioViral() {
     setStep(1); setScript(null); setObjetivo("");
     setTom("acolhedor"); setFormato("livre");
     setDuracaoAlvo("45s"); setPlataformaAlvo("geral");
-    setVideoModel("gratuito");
-    setCreationPath("rapido");
-    setEstiloIA("cinematico");
     setVoiceMode("edge"); setEdgeVoice("pt-BR-FranciscaNeural");
     setVoiceBlob(null); setNarBlob(null); setRecloning(false);
-    setImageMode("auto"); setIaTier("premium"); setVisualStyle("images"); setUserImages([]); setPreviewImgs([]); setImageTheme(""); setFormat("portrait"); setFormatTouched(false);
+    setFormat("portrait"); setFormatTouched(false);
+    // Cenas do vídeo anterior nunca sobrevivem a um "Novo Vídeo" — clipes e
+    // personagens por cena presos aqui contaminavam o próximo roteiro.
+    setPreviewClips([]); setSceneAvatarIds({}); setSelectedAvatarId(null);
     setJobStatus({ status: "idle" }); setActiveJobId(null);
     setTrimState(null); setVideoDuration(0);
     localStorage.removeItem(STORAGE_KEY);
@@ -1115,46 +977,73 @@ export default function AdminEstudioViral() {
     setScript({ ...script, slides, legendas });
   };
 
+  /** Cabeçalho da tela — mesma assinatura visual do Clonar Vídeo. */
+  const Cabecalho = ({ titulo, subtitulo }: { titulo: string; subtitulo: string }) => (
+    <div className="flex items-center gap-3">
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-orange-500/10 text-orange-600 ring-1 ring-inset ring-orange-500/25 dark:text-orange-400">
+        <Flame className="h-5 w-5" />
+      </span>
+      <div className="min-w-0">
+        <h1 className="text-lg font-semibold leading-none tracking-tight">{titulo}</h1>
+        <p className="mt-1.5 text-xs leading-snug text-muted-foreground">{subtitulo}</p>
+      </div>
+      <Badge variant="outline" className="ml-auto hidden shrink-0 gap-1.5 border-emerald-500/40 bg-emerald-500/5 text-[10px] font-medium text-emerald-700 sm:inline-flex dark:text-emerald-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Grátis
+      </Badge>
+    </div>
+  );
+
+  /** Trilha de progresso: barra contínua em vez de três bolinhas soltas. */
   const StepIndicator = () => (
-    <div className="flex items-center gap-2 mb-8">
-      {[{ n: 1, label: "Objetivo" }, { n: 2, label: "Revisar" }, { n: 3, label: "Gerar" }].map(({ n, label }, i) => (
-        <div key={n} className="flex items-center gap-2">
-          <div className={`flex items-center gap-1.5 ${step === n ? "text-primary font-semibold" : step > n ? "text-green-500" : "text-muted-foreground"}`}>
-            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 ${step === n ? "border-primary bg-primary text-white" : step > n ? "border-green-500 bg-green-500 text-white" : "border-muted-foreground"}`}>
-              {step > n ? "✓" : n}
-            </div>
-            <span className="text-sm hidden sm:inline">{label}</span>
+    <div className="flex items-center gap-2">
+      {[{ n: 1, label: "Objetivo" }, { n: 2, label: "Revisar" }, { n: 3, label: "Gerar" }].map(({ n, label }) => {
+        const feito = step > n;
+        const atual = step === n;
+        return (
+          <div key={n} className="flex-1">
+            <div
+              className={[
+                "h-1 rounded-full transition-colors",
+                feito ? "bg-primary" : atual ? "bg-primary/60" : "bg-border",
+              ].join(" ")}
+            />
+            <p
+              className={[
+                "mt-1.5 flex items-center gap-1 text-[11px] transition-colors",
+                atual ? "font-semibold text-foreground" : feito ? "text-primary" : "text-muted-foreground",
+              ].join(" ")}
+            >
+              {feito && <CheckCircle2 className="h-3 w-3" />}
+              {label}
+            </p>
           </div>
-          {i < 2 && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 
   // ── Step 1 ─────────────────────────────────────────────────
   if (step === 1) return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Flame className="h-6 w-6 text-orange-500" /> Criar Vídeo
-        </h1>
-        <p className="text-muted-foreground mt-1">Descreva o objetivo e geramos roteiro, narração e clipes de vídeo reais automaticamente.</p>
-      </div>
+    <div className="mx-auto max-w-2xl space-y-6">
+      <Cabecalho
+        titulo="Criar Vídeo"
+        subtitulo="Descreva o objetivo e montamos roteiro, narração e cenas com clipes reais."
+      />
       <StepIndicator />
 
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <Label className="text-base font-semibold">Sobre o que será este vídeo?</Label>
+      <div>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <Secao>Sobre o que será este vídeo?</Secao>
           <Button
             type="button"
             variant="outline"
             size="sm"
-            className="gap-2 border-primary/40 text-primary hover:bg-primary/5 min-w-[130px]"
+            className="-mt-1 h-8 gap-1.5 border-primary/40 text-primary hover:bg-primary/5"
             onClick={handleSugerirObjetivo}
             disabled={iaLoading}
           >
             {iaLoading
-              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Criando...</>
+              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Criando…</>
               : <><Wand2 className="h-3.5 w-3.5" /> Criar com IA</>}
           </Button>
         </div>
@@ -1163,19 +1052,19 @@ export default function AdminEstudioViral() {
           <Textarea
             rows={4} value={objetivo}
             onChange={(e) => setObjetivo(e.target.value)}
-            placeholder="Descreva o objetivo do vídeo ou clique em 'Criar com IA' para gerar automaticamente..."
-            className={`resize-none text-base transition-opacity ${iaLoading ? "opacity-40 pointer-events-none" : ""}`}
+            placeholder="Ex.: explicar que pedir ajuda não é fraqueza, para quem nunca fez terapia…"
+            className={`resize-none bg-background text-[15px] transition-opacity ${iaLoading ? "pointer-events-none opacity-40" : ""}`}
           />
           {iaLoading && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-md">
-              <div className="flex items-center gap-2 bg-background/90 border border-primary/30 rounded-xl px-4 py-2.5 shadow-sm">
-                <Wand2 className="h-4 w-4 text-primary animate-pulse" />
-                <span className="text-sm font-medium text-primary">IA analisando seu perfil...</span>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-background/90 px-4 py-2.5 shadow-sm backdrop-blur-[2px]">
+                <Wand2 className="h-4 w-4 animate-pulse text-primary" />
+                <span className="text-sm font-medium text-primary">Lendo seu perfil…</span>
                 <span className="flex gap-0.5">
                   {[0, 1, 2].map((i) => (
                     <span
                       key={i}
-                      className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce"
+                      className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary"
                       style={{ animationDelay: `${i * 0.15}s` }}
                     />
                   ))}
@@ -1185,101 +1074,34 @@ export default function AdminEstudioViral() {
           )}
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          A IA usa seu perfil e documentos para criar um objetivo personalizado, sem repetir os dos últimos 30 dias.
+        <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+          A IA usa seu perfil e seus documentos para criar um objetivo personalizado, sem repetir os dos últimos 30 dias.
         </p>
       </div>
 
       {/* Seletor de tom */}
-      <div className="space-y-3">
-        <Label className="text-base font-semibold">Tom da Narração</Label>
-        <div className="grid grid-cols-2 gap-3">
+      <div>
+        <Secao>Tom da narração</Secao>
+        <div className="grid grid-cols-2 gap-2">
           {([
             { value: "acolhedor",    label: "Acolhedor",    desc: "Empático e seguro",     Icon: Heart },
             { value: "educativo",    label: "Educativo",    desc: "Claro e informativo",   Icon: BookOpenCheck },
             { value: "provocador",   label: "Provocador",   desc: "Questiona e desafia",   Icon: Flame },
             { value: "motivacional", label: "Motivacional", desc: "Energia e ação",        Icon: TrendingUp },
           ] as const).map(({ value, label, desc, Icon }) => (
-            <Card key={value}
-              className={`cursor-pointer border-2 transition-all ${tom === value ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
-              onClick={() => setTom(value)}>
-              <CardContent className="p-3 flex items-center gap-3">
-                <Icon className={`h-5 w-5 shrink-0 ${tom === value ? "text-primary" : "text-muted-foreground"}`} />
-                <div>
-                  <p className="font-medium text-sm">{label}</p>
-                  <p className="text-xs text-muted-foreground">{desc}</p>
-                </div>
-              </CardContent>
-            </Card>
+            <Escolha
+              key={value}
+              ativo={tom === value}
+              onClick={() => setTom(value)}
+              Icon={Icon}
+              titulo={label}
+              descricao={desc}
+            />
           ))}
         </div>
       </div>
 
-      {/* Seletor de modelo */}
-      <div className="space-y-3">
-        <Label className="text-base font-semibold">Modelo de Geração</Label>
-        <div className="grid grid-cols-3 gap-3">
-          <Card
-            className={`cursor-pointer border-2 transition-all ${videoModel === "gratuito" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
-            onClick={() => setVideoModel("gratuito")}
-          >
-            <CardContent className="p-3 text-center space-y-1.5">
-              <Zap className="h-5 w-5 mx-auto text-primary" />
-              <p className="font-semibold text-sm">Gratuito</p>
-              <p className="text-xs text-muted-foreground">Clipes de vídeo reais</p>
-              <Badge variant="secondary" className="text-xs">Grátis · ~4min</Badge>
-            </CardContent>
-          </Card>
-          <Card
-            className={`cursor-pointer border-2 transition-all ${videoModel === "premium" ? "border-amber-500 bg-amber-50/50 dark:bg-amber-950/20" : "border-border hover:border-amber-400/50"}`}
-            onClick={() => setVideoModel("premium")}
-          >
-            <CardContent className="p-3 text-center space-y-1.5">
-              <Star className="h-5 w-5 mx-auto text-amber-500" />
-              <p className="font-semibold text-sm">Premium</p>
-              <p className="text-xs text-muted-foreground">Legendas karaokê + avatar</p>
-              <Badge variant="outline" className="text-xs border-amber-400 text-amber-600">
-                {CREDITOS_VIDEO_BASE.premium} créditos/vídeo + cenas IA
-              </Badge>
-            </CardContent>
-          </Card>
-          <Card
-            className={`cursor-pointer border-2 transition-all ${videoModel === "pro" ? "border-purple-500 bg-purple-50/50 dark:bg-purple-950/20" : "border-border hover:border-purple-400/50"}`}
-            onClick={() => setVideoModel("pro")}
-          >
-            <CardContent className="p-3 text-center space-y-1.5">
-              <Crown className="h-5 w-5 mx-auto text-purple-500" />
-              <p className="font-semibold text-sm">Pro</p>
-              <p className="text-xs text-muted-foreground">Karaokê + avatar topo de linha</p>
-              <Badge variant="outline" className="text-xs border-purple-400 text-purple-600">
-                {CREDITOS_VIDEO_BASE.pro} créditos/vídeo + cenas IA
-              </Badge>
-            </CardContent>
-          </Card>
-        </div>
-        {videoModel !== "gratuito" && (
-          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-            <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
-            {videoModel === "premium"
-              ? "Clipes reais + legendas karaokê sincronizadas palavra a palavra + seu personagem abrindo o vídeo"
-              : "Tudo do Premium com máxima qualidade de animação do personagem · prioridade de fila"}
-          </p>
-        )}
-        {videoModel !== "gratuito" && (duracaoAlvo === "10s" || duracaoAlvo === "15s") && (
-          <div className="rounded-lg border border-amber-300/50 bg-amber-50/40 dark:bg-amber-950/20 px-3 py-2 flex items-start gap-2 text-xs">
-            <Zap className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
-            <p className="text-muted-foreground leading-relaxed">
-              <strong>Modo teste ativo</strong> — vídeo curto pra economizar nas cenas em vídeo IA
-              (menos segundos pagos). O vídeo base debita o valor cheio.
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* Personagem (avatar) — TODOS os tiers: pagos = animado (Kling); grátis = foto com movimento.
-         Em accordeon (Collapsible) para não ocupar espaço. No caminho Estúdio de
-         Cenas fica OCULTO: lá o personagem é escolhido dentro do próprio Estúdio. */}
-      {!(videoModel !== "gratuito" && creationPath === "estudio") && (
+      {/* Personagem (avatar) — a foto abre e fecha o vídeo com movimento suave. */}
       <Collapsible>
         <CollapsibleTrigger asChild>
           <Button variant="outline" className="w-full justify-between h-auto py-2.5" size="sm">
@@ -1332,16 +1154,12 @@ export default function AdminEstudioViral() {
             </div>
           )}
           <p className="text-xs text-muted-foreground">
-            {videoModel === "gratuito"
-              ? "No plano Gratuito, a foto do personagem ganha movimento suave e abre/fecha o vídeo — os clipes reais contam a história no meio."
-              : "Seu personagem é animado com IA (presença, sem lip-sync) e abre/fecha o vídeo; a narração entra por cima e os clipes reais contam a história."}
+            A foto do personagem ganha movimento suave e abre/fecha o vídeo — os clipes reais contam a história no meio.
           </p>
         </CollapsibleContent>
       </Collapsible>
-      )}
 
-      {/* Duração e Plataforma alvo (orientam o agente de roteiro — depois do modelo
-         pra que opções de teste 10s/15s apareçam só quando Premium/Pro estiver ativo) */}
+      {/* Duração e Plataforma alvo — orientam o agente de roteiro */}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label className="text-sm font-medium text-muted-foreground">Duração alvo</Label>
@@ -1350,22 +1168,6 @@ export default function AdminEstudioViral() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {videoModel !== "gratuito" && (
-                <>
-                  <SelectItem value="10s">
-                    <span className="flex items-center gap-1.5">
-                      <Zap className="h-3 w-3 text-amber-500" />
-                      10s · teste rápido <span className="text-muted-foreground text-xs">(~3 slides)</span>
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="15s">
-                    <span className="flex items-center gap-1.5">
-                      <Zap className="h-3 w-3 text-amber-500" />
-                      15s · teste <span className="text-muted-foreground text-xs">(~3-4 slides)</span>
-                    </span>
-                  </SelectItem>
-                </>
-              )}
               <SelectItem value="30s">30 segundos · ritmo acelerado</SelectItem>
               <SelectItem value="45s">45 segundos · equilibrado</SelectItem>
               <SelectItem value="60s">60 segundos · mais reflexivo</SelectItem>
@@ -1390,7 +1192,7 @@ export default function AdminEstudioViral() {
 
       {/* Seletor de formato narrativo (dropdown + preview) */}
       <div className="space-y-2">
-        <Label className="text-base font-semibold">Formato Narrativo</Label>
+        <Secao>Formato narrativo</Secao>
         <Select value={formato} onValueChange={(v) => setFormato(v as FormatoId)}>
           <SelectTrigger className="h-10">
             <SelectValue>
@@ -1429,22 +1231,28 @@ export default function AdminEstudioViral() {
         </div>
       </div>
 
-      <Button
-        variant="outline"
-        className="w-full gap-2 border-primary/40 text-primary hover:bg-primary/5"
-        size="lg"
-        disabled={!objetivo.trim()}
-        onClick={handleManualRoteiro}>
-        <BookOpen className="h-4 w-4" /> Vou criar meu próprio roteiro
-      </Button>
-
-      <Button className="w-full" size="lg"
-        disabled={!objetivo.trim() || jobStatus.status === "loading"}
-        onClick={handleNextStep}>
-        {jobStatus.status === "loading"
-          ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Gerando roteiro...</>
-          : <><ChevronRight className="mr-2 h-4 w-4" /> Gerar Roteiro com IA</>}
-      </Button>
+      {/* Ação: a principal em destaque, a alternativa como texto — antes eram
+          dois botões grandes de peso igual disputando o clique. */}
+      <div className="space-y-2 pt-1">
+        <Button
+          className="h-11 w-full gap-2 shadow-md shadow-primary/20 transition-all active:scale-[0.99] disabled:shadow-none motion-reduce:transition-none motion-reduce:active:scale-100"
+          size="lg"
+          disabled={!objetivo.trim() || jobStatus.status === "loading"}
+          onClick={handleNextStep}
+        >
+          {jobStatus.status === "loading"
+            ? <><Loader2 className="h-4 w-4 animate-spin" /> Escrevendo o roteiro…</>
+            : <><Wand2 className="h-4 w-4" /> Gerar roteiro com IA</>}
+        </Button>
+        <button
+          type="button"
+          disabled={!objetivo.trim()}
+          onClick={handleManualRoteiro}
+          className="w-full rounded-lg py-1.5 text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Prefiro escrever meu próprio roteiro
+        </button>
+      </div>
     </div>
   );
 
@@ -1468,38 +1276,38 @@ export default function AdminEstudioViral() {
   );
 
   if (step === 2 && script) return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Revisar Roteiro</h1>
-          <p className="text-muted-foreground mt-1">Edite o conteúdo, escolha a voz e o formato.</p>
-        </div>
-        <div className="flex items-center gap-1.5 text-xs shrink-0">
+    <div className="mx-auto max-w-2xl space-y-6">
+      <div className="flex items-start justify-between gap-3">
+        <Cabecalho
+          titulo="Revisar roteiro"
+          subtitulo="Ajuste o texto, escolha a voz e o formato antes de gerar."
+        />
+        <span className="mt-1 flex shrink-0 items-center gap-1.5 text-[11px]">
           {draftSaved === "saving" && (
-            <><Loader2 className="h-3 w-3 animate-spin text-muted-foreground" /><span className="text-muted-foreground">Salvando...</span></>
+            <><Loader2 className="h-3 w-3 animate-spin text-muted-foreground" /><span className="text-muted-foreground">Salvando…</span></>
           )}
           {draftSaved === "saved" && (
-            <><CheckCircle2 className="h-3 w-3 text-green-500" /><span className="text-green-600">Salvo</span></>
+            <><CheckCircle2 className="h-3 w-3 text-emerald-500" /><span className="text-emerald-600 dark:text-emerald-400">Salvo</span></>
           )}
-        </div>
+        </span>
       </div>
       <StepIndicator />
 
       {/* Narração */}
-      <div className="space-y-2">
-        <Label className="text-base font-semibold">Narração</Label>
+      <div>
+        <Secao>Narração</Secao>
         <Textarea rows={5} value={script.narracao}
           onChange={(e) => setScript({ ...script, narracao: e.target.value })}
-          className="resize-none" />
-        <p className="text-xs text-muted-foreground">
-          {script.narracao.length} caracteres · aprox. {Math.round(script.narracao.length / 15)}s
+          className="resize-none bg-background" />
+        <p className="mt-1.5 text-[11px] text-muted-foreground">
+          {script.narracao.length} caracteres · aprox. {Math.round(script.narracao.length / 15)}s de narração
         </p>
       </div>
 
       {/* Slides */}
       {script.slides && script.slides.length > 0 ? (
         <div className="space-y-2">
-          <Label className="text-base font-semibold">Slides ({script.slides.length})</Label>
+          <Secao>Slides ({script.slides.length})</Secao>
           <div className="space-y-3">
             {script.slides.map((slide, i) => (
               <div key={i} className="rounded-xl border bg-card p-3 space-y-2">
@@ -1542,65 +1350,10 @@ export default function AdminEstudioViral() {
                   </CollapsibleContent>
                 </Collapsible>
 
-                {/* Tipo da cena (Premium/PRO): Real | Imagem IA | Vídeo IA | Personagens (PRO) */}
-                {videoModel !== "gratuito" && creationPath === "rapido" && (
-                  <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-border/50 mt-1">
-                    <span className="text-[11px] text-muted-foreground shrink-0">Cena:</span>
-                    {([
-                      { key: null,          label: "Real",           dur: 0 },
-                      { key: "imagem",      label: "Imagem IA",      dur: 0 },
-                      { key: "video",       label: "Vídeo IA 5s",    dur: 5 },
-                      { key: "video10",     label: "Vídeo IA 10s",   dur: 10 },
-                      ...(videoModel === "pro" ? [{ key: "personagens", label: "🎭 Personagens 10s", dur: 10 }] : []),
-                      // Personagem FALANDO (lip-sync): decisão do Carlos — só PRO e só Pixar
-                      ...(videoModel === "pro" && estiloIA === "pixar" ? [{ key: "fala", label: "🗣️ Falando 10s", dur: 10 }] : []),
-                    ] as { key: string | null; label: string; dur: number }[]).map(({ key, label, dur }) => {
-                      const tipo = key === "video10" ? "video" : key;
-                      const cur = sceneTypes[i];
-                      const active = key === null
-                        ? !cur
-                        : cur?.tipo === tipo && (tipo !== "video" || cur.dur === dur);
-                      return (
-                        <button key={label} type="button"
-                          onClick={() => setSceneTypes((prev) => {
-                            const next = { ...prev };
-                            if (key === null) delete next[i];
-                            else next[i] = { tipo: tipo as "imagem" | "video" | "personagens" | "fala", dur: dur || 5 };
-                            return next;
-                          })}
-                          className={`px-2 py-0.5 rounded-full text-[11px] border transition-colors ${
-                            active ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:border-primary/50"
-                          }`}>
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
             ))}
           </div>
 
-          {/* Custo das cenas em vídeo IA — visível ANTES de gerar */}
-          {videoModel !== "gratuito" && creationPath === "rapido" && (() => {
-            const pagas = Object.values(sceneTypes).filter((s) => s.tipo === "video" || s.tipo === "personagens" || s.tipo === "fala");
-            if (!pagas.length) return null;
-            const totalS = pagas.reduce((a, s) => a + s.dur, 0);
-            const temFala = pagas.some((s) => s.tipo === "fala");
-            const creditos = creditosCenas(videoModel === "pro" ? "pro" : "premium", totalS);
-            return (
-              <div className="rounded-lg border border-amber-300/50 bg-amber-50/40 dark:bg-amber-950/20 px-3 py-2 text-xs flex items-start gap-2">
-                <AlertCircle className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
-                <p className="text-muted-foreground leading-relaxed">
-                  <strong>{pagas.length} cena(s) em vídeo IA ({totalS}s)</strong> ={" "}
-                  <strong>+{creditos} crédito{creditos === 1 ? "" : "s"}</strong>,
-                  somados ao custo do vídeo e debitados ao clicar em Gerar.
-                  {temFala && <> Nas cenas <strong>🗣️ Falando</strong>, o personagem diz a narração
-                  do slide com sincronia labial — funciona melhor com até <strong>~20 palavras</strong> no slide.</>}
-                </p>
-              </div>
-            );
-          })()}
         </div>
       ) : (
         <div className="space-y-2">
@@ -1689,83 +1442,17 @@ export default function AdminEstudioViral() {
         </Collapsible>
       )}
 
-      {/* ── Caminho de criação (Premium/PRO): UM botão de criar por modo.
-           O 3º card é ATALHO pro Diretor IA (sub-aba própria, chat) — não muda
-           o creationPath deste wizard, navega pra ?sub=diretor. ── */}
-      {videoModel !== "gratuito" && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <button type="button" onClick={() => setCreationPath("rapido")}
-            className={`rounded-xl border-2 p-3 text-left transition ${creationPath === "rapido" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}>
-            <p className="font-semibold text-sm flex items-center gap-2">⚡ Criação Rápida</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              A IA monta o vídeo inteiro de uma vez: clipes reais ou estilo ilustrado,
-              personagem nos momentos-chave. Um clique em "Gerar Vídeo".
-            </p>
-          </button>
-          <button type="button" onClick={() => setCreationPath("estudio")}
-            className={`rounded-xl border-2 p-3 text-left transition ${creationPath === "estudio" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}>
-            <p className="font-semibold text-sm flex items-center gap-2">🎬 Estúdio de Cenas</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Cena a cena com o MESMO personagem: você aprova cada imagem, anima só o
-              que gostar (custo por cena) e monta no final.
-            </p>
-          </button>
-          <button type="button"
-            onClick={() => { searchParams.set("sub", "diretor"); setSearchParams(searchParams); }}
-            className="rounded-xl border-2 p-3 text-left transition border-border hover:border-purple-400/60">
-            <p className="font-semibold text-sm flex items-center gap-2">✨ Diretor IA <Badge variant="outline" className="text-[10px] border-purple-400 text-purple-600">novo</Badge></p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Crie por conversa: o Diretor escreve o roteiro com você, gera imagens
-              grátis e só anima com custo confirmado. Abre em aba própria.
-            </p>
-          </button>
-        </div>
-      )}
-
-      {/* ── Estúdio de Cenas (Premium/PRO): história com personagem consistente ── */}
-      {videoModel !== "gratuito" && creationPath === "estudio" && !!script.slides?.length && (
-        <EstudioCenas
-          api={API}
-          professionalSlug={professional?.slug || ""}
-          script={script}
-          videoModel={videoModel === "pro" ? "pro" : "premium"}
-          estilo={estiloIA}
-          format={format}
-          avatars={avatars}
-          draftId={draftId}
-          onDraftId={setDraftId}
-          vendaCreditos30={VENDA_KLING_CREDITOS30[videoModel === "pro" ? "pro" : "premium"]}
-          voice={{
-            voice: edgeVoice,
-            provider: voiceMode === "elevenlabs" && cloneVoiceId ? "elevenlabs" : "edge",
-            elevenlabsVoiceId: cloneVoiceId,
-          }}
-          onMontarJob={startCenasJob}
-        />
-      )}
-
-      {/* ── Cenas do vídeo (clipes reais por slide) — só no caminho rápido ── */}
-      {(videoModel === "gratuito" || creationPath === "rapido") && (
+      {/* ── Cenas do vídeo (clipes reais por slide) ── */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <Label className="text-base font-semibold flex items-center gap-2">
-            <Film className="h-4 w-4" /> Cenas do vídeo
-          </Label>
-          {(videoModel === "gratuito" || !ESTILOS_IA.has(estiloIA)) && (
-            <Button variant="outline" size="sm" className="gap-2" onClick={loadPreviewClips} disabled={clipsLoading}>
-              {clipsLoading
-                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Buscando clipes...</>
-                : <><Search className="h-3.5 w-3.5" /> {previewClips.length ? "Buscar de novo" : "Ver as cenas"}</>}
-            </Button>
-          )}
+        <div className="flex items-center justify-between gap-2">
+          <Secao>Cenas do vídeo</Secao>
+          <Button variant="outline" size="sm" className="-mt-1 h-8 gap-1.5" onClick={loadPreviewClips} disabled={clipsLoading}>
+            {clipsLoading
+              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Buscando…</>
+              : <><Search className="h-3.5 w-3.5" /> {previewClips.length ? "Buscar de novo" : "Ver as cenas"}</>}
+          </Button>
         </div>
-        {videoModel !== "gratuito" && ESTILOS_IA.has(estiloIA) ? (
-          <p className="text-xs text-muted-foreground">
-            Estilo <strong>{estiloIA === "animacao" ? "Cartoon" : estiloIA.charAt(0).toUpperCase() + estiloIA.slice(1)}</strong> é
-            ilustrado: cada cena será <strong>gerada pela IA nesse visual</strong> na hora da criação
-            (o preview de clipes reais vale só para os estilos de cenas reais).
-          </p>
-        ) : previewClips.length === 0 ? (
+        {previewClips.length === 0 ? (
           <p className="text-xs text-muted-foreground">
             O vídeo usa <strong>clipes de vídeo reais</strong> (Pexels/Pixabay) escolhidos pela IA.
             Clique em "Ver as cenas" para revisar e trocar qualquer clipe antes de gerar.
@@ -1830,7 +1517,6 @@ export default function AdminEstudioViral() {
           </>
         )}
       </div>
-      )}
 
       {/* Dialog de troca de clipe */}
       <Dialog open={swapClipSlide !== null} onOpenChange={(open) => { if (!open) setSwapClipSlide(null); }}>
@@ -1900,63 +1586,56 @@ export default function AdminEstudioViral() {
 
       {/* ── Voz ── */}
       <div className="space-y-3">
-        <Label className="text-base font-semibold flex items-center gap-2">
-          <Mic className="h-4 w-4" /> Voz da Narração
-        </Label>
+        <Secao>Voz da narração</Secao>
 
         {/* Seleção do modo */}
-        <div className="grid grid-cols-3 gap-3">
-          {/* Automática */}
-          <Card className={`cursor-pointer border-2 transition-all ${voiceMode === "edge" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
-            onClick={() => setVoiceMode("edge")}>
-            <CardContent className="p-3 text-center space-y-1">
-              <Mic className="h-5 w-5 mx-auto text-muted-foreground" />
-              <p className="font-medium text-sm">Automática</p>
-              <p className="text-xs text-muted-foreground">3 vozes pt-BR</p>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-3 gap-2">
+          <Escolha
+            ativo={voiceMode === "edge"}
+            onClick={() => setVoiceMode("edge")}
+            Icon={Mic}
+            titulo="Automática"
+            descricao="3 vozes pt-BR"
+          />
+          <Escolha
+            ativo={voiceMode === "gravacao"}
+            onClick={() => setVoiceMode("gravacao")}
+            Icon={BookOpen}
+            titulo="Gravar roteiro"
+            descricao="Você lê o texto"
+          />
 
-          {/* Gravar Roteiro */}
-          <Card className={`cursor-pointer border-2 transition-all ${voiceMode === "gravacao" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
-            onClick={() => setVoiceMode("gravacao")}>
-            <CardContent className="p-3 text-center space-y-1">
-              <BookOpen className="h-5 w-5 mx-auto text-muted-foreground" />
-              <p className="font-medium text-sm">Gravar Roteiro</p>
-              <p className="text-xs text-muted-foreground">Você lê o texto</p>
-            </CardContent>
-          </Card>
-
-          {/* ElevenLabs — "Minha Voz" quando já há voz clonada salva no perfil */}
-          <Card className={`cursor-pointer border-2 transition-all ${voiceMode === "elevenlabs" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
-            onClick={() => setVoiceMode("elevenlabs")}>
-            <CardContent className="p-3 text-center space-y-1">
-              <Sparkles className="h-5 w-5 mx-auto text-muted-foreground" />
-              <p className="font-medium text-sm">{cloneVoiceId ? "Minha Voz" : "Voz Clonada"}</p>
-              {videoModel !== "gratuito"
-                ? <Badge variant="outline" className="text-xs text-green-600 border-green-600/40">incluída{cloneVoiceId ? " · salva ✓" : ""}</Badge>
-                : vozStatus
-                  ? <Badge variant="outline" className={`text-xs ${vozStatus.remaining > 0 ? "text-green-600 border-green-600/40" : "text-amber-600 border-amber-500/40"}`}>
+          {/* "Minha voz" quando já há voz clonada salva no perfil */}
+          <Escolha
+            ativo={voiceMode === "elevenlabs"}
+            onClick={() => setVoiceMode("elevenlabs")}
+            Icon={Sparkles}
+            titulo={cloneVoiceId ? "Minha voz" : "Voz clonada"}
+            extra={
+              <span className="mt-1 block">
+                {vozStatus
+                  ? <Badge variant="outline" className={`text-[10px] ${vozStatus.remaining > 0 ? "border-emerald-600/40 text-emerald-700 dark:text-emerald-400" : "border-amber-500/40 text-amber-600"}`}>
                       {vozStatus.remaining > 0 ? `${vozStatus.remaining} de ${vozStatus.quota} grátis no mês` : "cota do mês esgotada"}
                     </Badge>
                   : cloneVoiceId
-                    ? <Badge variant="outline" className="text-xs text-green-600 border-green-600/40">salva ✓</Badge>
-                    : <Badge variant="outline" className="text-xs">Clone sua voz</Badge>}
-            </CardContent>
-          </Card>
+                    ? <Badge variant="outline" className="border-emerald-600/40 text-[10px] text-emerald-700 dark:text-emerald-400">salva ✓</Badge>
+                    : <Badge variant="outline" className="text-[10px]">Clone sua voz</Badge>}
+              </span>
+            }
+          />
         </div>
 
         {/* Vozes automáticas */}
         {voiceMode === "edge" && (
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-2">
             {EDGE_VOICES.map((v) => (
-              <Card key={v.id}
-                className={`cursor-pointer border-2 transition-all ${edgeVoice === v.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
-                onClick={() => setEdgeVoice(v.id)}>
-                <CardContent className="p-3 text-center">
-                  <p className="font-medium text-sm">{v.label}</p>
-                  <p className="text-xs text-muted-foreground">{v.gender}</p>
-                </CardContent>
-              </Card>
+              <Escolha
+                key={v.id}
+                ativo={edgeVoice === v.id}
+                onClick={() => setEdgeVoice(v.id)}
+                titulo={v.label}
+                descricao={v.gender}
+              />
             ))}
           </div>
         )}
@@ -2012,7 +1691,7 @@ export default function AdminEstudioViral() {
         )}
 
         {/* Cota grátis esgotada (só tier Gratuito): o usuário escolhe como seguir */}
-        {voiceMode === "elevenlabs" && videoModel === "gratuito" && vozStatus && vozStatus.remaining === 0 && (
+        {voiceMode === "elevenlabs" && vozStatus && vozStatus.remaining === 0 && (
           <div className="rounded-lg border border-amber-300/50 bg-amber-50/40 dark:bg-amber-950/20 p-3 space-y-2">
             <p className="text-xs text-muted-foreground leading-relaxed">
               <strong>Sua cota grátis de voz clonada acabou este mês</strong> ({vozStatus.quota} vídeos).
@@ -2045,63 +1724,10 @@ export default function AdminEstudioViral() {
 
 
 
-      {/* Estilo Visual — Premium/PRO (no Grátis fica oculto: clipes reais
-          cinemáticos automáticos, simplicidade total). Estilos "IA" ilustram
-          cada cena (FLUX + movimento); os demais temperam a busca dos clipes. */}
-      {videoModel !== "gratuito" && (
-      <div className="space-y-3">
-        <Label className="text-base font-semibold flex items-center gap-2">
-          <Sparkles className="h-4 w-4" /> Estilo Visual
-        </Label>
-        <div className="grid grid-cols-3 gap-2">
-          {([
-            { value: "cinematico",      icon: "🎬", label: "Cinemático",      desc: "Clipes reais, luz de cinema" },
-            { value: "realista",        icon: "📸", label: "Realista",         desc: "Clipes reais, natural" },
-            { value: "paisagem",        icon: "🌿", label: "Paisagens",        desc: "Clipes reais, natureza" },
-            { value: "vintage",         icon: "📼", label: "Vintage",          desc: "Clipes reais, retrô" },
-            { value: "dramatico",       icon: "🎭", label: "Dramático",        desc: "Clipes reais, contraste" },
-            { value: "pixar",           icon: "✨", label: "Pixar",            desc: "3D animado" },
-            { value: "animacao",        icon: "🎨", label: "Cartoon",          desc: "Ilustração 2D" },
-            { value: "aquarela",        icon: "🖌️", label: "Aquarela",         desc: "Pintura suave" },
-            { value: "psicodelico",     icon: "🌀", label: "Psicodélico",      desc: "Cores vivas, surreal" },
-            { value: "neon",            icon: "🌃", label: "Neon",             desc: "Cyberpunk, néon" },
-            { value: "minimalista",     icon: "⬜", label: "Minimalista",      desc: "Limpo, gráfico" },
-            { value: "espaco",          icon: "🌌", label: "Espaço",           desc: "Cosmos, sci-fi" },
-            { value: "motion_graphics", icon: "📊", label: "Motion Graphics",  desc: "Geométrico, infográfico" },
-          ] as const).map(({ value, icon, label, desc }) => {
-            const selectedRing = videoModel === "pro"
-              ? "border-purple-500 bg-purple-50/50 dark:bg-purple-950/20"
-              : videoModel === "premium"
-                ? "border-amber-500 bg-amber-50/50 dark:bg-amber-950/20"
-                : "border-primary bg-primary/5";
-            return (
-              <Card key={value}
-                className={`cursor-pointer border-2 transition-all relative ${estiloIA === value ? selectedRing : "border-border hover:border-primary/40"}`}
-                onClick={() => setEstiloIA(value)}>
-                {ESTILOS_IA.has(value) && (
-                  <Badge variant="secondary" className="absolute top-1 right-1 text-[9px] px-1 py-0 h-4">IA</Badge>
-                )}
-                <CardContent className="p-2.5 text-center space-y-0.5">
-                  <p className="text-lg leading-none">{icon}</p>
-                  <p className="font-medium text-xs">{label}</p>
-                  <p className="text-[10px] text-muted-foreground leading-tight">{desc}</p>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {ESTILOS_IA.has(estiloIA)
-            ? <>Estilo <strong>ilustrado</strong>: a IA gera a imagem de cada cena nesse visual e o motor dá movimento.</>
-            : <>Estilo de <strong>cenas reais</strong>: os clipes de banco são buscados com esse clima.</>}
-        </p>
-      </div>
-      )}
-
       {/* Formato */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label className="text-base font-semibold">Formato</Label>
+          <Secao>Formato</Secao>
           {!formatTouched && plataformaAlvo !== "geral" && (
             <span className="text-xs text-muted-foreground">
               Sugerido para {plataformaAlvo === "linkedin" ? "LinkedIn" : plataformaAlvo === "tiktok" ? "TikTok" : "Instagram"}
@@ -2124,31 +1750,21 @@ export default function AdminEstudioViral() {
             </p>
           </div>
         )}
-        <div className="grid grid-cols-3 gap-3">
-          <Card className={`cursor-pointer border-2 transition-all ${format === "portrait" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
-            onClick={() => { setFormat("portrait"); setFormatTouched(true); }}>
-            <CardContent className="p-3 flex flex-col items-center gap-1.5 text-center">
-              <Smartphone className="h-5 w-5 text-primary" />
-              <p className="font-medium text-sm">Vertical</p>
-              <p className="text-xs text-muted-foreground">Reels · TikTok · Stories</p>
-            </CardContent>
-          </Card>
-          <Card className={`cursor-pointer border-2 transition-all ${format === "square" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
-            onClick={() => { setFormat("square"); setFormatTouched(true); }}>
-            <CardContent className="p-3 flex flex-col items-center gap-1.5 text-center">
-              <Square className="h-5 w-5 text-primary" />
-              <p className="font-medium text-sm">Quadrado</p>
-              <p className="text-xs text-muted-foreground">Feed Instagram · LinkedIn</p>
-            </CardContent>
-          </Card>
-          <Card className={`cursor-pointer border-2 transition-all ${format === "landscape" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
-            onClick={() => { setFormat("landscape"); setFormatTouched(true); }}>
-            <CardContent className="p-3 flex flex-col items-center gap-1.5 text-center">
-              <Monitor className="h-5 w-5 text-primary" />
-              <p className="font-medium text-sm">Paisagem</p>
-              <p className="text-xs text-muted-foreground">YouTube · Feed</p>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-3 gap-2">
+          {([
+            { v: "portrait",  Icon: Smartphone, t: "Vertical",  d: "Reels · TikTok · Stories" },
+            { v: "square",    Icon: Square,     t: "Quadrado",  d: "Feed Instagram · LinkedIn" },
+            { v: "landscape", Icon: Monitor,    t: "Paisagem",  d: "YouTube · Feed" },
+          ] as const).map(({ v, Icon, t, d }) => (
+            <Escolha
+              key={v}
+              ativo={format === v}
+              onClick={() => { setFormat(v); setFormatTouched(true); }}
+              Icon={Icon}
+              titulo={t}
+              descricao={d}
+            />
+          ))}
         </div>
       </div>
 
@@ -2156,86 +1772,94 @@ export default function AdminEstudioViral() {
         <Button variant="outline" onClick={() => setStep(1)}>
           <ChevronLeft className="mr-2 h-4 w-4" /> Voltar
         </Button>
-        {videoModel !== "gratuito" && creationPath === "estudio" ? (
-          <div className="flex-1 rounded-lg border bg-muted/30 px-4 py-3 text-sm text-muted-foreground flex items-center gap-2">
-            🎬 No Estúdio de Cenas o vídeo é montado lá em cima: aprove as imagens,
-            anime as cenas e clique em <b>Montar vídeo final</b>.
-          </div>
-        ) : (
-          <Button className="flex-1" size="lg" onClick={handleGenerate}>
-            <Film className="mr-2 h-5 w-5" /> Gerar Vídeo
-          </Button>
-        )}
+        <Button
+          className="h-11 flex-1 gap-2 shadow-md shadow-primary/20 transition-all active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100"
+          size="lg"
+          onClick={handleGenerate}
+        >
+          <Film className="h-5 w-5" /> Gerar vídeo
+        </Button>
       </div>
     </div>
   );
 
   // ── Step 3 ─────────────────────────────────────────────────
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Criar Vídeo</h1>
-        <p className="text-muted-foreground mt-1">Aguarde enquanto seu vídeo é gerado.</p>
-      </div>
+    <div className="mx-auto max-w-2xl space-y-6">
+      <Cabecalho
+        titulo="Criar Vídeo"
+        subtitulo={jobStatus.status === "done" ? "Seu vídeo está pronto." : "Montando o seu vídeo."}
+      />
       <StepIndicator />
 
       {jobStatus.status === "processing" && (
-        <Card>
-          <CardContent className="py-10 flex flex-col items-center gap-5">
-            <Loader2 className="h-14 w-14 animate-spin text-primary" />
-            <div className="text-center">
-              <p className="font-semibold text-lg">Gerando seu vídeo...</p>
-              <p className="text-muted-foreground mt-1 text-sm">{jobStatus.step}</p>
+        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
+          {/* Palco escuro com a luz de cena — mesma linguagem do Clonar Vídeo */}
+          <div className="relative flex flex-col items-center gap-4 overflow-hidden bg-[#0a0e0d] px-6 py-10">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 -top-28 h-64 bg-[radial-gradient(55%_100%_at_50%_0%,hsl(var(--primary)/0.22),transparent_72%)]"
+            />
+            <span className="relative z-10 grid h-14 w-14 place-items-center rounded-2xl bg-white/10 ring-1 ring-white/15">
+              <Loader2 className="h-6 w-6 animate-spin text-white" />
+            </span>
+            <div className="relative z-10 text-center">
+              <p className="text-[15px] font-medium text-white">Gerando seu vídeo…</p>
+              <p className="mt-1 text-xs text-white/60">{jobStatus.step}</p>
             </div>
-
-            {/* Barra de progresso */}
-            <div className="w-full bg-muted rounded-full h-2">
-              <div className="bg-primary h-2 rounded-full transition-all duration-500"
-                style={{ width: `${jobStatus.progress || 0}%` }} />
-            </div>
-
-            {/* Tempo decorrido + tempo médio */}
-            <div className="w-full grid grid-cols-2 gap-3 text-center">
-              <div className="rounded-xl bg-muted/60 px-4 py-3">
-                <p className="text-xs text-muted-foreground mb-1">Tempo decorrido</p>
-                <p className="font-mono font-bold text-xl tabular-nums">
-                  {`${String(Math.floor(localElapsed / 60)).padStart(2, "0")}:${String(localElapsed % 60).padStart(2, "0")}`}
-                </p>
+            <div className="relative z-10 w-full max-w-xs space-y-2">
+              <div className="h-1.5 overflow-hidden rounded-full bg-white/15">
+                <div
+                  className="h-full rounded-full bg-primary transition-all duration-500"
+                  style={{ width: `${jobStatus.progress || 0}%` }}
+                />
               </div>
-              <div className="rounded-xl bg-muted/60 px-4 py-3">
-                <p className="text-xs text-muted-foreground mb-1">
-                  {avgSeconds ? "Tempo médio" : "Estimativa"}
-                </p>
-                <p className="font-mono font-bold text-xl tabular-nums">
-                  {avgSeconds
-                    ? `~${String(Math.floor(avgSeconds / 60)).padStart(2, "0")}:${String(Math.round(avgSeconds % 60)).padStart(2, "0")}`
-                    : videoModel === "gratuito" ? "~02:00" : "~04:00"}
-                </p>
-              </div>
+              <p className="text-center text-[11px] tabular-nums text-white/60">
+                {jobStatus.progress || 0}%
+              </p>
             </div>
+          </div>
 
-            <p className="text-xs text-muted-foreground/60 text-center">
-              Pode navegar e voltar — o vídeo continuará sendo gerado
+          {/* Tempo decorrido + tempo médio */}
+          <div className="grid grid-cols-2 divide-x divide-border/70 border-t border-border/70">
+            <div className="px-4 py-3 text-center">
+              <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Decorrido</p>
+              <p className="mt-1 font-mono text-xl font-bold tabular-nums">
+                {`${String(Math.floor(localElapsed / 60)).padStart(2, "0")}:${String(localElapsed % 60).padStart(2, "0")}`}
+              </p>
+            </div>
+            <div className="px-4 py-3 text-center">
+              <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                {avgSeconds ? "Média" : "Estimativa"}
+              </p>
+              <p className="mt-1 font-mono text-xl font-bold tabular-nums text-muted-foreground">
+                {avgSeconds
+                  ? `~${String(Math.floor(avgSeconds / 60)).padStart(2, "0")}:${String(Math.round(avgSeconds % 60)).padStart(2, "0")}`
+                  : "~02:00"}
+              </p>
+            </div>
+          </div>
+
+          <div className="border-t border-border/70 px-4 py-2.5">
+            <p className="text-center text-[11px] text-muted-foreground">
+              Pode sair desta tela — o vídeo continua sendo gerado no servidor.
             </p>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {jobStatus.status === "done" && (
         <div className="space-y-6">
           {/* Preview + ações principais */}
-          <Card>
-            <CardContent className="pt-6 pb-4 space-y-4">
+          <Card className="border-border/70 shadow-sm">
+            <CardContent className="space-y-4 pb-4 pt-6">
               <div className="flex items-center gap-3">
-                <CheckCircle2 className="h-8 w-8 text-green-500 shrink-0" />
-                <div>
-                  <p className="font-semibold text-lg">Vídeo criado!</p>
-                  <p className="text-muted-foreground text-sm">{jobStatus.titulo}</p>
-                  {avgSeconds != null && (
-                    <p className="text-xs text-muted-foreground/60 mt-0.5">
-                      Gerado em {Math.round(avgSeconds)}s
-                    </p>
-                  )}
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-500/10 text-emerald-600 ring-1 ring-inset ring-emerald-500/25 dark:text-emerald-400">
+                  <CheckCircle2 className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[15px] font-semibold leading-tight">Vídeo pronto</p>
+                  <p className="truncate text-sm text-muted-foreground">{jobStatus.titulo}</p>
                 </div>
               </div>
               {jobStatus.video_url && (

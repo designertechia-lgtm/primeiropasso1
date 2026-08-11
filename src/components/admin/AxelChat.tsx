@@ -44,6 +44,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import ChatTexto from "@/components/admin/ChatTexto";
 import { resolveIntent } from "@/lib/axel/intentEngine";
 import {
   ALL_INTENTS,
@@ -524,9 +525,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
                         : "bg-gradient-to-r from-purple-500 to-blue-600 text-white rounded-tr-md shadow-lg shadow-purple-500/10"
                     }`}
                   >
-                    <p className="whitespace-pre-wrap break-words text-[13px] sm:text-sm">
-                      {msg.content}
-                    </p>
+                    <ChatTexto texto={msg.content} className="font-chat text-[13.5px] sm:text-[14px]" />
                   </div>
 
                   {/* Action Buttons */}
@@ -636,7 +635,7 @@ export default function AxelChat({ isDedicatedPage = false }: { isDedicatedPage?
             <div className="flex gap-2 sm:gap-2.5 mt-3 sm:mt-4 justify-end">
               <div className="max-w-[85%] sm:max-w-[75%]">
                 <div className="rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 text-sm leading-relaxed bg-gradient-to-r from-purple-500 to-blue-600 text-white rounded-tr-md shadow-lg shadow-purple-500/10">
-                  <p className="whitespace-pre-wrap break-words text-[13px] sm:text-sm">{pendingUser}</p>
+                  <p className="whitespace-pre-wrap break-words font-chat text-[13.5px] sm:text-[14px]">{pendingUser}</p>
                 </div>
               </div>
               <div className="shrink-0">

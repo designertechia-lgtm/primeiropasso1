@@ -14,6 +14,15 @@ export default {
       // Landing institucional (redesign 2026): Playfair Display nos títulos, Inter no corpo.
       display: ['Playfair Display', 'Lora', 'Georgia', 'serif'],
       inter: ['Inter', 'Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+      // Balões de conversa (Diretor IA, Axel): a MESMA pilha do WhatsApp Web —
+      // fonte do sistema, que no Windows cai em Segoe UI. Conversa se lê melhor
+      // na fonte que a pessoa já lê o dia inteiro no mensageiro; a Plus Jakarta
+      // (mais editorial) fica para a interface em volta.
+      chat: [
+        '"Segoe UI"', 'system-ui', '-apple-system', 'BlinkMacSystemFont',
+        '"Helvetica Neue"', 'Helvetica', 'Roboto', 'Arial', 'sans-serif',
+        '"Apple Color Emoji"', '"Segoe UI Emoji"',
+      ],
     },
     container: {
       center: true,

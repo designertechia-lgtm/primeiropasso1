@@ -36,6 +36,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import ChatTexto from "@/components/admin/ChatTexto";
 import { toast } from "sonner";
 import {
   Clapperboard, Loader2, Send, Film, RotateCcw, Scissors, Video, AlertCircle,
@@ -585,7 +586,7 @@ export default function DiretorEstudio() {
               <div key={i} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
                 <div
                   className={cn(
-                    "max-w-[92%] whitespace-pre-wrap break-words rounded-xl px-3 py-2 text-[13px] leading-[1.6]",
+                    "max-w-[92%] break-words rounded-xl px-3 py-2 font-chat text-[13.5px] leading-[1.55]",
                     m.role === "user"
                       ? "rounded-tr-md bg-primary text-primary-foreground"
                       : m.failed
@@ -593,7 +594,7 @@ export default function DiretorEstudio() {
                         : "rounded-tl-md border border-border/60 bg-muted/70",
                   )}
                 >
-                  {m.content}
+                  <ChatTexto texto={m.content} />
 
                   {m.failed && (
                     <Button

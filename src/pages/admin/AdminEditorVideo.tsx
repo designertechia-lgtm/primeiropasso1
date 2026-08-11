@@ -72,9 +72,11 @@ import { FILTROS, FILTRO_IDS, EFEITOS, TRANSICOES, filtroCss, transicaoLabel,
 import TransicaoPicker, { TransicaoDemo, AvisoPrevia } from "./editor/TransicaoPicker";
 import EditorOnboarding, { onboardingPendente } from "./editor/EditorOnboarding";
 import VideoAddDialog, { type FilaUpload } from "./editor/VideoAddDialog";
+import { construirEixo, durVisual, paraVisual, paraReal, costurasVisuais } from "./editor/eixoVisual";
 import SeqTrimDialog, {
   type ParteCortada, type LegendasClipe,
 } from "./editor/SeqTrimDialog";
+import { type TrimSeg } from "./editor/seqTrim";
 import { usePreviewClock } from "./editor/previewClock";
 import { duracaoFinalDe } from "./editor/tracksModel";
 import { distribuirCues, falasDaResposta } from "./editor/roteiro";
@@ -705,6 +707,18 @@ export default function AdminEditorVideo() {
    *  duração exata do arquivo final é o contador (duracaoFinalDe). */
   const durTL = (meta?.duration ?? 0) + seqDurPrevia;
 
+  // ── Eixo VISUAL: trecho "excluído de vez" some do desenho ──────────────────
+  // O documento continua guardando tudo em tempo da FONTE (é o que o worker
+  // corta), mas o desenho colapsa as regiões excluídas de vez: todo left/width
+  // da timeline passa por `pctTL`, e o clique volta pelo `paraReal`. Sem nenhum
+  // excluído de vez, o eixo é identidade — o mesmíssimo desenho de sempre.
+  const eixoTL = useMemo(() => construirEixo(segments, durTL || 0.001), [segments, durTL]);
+  const durVisTL = useMemo(() => durVisual(eixoTL), [eixoTL]);
+  const costurasTL = useMemo(() => costurasVisuais(eixoTL), [eixoTL]);
+  const pctTL = (t: number) => (paraVisual(eixoTL, t) / (durVisTL || 1)) * 100;
+  /** Largura em % entre dois tempos reais (nunca negativa). */
+  const pctWTL = (a: number, b: number) => Math.max(0, pctTL(b) - pctTL(a));
+
   // Miniaturas do TRECHO VISÍVEL: ao ampliar/rolar, pede os quadros SÓ do
   // intervalo na tela, em tamanho natural. É o que faz o zoom REVELAR detalhe
   // (mais quadros distintos do trecho) em vez de esticar os mesmos quadros da
@@ -723,9 +737,8 @@ export default function AdminEditorVideo() {
       // a fita cobre o domínio ESTENDIDO, mas só o vídeo principal tem quadros:
       // mapeia o scroll pela escala real e trunca no fim dele (pedir além
       // devolveria quadros pretos)
-      const escala = durTL || dur;
-      const t0 = (box.scrollLeft / total) * escala;
-      const t1 = Math.min(dur, ((box.scrollLeft + vis) / total) * escala);
+      const t0 = paraReal(eixoTL, (box.scrollLeft / total) * durVisTL);
+      const t1 = Math.min(dur, paraReal(eixoTL, ((box.scrollLeft + vis) / total) * durVisTL));
       if (t0 >= dur - 0.2) return;   // janela toda na região dos emendados
       // quantos quadros pedir para cobrir a largura visível com quadros de
       // largura ~natural (as imgs usam w-auto, então NUNCA esticam; isto só
@@ -1111,9 +1124,9 @@ export default function AdminEditorVideo() {
 
   // ── o VÍDEO PRINCIPAL abre o MESMO cortador (Leva 4) ──────────────────────
   // Ele não é um SeqClip, então entra no cortador como um clipe "virtual" da
-  // fonte principal cobrindo o vídeo inteiro. A partição que volta vira
-  // `doc.segments` — inclusive os trechos REMOVIDOS, que o cortador devolve
-  // como buracos entre as partes (é o mesmo desenho da timeline).
+  // fonte principal. Os cortes JÁ FEITOS entram como estão (keep/removido/
+  // excluído de vez) via `segsBase` — antes o cortador recebia só uma janela
+  // única (primeiro→último mantido) e reabrir APAGAVA os cortes internos.
   const [trimPrincipal, setTrimPrincipal] = useState(false);
   const clipeDoPrincipal = useMemo((): SeqClip | null => {
     if (!meta) return null;
@@ -1127,24 +1140,46 @@ export default function AdminEditorVideo() {
     };
   }, [meta, segments, sourceLabel, sourceUrl]);
 
-  const concluirTrimPrincipal = (partes: ParteCortada[]) => {
+  /** Os cortes atuais do principal, na linguagem do cortador (1 para 1). */
+  const segsBasePrincipal = useMemo((): TrimSeg[] | undefined => {
+    if (!meta || !segments.length) return undefined;
+    return segments.map((s, i) => ({
+      id: i + 1, start: s.start, end: s.end, keep: s.keep,
+      speed: s.speed, dismissed: s.dismissed,
+    }));
+  }, [meta, segments]);
+
+  const concluirTrimPrincipal = (
+    partes: ParteCortada[], _transicao: string, _legendas?: LegendasClipe, segsFinais?: TrimSeg[],
+  ) => {
     if (!meta || !partes.length) return;
-    // partição COMPLETA da fonte: o que está fora das partes mantidas vira
-    // trecho removido (restaurável), exatamente como a timeline sempre fez
-    const novos: Segment[] = [];
-    let id = 1;
-    let cursor = 0;
-    for (const p of partes) {
-      if (p.src_in - cursor > 0.05)
-        novos.push({ id: id++, start: cursor, end: p.src_in, keep: false });
-      novos.push({
-        id: id++, start: p.src_in, end: p.src_out, keep: true,
-        speed: p.speed === 1 ? undefined : p.speed,
-      });
-      cursor = p.src_out;
+    let novos: Segment[];
+    if (segsFinais?.length) {
+      // caminho novo: o cortador devolve a partição INTEIRA — keep, removido e
+      // excluído de vez sobrevivem à ida e volta (nada de reconstruir por
+      // buracos, que perdia o `dismissed` e fundia trechos vizinhos)
+      novos = segsFinais.map((s, i) => ({
+        id: i + 1, start: s.start, end: s.end, keep: s.keep,
+        speed: s.keep && (s.speed ?? 1) !== 1 ? s.speed : undefined,
+        dismissed: !s.keep && s.dismissed ? true : undefined,
+      }));
+    } else {
+      // fallback (não deveria acontecer no principal): partição por buracos
+      novos = [];
+      let id = 1;
+      let cursor = 0;
+      for (const p of partes) {
+        if (p.src_in - cursor > 0.05)
+          novos.push({ id: id++, start: cursor, end: p.src_in, keep: false });
+        novos.push({
+          id: id++, start: p.src_in, end: p.src_out, keep: true,
+          speed: p.speed === 1 ? undefined : p.speed,
+        });
+        cursor = p.src_out;
+      }
+      if (meta.duration - cursor > 0.05)
+        novos.push({ id: id++, start: cursor, end: meta.duration, keep: false });
     }
-    if (meta.duration - cursor > 0.05)
-      novos.push({ id: id++, start: cursor, end: meta.duration, keep: false });
     patch({ segments: normalizarSegments(novos, meta.duration) });
     setTrimPrincipal(false);
     toast.success("Cortes do vídeo principal atualizados.", { duration: 5000 });
@@ -1315,7 +1350,8 @@ export default function AdminEditorVideo() {
   const posFromEvent = (clientX: number) => {
     if (!timelineRef.current || !meta) return 0;
     const rect = timelineRef.current.getBoundingClientRect();
-    return ((clientX - rect.left) / rect.width) * durTL;
+    // posição é espaço VISUAL; o tempo real volta saltando as costuras
+    return paraReal(eixoTL, ((clientX - rect.left) / rect.width) * durVisTL);
   };
   const onTimelineDown = (e: React.MouseEvent) => {
     draggingRef.current = true;
@@ -1359,7 +1395,7 @@ export default function AdminEditorVideo() {
   const calcSnap = (t: number, donos: string[] = []): { t: number; guide: number | null } => {
     if (!snapOn || !meta || !timelineRef.current) return { t, guide: null };
     const largura = timelineRef.current.getBoundingClientRect().width || 1;
-    const tol = (8 / largura) * durTL;
+    const tol = (8 / largura) * durVisTL;
     let melhor = t, dist = tol;
     for (const p of snapPoints) {
       if (donos.includes(p.dono)) continue;
@@ -1409,16 +1445,17 @@ export default function AdminEditorVideo() {
   // Passo que mantém ~8 marcas visíveis em qualquer zoom (0:00, 0:05, 0:10...)
   const rulerStep = useMemo(() => {
     if (!durTL) return 5;
-    const visivel = durTL / zoom;
+    const visivel = durVisTL / zoom;
     const alvo = visivel / 8;
     return [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600].find((s) => s >= alvo) ?? 600;
-  }, [durTL, zoom]);
+  }, [durVisTL, zoom]);
   const rulerMarks = useMemo(() => {
     if (!durTL) return [] as number[];
+    // domínio VISUAL: marcas equidistantes NA TELA; o rótulo converte pro real
     const m: number[] = [];
-    for (let t = 0; t <= durTL + 1e-6; t += rulerStep) m.push(Number(t.toFixed(3)));
+    for (let t = 0; t <= durVisTL + 1e-6; t += rulerStep) m.push(Number(t.toFixed(3)));
     return m;
-  }, [durTL, rulerStep]);
+  }, [durVisTL, rulerStep]);
   const rotuloRegua = (t: number) => {
     const mm = Math.floor(t / 60);
     const ss = t - mm * 60;
@@ -1439,7 +1476,7 @@ export default function AdminEditorVideo() {
     requestAnimationFrame(() => {
       const box = scrollRef.current;
       if (!box || !durTL) return;
-      const alvo = (playhead / durTL) * box.scrollWidth;
+      const alvo = (paraVisual(eixoTL, playhead) / durVisTL) * box.scrollWidth;
       box.scrollLeft = Math.max(0, alvo - box.clientWidth / 2);
     });
   };
@@ -1449,7 +1486,7 @@ export default function AdminEditorVideo() {
     const box = scrollRef.current;
     if (!box || zoom === 1 || !durTL) return;
     if (!clock.playing) return;
-    const x = (playhead / durTL) * box.scrollWidth;
+    const x = (paraVisual(eixoTL, playhead) / durVisTL) * box.scrollWidth;
     if (x < box.scrollLeft + 40 || x > box.scrollLeft + box.clientWidth - 40) {
       box.scrollLeft = Math.max(0, x - box.clientWidth / 2);
     }
@@ -1489,9 +1526,9 @@ export default function AdminEditorVideo() {
     }));
   };
 
-  // "Excluir de vez": o trecho removido já está fora do vídeo final — isto só
-  // torna o descarte DEFINITIVO (sai da lista de recortados e perde os botões
-  // de restaurar). Arrependimento imediato = Desfazer (o apply guarda undo).
+  // "Excluir de vez": o corte vira DEFINITIVO — o trecho SOME da timeline
+  // (o eixo visual colapsa a região; fica só a costura com a tesourinha) e sai
+  // da lista de recortados. Arrependimento = Desfazer (o apply guarda undo).
   const descartarSegment = (id: number) => {
     apply((d) => ({
       segments: d.segments.map((s) => (s.id === id ? { ...s, dismissed: true } : s)),
@@ -1502,7 +1539,7 @@ export default function AdminEditorVideo() {
     apply((d) => ({
       segments: d.segments.map((s) => (!s.keep && !s.dismissed ? { ...s, dismissed: true } : s)),
     }));
-    toast.success("Lista de recortes limpa — os trechos seguem fora do vídeo. Desfazer traz a lista de volta.");
+    toast.success("Trechos excluídos de vez — sumiram da timeline. O Desfazer traz tudo de volta.");
   };
 
   // Restaurar da lista: o trecho volta a entrar no vídeo final.
@@ -2890,7 +2927,7 @@ export default function AdminEditorVideo() {
                   {trechosRemovidos.length > 1 && (
                     <Button size="sm" variant="ghost" className="h-6 text-[11px] text-muted-foreground"
                       onClick={descartarTodosRemovidos}
-                      title="Limpa a lista inteira; os trechos continuam fora do vídeo">
+                      title="Todos somem da timeline; o Desfazer traz de volta">
                       Excluir todos de vez
                     </Button>
                   )}
@@ -2911,7 +2948,7 @@ export default function AdminEditorVideo() {
                       </Button>
                       <Button size="sm" variant="ghost" className="h-6 gap-1 text-[11px] text-destructive hover:text-destructive"
                         onClick={() => descartarSegment(s.id)}
-                        title="Some da lista e da timeline como opção — só o Desfazer traz de volta">
+                        title="O trecho some da timeline (fica só a marca de costura) — só o Desfazer traz de volta">
                         <Trash2 className="h-3 w-3" /> Excluir de vez
                       </Button>
                     </div>
@@ -2919,7 +2956,7 @@ export default function AdminEditorVideo() {
                 </div>
                 <p className="text-[10.5px] leading-snug text-muted-foreground">
                   Trecho removido já está fora do vídeo final. <b>Restaurar</b> devolve ao vídeo;
-                  <b> excluir de vez</b> só encerra a revisão (a região continua cortada).
+                  <b> excluir de vez</b> faz o trecho sumir da timeline — fica só a marca de costura, e o <b>Desfazer</b> traz de volta.
                 </p>
               </div>
             )}
@@ -3849,10 +3886,10 @@ export default function AdminEditorVideo() {
                 <div className="relative h-4 select-none">
                   {rulerMarks.map((t) => (
                     <div key={t} className="absolute top-0 flex flex-col items-start"
-                      style={{ left: `${(t / durTL) * 100}%` }}>
+                      style={{ left: `${(t / durVisTL) * 100}%` }}>
                       <div className="h-1.5 w-px bg-muted-foreground/50" />
                       <span className="text-[9px] text-muted-foreground tabular-nums -translate-x-1/2 ml-px whitespace-nowrap">
-                        {rotuloRegua(t)}
+                        {rotuloRegua(paraReal(eixoTL, t))}
                       </span>
                     </div>
                   ))}
@@ -3865,7 +3902,7 @@ export default function AdminEditorVideo() {
                         fita quando há vídeos emendados depois (o resto da
                         largura são os blocos da sequência) */}
                     <div className="absolute inset-y-0 left-0 overflow-hidden"
-                      style={{ width: `${(meta.duration / durTL) * 100}%` }}>
+                      style={{ width: `${pctTL(meta.duration)}%` }}>
                       {zoom <= 1 ? (
                         // 1×: fita preenche a fatia. Com emendados a fatia
                         // encolhe — mostra só os quadros que CABEM em largura
@@ -3875,7 +3912,7 @@ export default function AdminEditorVideo() {
                           {(() => {
                             const base = meta.thumbs.length ? meta.thumbs : Array(20).fill("");
                             const quadroW = Math.max(24, alturaFita * (meta.width && meta.height ? meta.width / meta.height : 0.5625));
-                            const fatiaPx = boxW * zoom * (meta.duration / durTL);
+                            const fatiaPx = boxW * zoom * (pctTL(meta.duration) / 100);
                             const arr = seqClips.length && boxW && meta.thumbs.length
                               ? amostrarQuadros(base, Math.max(4, Math.round(fatiaPx / quadroW)))
                               : base;
@@ -3889,7 +3926,7 @@ export default function AdminEditorVideo() {
                         // ampliado: cada quadro em LARGURA NATURAL (w-auto = a proporção
                         // REAL da imagem manda; nunca estica), começando no tempo t0
                         <div className="absolute top-0 bottom-0 flex"
-                          style={{ left: `${(winThumbs.t0 / meta.duration) * 100}%` }}>
+                          style={{ left: `${(pctTL(winThumbs.t0) / Math.max(pctTL(meta.duration), 0.001)) * 100}%` }}>
                           {winThumbs.list.map((t, i) =>
                             t ? <img key={i} src={t} draggable={false} className="h-full w-auto shrink-0" alt="" />
                               : <div key={i} className="h-full shrink-0 bg-muted" style={{ width: Math.round(alturaFita * 0.5625) }} />,
@@ -3920,7 +3957,7 @@ export default function AdminEditorVideo() {
                       const dur = Math.max(0, c.src_out - c.src_in);
                       const dentro = playhead >= basesSeq[i] && playhead < basesSeq[i] + dur;
                       const fita = seqThumbs[`${c.edit_id}|${c.src_in.toFixed(2)}|${c.src_out.toFixed(2)}`];
-                      const blocoPx = boxW * zoom * (dur / durTL);
+                      const blocoPx = boxW * zoom * (pctWTL(basesSeq[i], basesSeq[i] + dur) / 100);
                       const quadros = fita && boxW
                         ? amostrarQuadros(fita, Math.max(2, Math.round(blocoPx / Math.max(24, alturaFita * 0.5625))))
                         : null;
@@ -3928,7 +3965,7 @@ export default function AdminEditorVideo() {
                         <div key={c.id}
                           className={`absolute inset-y-0 overflow-hidden border-l-2 border-background text-[9px] text-white/90 ${
                             dentro ? "bg-neutral-600" : "bg-neutral-700"}`}
-                          style={{ left: `${(basesSeq[i] / durTL) * 100}%`, width: `${(dur / durTL) * 100}%` }}
+                          style={{ left: `${pctTL(basesSeq[i])}%`, width: `${pctWTL(basesSeq[i], basesSeq[i] + dur)}%` }}
                           title={`${c.name} — ${fmt(dur)} (emendado ${i + 1}º)`}>
                           {quadros && (
                             <div className="absolute inset-0 flex pointer-events-none">
@@ -4002,7 +4039,7 @@ export default function AdminEditorVideo() {
                               : temTr
                                 ? "border-primary/70 bg-primary/90 text-primary-foreground"
                                 : "border-white/40 bg-neutral-900/90 text-white/70"}`}
-                          style={{ left: `${(basesSeq[i] / durTL) * 100}%` }}>
+                          style={{ left: `${pctTL(basesSeq[i])}%` }}>
                           <span className="-rotate-45 leading-none">{temTr ? "✦" : "|"}</span>
                         </button>
                       );
@@ -4023,24 +4060,37 @@ export default function AdminEditorVideo() {
                     </span>
                   )}
                   <div className="absolute inset-0 pointer-events-none">
-                    {segments.map((s) => (
+                    {segments.map((s) => (!s.keep && s.dismissed) ? null : (
                       <div key={s.id}
                         className={`absolute top-0 h-full border-2 rounded-sm ${
                           s.keep
                             ? (activeSeg?.id === s.id ? "border-primary" : "border-emerald-400/70")
                             : "border-red-500/70 bg-black/60 backdrop-grayscale"}`}
-                        style={{ left: `${(s.start / durTL) * 100}%`, width: `${((s.end - s.start) / durTL) * 100}%` }}>
-                        {/* excluído de vez não oferece mais restauração aqui (só o Desfazer) */}
-                        {(s.keep || !s.dismissed) && (
+                        style={{ left: `${pctTL(s.start)}%`, width: `${pctWTL(s.start, s.end)}%` }}>
+                        <span className="absolute top-0.5 right-0.5 flex flex-col gap-0.5">
                           <button type="button"
                             title={s.keep ? "Remover este trecho" : "Restaurar este trecho"}
                             onMouseDown={(e) => e.stopPropagation()}
-                            onClick={(e) => { e.stopPropagation(); s.keep ? toggleSegment(s.id) : restaurarSegment(s.id); }}
-                            className={`pointer-events-auto absolute top-0.5 right-0.5 rounded p-0.5 ${
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (s.keep) toggleSegment(s.id); else restaurarSegment(s.id);
+                            }}
+                            className={`pointer-events-auto rounded p-0.5 ${
                               s.keep ? "bg-black/50 text-white hover:bg-red-600" : "bg-red-600 text-white hover:bg-emerald-600"}`}>
                             {s.keep ? <Trash2 className="h-3 w-3" /> : <RotateCcw className="h-3 w-3" />}
                           </button>
-                        )}
+                          {/* trecho removido também exclui de vez DAQUI — o
+                              pedido era não depender do painel lateral */}
+                          {!s.keep && (
+                            <button type="button"
+                              title="Excluir de vez: some da timeline (o Desfazer traz de volta)"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => { e.stopPropagation(); descartarSegment(s.id); }}
+                              className="pointer-events-auto rounded bg-black/60 p-0.5 text-white hover:bg-red-700">
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
+                        </span>
                         {s.keep && (s.speed ?? 1) !== 1 && (
                           <span className="absolute bottom-0.5 left-0.5 rounded bg-black/70 text-white text-[8px] px-1 leading-tight">
                             {(s.speed ?? 1) < 1 ? "🐢" : "⚡"}{String(s.speed).replace(".", ",")}×
@@ -4050,10 +4100,10 @@ export default function AdminEditorVideo() {
                     ))}
                     {/* alças das FRONTEIRAS entre trechos: arraste para mover
                         o ponto de corte (o vizinho acompanha) */}
-                    {segments.slice(0, -1).map((s) => (
+                    {segments.slice(0, -1).map((s, i) => ((!s.keep && s.dismissed) || (() => { const p = segments[i + 1]; return p && !p.keep && p.dismissed; })()) ? null : (
                       <div key={`b${s.id}`}
                         className="pointer-events-auto absolute top-0 bottom-0 w-2 -translate-x-1/2 cursor-ew-resize group"
-                        style={{ left: `${(s.end / durTL) * 100}%`, touchAction: "none" }}
+                        style={{ left: `${pctTL(s.end)}%`, touchAction: "none" }}
                         title="Arraste para ajustar onde o corte acontece"
                         onMouseDown={(e) => e.stopPropagation()}
                         onPointerDown={(e) => onBorderDown(e, s.id)}
@@ -4063,8 +4113,20 @@ export default function AdminEditorVideo() {
                         <div className="mx-auto h-full w-0.5 bg-white/70 group-hover:bg-primary group-hover:w-1 transition-all" />
                       </div>
                     ))}
+                    {/* COSTURAS: onde um trecho excluído de vez foi colapsado.
+                        O risco marca que ali houve um corte definitivo — clicar
+                        não faz nada (só o Desfazer reabre a região). */}
+                    {costurasTL.map((tv, i) => (
+                      <div key={`costura-${i}`}
+                        title="Trecho excluído de vez — o Desfazer traz de volta"
+                        className="pointer-events-none absolute top-0 bottom-0 z-10 w-[3px] -translate-x-1/2 bg-background"
+                        style={{ left: `${(tv / (durVisTL || 1)) * 100}%` }}>
+                        <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 border-l border-dashed border-red-400/80" />
+                        <Scissors className="absolute top-1/2 left-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-background p-px text-red-400" />
+                      </div>
+                    ))}
                     <div className="absolute top-[-4px] bottom-[-4px] w-0.5 bg-primary"
-                      style={{ left: `${Math.min(100, (playhead / durTL) * 100)}%` }}>
+                      style={{ left: `${Math.min(100, pctTL(playhead))}%` }}>
                       <div className="h-2.5 w-2.5 rounded-full bg-primary -translate-x-[45%]" />
                     </div>
                   </div>
@@ -4073,7 +4135,7 @@ export default function AdminEditorVideo() {
                 {/* guia do encaixe: mostra em que ponto o bloco grudou */}
                 {snapGuide !== null && (
                   <div className="absolute top-4 bottom-0 w-px bg-amber-400 pointer-events-none z-10"
-                    style={{ left: `${(snapGuide / durTL) * 100}%` }} />
+                    style={{ left: `${pctTL(snapGuide)}%` }} />
                 )}
 
                 {/* Faixas (estilo CapCut): legendas, textos, stickers e áudio.
@@ -4083,7 +4145,7 @@ export default function AdminEditorVideo() {
                     {cues.map((c, i) => (
                       <div key={i}
                         className="absolute top-0.5 bottom-0.5 rounded bg-emerald-600/70 border border-emerald-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
-                        style={{ left: `${(c.start / durTL) * 100}%`, width: `${Math.max(1.2, ((c.end - c.start) / durTL) * 100)}%`, touchAction: "none" }}
+                        style={{ left: `${pctTL(c.start)}%`, width: `${Math.max(1.2, pctWTL(c.start, c.end))}%`, touchAction: "none" }}
                         title={`${c.text} · ${fmt(c.start)}–${fmt(c.end)} — arraste pra mover; borda direita estica`}
                         onPointerDown={(e) => onTrackDown(e, "cue", String(i), "move")}
                         onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
@@ -4100,7 +4162,7 @@ export default function AdminEditorVideo() {
                     {titles.map((t) => (
                       <div key={t.id}
                         className="absolute top-0.5 bottom-0.5 rounded bg-amber-500/70 border border-amber-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
-                        style={{ left: `${(t.start / durTL) * 100}%`, width: `${Math.max(1.2, ((t.end - t.start) / durTL) * 100)}%`, touchAction: "none" }}
+                        style={{ left: `${pctTL(t.start)}%`, width: `${Math.max(1.2, pctWTL(t.start, t.end))}%`, touchAction: "none" }}
                         title={`${t.text} · ${fmt(t.start)}–${fmt(t.end)} — arraste pra mover; borda direita estica`}
                         onPointerDown={(e) => onTrackDown(e, "title", t.id, "move")}
                         onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
@@ -4117,7 +4179,7 @@ export default function AdminEditorVideo() {
                     {stickers.map((s) => (
                       <div key={s.id}
                         className="absolute top-0.5 bottom-0.5 rounded bg-violet-500/70 border border-violet-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
-                        style={{ left: `${(s.start / durTL) * 100}%`, width: `${Math.max(1.2, ((s.end - s.start) / durTL) * 100)}%`, touchAction: "none" }}
+                        style={{ left: `${pctTL(s.start)}%`, width: `${Math.max(1.2, pctWTL(s.start, s.end))}%`, touchAction: "none" }}
                         title={`${s.name} · ${fmt(s.start)}–${fmt(s.end)} — arraste pra mover; borda direita estica`}
                         onPointerDown={(e) => onTrackDown(e, "sticker", s.id, "move")}
                         onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
@@ -4134,7 +4196,7 @@ export default function AdminEditorVideo() {
                     {pipClips.map((p) => (
                       <div key={p.id}
                         className="absolute top-0.5 bottom-0.5 rounded bg-rose-500/70 border border-rose-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
-                        style={{ left: `${(p.start / durTL) * 100}%`, width: `${Math.max(1.2, ((p.end - p.start) / durTL) * 100)}%`, touchAction: "none" }}
+                        style={{ left: `${pctTL(p.start)}%`, width: `${Math.max(1.2, pctWTL(p.start, p.end))}%`, touchAction: "none" }}
                         title={`${p.name} · ${fmt(p.start)}–${fmt(p.end)} — arraste pra mover; borda direita estica`}
                         onPointerDown={(e) => onTrackDown(e, "pip", p.id, "move")}
                         onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
@@ -4151,7 +4213,7 @@ export default function AdminEditorVideo() {
                     {audioClips.map((c) => (
                       <div key={c.id}
                         className="absolute top-0.5 bottom-0.5 rounded bg-sky-500/70 border border-sky-300/60 text-[9px] text-white cursor-grab select-none flex items-center px-1 overflow-hidden"
-                        style={{ left: `${(c.start / durTL) * 100}%`, width: `${Math.max(1.2, ((c.end - c.start) / durTL) * 100)}%`, touchAction: "none" }}
+                        style={{ left: `${pctTL(c.start)}%`, width: `${Math.max(1.2, pctWTL(c.start, c.end))}%`, touchAction: "none" }}
                         title={`${c.name} · ${fmt(c.start)}–${fmt(c.end)} — arraste pra mover; borda direita estica`}
                         onPointerDown={(e) => onTrackDown(e, "audio", c.id, "move")}
                         onPointerMove={onTrackMove} onPointerUp={onTrackUp}>
@@ -4384,6 +4446,7 @@ export default function AdminEditorVideo() {
           vídeo abre a mesma tela — o principal deixou de ser um caso à parte */}
       {trimPrincipal && clipeDoPrincipal && (
         <SeqTrimDialog clip={clipeDoPrincipal} principal
+          segsBase={segsBasePrincipal}
           onConcluir={concluirTrimPrincipal}
           onCancelar={() => setTrimPrincipal(false)} />
       )}

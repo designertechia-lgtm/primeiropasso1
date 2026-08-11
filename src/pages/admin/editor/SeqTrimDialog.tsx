@@ -27,14 +27,20 @@ import {
   type TrimSeg,
 } from "./seqTrim";
 import TransicaoPicker, { TransicaoDemo, AvisoPrevia } from "./TransicaoPicker";
+import { construirEixo, durVisual, paraVisual, paraReal, costurasVisuais } from "./eixoVisual";
 import { TRANSICOES, transicaoLabel } from "./filtros";
 
 export type ParteCortada = { src_in: number; src_out: number; speed: number };
 
 type Props = {
   clip: SeqClip;
-  /** `transicao` = como as PARTES emendam entre si ("none" = corte seco). */
-  onConcluir: (partes: ParteCortada[], transicao: string, legendas?: LegendasClipe) => void;
+  /** `transicao` = como as PARTES emendam entre si ("none" = corte seco).
+   *  `segsFinais` = a partição inteira como ficou (keep/removido/excluído de
+   *  vez) — o vídeo principal usa para preservar TUDO na ida e volta. */
+  onConcluir: (partes: ParteCortada[], transicao: string, legendas?: LegendasClipe, segsFinais?: TrimSeg[]) => void;
+  /** Cortes já existentes (o principal abre com os dele — sem isto, reabrir
+   *  o cortador apagava os cortes internos feitos antes). */
+  segsBase?: TrimSeg[];
   onCancelar: () => void;
   /** Modo "vídeo principal": ele não tem emenda de ENTRADA (é o primeiro), e as
    *  legendas dele já vivem em doc.cues — o cortador esconde os dois controles.
@@ -45,11 +51,11 @@ type Props = {
 
 export type LegendasClipe = { cues: Cue[]; words: Cue[] };
 
-export default function SeqTrimDialog({ clip, onConcluir, onCancelar, principal }: Props) {
+export default function SeqTrimDialog({ clip, onConcluir, onCancelar, principal, segsBase }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const fitaRef = useRef<HTMLDivElement>(null);
   const arrastandoRef = useRef(false);
-  const [segs, setSegs] = useState<TrimSeg[]>(() => segsIniciais(clip));
+  const [segs, setSegs] = useState<TrimSeg[]>(() => (segsBase?.length ? segsBase : segsIniciais(clip)));
   const [playhead, setPlayhead] = useState(clip.src_in);
   const [tocando, setTocando] = useState(false);
   const [thumbs, setThumbs] = useState<string[]>([]);
@@ -68,6 +74,11 @@ export default function SeqTrimDialog({ clip, onConcluir, onCancelar, principal 
   const [transcrevendo, setTranscrevendo] = useState(false);
 
   const dur = Math.max(clip.natural_dur, clip.src_out, 0.1);
+  // eixo VISUAL da fita: trecho excluído de vez colapsa (mesma conta da timeline)
+  const eixo = useMemo(() => construirEixo(segs, dur), [segs, dur]);
+  const durVis = useMemo(() => durVisual(eixo), [eixo]);
+  const costuras = useMemo(() => costurasVisuais(eixo), [eixo]);
+  const pct = (t: number) => (paraVisual(eixo, t) / (durVis || 1)) * 100;
   const partes = useMemo(() => janelasMantidas(segs), [segs]);
   const totalMantido = useMemo(() => duracaoMantida(segs), [segs]);
   const totalFinal = useMemo(() => duracaoFinalMantida(segs), [segs]);
@@ -99,7 +110,7 @@ export default function SeqTrimDialog({ clip, onConcluir, onCancelar, principal 
     const box = fitaRef.current;
     if (!box) return 0;
     const r = box.getBoundingClientRect();
-    return Math.max(0, Math.min(dur, ((clientX - r.left) / r.width) * dur));
+    return paraReal(eixo, Math.max(0, Math.min(durVis, ((clientX - r.left) / r.width) * durVis)));
   };
   const irPara = (t: number) => {
     setPlayhead(t);
@@ -178,7 +189,11 @@ export default function SeqTrimDialog({ clip, onConcluir, onCancelar, principal 
     }
   };
   const alternarSeg = (id: number) =>
-    setSegs((ss) => ss.map((s) => (s.id === id ? { ...s, keep: !s.keep } : s)));
+    setSegs((ss) => ss.map((s) => (s.id === id ? { ...s, keep: !s.keep, dismissed: false } : s)));
+
+  // Excluir DE VEZ: o trecho some da fita (o eixo colapsa) e da revisão.
+  const excluirDeVez = (id: number) =>
+    setSegs((ss) => ss.map((s) => (s.id === id ? { ...s, keep: false, dismissed: true } : s)));
 
   const aplicarCampo = (campo: "de" | "ate") => {
     if (!segAtual) return;
@@ -220,7 +235,12 @@ export default function SeqTrimDialog({ clip, onConcluir, onCancelar, principal 
             playsInline preload="metadata"
             className="w-full max-h-[38vh] object-contain bg-black cursor-pointer"
             onClick={alternarPlay}
-            onTimeUpdate={(e) => setPlayhead((e.target as HTMLVideoElement).currentTime)}
+            onTimeUpdate={(e) => {
+              const v = e.target as HTMLVideoElement;
+              const drop = segs.find((sg) => !sg.keep && sg.dismissed && v.currentTime >= sg.start && v.currentTime < sg.end - 0.05);
+              if (drop && !v.paused) v.currentTime = drop.end;   // excluído de vez: a reprodução salta
+              setPlayhead(v.currentTime);
+            }}
             onPlay={() => setTocando(true)}
             onPause={() => setTocando(false)}
             onLoadedMetadata={() => { if (videoRef.current) videoRef.current.currentTime = clip.src_in; }} />
@@ -243,34 +263,62 @@ export default function SeqTrimDialog({ clip, onConcluir, onCancelar, principal 
         <div ref={fitaRef}
           className="relative h-16 rounded-lg overflow-hidden border bg-neutral-800 cursor-col-resize select-none"
           onMouseDown={(e) => { arrastandoRef.current = true; irPara(tempoDaPosicao(e.clientX)); }}>
-          <div className="flex h-full w-full">
-            {(thumbs.length ? thumbs : Array(20).fill("")).map((t, i, arr) =>
-              t ? <img key={i} src={t} draggable={false} className="h-full object-cover"
-                    style={{ width: `${100 / arr.length}%` }} alt="" />
-                : <div key={i} className={`h-full bg-muted ${thumbsFalhou ? "" : "animate-pulse"}`}
-                    style={{ width: `${100 / arr.length}%` }} />,
-            )}
+          <div className="relative h-full w-full">
+            {(thumbs.length ? thumbs : Array(20).fill("")).map((t, i, arr) => {
+              // cada quadro cobre a SUA fatia de tempo: com trecho excluído de
+              // vez, a fatia colapsa junto (largura 0 → nem renderiza)
+              const t0 = (i / arr.length) * dur;
+              const t1 = ((i + 1) / arr.length) * dur;
+              const left = pct(t0);
+              const w = pct(t1) - left;
+              if (w <= 0.05) return null;
+              return t
+                ? <img key={i} src={t} draggable={false} className="absolute top-0 h-full object-cover"
+                    style={{ left: `${left}%`, width: `${w}%` }} alt="" />
+                : <div key={i} className={`absolute top-0 h-full bg-muted ${thumbsFalhou ? "" : "animate-pulse"}`}
+                    style={{ left: `${left}%`, width: `${w}%` }} />;
+            })}
           </div>
           <div className="absolute inset-0 pointer-events-none">
-            {segs.map((s) => (
+            {segs.map((s) => (!s.keep && s.dismissed) ? null : (
               <div key={s.id}
                 className={`absolute top-0 h-full border-2 rounded-sm ${
                   s.keep
                     ? (segAtual?.id === s.id ? "border-primary" : "border-emerald-400/70")
                     : "border-red-500/70 bg-black/60 backdrop-grayscale"}`}
-                style={{ left: `${(s.start / dur) * 100}%`, width: `${((s.end - s.start) / dur) * 100}%` }}>
-                <button type="button"
-                  title={s.keep ? "Tirar este trecho do clipe" : "Trazer este trecho de volta"}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onClick={(e) => { e.stopPropagation(); alternarSeg(s.id); }}
-                  className={`pointer-events-auto absolute top-0.5 right-0.5 rounded p-0.5 ${
-                    s.keep ? "bg-black/50 text-white hover:bg-red-600" : "bg-red-600 text-white hover:bg-emerald-600"}`}>
-                  {s.keep ? <Trash2 className="h-3 w-3" /> : <RotateCcw className="h-3 w-3" />}
-                </button>
+                style={{ left: `${pct(s.start)}%`, width: `${Math.max(0, pct(s.end) - pct(s.start))}%` }}>
+                <span className="absolute top-0.5 right-0.5 flex flex-col gap-0.5">
+                  <button type="button"
+                    title={s.keep ? "Tirar este trecho do clipe" : "Trazer este trecho de volta"}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); alternarSeg(s.id); }}
+                    className={`pointer-events-auto rounded p-0.5 ${
+                      s.keep ? "bg-black/50 text-white hover:bg-red-600" : "bg-red-600 text-white hover:bg-emerald-600"}`}>
+                    {s.keep ? <Trash2 className="h-3 w-3" /> : <RotateCcw className="h-3 w-3" />}
+                  </button>
+                  {!s.keep && (
+                    <button type="button"
+                      title="Excluir de vez: some da fita (Cancelar descarta tudo; na trilha, o Desfazer traz de volta)"
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); excluirDeVez(s.id); }}
+                      className="pointer-events-auto rounded bg-black/60 p-0.5 text-white hover:bg-red-700">
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  )}
+                </span>
+              </div>
+            ))}
+            {costuras.map((tv, i) => (
+              <div key={`costura-${i}`}
+                title="Trecho excluído de vez"
+                className="absolute top-0 bottom-0 z-10 w-[3px] -translate-x-1/2 bg-background"
+                style={{ left: `${(tv / (durVis || 1)) * 100}%` }}>
+                <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 border-l border-dashed border-red-400/80" />
+                <Scissors className="absolute top-1/2 left-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-background p-px text-red-400" />
               </div>
             ))}
             <div className="absolute top-0 bottom-0 w-0.5 bg-primary"
-              style={{ left: `${Math.min(100, (playhead / dur) * 100)}%` }} />
+              style={{ left: `${Math.min(100, pct(playhead))}%` }} />
           </div>
         </div>
 
@@ -410,6 +458,7 @@ export default function SeqTrimDialog({ clip, onConcluir, onCancelar, principal 
                 partes,
                 partes.length > 1 ? transicao : "none",
                 legendas ?? undefined,
+                segs,
               )}>
               <Check className="h-3.5 w-3.5" /> Concluir
             </Button>

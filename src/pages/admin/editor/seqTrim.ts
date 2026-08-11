@@ -11,8 +11,9 @@
 import type { SeqClip } from "./types";
 
 /** Um pedaço da FONTE dentro do cortador: mantido (entra no vídeo) ou não.
- *  `speed` espelha o Segment do vídeo principal (1 = normal); ausente = 1. */
-export type TrimSeg = { id: number; start: number; end: number; keep: boolean; speed?: number };
+ *  `speed` espelha o Segment do vídeo principal (1 = normal); ausente = 1.
+ *  `dismissed` = excluído DE VEZ: some da fita (eixo colapsa) e da revisão. */
+export type TrimSeg = { id: number; start: number; end: number; keep: boolean; speed?: number; dismissed?: boolean };
 
 /** Piso de duração de uma parte — o mesmo do adaptador (docFlatToTracks). */
 export const MIN_PARTE = 0.15;

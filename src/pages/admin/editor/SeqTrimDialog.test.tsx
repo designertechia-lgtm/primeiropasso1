@@ -46,7 +46,7 @@ describe("SeqTrimDialog", { timeout: 20000 }, () => {
     fireEvent.click(screen.getByRole("button", { name: /Concluir/ }));
     // 1 parte só = não há emenda entre partes: a transição vai como "none"
     expect(onConcluir).toHaveBeenCalledWith(
-      [{ src_in: 0, src_out: 10, speed: 1 }], "none", undefined);
+      [{ src_in: 0, src_out: 10, speed: 1 }], "none", undefined, expect.any(Array));
   });
 
   it("dividir + tirar o miolo devolve DUAS partes", () => {
@@ -68,7 +68,7 @@ describe("SeqTrimDialog", { timeout: 20000 }, () => {
     fireEvent.click(screen.getByRole("button", { name: /Concluir/ }));
     expect(onConcluir).toHaveBeenCalledWith(
       [{ src_in: 0, src_out: 3, speed: 1 }, { src_in: 6, src_out: 10, speed: 1 }],
-      "none", undefined);
+      "none", undefined, expect.any(Array));
   });
 
   it("com 2+ partes dá para escolher a transição ENTRE ELAS", () => {
@@ -91,7 +91,7 @@ describe("SeqTrimDialog", { timeout: 20000 }, () => {
     fireEvent.click(screen.getByRole("button", { name: /Concluir/ }));
     expect(onConcluir).toHaveBeenCalledWith(
       [{ src_in: 0, src_out: 3, speed: 1 }, { src_in: 6, src_out: 10, speed: 1 }],
-      "dissolve", undefined);
+      "dissolve", undefined, expect.any(Array));
   });
 
   it("o aviso diz que a prévia NÃO toca a transição", () => {
@@ -123,7 +123,7 @@ describe("SeqTrimDialog", { timeout: 20000 }, () => {
       onConcluir={onConcluir} onCancelar={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /Concluir/ }));
     expect(onConcluir).toHaveBeenCalledWith(
-      [{ src_in: 6, src_out: 10, speed: 1 }], "none", undefined);
+      [{ src_in: 6, src_out: 10, speed: 1 }], "none", undefined, expect.any(Array));
   });
 
   it("VELOCIDADE do trecho vai junto na parte (Leva 4)", () => {
@@ -133,7 +133,34 @@ describe("SeqTrimDialog", { timeout: 20000 }, () => {
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "2" } });
     fireEvent.click(screen.getByRole("button", { name: /Concluir/ }));
     expect(onConcluir).toHaveBeenCalledWith(
-      [{ src_in: 0, src_out: 10, speed: 2 }], "none", undefined);
+      [{ src_in: 0, src_out: 10, speed: 2 }], "none", undefined, expect.any(Array));
+  });
+
+  it("excluir de vez COLAPSA o trecho na fita e devolve a partição com dismissed", () => {
+    const onConcluir = vi.fn();
+    render(<SeqTrimDialog clip={CLIPE} principal onConcluir={onConcluir} onCancelar={vi.fn()}
+      segsBase={[
+        { id: 1, start: 0, end: 4, keep: true },
+        { id: 2, start: 4, end: 7, keep: false },
+        { id: 3, start: 7, end: 10, keep: true },
+      ]} />);
+
+    // o trecho removido está na fita, com o botão de excluir de vez
+    const excluir = screen.getByTitle(/Excluir de vez/);
+    fireEvent.click(excluir);
+    // colapsou: o botão sumiu junto com o bloco, e a costura apareceu
+    expect(screen.queryByTitle(/Excluir de vez/)).not.toBeInTheDocument();
+    expect(screen.getByTitle(/Trecho excluído de vez/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Concluir/ }));
+    // as partes não mudam (excluído de vez continua fora do vídeo)…
+    expect(onConcluir).toHaveBeenCalledWith(
+      [{ src_in: 0, src_out: 4, speed: 1 }, { src_in: 7, src_out: 10, speed: 1 }],
+      "none", undefined, expect.any(Array));
+    // …e a partição devolvida carrega o dismissed (o principal preserva na volta)
+    const segsFinais = onConcluir.mock.calls[0][3];
+    expect(segsFinais.find((x: { start: number }) => x.start === 4))
+      .toMatchObject({ keep: false, dismissed: true });
   });
 
   it("modo PRINCIPAL esconde a emenda de entrada e a legenda do clipe", () => {

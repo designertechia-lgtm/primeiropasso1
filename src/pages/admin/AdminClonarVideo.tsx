@@ -33,6 +33,15 @@ const MAX_DURACAO_S = 90;
 type Tom = "acolhedor" | "educativo" | "provocador" | "motivacional";
 type Estilo = "realista" | "pixar" | "cartoon";
 type AvatarLite = { id: string; name: string; photo_url: string | null };
+/** Resposta de GET /clonar-video/inspecionar — metadados do link, sem download. */
+type UrlInfo = {
+  duracao_s: number;
+  duracao_conhecida: boolean;
+  titulo: string;
+  thumbnail: string | null;
+  max_duracao_s: number;
+  excede_limite: boolean;
+};
 type Bloco = { inicio_s: number; fim_s: number };
 type HistoryEntry = {
   video_url: string; thumbnail_url?: string | null; instrucao: string;
@@ -118,6 +127,10 @@ export default function AdminClonarVideo() {
   const [refPreviewUrl, setRefPreviewUrl] = useState<string | null>(null);
   const [refDuracao, setRefDuracao] = useState<number | null>(null);
   const [refUrl, setRefUrl] = useState("");
+  // Metadados do LINK colado (duração/título/thumb), lidos sem baixar o vídeo.
+  const [urlInfo, setUrlInfo] = useState<UrlInfo | null>(null);
+  const [urlErro, setUrlErro] = useState<string | null>(null);
+  const [inspecionando, setInspecionando] = useState(false);
   const [refTema, setRefTema] = useState("");
   const [tom, setTom] = useState<Tom>("acolhedor");
   const [estilo, setEstilo] = useState<Estilo>("realista");
@@ -182,6 +195,47 @@ export default function AdminClonarVideo() {
     setRefPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [refFile]);
+
+  // Link colado: pergunta ao worker a duração/título/thumb ANTES de qualquer
+  // gasto. Quem envia arquivo já via o custo (o navegador sabe a duração);
+  // quem colava link só descobria o preço num 402, depois de o servidor baixar
+  // o vídeo, transcrever e traduzir à toa.
+  useEffect(() => {
+    const link = refUrl.trim();
+    setUrlInfo(null);
+    setUrlErro(null);
+    if (!link || refFile || !professional?.slug) { setInspecionando(false); return; }
+    let cancelado = false;
+    setInspecionando(true);
+    // Prazo próprio: sem ele, uma resposta que nunca chega deixaria o aviso
+    // "Conferindo o link…" na tela para sempre.
+    const abort = new AbortController();
+    const corta = setTimeout(() => abort.abort(), 50_000);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `${API}/clonar-video/inspecionar?url=${encodeURIComponent(link)}` +
+          `&professional_slug=${encodeURIComponent(professional.slug)}`,
+          { headers: await videoApiAuthHeaders(), signal: abort.signal },
+        );
+        const data = await res.json().catch(() => ({}));
+        if (cancelado) return;
+        if (res.ok) setUrlInfo(data as UrlInfo);
+        else if (res.status === 400) setUrlErro(data.detail || "Não consegui ler esse link.");
+        // Só o 400 é veredito sobre o LINK (privado, ao vivo, removido, site não
+        // suportado) e por isso bloqueia. Qualquer outra resposta é problema
+        // NOSSO — worker ainda sem esta rota, 5xx, timeout da plataforma — e não
+        // pode impedir a clonagem: seguimos sem a estimativa, como antes dela
+        // existir. Isso também torna a ordem de deploy (front x worker) inócua.
+      } catch {
+        // rede/CORS: idem — degrada para o fluxo antigo, não bloqueia
+      } finally {
+        clearTimeout(corta);
+        if (!cancelado) setInspecionando(false);
+      }
+    }, 800);   // espera o usuário terminar de colar/digitar
+    return () => { cancelado = true; clearTimeout(timer); clearTimeout(corta); abort.abort(); };
+  }, [refUrl, refFile, professional?.slug]);
 
   // Achado real (25/07): a busca falhava silenciosamente e deixava a tela
   // travada em "Sem vídeo ainda" mesmo com o vídeo pronto e salvo no banco.
@@ -259,12 +313,22 @@ export default function AdminClonarVideo() {
   // estilo ou um pedido de alteração. "Manter o original" + Realista + sem
   // instrução apenas redubla o áudio: não custa crédito nenhum.
   const klingAtivo = modo === "personagem" || estilo !== "realista" || !!instrucaoInicial.trim();
+  // Duração da referência, venha ela do arquivo local (o navegador lê) ou do
+  // link (o worker responde sem baixar) — daqui pra baixo os dois modos são
+  // tratados igual: mesma estimativa, mesmo limite, mesma checagem de saldo.
+  const duracaoRef = refFile
+    ? refDuracao
+    : (urlInfo?.duracao_conhecida ? urlInfo.duracao_s : null);
+  // O teto vem do servidor quando ele responde (fonte da verdade); MAX_DURACAO_S
+  // é só o espelho local pro caso do arquivo, medido aqui no navegador.
+  const limiteDuracao = urlInfo?.max_duracao_s ?? MAX_DURACAO_S;
+  const duracaoExcedida = duracaoRef != null && duracaoRef > limiteDuracao;
   const custoEstimado = useMemo(() => {
     if (!klingAtivo) return 0;
-    if (creditosPorSegundo == null || refDuracao == null) return null;
-    return Math.ceil(creditosPorSegundo * refDuracao);
-  }, [klingAtivo, creditosPorSegundo, refDuracao]);
-  const custoTeto = creditosPorSegundo != null ? Math.ceil(creditosPorSegundo * MAX_DURACAO_S) : null;
+    if (creditosPorSegundo == null || duracaoRef == null) return null;
+    return Math.ceil(creditosPorSegundo * duracaoRef);
+  }, [klingAtivo, creditosPorSegundo, duracaoRef]);
+  const custoTeto = creditosPorSegundo != null ? Math.ceil(creditosPorSegundo * limiteDuracao) : null;
   // `credit_balance` é uma view que ainda não entrou no types.ts gerado (mesma
   // pendência das outras telas que mostram saldo) — cast local até regerar.
   const saldoRow = creditos as { balance?: number } | null | undefined;
@@ -273,7 +337,9 @@ export default function AdminClonarVideo() {
   // Só barra com saldo REALMENTE lido: enquanto a consulta não volta, `balance`
   // é undefined e tratá-lo como zero travaria o botão de quem tem crédito.
   const saldoInsuficiente = saldoConhecido && custoEstimado != null && custoEstimado > 0 && saldo < custoEstimado;
-  const duracaoExcedida = refDuracao != null && refDuracao > MAX_DURACAO_S;
+  // Sem duração não há como conferir saldo antes: o usuário precisa saber que a
+  // conferência não aconteceu, em vez de supor que passou.
+  const saldoNaoConferido = klingAtivo && custoEstimado == null && !!refUrl.trim() && !refFile;
 
   // Custo do refinamento: a duração vem dos blocos já planejados no banco, então
   // é o mesmo número que o worker vai cobrar.
@@ -287,13 +353,17 @@ export default function AdminClonarVideo() {
     if (creditosPorSegundo == null || !duracaoBlocos) return null;
     return Math.ceil(creditosPorSegundo * duracaoBlocos);
   }, [klingAtivoRefinar, creditosPorSegundo, duracaoBlocos]);
+  // Refinar é uma regeneração inteira e cobra de novo — sem esta checagem o
+  // usuário só descobria o saldo curto num 402, depois de confirmar o diálogo.
+  const saldoInsuficienteRefinar =
+    saldoConhecido && custoRefinar != null && custoRefinar > 0 && saldo < custoRefinar;
 
   const handleClonar = async () => {
     if (!professional?.slug) return;
     if (!refFile && !refUrl.trim()) { toast.error("Envie um arquivo ou cole um link do vídeo"); return; }
     if (modo === "personagem" && !avatarId) { toast.error("Escolha um personagem ou marque 'Manter o original'"); return; }
     if (duracaoExcedida) {
-      toast.error(`Este vídeo tem ${fmtDuracao(refDuracao!)} — o limite é ${MAX_DURACAO_S}s.`, { duration: 8000 });
+      toast.error(`Este vídeo tem ${fmtDuracao(duracaoRef!)} — o limite é ${limiteDuracao}s.`, { duration: 8000 });
       return;
     }
     if (saldoInsuficiente) {
@@ -349,6 +419,10 @@ export default function AdminClonarVideo() {
   const handleRefinar = async () => {
     if (!professional?.slug || !videoId) return;
     if (!instrucaoRefinar.trim()) { toast.error("Descreva o que você quer mudar"); return; }
+    if (saldoInsuficienteRefinar) {
+      toast.error(`Saldo insuficiente: a nova versão custa ~${custoRefinar} créditos e você tem ${saldo}.`, { duration: 8000 });
+      return;
+    }
     setConfirmarRefinar(false);
 
     // Reação imediata na tela, mas SEM pollar ainda: o refinamento reusa o mesmo
@@ -594,19 +668,30 @@ export default function AdminClonarVideo() {
                   size="icon"
                   className="shrink-0 self-end"
                   onClick={() => setConfirmarRefinar(true)}
-                  disabled={processando || !previewUrl || !instrucaoRefinar.trim()}
-                  title={!previewUrl ? "Só é possível refinar depois que houver um vídeo pronto" : undefined}
+                  disabled={processando || !previewUrl || !instrucaoRefinar.trim() || saldoInsuficienteRefinar}
+                  title={
+                    !previewUrl ? "Só é possível refinar depois que houver um vídeo pronto"
+                      : saldoInsuficienteRefinar ? `Saldo insuficiente: são ~${custoRefinar} créditos e você tem ${saldo}`
+                      : undefined
+                  }
                 >
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
-              <p className="text-[11px] text-muted-foreground">
-                Gera uma nova versão
-                {custoRefinar != null && (custoRefinar > 0
-                  ? <> — <b>~{custoRefinar} créditos</b></>
-                  : <> — <b>sem custo</b> (só a narração muda)</>)}
-                {" "}e a atual fica guardada no histórico.
-              </p>
+              {saldoInsuficienteRefinar ? (
+                <p className="text-[11px] text-destructive flex items-start gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                  Uma nova versão custa ~{custoRefinar} créditos e seu saldo é de {saldo}. Compre créditos para refinar.
+                </p>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">
+                  Gera uma nova versão
+                  {custoRefinar != null && (custoRefinar > 0
+                    ? <> — <b>~{custoRefinar} créditos</b></>
+                    : <> — <b>sem custo</b> (só a narração muda)</>)}
+                  {" "}e a atual fica guardada no histórico.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -723,14 +808,39 @@ export default function AdminClonarVideo() {
               />
             </label>
             {!refFile && !!refUrl.trim() && (
-              <p className="text-[11px] text-muted-foreground">
-                Instagram às vezes bloqueia o acesso — se falhar, baixe o vídeo e envie o arquivo. Até {MAX_DURACAO_S}s.
-              </p>
+              inspecionando ? (
+                <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                  <Loader2 className="h-3 w-3 animate-spin shrink-0" /> Conferindo o link…
+                </p>
+              ) : urlErro ? (
+                // O motivo real vem do worker (yt-dlp traduzido): vídeo privado,
+                // exige login, removido, ao vivo... O usuário descobre AGORA, não
+                // depois de esperar a clonagem falhar.
+                <p className="text-[11px] text-destructive flex items-start gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                  {urlErro}
+                </p>
+              ) : urlInfo ? (
+                // O aviso de excesso é o bloco `duracaoExcedida` logo abaixo —
+                // aqui só confirmamos quando ele realmente CABE, senão a tela
+                // diria "dentro do limite" ao lado de "passou do limite".
+                <p className="text-[11px] text-muted-foreground">
+                  {!urlInfo.duracao_conhecida
+                    ? `A plataforma não informou a duração; o limite de ${limiteDuracao}s é conferido no servidor.`
+                    : urlInfo.excede_limite
+                      ? `Vídeo de ${fmtDuracao(urlInfo.duracao_s)}.`
+                      : `Vídeo de ${fmtDuracao(urlInfo.duracao_s)} — dentro do limite de ${limiteDuracao}s.`}
+                </p>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">
+                  Instagram às vezes bloqueia o acesso — se falhar, baixe o vídeo e envie o arquivo. Até {limiteDuracao}s.
+                </p>
+              )
             )}
             {duracaoExcedida && (
               <p className="text-[11px] text-destructive flex items-start gap-1.5">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
-                Este vídeo tem {fmtDuracao(refDuracao!)} — o limite é {MAX_DURACAO_S}s. Corte antes de enviar.
+                Este vídeo tem {fmtDuracao(duracaoRef!)} — o limite é {limiteDuracao}s. Corte antes de {refFile ? "enviar" : "clonar"}.
               </p>
             )}
           </div>
@@ -753,15 +863,22 @@ export default function AdminClonarVideo() {
               {!klingAtivo
                 ? "Manter o original em Realista, sem pedido de mudança, apenas redubla o áudio — não usa a IA de vídeo."
                 : custoEstimado != null
-                  ? `${fmtDuracao(refDuracao!)} de vídeo. O valor final acompanha a duração processada.`
+                  ? `${fmtDuracao(duracaoRef!)} de vídeo. O valor final acompanha a duração processada.`
                   : creditosPorSegundo != null
-                    ? `Cerca de ${creditosPorSegundo.toFixed(2).replace(".", ",")} créditos por segundo de vídeo (até ${MAX_DURACAO_S}s).`
+                    ? `Cerca de ${creditosPorSegundo.toFixed(2).replace(".", ",")} créditos por segundo de vídeo (até ${limiteDuracao}s).`
                     : "Cobrado por segundo de vídeo processado."}
             </p>
             {saldoInsuficiente && (
               <p className="text-[11px] text-destructive flex items-start gap-1.5">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
                 Seu saldo é de {saldo} créditos. Compre créditos antes de clonar.
+              </p>
+            )}
+            {!saldoInsuficiente && saldoNaoConferido && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-500 flex items-start gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                Sem a duração deste link, não deu para conferir se o seu saldo cobre —
+                você tem {saldo} créditos.
               </p>
             )}
           </div>
@@ -873,9 +990,37 @@ export default function AdminClonarVideo() {
                 className={`max-h-[65vh] w-auto ${enviando ? "opacity-30" : ""}`}
               />
             ) : refUrl.trim() ? (
-              <div className="flex flex-col items-center gap-2 text-white/50 text-sm p-8">
-                <Link2 className="h-8 w-8" />
-                <p>Link colado — o preview aparece depois de clonar.</p>
+              // O link agora é conferido antes: mostramos capa, nome e duração
+              // do vídeo pra o profissional confirmar que é o vídeo certo — e
+              // pra o preço ao lado deixar de ser abstrato.
+              <div className="flex flex-col items-center gap-3 text-white/70 text-sm p-8 text-center max-w-sm">
+                {inspecionando ? (
+                  <>
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                    <p>Conferindo o link…</p>
+                  </>
+                ) : urlErro ? (
+                  <>
+                    <AlertTriangle className="h-8 w-8 text-amber-400" />
+                    <p className="text-white/90">{urlErro}</p>
+                  </>
+                ) : urlInfo ? (
+                  <>
+                    {urlInfo.thumbnail
+                      ? <img src={urlInfo.thumbnail} alt="" className="max-h-[45vh] w-auto rounded-lg object-contain" />
+                      : <Link2 className="h-8 w-8" />}
+                    {urlInfo.titulo && <p className="text-white/90 font-medium leading-snug">{urlInfo.titulo}</p>}
+                    <p className="text-xs text-white/50">
+                      {urlInfo.duracao_conhecida ? fmtDuracao(urlInfo.duracao_s) : "duração não informada pela plataforma"}
+                      {" · o vídeo é baixado quando você clicar em Clonar"}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <Link2 className="h-8 w-8" />
+                    <p>Link colado — o preview aparece depois de clonar.</p>
+                  </>
+                )}
               </div>
             ) : (
               <div className="flex flex-col items-center gap-2 text-white/30 text-sm p-8">
@@ -909,6 +1054,13 @@ export default function AdminClonarVideo() {
               disabled={enviando}
               className="text-sm"
             />
+            {/* A conferência do link NÃO bloqueia o botão. Ela é uma
+                conveniência: o worker refaz a mesma validação no /iniciar, e o
+                download acontece ANTES de qualquer débito — então tentar com um
+                link problemático não custa crédito. Já um erro transitório
+                (timeout, rate-limit momentâneo) também chega aqui como 400;
+                travar o CTA por causa dele proibiria uma clonagem que
+                funcionaria. Avisar, sim; impedir, não. */}
             <Button
               onClick={handleClonar}
               disabled={enviando || duracaoExcedida || saldoInsuficiente}
@@ -916,7 +1068,7 @@ export default function AdminClonarVideo() {
             >
               {enviando
                 ? <><Loader2 className="h-4 w-4 animate-spin" /> {uploadPct < 1 ? `Enviando… ${Math.round(uploadPct * 100)}%` : "Analisando o vídeo…"}</>
-                : <><Wand2 className="h-4 w-4" /> Clonar vídeo{klingAtivo && custoEstimado != null ? ` (~${custoEstimado} créditos)` : ""}</>}
+                : <><Wand2 className="h-4 w-4" /> {urlErro ? "Clonar mesmo assim" : "Clonar vídeo"}{!urlErro && klingAtivo && custoEstimado != null ? ` (~${custoEstimado} créditos)` : ""}</>}
             </Button>
           </div>
         </div>

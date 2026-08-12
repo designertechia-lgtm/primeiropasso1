@@ -21,10 +21,10 @@ export default function PlatformHero() {
         muted
         playsInline
         preload="auto"
-        poster="/hero-platform-bg-poster.jpg"
+        poster="/hero-platform-bg-poster-v2.jpg"
         className="pointer-events-none absolute inset-0 h-full w-full object-cover"
       >
-        <source src="/hero-platform-bg.mp4" type="video/mp4" />
+        <source src="/hero-platform-bg-v2.mp4" type="video/mp4" />
       </video>
       {/* Overlay gradiente escuro p/ legibilidade */}
       <div

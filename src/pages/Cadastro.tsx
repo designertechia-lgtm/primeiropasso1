@@ -5,9 +5,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import AuthShell from "@/components/auth/AuthShell";
 import { toast } from "sonner";
-import { Leaf, Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, User, Phone, Mail, Lock, ArrowRight, Loader2 } from "lucide-react";
 import { formatPhone, toWhatsAppNumber } from "@/lib/utils";
 
 export default function Cadastro() {
@@ -84,113 +84,182 @@ export default function Cadastro() {
     setPendingRedirect(true);
   };
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="flex justify-center mb-2">
-            <Leaf className="h-10 w-10 text-primary" />
-          </div>
-          <CardTitle className="font-heading text-2xl">Criar Conta</CardTitle>
-          <CardDescription>Junte-se ao Primeiro Passo</CardDescription>
-        </CardHeader>
-        <form onSubmit={handleSignUp}>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="fullName">Nome completo</Label>
-              <Input
-                id="fullName"
-                placeholder="Seu nome"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                disabled={loading}
-                autoComplete="name"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="phone">WhatsApp</Label>
-              <Input
-                id="phone"
-                type="tel"
-                placeholder="48 9 9999-9999 (com DDD)"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                onBlur={(e) => setPhone(formatPhone(e.target.value))}
-                disabled={loading}
-                autoComplete="tel"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">E-mail</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="seu@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={loading}
-                autoComplete="email"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Senha</Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Mínimo 6 caracteres"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={loading}
-                  autoComplete="new-password"
-                  required
-                  minLength={6}
-                  className="pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground hover:text-foreground"
-                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
-                  tabIndex={-1}
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
+  const busy = loading || pendingRedirect;
 
-            <div className="space-y-2">
-              <Label htmlFor="slug">Slug da sua página</Label>
-              <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                <span>primeiropasso.com/</span>
-                <Input
-                  id="slug"
-                  placeholder="seu-nome"
-                  value={slug}
-                  onChange={(e) => setSlug(e.target.value)}
-                  disabled={loading}
-                  className="flex-1"
-                  required
-                />
-              </div>
-            </div>
-          </CardContent>
-          <CardFooter className="flex flex-col gap-3">
-            <Button type="submit" className="w-full" disabled={loading || pendingRedirect}>
-              {loading || pendingRedirect ? "Criando conta..." : "Cadastrar"}
-            </Button>
-            <p className="text-sm text-muted-foreground">
-              Já tem conta?{" "}
-              <Link to={refSlug ? `/login?ref=${refSlug}` : "/login"} className="text-primary hover:underline font-medium">
-                Entrar
-              </Link>
-            </p>
-          </CardFooter>
-        </form>
-      </Card>
-    </div>
+  return (
+    <AuthShell
+      headline={
+        <>
+          Sua presença digital pronta{" "}
+          <span className="bg-[linear-gradient(100deg,#a7f3d0,#67e8f9)] bg-clip-text italic text-transparent">
+            em uma tarde
+          </span>
+          .
+        </>
+      }
+      intro="Crie a conta grátis: em seguida um assistente monta o seu perfil, a sua landing e o tom do seu conteúdo — e o agente já pode assumir o WhatsApp."
+      mobileIntro="Agente no WhatsApp que agenda sozinho, conteúdo publicado no automático e tráfego pago com criativos de IA — num painel só."
+      title="Criar conta grátis"
+      subtitle="Leva menos de dois minutos para começar."
+      footer={
+        <>
+          Já tem conta?{" "}
+          <Link
+            to={refSlug ? `/login?ref=${refSlug}` : "/login"}
+            className="font-semibold text-primary hover:underline"
+          >
+            Entrar
+          </Link>
+        </>
+      }
+    >
+      <form onSubmit={handleSignUp} className="mt-7 space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="fullName" className="text-[13.5px] font-semibold">
+            Nome completo
+          </Label>
+          <div className="relative">
+            <User
+              aria-hidden
+              className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              id="fullName"
+              placeholder="Seu nome"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              disabled={busy}
+              autoComplete="name"
+              required
+              className="h-12 rounded-xl pl-11 text-[15px]"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="phone" className="text-[13.5px] font-semibold">
+            WhatsApp
+          </Label>
+          <div className="relative">
+            <Phone
+              aria-hidden
+              className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              id="phone"
+              type="tel"
+              placeholder="48 9 9999-9999 (com DDD)"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              onBlur={(e) => setPhone(formatPhone(e.target.value))}
+              disabled={busy}
+              autoComplete="tel"
+              required
+              className="h-12 rounded-xl pl-11 text-[15px]"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="email" className="text-[13.5px] font-semibold">
+            E-mail
+          </Label>
+          <div className="relative">
+            <Mail
+              aria-hidden
+              className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              id="email"
+              type="email"
+              placeholder="seu@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={busy}
+              autoComplete="email"
+              required
+              className="h-12 rounded-xl pl-11 text-[15px]"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="password" className="text-[13.5px] font-semibold">
+            Senha
+          </Label>
+          <div className="relative">
+            <Lock
+              aria-hidden
+              className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              id="password"
+              type={showPassword ? "text" : "password"}
+              placeholder="Mínimo 6 caracteres"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={busy}
+              autoComplete="new-password"
+              required
+              minLength={6}
+              className="h-12 rounded-xl pl-11 pr-11 text-[15px]"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-muted-foreground transition-colors hover:text-foreground"
+              aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+              tabIndex={-1}
+            >
+              {showPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="slug" className="text-[13.5px] font-semibold">
+            Endereço da sua página
+          </Label>
+          <div className="flex h-12 items-center overflow-hidden rounded-xl border border-input bg-background text-[15px] ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+            <span className="flex h-full shrink-0 items-center border-r border-input bg-muted/60 px-3 text-[13.5px] text-muted-foreground sm:text-[14px]">
+              primeiropasso.online/
+            </span>
+            <input
+              id="slug"
+              placeholder="seu-nome"
+              value={slug}
+              onChange={(e) => setSlug(e.target.value)}
+              disabled={busy}
+              required
+              className="h-full min-w-0 flex-1 bg-transparent px-3 font-medium text-foreground outline-none placeholder:font-normal placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            />
+          </div>
+          <p className="text-[12.5px] text-muted-foreground">
+            É o link que você manda para o paciente. Dá para trocar depois no painel.
+          </p>
+        </div>
+
+        <Button
+          type="submit"
+          disabled={busy}
+          className="group h-12 w-full rounded-xl bg-[linear-gradient(100deg,hsl(160_84%_28%),hsl(172_76%_31%)_52%,hsl(187_70%_36%))] text-[15.5px] font-semibold text-white shadow-[0_14px_30px_-12px_hsl(var(--primary)/.85)] transition-[filter,transform] hover:brightness-110 active:translate-y-[1px] disabled:opacity-70"
+        >
+          {busy ? (
+            <>
+              <Loader2 aria-hidden className="mr-2 h-[18px] w-[18px] animate-spin" />
+              Criando conta…
+            </>
+          ) : (
+            <>
+              Criar minha conta
+              <ArrowRight
+                aria-hidden
+                className="ml-1.5 h-[18px] w-[18px] transition-transform group-hover:translate-x-0.5"
+              />
+            </>
+          )}
+        </Button>
+      </form>
+    </AuthShell>
   );
 }

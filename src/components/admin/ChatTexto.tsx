@@ -14,12 +14,22 @@ import { cn } from "@/lib/utils";
  * Aceita as duas convenções que convivem aqui — a do markdown (`**negrito**`)
  * e a do WhatsApp (`*negrito*`, `_itálico_`, `~riscado~`) — porque o usuário
  * escreve como escreve no WhatsApp e o modelo responde em markdown.
+ *
+ * `variant="documento"` para textos longos fora de um balão (DNA da Marca):
+ * num chat um `##` vira só uma linha em negrito, mas num texto de várias
+ * seções o título precisa respirar e se destacar do parágrafo anterior.
+ * A variante também desfaz o empate do asterisco solto: `*assim*` é negrito
+ * no WhatsApp e itálico no markdown. Num balão quem escreve costuma ser
+ * gente (WhatsApp vence); num documento o texto veio do modelo, que escreve
+ * markdown — então lá `*assim*` sai em itálico, como o modelo pretendia.
  */
+
+type Variante = "chat" | "documento";
 
 /** Ordem importa: `**` tem de ser tentado antes de `*`. */
 const INLINE_RE = /(\*\*.+?\*\*|__.+?__|\*[^\s*][^*]*?\*|_[^\s_][^_]*?_|~[^\s~][^~]*?~|`[^`]+?`)/g;
 
-function inline(texto: string, chave: string): ReactNode[] {
+function inline(texto: string, chave: string, variante: Variante): ReactNode[] {
   const partes: ReactNode[] = [];
   let ultimo = 0;
   let n = 0;
@@ -36,7 +46,9 @@ function inline(texto: string, chave: string): ReactNode[] {
         <code key={k} className="rounded bg-foreground/10 px-1 py-px font-mono text-[0.92em]">{t.slice(1, -1)}</code>,
       );
     } else if (t.startsWith("*")) {
-      partes.push(<strong key={k} className="font-semibold">{t.slice(1, -1)}</strong>);
+      partes.push(variante === "documento"
+        ? <em key={k}>{t.slice(1, -1)}</em>
+        : <strong key={k} className="font-semibold">{t.slice(1, -1)}</strong>);
     } else if (t.startsWith("_")) {
       partes.push(<em key={k}>{t.slice(1, -1)}</em>);
     } else {
@@ -95,25 +107,44 @@ function blocos(texto: string): Bloco[] {
   return saida.filter((b) => b.tipo !== "p" || b.linhas.length > 0);
 }
 
-export function ChatTexto({ texto, className }: { texto: string; className?: string }) {
+export function ChatTexto({
+  texto,
+  className,
+  variant = "chat",
+}: {
+  texto: string;
+  className?: string;
+  variant?: Variante;
+}) {
   const partes = blocos(texto);
   return (
     <div className={cn("space-y-2 break-words", className)}>
       {partes.map((b, i) => {
         if (b.tipo === "titulo") {
-          return <p key={i} className="font-semibold">{inline(b.texto, `t${i}`)}</p>;
+          return (
+            <p
+              key={i}
+              className={
+                variant === "documento"
+                  ? "pt-2 text-[0.95rem] font-semibold tracking-tight text-foreground first:pt-0"
+                  : "font-semibold"
+              }
+            >
+              {inline(b.texto, `t${i}`, variant)}
+            </p>
+          );
         }
         if (b.tipo === "numerada") {
           return (
             <ol key={i} start={b.inicio} className="list-outside list-decimal space-y-1 pl-5 marker:text-current/60">
-              {b.itens.map((it, j) => <li key={j} className="pl-0.5">{inline(it, `o${i}-${j}`)}</li>)}
+              {b.itens.map((it, j) => <li key={j} className="pl-0.5">{inline(it, `o${i}-${j}`, variant)}</li>)}
             </ol>
           );
         }
         if (b.tipo === "marcadores") {
           return (
             <ul key={i} className="list-outside list-disc space-y-1 pl-5 marker:text-current/60">
-              {b.itens.map((it, j) => <li key={j} className="pl-0.5">{inline(it, `u${i}-${j}`)}</li>)}
+              {b.itens.map((it, j) => <li key={j} className="pl-0.5">{inline(it, `u${i}-${j}`, variant)}</li>)}
             </ul>
           );
         }
@@ -121,7 +152,7 @@ export function ChatTexto({ texto, className }: { texto: string; className?: str
         // solta, verso) sem virar espaço entre blocos.
         return (
           <p key={i} className="whitespace-pre-line">
-            {inline(b.linhas.join("\n"), `p${i}`)}
+            {inline(b.linhas.join("\n"), `p${i}`, variant)}
           </p>
         );
       })}

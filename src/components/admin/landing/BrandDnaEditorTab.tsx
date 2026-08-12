@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Sparkles, Loader2, Wand2, FileDown, ClipboardList } from "lucide-react";
+import { Sparkles, Loader2, Wand2, FileDown, ClipboardList, Pencil, Check } from "lucide-react";
 import { InfoHint } from "@/components/ui/InfoHint";
+import ChatTexto from "@/components/admin/ChatTexto";
 import { formMissing, hasDna } from "@/lib/onboardingGate";
 
 // Aba "DNA da Marca" do editor da landing. Fonte única da marca do profissional (11 seções,
@@ -206,6 +207,12 @@ export default function BrandDnaEditorTab({ expanded = false }: { expanded?: boo
   const [generatingLanding, setGeneratingLanding] = useState(false);
   const [applying, setApplying] = useState(false);
   const [preview, setPreview] = useState<any>(null); // resultado do generate-landing p/ confirmar
+  // Seções abertas para edição. O padrão é LEITURA: um <textarea> é campo de texto puro, então
+  // enquanto a seção está editável o profissional lê os `##` e `**` crus que o modelo escreve.
+  // Renderizado por padrão, editável sob clique — o DNA é lido muitas vezes e editado pouco.
+  const [editando, setEditando] = useState<Set<string>>(new Set());
+  const abrirEdicao = (k: string) => setEditando((prev) => (prev.has(k) ? prev : new Set(prev).add(k)));
+  const fecharEdicao = (k: string) => setEditando((prev) => { const n = new Set(prev); n.delete(k); return n; });
 
   useEffect(() => {
     if (!professional) return;
@@ -214,6 +221,7 @@ export default function BrandDnaEditorTab({ expanded = false }: { expanded?: boo
     const next: Record<string, string> = {};
     for (const s of DNA_SECTIONS) next[s.key] = bb[s.key] || "";
     setSections(next);
+    setEditando(new Set());
   }, [professional]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-adota a geração em andamento (ou o rascunho pronto) ao montar / quando o job muda.
@@ -222,6 +230,7 @@ export default function BrandDnaEditorTab({ expanded = false }: { expanded?: boo
       setGenerating(dnaJob.running);
       if (dnaJob.result) {
         setSections(dnaJob.result);
+        setEditando(new Set()); // rascunho novo chega para ser LIDO, não editado
         dnaJob.result = null;
       }
     };
@@ -392,17 +401,52 @@ export default function BrandDnaEditorTab({ expanded = false }: { expanded?: boo
       )}
 
       <div className="space-y-4">
-        {DNA_SECTIONS.map((s) => (
-          <div key={s.key} className="space-y-1.5">
-            <label className="text-sm font-semibold text-foreground">{s.label}</label>
-            <Textarea
-              rows={expanded ? 9 : 4}
-              value={sections[s.key] || ""}
-              onChange={(e) => setSections((prev) => ({ ...prev, [s.key]: e.target.value }))}
-              placeholder={generating ? "Gerando…" : "Clique em “Gerar meu DNA com IA” ou escreva aqui."}
-            />
-          </div>
-        ))}
+        {DNA_SECTIONS.map((s) => {
+          // O modelo repete o rótulo da seção como "## Problema Central e o Vilão" na primeira
+          // linha; ele já está no <label> acima (o PDF corta pelo mesmo motivo). Só na LEITURA:
+          // o que o profissional edita e o que salvamos continua sendo o texto integral.
+          const lido = stripLeadingHeading(sections[s.key] || "");
+          const aberto = editando.has(s.key);
+          return (
+            <div key={s.key} className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-sm font-semibold text-foreground">{s.label}</label>
+                {lido !== "" && (
+                  <button
+                    type="button"
+                    onClick={() => (aberto ? fecharEdicao(s.key) : abrirEdicao(s.key))}
+                    className="flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-primary"
+                  >
+                    {aberto
+                      ? <><Check className="h-3 w-3" /> Concluir</>
+                      : <><Pencil className="h-3 w-3" /> Editar</>}
+                  </button>
+                )}
+              </div>
+              {aberto || lido === "" ? (
+                <Textarea
+                  rows={expanded ? 9 : 4}
+                  value={sections[s.key] || ""}
+                  // Seção vazia já nasce editável; o foco a marca como "em edição" para ela não
+                  // saltar para o modo leitura no meio da digitação, na primeira letra escrita.
+                  onFocus={() => abrirEdicao(s.key)}
+                  onChange={(e) => setSections((prev) => ({ ...prev, [s.key]: e.target.value }))}
+                  placeholder={generating ? "Gerando…" : "Clique em “Gerar meu DNA com IA” ou escreva aqui."}
+                />
+              ) : (
+                <div
+                  // Dois cliques abre a edição; o clique simples fica livre para SELECIONAR o
+                  // texto (com clique simples abrindo o editor, não dava para copiar um trecho).
+                  onDoubleClick={() => abrirEdicao(s.key)}
+                  title="Dois cliques para editar"
+                  className={`cursor-text overflow-y-auto rounded-md border border-input bg-muted/30 px-3 py-2 text-sm leading-relaxed text-foreground/90 transition-colors hover:border-primary/40 ${expanded ? "max-h-[28rem]" : "max-h-[12rem]"}`}
+                >
+                  <ChatTexto texto={lido} variant="documento" />
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <div className="flex flex-col gap-2 sticky bottom-0 bg-background pt-2">

@@ -134,6 +134,7 @@ serve(async (req) => {
         .from('leads')
         .select('id, name, whatsapp')
         .eq('id', apptLeadId)
+        .eq('professional_id', pro.id) // nunca mandar pela instância de um profissional pro lead de outro
         .maybeSingle()
       lead = data as any
     }

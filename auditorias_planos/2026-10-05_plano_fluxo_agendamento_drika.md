@@ -19,11 +19,16 @@ trocar `:pid`) e guardar os resultados:
 deno check supabase/functions/whatsapp-agent/index.ts
 deno check supabase/functions/whatsapp-webhook/index.ts
 deno check supabase/functions/send-satisfaction-survey/index.ts
+deno check supabase/functions/send-appointment-reminder/index.ts
 py c:/tmp/deploy_function.py whatsapp-agent
 py c:/tmp/deploy_function.py whatsapp-webhook
 py c:/tmp/deploy_function.py send-satisfaction-survey
+py c:/tmp/deploy_function.py send-appointment-reminder
+py C:\tmp\apply_migration.py supabase/migrations/20261005_auditoria_agenda_satisfacao_lembretes.sql
 ```
-Sem migração de banco nesta rodada.
+A migração (pesquisa inclui `completed`, parte B não marca inativo quem tem sessão futura, trigger que
+re-arma lembretes ao mudar data/hora) **não foi executada em banco nenhum** — revisar e aplicar. As edges
+funcionam sem ela (independentes).
 
 ## 3. Validação ao vivo (número de teste, não a agenda da Drika)
 - [ ] Lead com 1 sessão passada `pending` + 1 futura → "desmarca a de <dia>" cancela a FUTURA; notas preservadas.
@@ -33,7 +38,12 @@ Sem migração de banco nesta rodada.
 - [ ] Remarcar pra feriado / dia sem atendimento → recusa com horários livres.
 - [ ] Agendamento criado no painel → "Confirmar" no lembrete → status `confirmed` + resposta com data legível;
       "meu horário tá certo?" → Axel confirma o horário do painel.
-- [ ] Pesquisa pendente + "Bom dia, queria marcar" → vai pro Axel (não vira nota).
+- [ ] Pesquisa pendente + "Bom dia, queria marcar" → vai pro Axel (não vira nota); "Ótimo, obrigada!" logo
+      após a pesquisa → nota registrada.
+- [ ] Lead com agente pausado (#ok) → toca "Confirmar" no lembrete → status `confirmed` + resposta.
+- [ ] Série de 2+ sessões → "cancelar" no meio da conversa → Axel pergunta qual; "Cancelar" logo após o
+      lembrete → cancela a sessão do lembrete.
+- [ ] Viu os horários de quinta, desistiu; 3h depois "dá pra ser 15h?" → NÃO remarca pra quinta sozinho.
 - [ ] Domingo: "pode ser quinta às 15h" → marca a quinta certa.
 - [ ] Rajada "oi / quero marcar / quinta 15h" → uma resposta, sem eco.
 
@@ -47,6 +57,6 @@ Repetir as consultas 1, 2, 2b e 3 após ~1 semana e comparar com o "antes" (taxa
 - [ ] **R3** Quer aviso no WhatsApp (número autorizado) quando um paciente marca/remarca/cancela?
 - [ ] **R4** Registrar as mensagens que ela manda pelo celular no histórico do Axel (e pausar o Axel quando
       ela assume a conversa)? Exige distinguir eco do próprio bot (`fromMe`) da mensagem manual.
-- [ ] **R5** Cron de satisfação (parte B): não marcar `inativo` quem tem sessão futura → migração SQL.
-- [ ] **F9-painel** Remarcar pelo painel também deve re-armar os lembretes (trigger em `appointments` ao mudar
-      data/hora, apagando `appointment_reminders` 24h/1h) → migração SQL.
+- [ ] **R5** e **F9-painel** → escritos na migração `20261005_…` (aplicar após revisar).
+- [ ] **R6** `pending` eterno: concluir também `pending` passados (com marcação de falta à parte) ou tratar o
+      horário escolhido pelo próprio paciente como `confirmed`?

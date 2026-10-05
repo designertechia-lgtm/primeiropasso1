@@ -102,24 +102,39 @@ serve(async (req) => {
     // painel E do WhatsApp gravam — fonte confiável); 2) fallback pelo booking_state.appointment_id.
     // Auditoria 2026-10-05: antes só olhava o booking_state, que só o agente escreve — atendimento
     // marcado pelo profissional no painel nunca recebia pesquisa (caía em lead_not_found).
-    let lead: { id: string; name: string | null; whatsapp: string | null } | null = null;
+    type LeadSat = { id: string; name: string | null; whatsapp: string | null; agent_enabled: boolean | null; collected_info: any };
+    let lead: LeadSat | null = null;
     const apptLeadId = (appt as any).lead_id as string | null;
     if (apptLeadId) {
       const { data } = await supabaseAdmin
         .from("leads")
-        .select("id, name, whatsapp")
+        .select("id, name, whatsapp, agent_enabled, collected_info")
         .eq("id", apptLeadId)
+        .eq("professional_id", pro.id) // nunca mandar pela instância de um profissional pro lead de outro
         .maybeSingle();
       lead = data as any;
     }
     if (!lead) {
       const { data } = await supabaseAdmin
         .from("leads")
-        .select("id, name, whatsapp")
+        .select("id, name, whatsapp, agent_enabled, collected_info")
         .eq("professional_id", pro.id)
         .eq("booking_state->>appointment_id", appointment_id)
         .maybeSingle();
       lead = data as any;
+    }
+
+    // Lead com o agente PAUSADO (crise, contato pessoal silenciado, "quero falar com uma pessoa", #ok
+    // do profissional) não recebe pesquisa automática — e a resposta seria descartada pelo webhook
+    // (agent_disabled). Registra como não enviada pra o cron não tentar de novo nem marcar 'inativo'.
+    const ci = (lead?.collected_info && typeof lead.collected_info === "object") ? lead.collected_info : {};
+    if (lead && (lead.agent_enabled === false || ci.crise || ci.risco)) {
+      console.log(`[satisfaction] lead ${lead.id} com agente pausado/crise — pesquisa não enviada`);
+      await supabaseAdmin.from("appointment_reminders").insert({
+        appointment_id, kind: "satisfaction", sent_at: new Date().toISOString(),
+        patient_response: "nao_enviada_agente_pausado", response_at: new Date().toISOString(),
+      });
+      return new Response(JSON.stringify({ skipped: "agent_paused" }), { headers: corsHeaders });
     }
 
     if (!lead || !lead.whatsapp) {

@@ -595,6 +595,170 @@ serve(async (req) => {
     const fromSiteButton = SITE_GREETINGS.includes(msgTrim) || proCtas.includes(msgTrim) || !!campaignRef
     const isFromCampaign = fromSiteButton || !!adReply
 
+    // 3.35 (função) — RESPOSTA A LEMBRETE 24h/1h. Fica numa função porque roda em dois pontos:
+    // no fluxo normal (passo 3.35) e para lead com o agente PAUSADO — o lembrete é automático mesmo
+    // assim, e o "Confirmar"/"Cancelar" dele era descartado em silêncio (status ficava pending).
+    // Devolve a Response quando tratou; null quando a mensagem segue o fluxo.
+    const responderLembrete = async (leadId: string, registrarMsgLead: boolean): Promise<Response | null> => {
+      const txtR = messageText.trim()
+      const optR = txtR.normalize('NFC').toLowerCase().replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '').replace(/\s+/g, ' ')
+      const isSimSolto   = /^sim$/.test(optR) // só vale logo depois do lembrete ("Confirma sua presença?")
+      const isConfirm    = isSimSolto || /^(confirmar|confirmo|confirmado|confirmada|sim,? confirmo)$/.test(optR)
+      const isReschedule = /^(remarcar|remarca|quero remarcar|preciso remarcar)$/.test(optR)
+      const isCancel     = /^(cancelar|cancela|cancelo|quero cancelar)$/.test(optR)
+
+      if (isConfirm || isReschedule || isCancel) {
+        const { data: leadBs } = await supabaseAdmin
+          .from('leads')
+          .select('booking_state, name, collected_info')
+          .eq('id', leadId)
+          .single()
+        const bsApptIdRaw = ((leadBs?.booking_state as any)?.appointment_id || '').toString()
+        const bsApptId = /^[0-9a-f-]{36}$/i.test(bsApptIdRaw) ? bsApptIdRaw : null
+
+        // Agendamentos FUTUROS deste lead (hora de parede BRT, como no resto da agenda).
+        const brtR = new Date(Date.now() - 3 * 3600 * 1000)
+        const hojeR = brtR.toISOString().slice(0, 10)
+        const agoraMinR = brtR.getUTCHours() * 60 + brtR.getUTCMinutes()
+        let qMeus = supabaseAdmin
+          .from('appointments')
+          .select('id, appointment_date, start_time')
+          .eq('professional_id', professional.id)
+          .in('status', ['pending', 'confirmed'])
+          .gte('appointment_date', hojeR)
+        qMeus = bsApptId ? qMeus.or(`lead_id.eq.${leadId},id.eq.${bsApptId}`) : qMeus.eq('lead_id', leadId)
+        const { data: meusAppts } = await qMeus
+        const futurosIds = (meusAppts || [])
+          .filter((a: any) => {
+            if (a.appointment_date > hojeR) return true
+            const [h, m] = ((a.start_time || '') as string).slice(0, 5).split(':').map(Number)
+            return h * 60 + m > agoraMinR
+          })
+          .map((a: any) => a.id)
+
+        let matched: any = null
+        if (futurosIds.length > 0) {
+          const { data: pendingReminders } = await supabaseAdmin
+            .from('appointment_reminders')
+            .select('id, appointment_id, kind, sent_at, appointments!inner(id, professional_id, appointment_date, start_time, status, professionals!inner(id, full_name, evolution_instance_name))')
+            .in('appointment_id', futurosIds)
+            .in('kind', ['24h', '1h'])
+            // 'reschedule_requested' = tocou "Remarcar" e depois desistiu: o "Confirmar" seguinte ainda vale.
+            .or('patient_response.is.null,patient_response.eq.reschedule_requested')
+            .gte('sent_at', new Date(Date.now() - 26 * 3600 * 1000).toISOString())
+            .order('sent_at', { ascending: false })
+            .limit(1)
+          matched = pendingReminders?.[0] || null
+        }
+
+        // Sem dúvida de QUAL horário nem do que o "sim" responde: "sim" solto só vale se a última fala
+        // do assistente foi o próprio lembrete; Cancelar direto (sem o agente) também exige isso quando
+        // o lead tem vários horários (série do painel) — senão vai pro agente, que pergunta qual.
+        if (matched && (isSimSolto || (isCancel && futurosIds.length > 1))) {
+          const { data: ultAssist } = await supabaseAdmin
+            .from('chat_messages').select('content')
+            .eq('lead_id', leadId).eq('role', 'assistant')
+            .order('created_at', { ascending: false }).limit(1).maybeSingle()
+          if (!((ultAssist?.content || '') as string).startsWith('[Lembrete ')) {
+            console.log('[reminder-response] "sim"/"cancelar" fora do contexto do lembrete — vai pro agente')
+            matched = null
+          }
+        }
+
+        if (matched) {
+          console.log(`[reminder-response] Match: lead ${leadId} respondeu "${txtR}" ao reminder ${matched.id} (kind=${matched.kind})`)
+
+          const appt: any = matched.appointments
+          const pro: any = appt?.professionals
+          const proName = (pro?.full_name || 'o profissional').split(' ')[0]
+          const instName = pro?.evolution_instance_name
+          const dateStr  = appt?.appointment_date as string
+          const hora     = ((appt?.start_time as string) || '').slice(0, 5)
+
+          let newStatus: string | null = null
+          let responseValue = ''
+          let replyText = ''
+          // Data legível ("quinta-feira, 09/10") — antes ia o ISO cru ("2026-10-09") pro paciente.
+          const quandoR = `${diaLongoBR(dateStr)} às ${hora}`
+          const nomeR = (((leadBs?.collected_info as any)?.nome_preferido || leadBs?.name || '') as string).trim().split(' ')[0]
+          const vocativoR = nomeR && nomeR !== 'Visitante' ? `, ${nomeR}` : ''
+
+          if (isConfirm) {
+            newStatus = 'confirmed'
+            responseValue = 'confirmed'
+            replyText = `Combinado${vocativoR}! Presença confirmada: ${quandoR} com ${proName} ✅`
+          } else if (isCancel) {
+            newStatus = 'cancelled'
+            responseValue = 'cancelled'
+            replyText = `Tudo bem, cancelei seu horário de ${quandoR}. Quando quiser remarcar, é só chamar. 🙂`
+          } else if (isReschedule) {
+            // Não muda status do appointment — deixa o agente conduzir o fluxo de remarcação
+            responseValue = 'reschedule_requested'
+            replyText = '' // não responde aqui — agente vai responder
+          }
+
+          // Atualiza appointment_reminders
+          await supabaseAdmin
+            .from('appointment_reminders')
+            .update({ patient_response: responseValue, response_at: new Date().toISOString() })
+            .eq('id', matched.id)
+
+          // Atualiza appointments.status se for Confirmar ou Cancelar
+          if (newStatus) {
+            await supabaseAdmin
+              .from('appointments')
+              .update({ status: newStatus, updated_at: new Date().toISOString() })
+              .eq('id', matched.appointment_id)
+            console.log(`[reminder-response] appointments.status → ${newStatus}`)
+
+            // Se cancelado, atualiza booking_state também. status:'cancelled' é o que o prompt do agente
+            // lê — antes só mudava o stage e o agente seguia dizendo "você JÁ está agendado".
+            if (newStatus === 'cancelled') {
+              const prev = (leadBs?.booking_state as any) || {}
+              if (!prev.appointment_id || prev.appointment_id === matched.appointment_id) {
+                await supabaseAdmin.from('leads').update({
+                  booking_state: { ...prev, status: 'cancelled', stage: 'cancelled', cancelled_at: new Date().toISOString() },
+                }).eq('id', leadId)
+              }
+            }
+          }
+
+          // Pra Confirmar/Cancelar: responde direto e encerra (sem invocar agente)
+          if (replyText) {
+            if (instName) {
+              try {
+                await sendTextByChannel(instName, remoteJid, replyText)
+              } catch (e: any) {
+                console.error('[reminder-response] Erro no envio:', e.message)
+              }
+            }
+            // Lead com agente pausado não teve a mensagem gravada (o webhook sai antes) — grava aqui, já processada.
+            if (registrarMsgLead) {
+              await supabaseAdmin.from('chat_messages').insert({
+                lead_id: leadId, role: 'user', content: messageText, processed: true, provider_message_id: providerMsgId,
+              })
+            }
+            // Grava resposta no histórico e marca msg do user como processed
+            await supabaseAdmin.from('chat_messages').insert({
+              lead_id: leadId, role: 'assistant', content: replyText, processed: true,
+            })
+            {
+              const qProcR = supabaseAdmin.from('chat_messages').update({ processed: true })
+                .eq('lead_id', leadId).eq('role', 'user').eq('processed', false)
+              await (providerMsgId ? qProcR.eq('provider_message_id', providerMsgId) : qProcR.eq('content', messageText))
+            }
+
+            return new Response(JSON.stringify({ success: true, action: 'reminder_response_handled', kind: matched.kind, response: responseValue }), {
+              status: 200,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            })
+          }
+          // Pra Remarcar: cai no fluxo normal e o agente assume
+        }
+      }
+      return null
+    }
+
     // 2. Upsert do lead (criar se não existe, atualizar se existe)
     const { data: existingLead } = await supabaseAdmin
       .from('leads')
@@ -622,8 +786,11 @@ serve(async (req) => {
         .update(updates)
         .eq('id', leadId)
 
-      // Se o agente está desabilitado para este lead, não processar
+      // Se o agente está desabilitado para este lead, não processar — exceto a resposta a um lembrete
+      // (Confirmar/Cancelar), que é do sistema de agenda e não do agente.
       if (!existingLead.agent_enabled) {
+        const respLembrete = await responderLembrete(leadId, true)
+        if (respLembrete) return respLembrete
         return new Response(JSON.stringify({ ignored: true, reason: 'agent_disabled' }), {
           status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -803,141 +970,13 @@ serve(async (req) => {
     //       Com >5 lembretes no mesmo horário, resposta 6h+ depois ou agendamento feito no painel (sem
     //       booking_state), o "Confirmar" caía no LLM e o horário ficava 'pending' pra sempre — e o
     //       auto-complete só conclui 'confirmed'. Também não filtrava kind (podia casar a pesquisa de satisfação).
+    //       Só a OPÇÃO em si (botão ou "Confirmar"/"confirmo"/"sim" digitado) entra aqui — frase com mais
+    //       coisa ("Cancelar a da semana que vem, amanhã mantenho", "Confirmar se é online?") vai pro
+    //       agente, que pergunta qual horário. Cancelar/Remarcar ainda exigem que a última fala do
+    //       assistente seja o próprio lembrete OU que só exista 1 horário futuro (série do painel).
     {
-      const txtR = messageText.trim()
-      const lowerR = txtR.toLowerCase()
-      const isConfirm   = /^confirmar(\s|$|✅)/i.test(txtR) || lowerR === 'confirmar' || lowerR === 'confirmar ✅' || lowerR === '✅ confirmar'
-      const isReschedule= /^remarcar(\s|$)/i.test(txtR) || lowerR === 'remarcar'
-      const isCancel    = /^cancelar(\s|$)/i.test(txtR) || lowerR === 'cancelar'
-
-      if (isConfirm || isReschedule || isCancel) {
-        const { data: leadBs } = await supabaseAdmin
-          .from('leads')
-          .select('booking_state, name, collected_info')
-          .eq('id', leadId)
-          .single()
-        const bsApptIdRaw = ((leadBs?.booking_state as any)?.appointment_id || '').toString()
-        const bsApptId = /^[0-9a-f-]{36}$/i.test(bsApptIdRaw) ? bsApptIdRaw : null
-
-        // Agendamentos FUTUROS deste lead (hora de parede BRT, como no resto da agenda).
-        const brtR = new Date(Date.now() - 3 * 3600 * 1000)
-        const hojeR = brtR.toISOString().slice(0, 10)
-        const agoraMinR = brtR.getUTCHours() * 60 + brtR.getUTCMinutes()
-        let qMeus = supabaseAdmin
-          .from('appointments')
-          .select('id, appointment_date, start_time')
-          .eq('professional_id', professional.id)
-          .in('status', ['pending', 'confirmed'])
-          .gte('appointment_date', hojeR)
-        qMeus = bsApptId ? qMeus.or(`lead_id.eq.${leadId},id.eq.${bsApptId}`) : qMeus.eq('lead_id', leadId)
-        const { data: meusAppts } = await qMeus
-        const futurosIds = (meusAppts || [])
-          .filter((a: any) => {
-            if (a.appointment_date > hojeR) return true
-            const [h, m] = ((a.start_time || '') as string).slice(0, 5).split(':').map(Number)
-            return h * 60 + m > agoraMinR
-          })
-          .map((a: any) => a.id)
-
-        let matched: any = null
-        if (futurosIds.length > 0) {
-          const { data: pendingReminders } = await supabaseAdmin
-            .from('appointment_reminders')
-            .select('id, appointment_id, kind, sent_at, appointments!inner(id, professional_id, appointment_date, start_time, status, professionals!inner(id, full_name, evolution_instance_name))')
-            .in('appointment_id', futurosIds)
-            .in('kind', ['24h', '1h'])
-            .is('patient_response', null)
-            .gte('sent_at', new Date(Date.now() - 26 * 3600 * 1000).toISOString())
-            .order('sent_at', { ascending: false })
-            .limit(1)
-          matched = pendingReminders?.[0] || null
-        }
-
-        if (matched) {
-          console.log(`[reminder-response] Match: lead ${leadId} respondeu "${txtR}" ao reminder ${matched.id} (kind=${matched.kind})`)
-
-          const appt: any = matched.appointments
-          const pro: any = appt?.professionals
-          const proName = (pro?.full_name || 'o profissional').split(' ')[0]
-          const instName = pro?.evolution_instance_name
-          const dateStr  = appt?.appointment_date as string
-          const hora     = ((appt?.start_time as string) || '').slice(0, 5)
-
-          let newStatus: string | null = null
-          let responseValue = ''
-          let replyText = ''
-          // Data legível ("quinta-feira, 09/10") — antes ia o ISO cru ("2026-10-09") pro paciente.
-          const quandoR = `${diaLongoBR(dateStr)} às ${hora}`
-          const nomeR = (((leadBs?.collected_info as any)?.nome_preferido || leadBs?.name || '') as string).trim().split(' ')[0]
-          const vocativoR = nomeR && nomeR !== 'Visitante' ? `, ${nomeR}` : ''
-
-          if (isConfirm) {
-            newStatus = 'confirmed'
-            responseValue = 'confirmed'
-            replyText = `Combinado${vocativoR}! Presença confirmada: ${quandoR} com ${proName} ✅`
-          } else if (isCancel) {
-            newStatus = 'cancelled'
-            responseValue = 'cancelled'
-            replyText = `Tudo bem, cancelei seu horário de ${quandoR}. Quando quiser remarcar, é só chamar. 🙂`
-          } else if (isReschedule) {
-            // Não muda status do appointment — deixa o agente conduzir o fluxo de remarcação
-            responseValue = 'reschedule_requested'
-            replyText = '' // não responde aqui — agente vai responder
-          }
-
-          // Atualiza appointment_reminders
-          await supabaseAdmin
-            .from('appointment_reminders')
-            .update({ patient_response: responseValue, response_at: new Date().toISOString() })
-            .eq('id', matched.id)
-
-          // Atualiza appointments.status se for Confirmar ou Cancelar
-          if (newStatus) {
-            await supabaseAdmin
-              .from('appointments')
-              .update({ status: newStatus, updated_at: new Date().toISOString() })
-              .eq('id', matched.appointment_id)
-            console.log(`[reminder-response] appointments.status → ${newStatus}`)
-
-            // Se cancelado, atualiza booking_state também. status:'cancelled' é o que o prompt do agente
-            // lê — antes só mudava o stage e o agente seguia dizendo "você JÁ está agendado".
-            if (newStatus === 'cancelled') {
-              const prev = (leadBs?.booking_state as any) || {}
-              if (!prev.appointment_id || prev.appointment_id === matched.appointment_id) {
-                await supabaseAdmin.from('leads').update({
-                  booking_state: { ...prev, status: 'cancelled', stage: 'cancelled', cancelled_at: new Date().toISOString() },
-                }).eq('id', leadId)
-              }
-            }
-          }
-
-          // Pra Confirmar/Cancelar: responde direto e encerra (sem invocar agente)
-          if (replyText) {
-            if (instName) {
-              try {
-                await sendTextByChannel(instName, remoteJid, replyText)
-              } catch (e: any) {
-                console.error('[reminder-response] Erro no envio:', e.message)
-              }
-            }
-            // Grava resposta no histórico e marca msg do user como processed
-            await supabaseAdmin.from('chat_messages').insert({
-              lead_id: leadId, role: 'assistant', content: replyText, processed: true,
-            })
-            await supabaseAdmin
-              .from('chat_messages')
-              .update({ processed: true })
-              .eq('lead_id', leadId)
-              .eq('processed', false)
-
-            return new Response(JSON.stringify({ success: true, action: 'reminder_response_handled', kind: matched.kind, response: responseValue }), {
-              status: 200,
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            })
-          }
-          // Pra Remarcar: cai no fluxo normal e o agente assume
-        }
-      }
+      const respLembrete = await responderLembrete(leadId, false)
+      if (respLembrete) return respLembrete
     }
 
     // 3.5. ORQUESTRAÇÃO DE ESTADO — agente Sonnet só é chamado quando o fluxo
@@ -1067,20 +1106,31 @@ serve(async (req) => {
     //         a pesquisa sai como "Responda: *Ótimo* / *Bom* / *Pode melhorar*"). Sintetiza
     //         o mesmo clickId `sat:<nota>:<apptId>` do fluxo de botões (bloco 3.64 abaixo),
     //         reaproveitando 100% da lógica — só precisamos achar QUAL appointment_reminders
-    //         de satisfação está pendente pra este lead (mesmo padrão do 3.35: vínculo via
+    //         de satisfação está pendente pra este lead (vínculo via appointments.lead_id ou
     //         leads.booking_state->>appointment_id).
     let syntheticClickId: string | null = null
     if (!clickId) {
-      // Auditoria 2026-10-05: só vale a resposta que É a opção (tirando pontuação/emoji do fim).
-      // Antes casava pelo COMEÇO da frase — "Bom dia, queria remarcar" virava nota 'bom', o booking_state
-      // era zerado e o paciente recebia "Que bom que você gostou!" em vez de ser atendido.
-      const txtSat = messageText.trim().toLowerCase().replace(/[^\p{L}]+$/u, '').replace(/\s+/g, ' ')
-      const notaTexto = /^(ótimo|otimo)$/.test(txtSat) ? 'otimo'
-        : /^bom$/.test(txtSat) ? 'bom'
-        : /^(pode melhorar|melhorar)$/.test(txtSat) ? 'ruim'
+      // Auditoria 2026-10-05: o texto só vira nota quando a ÚLTIMA fala do assistente foi a própria
+      // pesquisa. Antes casava pelo COMEÇO de qualquer frase enquanto houvesse pesquisa pendente (até
+      // 24h) — "Bom dia, queria remarcar" ou um "Ótimo!" no meio de um agendamento virava nota, o
+      // booking_state era zerado e o paciente recebia "Que bom que você gostou!" em vez de ser atendido.
+      // Com a guarda, a resposta pode ser natural ("Ótimo, obrigada!", "Foi muito bom"), mas "bom dia/
+      // boa tarde/boa noite" nunca é nota.
+      const txtSat = messageText.trim().normalize('NFC').toLowerCase().replace(/[^\p{L}]+$/u, '').replace(/\s+/g, ' ')
+      const notaTexto = /^(foi )?(muito )?(ótimo|otimo|ótima|otima|excelente)(\s|,|$)/.test(txtSat) ? 'otimo'
+        : /^(foi )?(muito )?(bom|boa)(?! (dia|tarde|noite))(\s|,|$)/.test(txtSat) ? 'bom'
+        : /^(pode melhorar|melhorar|foi ruim|ruim)(\s|,|$)/.test(txtSat) ? 'ruim'
         : /^(agora n[ãa]o|n[ãa]o,? obrigad[oa])$/.test(txtSat) ? 'skip'
         : null
+      let respondendoPesquisa = false
       if (notaTexto) {
+        const { data: ultAssistSat } = await supabaseAdmin
+          .from('chat_messages').select('content')
+          .eq('lead_id', leadId).eq('role', 'assistant')
+          .order('created_at', { ascending: false }).limit(1).maybeSingle()
+        respondendoPesquisa = ((ultAssistSat?.content || '') as string).startsWith('[Pesquisa de satisfação')
+      }
+      if (notaTexto && respondendoPesquisa) {
         // Pesquisa pendente de um atendimento DESTE lead: por appointments.lead_id (agendamento do
         // painel também) ou pelo booking_state.appointment_id (legado).
         const { data: leadBsSat } = await supabaseAdmin
@@ -1123,7 +1173,22 @@ serve(async (req) => {
           .catch((e: any) => console.error('[satisfação] envio erro:', e.message))
       }
 
+      // ESTA mensagem foi respondida aqui — marca processada, senão ela volta colada na próxima rajada
+      // que o debounce manda pro agente. Só ela: outra mensagem da mesma rajada segue pro agente.
+      {
+        const qProc = supabaseAdmin.from('chat_messages').update({ processed: true })
+          .eq('lead_id', leadId).eq('role', 'user').eq('processed', false)
+        await (providerMsgId ? qProc.eq('provider_message_id', providerMsgId) : qProc.eq('content', messageText))
+      }
+
       if (nota === 'skip') {
+        // "Agora não" em TEXTO à pesquisa pendente também fecha a pesquisa (antes ficava pendente e
+        // cada novo "não, obrigado" das 24h seguintes era sequestrado de novo).
+        if (apptId) {
+          await supabaseAdmin.from('appointment_reminders')
+            .update({ patient_response: 'skip', response_at: new Date().toISOString() })
+            .eq('appointment_id', apptId).eq('kind', 'satisfaction').is('patient_response', null)
+        }
         await sendText('Tranquilo! Quando quiser marcar a próxima, é só chamar. 🙌')
         await supabaseAdmin.from('chat_messages').insert({ lead_id: leadId, role: 'assistant', content: '[Satisfação: reoferta dispensada]', processed: true })
         return new Response(JSON.stringify({ success: true, action: 'satisfaction_skip' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })

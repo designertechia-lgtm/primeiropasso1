@@ -46,23 +46,25 @@ const tools = [
   },
   {
     name: "remarcar_agendamento",
-    description: "Remarca o agendamento ativo do lead para um novo dia/horário. A tool encontra o agendamento atual sozinha, valida o novo horário e avisa o lead. Chame quando o lead pedir pra mudar um horário já marcado.",
+    description: "Remarca um agendamento FUTURO do lead para um novo dia/horário. A tool encontra o agendamento atual sozinha, valida o novo horário com as mesmas regras de criar_agendamento e avisa o lead. Chame quando o lead pedir pra mudar um horário já marcado. Se ele tiver MAIS DE UM horário marcado, passe data_atual com o dia do que ele quer mudar.",
     input_schema: {
       type: "object",
       properties: {
         nova_data: { type: "string", description: "Novo dia em YYYY-MM-DD." },
-        nova_hora: { type: "string", description: "Novo horário em HH:MM." }
+        nova_hora: { type: "string", description: "Novo horário em HH:MM." },
+        data_atual: { type: "string", description: "Opcional. Dia (YYYY-MM-DD) do agendamento que será mudado — só é preciso quando o lead tem mais de um marcado." }
       },
       required: ["nova_data", "nova_hora"]
     }
   },
   {
     name: "cancelar_agendamento",
-    description: "Cancela o agendamento ativo do lead. A tool encontra o agendamento sozinha e avisa o lead. Chame quando o lead pedir para desmarcar/cancelar.",
+    description: "Cancela um agendamento FUTURO do lead. A tool encontra o agendamento sozinha e avisa o lead. Chame quando o lead pedir para desmarcar/cancelar. Se ele tiver MAIS DE UM horário marcado, passe data_atual com o dia do que ele quer cancelar.",
     input_schema: {
       type: "object",
       properties: {
-        motivo: { type: "string", description: "Motivo curto, opcional." }
+        motivo: { type: "string", description: "Motivo curto, opcional." },
+        data_atual: { type: "string", description: "Opcional. Dia (YYYY-MM-DD) do agendamento a cancelar — só é preciso quando o lead tem mais de um marcado." }
       },
       required: []
     }
@@ -165,6 +167,23 @@ const toMinutes = (hhmm: string): number => {
   return h * 60 + m
 }
 const fromMinutes = (mins: number): string => `${pad2(Math.floor(mins / 60))}:${pad2(mins % 60)}`
+
+// "Hoje" por extenso + tabela dos próximos dias (BRT) pro prompt. Auditoria 2026-10-05: o prompt só
+// trazia "05/10/2026, 11:22" — sem dia da semana. Pra converter "quinta às 15h" em data o LLM tinha
+// que calcular o dia da semana de cabeça, e o criar_agendamento marca direto com essa conta.
+function calendarioBRT(dias = 14): { hoje: string; tabela: string } {
+  const b = brtNow()
+  const hojeIso = isoFromBRT(b)
+  const hoje = `${dayNames[b.getUTCDay()]}, ${hojeIso.slice(8, 10)}/${hojeIso.slice(5, 7)}/${hojeIso.slice(0, 4)}, ${pad2(b.getUTCHours())}:${pad2(b.getUTCMinutes())} (horário de Brasília)`
+  const itens: string[] = []
+  for (let i = 0; i < dias; i++) {
+    const d = addDays(b, i)
+    const iso = isoFromBRT(d)
+    const pref = i === 0 ? 'hoje ' : i === 1 ? 'amanhã ' : ''
+    itens.push(`${pref}${dayShort[d.getUTCDay()]} ${iso.slice(8, 10)}/${iso.slice(5, 7)} = ${iso}`)
+  }
+  return { hoje, tabela: itens.join(' · ') }
+}
 
 type Selector =
   | { kind: 'buttons'; title: string; description: string; buttons: Array<{ displayText: string; id: string }>; labels: string[]; ids: string[] }
@@ -566,9 +585,10 @@ async function computeFreeSlots(
 // Modelo "agenda por bloqueio": aceita QUALQUER horário (6h, 22h, quebrado) desde que
 // não esteja no passado e não colida com um agendamento OU um BLOQUEIO do profissional.
 // Sem janela de expediente fixa — o profissional bloqueia o que não atende.
+// `excludeId`: o próprio agendamento numa remarcação — não conta como conflito consigo mesmo.
 async function isSlotFree(
   supabaseAdmin: any, professionalId: string, dateIso: string, time: string,
-  durationMin: number = SLOT_MINUTES,
+  durationMin: number = SLOT_MINUTES, excludeId: string | null = null,
 ): Promise<boolean> {
   const startMin = toMinutes(time)
   const endMin = startMin + durationMin
@@ -604,13 +624,15 @@ async function isSlotFree(
   }
 
   // 3) não sobrepõe agendamento NEM bloqueio, respeitando a folga (buffer) dos dois lados
-  const { data: conflitos } = await supabaseAdmin
+  let qConf = supabaseAdmin
     .from('appointments').select('id')
     .eq('professional_id', professionalId)
     .eq('appointment_date', dateIso)
     .in('status', ['pending', 'confirmed'])
     .lt('start_time', fromMinutes(endMin + buffer))
     .gt('end_time', fromMinutes(Math.max(0, startMin - buffer)))
+  if (excludeId) qConf = qConf.neq('id', excludeId)
+  const { data: conflitos } = await qConf
   return !(conflitos && conflitos.length > 0)
 }
 
@@ -739,16 +761,29 @@ async function rescheduleBooking(
     .select('id')
     .single()
   if (error) {
+    // unique_appointment_slot: outro lead pegou esse início entre a validação e o update.
+    if (error.code === '23505') {
+      return { ok: false, erro: 'horario_indisponivel', mensagem: `O horário das ${novaHi} acabou de ser reservado.` }
+    }
     console.error('[scheduler] rescheduleBooking err:', error.message)
     return { ok: false, erro: error.message, mensagem: 'Não consegui remarcar agora.' }
   }
+  // Re-arma os lembretes pro NOVO horário: o cron deduplica por (appointment_id, kind), então o
+  // registro do lembrete do horário antigo impedia o 24h/1h de sair pro horário novo.
+  const { error: remErr } = await supabaseAdmin
+    .from('appointment_reminders').delete()
+    .eq('appointment_id', apptId).in('kind', ['24h', '1h'])
+  if (remErr) console.error('[scheduler] rescheduleBooking reminders reset err:', remErr.message)
   return { ok: true, appointment_id: (updated as any).id }
 }
 
-async function cancelBooking(supabaseAdmin: any, professionalId: string, apptId: string, motivo: string): Promise<{ ok: boolean; erro?: string }> {
+async function cancelBooking(supabaseAdmin: any, professionalId: string, apptId: string, motivo: string, notasAtuais: string = ''): Promise<{ ok: boolean; erro?: string }> {
+  // ACRESCENTA o motivo às notas — antes sobrescrevia e apagava o que o profissional anotou no painel.
+  const linhaCancel = `[Cancelado pelo lead via WhatsApp${motivo ? `: ${motivo}` : ''}]`
+  const notas = (notasAtuais || '').trim() ? `${notasAtuais.trim()}\n${linhaCancel}` : linhaCancel
   const { error } = await supabaseAdmin
     .from('appointments')
-    .update({ status: 'cancelled', notes: motivo || 'Cancelado pelo lead via agendador.', updated_at: new Date().toISOString() })
+    .update({ status: 'cancelled', notes: notas, updated_at: new Date().toISOString() })
     .eq('id', apptId)
     .eq('professional_id', professionalId)
   if (error) {
@@ -861,29 +896,23 @@ async function enviarTextoLead(supabaseAdmin: any, leadId: string, instanceName:
   return true
 }
 
-// Agendamento ativo do lead — pra remarcar/cancelar sem o LLM precisar passar id.
-async function getActiveAppointment(supabaseAdmin: any, professionalId: string, leadId: string): Promise<any | null> {
-  const { data } = await supabaseAdmin
-    .from('appointments')
-    .select('id, appointment_date, start_time, end_time, service_id')
-    .eq('professional_id', professionalId)
-    .eq('lead_id', leadId)
-    .eq('appointment_type', 'booking')
-    .in('status', ['pending', 'confirmed'])
-    .order('appointment_date', { ascending: true })
-    .limit(1)
-    .maybeSingle()
-  return data || null
+// Próximo agendamento ATIVO e FUTURO do lead (por data E hora) — a ÚNICA fonte pra travas, remarcar,
+// cancelar e o estado de agenda do prompt. Filtra >= hoje no banco e descarta os de hoje cujo horário
+// já passou (mesma régua de minuto de isSlotFree).
+// Auditoria 2026-10-05: o antigo getActiveAppointment (order data ASC + limit 1, sem filtro de data)
+// devolvia o MAIS ANTIGO — uma sessão PASSADA que ficou 'pending' (o auto-complete só conclui
+// 'confirmed'). Remarcar movia a sessão velha e cancelar cancelava a velha, deixando a futura de pé.
+async function getUpcomingAppointment(supabaseAdmin: any, professionalId: string, leadId: string): Promise<any | null> {
+  return (await getUpcomingAppointments(supabaseAdmin, professionalId, leadId))[0] || null
 }
 
-// C2: próximo agendamento ATIVO e FUTURO (por data E hora). Diferente de getActiveAppointment
-// (que pega o mais antigo, podendo ser passado/arrastado), este filtra >= hoje no banco e descarta
-// os de hoje cujo horário já passou — mesma régua de minuto de isSlotFree. Usado pelas travas C2.
-async function getUpcomingAppointment(supabaseAdmin: any, professionalId: string, leadId: string): Promise<any | null> {
+// Todos os agendamentos futuros ativos do lead (até 5), do mais próximo ao mais distante. Paciente
+// recorrente pode ter vários (série criada no painel) — remarcar/cancelar precisam saber QUAL.
+async function getUpcomingAppointments(supabaseAdmin: any, professionalId: string, leadId: string): Promise<any[]> {
   const hoje = isoFromBRT(brtNow())
   const { data } = await supabaseAdmin
     .from('appointments')
-    .select('id, appointment_date, start_time')
+    .select('id, appointment_date, start_time, end_time, service_id, notes')
     .eq('professional_id', professionalId)
     .eq('lead_id', leadId)
     .eq('appointment_type', 'booking')
@@ -892,14 +921,40 @@ async function getUpcomingAppointment(supabaseAdmin: any, professionalId: string
     .order('appointment_date', { ascending: true })
     .order('start_time', { ascending: true })
     .limit(5)
-  if (!data || data.length === 0) return null
+  if (!data || data.length === 0) return []
   const nowMin = brtNow().getUTCHours() * 60 + brtNow().getUTCMinutes()
-  for (const a of data) {
-    if (a.appointment_date > hoje) return a
-    if (a.appointment_date === hoje && toMinutes(('' + a.start_time).slice(0, 5)) > nowMin) return a
-  }
-  return null
+  return data.filter((a: any) =>
+    a.appointment_date > hoje ||
+    (a.appointment_date === hoje && toMinutes(('' + a.start_time).slice(0, 5)) > nowMin))
 }
+
+// Escolhe o agendamento-alvo de remarcar/cancelar. Com 1 futuro, é ele. Com vários, usa `data_atual`
+// (o dia que o lead citou); sem ela, NÃO chuta — devolve a lista pro agente perguntar qual.
+function pickTargetAppointment(lista: any[], dataAtual: string): { appt: any | null; ambiguo: boolean } {
+  if (lista.length === 0) return { appt: null, ambiguo: false }
+  const d = (dataAtual || '').trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+    const doDia = lista.filter((a: any) => a.appointment_date === d)
+    if (doDia.length === 1) return { appt: doDia[0], ambiguo: false }
+    if (doDia.length > 1) return { appt: null, ambiguo: true }
+  }
+  if (lista.length === 1) return { appt: lista[0], ambiguo: false }
+  return { appt: null, ambiguo: true }
+}
+const apptLabel = (a: any): string => `${labelFromIso(a.appointment_date)} às ${('' + a.start_time).slice(0, 5)}`
+
+// Duração do PRÓPRIO agendamento (fim − início). Preserva a duração que o profissional definiu no
+// painel; sem fim válido, cai no serviço e depois no padrão.
+function apptDuration(appt: any, services: Array<{ id: string; duration_minutes: number }>): number {
+  const s = toMinutes(('' + (appt?.start_time || '')).slice(0, 5))
+  const e = toMinutes(('' + (appt?.end_time || '')).slice(0, 5))
+  if (Number.isFinite(s) && Number.isFinite(e) && e > s) return e - s
+  return services.find((x) => x.id === appt?.service_id)?.duration_minutes || services[0]?.duration_minutes || DEFAULT_DURATION
+}
+
+// "quinta-feira, 09/10" — rótulo por extenso pras mensagens que o lead lê.
+const longLabelFromIso = (iso: string): string =>
+  `${dayNames[new Date(iso + 'T00:00:00').getDay()]}, ${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 
 // =============================================
 // CONTEXTO POR CATEGORIA (vocabulário coerente)
@@ -1206,12 +1261,13 @@ function buildTurnLayer(opts: {
   rawName?: string
   preferredName?: string
   now: string
+  calendario?: string
   bookingState: any
   ctx: { area: string; publico: string; oferta: string }
   triageMode?: boolean
   contactStatus?: string
 }): string {
-  const { professional, leadName, rawName, preferredName, now, bookingState, ctx, triageMode, contactStatus } = opts
+  const { professional, leadName, rawName, preferredName, now, calendario, bookingState, ctx, triageMode, contactStatus } = opts
   const proName = professional.full_name || 'o profissional'
   const proFirst = proName.split(' ')[0]
 
@@ -1223,10 +1279,24 @@ function buildTurnLayer(opts: {
     agendaStatus = `
 
 ━━━ ⚠️ ${leadName.toUpperCase()} JÁ TEM AGENDAMENTO ━━━
-${leadName} JÁ está agendado${(bs.label && bs.hora) ? ` para **${quando}**` : ''}${bs.service_name ? ` (${bs.service_name})` : ''}.
+${leadName} JÁ está agendado${(bs.label && bs.hora) ? ` para **${quando}**` : ''}${bs.service_name ? ` (${bs.service_name})` : ''}.${Array.isArray(bs.outros_agendamentos) && bs.outros_agendamentos.length ? `\nTambém tem marcado: ${bs.outros_agendamentos.join(' · ')}. Pra mudar/cancelar um específico, passe data_atual na ferramenta.` : ''}
 • Se perguntar "foi agendado?", "tá certo?", "confirmou?" → confirme que SIM${(bs.label && bs.hora) ? `, ${quando}` : ''}, com naturalidade. NÃO crie outro agendamento.
-• Pediu pra MUDAR pra um horário específico (ex.: "pode às 8:45?", "remarca pras 15h") → chame \`remarcar_agendamento\` DIRETO com esse horário; a ferramenta valida sozinha. NÃO abra a agenda. Se ela RECUSAR, EXPLIQUE em texto — nunca fique re-enviando a lista de botões.
+• Pediu pra MUDAR pra um horário específico (ex.: "pode às 8:45?", "remarca pras 15h") → chame \`remarcar_agendamento\` DIRETO com esse horário; a ferramenta valida sozinha. Se ela RECUSAR, ela te devolve os livres do dia — ofereça o mais próximo em texto.
+• Quer MUDAR mas NÃO disse o horário ("preciso remarcar", "Remarcar", "que horários tem quinta?") → pergunte o DIA que prefere (se ainda não disse) e chame \`abrir_agenda(data="YYYY-MM-DD")\`: com agendamento ativo ela mostra os livres daquele dia PRA TROCA. Depois, \`remarcar_agendamento\`.
 • Quer DESMARCAR → \`cancelar_agendamento\`.`
+  }
+
+  // Remarcação EM CURSO: abrir_agenda(data) mostrou os livres de um dia pra TROCAR o horário atual.
+  let remarcandoHorario = ''
+  if (bs.stage === 'choosing_reschedule_time' && bs.pending_date && bs.appointment_id && bs.status !== 'cancelled') {
+    const lblR = bs.pending_label || bs.pending_date
+    remarcandoHorario = `
+
+━━━ 🔁 REMARCAÇÃO EM CURSO — ${leadName.toUpperCase()} ESTÁ ESCOLHENDO O NOVO HORÁRIO ━━━
+Você mostrou os horários livres de **${lblR}** (${bs.pending_date}) pra TROCAR o horário atual.
+• Se a mensagem for um HORÁRIO, chame \`remarcar_agendamento(nova_data="${bs.pending_date}", nova_hora="HH:MM")\` IMEDIATAMENTE — NUNCA \`criar_agendamento\`. "às 9", "9h", "duas da tarde" são HORA, não o "dia 9".
+• Se nomear OUTRO dia, chame \`abrir_agenda(data="<o novo dia em YYYY-MM-DD>")\` antes de remarcar.
+• Se desistir de mudar, confirme em 1 frase que o horário atual continua de pé.`
   }
 
   // Agendamento EM CURSO: já mostramos os horários de um dia e esperamos o lead escolher a HORA.
@@ -1285,7 +1355,8 @@ NUNCA assuma a voz do profissional. Você é o assistente externo que organiza o
 
 ATENÇÃO ESPECIAL: A bio do profissional pode mencionar nomes de pessoas (donos, fundadores, etc) que NÃO substituem "${proName}". Mesmo se o nome do owner mencionado na bio for IGUAL ao nome do ${ctx.publico} (${leadName}), são pessoas/entidades DIFERENTES. Sempre use **"${proName}"** para se referir ao profissional, NUNCA o nome mencionado dentro da bio.
 
-━━━ HOJE: ${now} ━━━${nameBloco}${agendaStatus}${escolhendoHorario}${triagemBloco}${clienteBloco}${tomBloco}`
+━━━ HOJE: ${now} ━━━${calendario ? `
+CALENDÁRIO — converta "hoje", "amanhã", "quinta", "dia 12" em YYYY-MM-DD SÓ por esta tabela (NUNCA calcule o dia da semana de cabeça): ${calendario}` : ''}${nameBloco}${agendaStatus}${escolhendoHorario}${remarcandoHorario}${triagemBloco}${clienteBloco}${tomBloco}`
 }
 
 // =============================================
@@ -1317,8 +1388,7 @@ function normalizeProName(raw: any): string {
 }
 
 function buildSystemPrompt(professional: any, leadName: string, leadPhone: string, bookingState: any = {}, triageMode = false, contactStatus = '', preferredName = ''): string {
-  const nowObj = new Date()
-  const now = nowObj.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+  const { hoje: now, tabela: calendario } = calendarioBRT()
   // SEGURANÇA: nome do lead é entrada NÃO-confiável — sanitiza antes de qualquer interpolação no prompt.
   const safeLead = sanitizeDisplayName(leadName)
   const safePreferred = sanitizeDisplayName(preferredName)
@@ -1339,7 +1409,7 @@ function buildSystemPrompt(professional: any, leadName: string, leadPhone: strin
   return [
     CORE_RULES,
     buildProfileLayer(professionalN, ctx),
-    buildTurnLayer({ professional: professionalN, leadName: displayName, rawName: safeLead, preferredName: safePreferred, now, bookingState, ctx, triageMode, contactStatus }),
+    buildTurnLayer({ professional: professionalN, leadName: displayName, rawName: safeLead, preferredName: safePreferred, now, calendario, bookingState, ctx, triageMode, contactStatus }),
   ].filter(Boolean).join('\n\n')
 }
 
@@ -1358,18 +1428,46 @@ async function handleToolCall(
   // AGENDAMENTO no AGENTE (LLM-driven). As tools validam, gravam e ENVIAM os botões/
   // confirmação direto via Evolution — o agente nunca escreve "marcado" por conta própria.
   if (toolName === 'abrir_agenda') {
-    // C2: trava determinística — se o lead já tem agendamento ATIVO e FUTURO, NÃO reabrir a agenda
-    // (mata o loop pós-confirmação e o pending_date órfão re-sujando o estado). Mudar = remarcar; desmarcar = cancelar.
+    const dataArg = (args.data || '').toString().trim()
+    // C2: trava determinística — se o lead já tem agendamento ATIVO e FUTURO, a agenda NÃO reabre pra
+    // marcar OUTRO (mata o loop pós-confirmação e o pending_date órfão re-sujando o estado).
+    // Auditoria 2026-10-05: COM data, a ferramenta passa a mostrar os horários livres daquele dia PARA
+    // REMARCAR. Antes, quem respondia "Remarcar" ao lembrete e perguntava "que horários tem quinta?"
+    // batia na trava e ouvia "você já está marcado" — beco sem saída. Sem data, segue travado.
     {
-      const apptAtivo = await getUpcomingAppointment(supabaseAdmin, professionalId, leadId)
-      if (apptAtivo) {
-        return { ok: false, instrucao: `O lead JÁ tem um agendamento ativo (${labelFromIso(apptAtivo.appointment_date)} às ${('' + apptAtivo.start_time).slice(0, 5)}). NÃO abra a agenda. Confirme que está marcado, em 1 frase. Se ele quiser MUDAR o horário, use remarcar_agendamento; se quiser DESMARCAR, use cancelar_agendamento.` }
+      const futuros = await getUpcomingAppointments(supabaseAdmin, professionalId, leadId)
+      if (futuros.length > 0) {
+        const apptAtivo = futuros[0]
+        const marcados = futuros.map(apptLabel).join(' · ')
+        if (!dataArg) {
+          return { ok: false, instrucao: `O lead JÁ tem agendamento ativo (${marcados}). NÃO liste os dias da agenda. Se ele só está confirmando/agradecendo, confirme o horário em 1 frase. Se quer REMARCAR e ainda não disse pra quando, pergunte qual DIA prefere e então chame abrir_agenda(data="YYYY-MM-DD") pra ver os horários livres desse dia. Se já disse dia E hora, chame remarcar_agendamento direto. Para DESMARCAR, cancelar_agendamento.` }
+        }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dataArg)) return { ok: false, instrucao: 'Data em formato inválido — use YYYY-MM-DD.' }
+        const servicesR = await getServices(supabaseAdmin, professionalId)
+        const durR = apptDuration(apptAtivo, servicesR)
+        const diasR = await computeFreeSlots(supabaseAdmin, professionalId, dataArg, dataArg, durR)
+        const horariosR = (diasR.find((d: any) => d.data === dataArg)?.horarios_livres) || []
+        if (horariosR.length === 0) return { vazio: true, instrucao: `Sem horários livres em ${labelFromIso(dataArg)} pra remarcar. O agendamento atual (${marcados}) continua de pé. Diga isso em 1 frase e pergunte que outro dia serve.` }
+        // Remarcação em curso: guarda o dia escolhido SEM apagar o agendamento atual (o lead pode
+        // responder só "14:00" no próximo turno — o prompt precisa saber que é uma TROCA, não um novo).
+        {
+          const { data: lr } = await supabaseAdmin.from('leads').select('booking_state').eq('id', leadId).maybeSingle()
+          const prevBs = (lr?.booking_state as any) || {}
+          await supabaseAdmin.from('leads').update({
+            booking_state: { ...prevBs, pending_date: dataArg, pending_label: labelFromIso(dataArg), stage: 'choosing_reschedule_time' },
+          }).eq('id', leadId)
+        }
+        const dataAtualHint = futuros.length > 1 ? ', data_atual="<YYYY-MM-DD do horário que ele quer mudar>"' : ''
+        return {
+          dia: labelFromIso(dataArg),
+          horarios_livres: horariosR,
+          instrucao: `REMARCAÇÃO — o lead já tem agendamento (${marcados}). Horários livres REAIS de ${labelFromIso(dataArg)} para a TROCA: ${horariosR.join(', ')}. Se ele NÃO pediu pra mudar o horário (só confirmou/agradeceu), NÃO mostre a lista: confirme o horário atual em 1 frase. Se pediu, apresente em TEXTO — cabeçalho "📅 *${labelFromIso(dataArg)}*" e CADA horário numa linha, em *negrito* com 🕐. Use SOMENTE estes. Quando ele escolher, chame remarcar_agendamento(nova_data="${dataArg}", nova_hora="HH:MM"${dataAtualHint}) — NUNCA criar_agendamento.`,
+        }
       }
     }
     const services = await getServices(supabaseAdmin, professionalId)
     const svc = services[0] || null
     const dur = svc?.duration_minutes || DEFAULT_DURATION
-    const dataArg = (args.data || '').toString().trim()
     if (dataArg) {
       const dias = await computeFreeSlots(supabaseAdmin, professionalId, dataArg, dataArg, dur)
       const horarios = (dias.find((d: any) => d.data === dataArg)?.horarios_livres) || []
@@ -1429,14 +1527,24 @@ async function handleToolCall(
     if (!r.ok) return { ok: false, instrucao: r.mensagem || 'Não consegui agendar agora; peça desculpa e ofereça outro horário.' }
     const label = labelFromIso(data)
     await supabaseAdmin.from('leads').update({ pipeline_stage: 'agendado', booking_state: { appointment_id: r.appointment_id, status: 'confirmed', data, hora, label, service_name: svc?.name || null } }).eq('id', leadId)
-    const msg = svc?.name ? `Marcado! Sua ${svc.name}, ${label} às ${hora}. 🙌` : `Marcado! Te espero ${label} às ${hora}. 🙌`
+    // Confirmação completa: dia por extenso + com quem + endereço quando é SÓ presencial (não deixa o
+    // lead sem saber ONDE ir). Sem "te espero": quem fala é o Axel, não o profissional.
+    const { data: proC } = await supabaseAdmin.from('professionals').select('full_name, attendance_mode, address').eq('id', professionalId).maybeSingle()
+    const proFirstC = (normalizeProName((proC as any)?.full_name) || '').split(' ')[0]
+    const comQuem = proFirstC ? ` com ${proFirstC}` : ''
+    const enderecoC = ((proC as any)?.attendance_mode || '').toString().trim().toLowerCase() === 'presencial' && ((proC as any)?.address || '').toString().trim()
+      ? `\n📍 ${(proC as any).address.toString().trim()}`
+      : ''
+    const msg = `Marcado! ✅ ${svc?.name ? `${svc.name}${comQuem}` : `Seu horário${comQuem}`}: ${longLabelFromIso(data)} às ${hora}.${enderecoC}`
     await enviarTextoLead(supabaseAdmin, leadId, instanceName, remoteJid, msg)
     return { handoff: true, instrucao: 'Agendamento confirmado e avisado ao lead. NÃO escreva mais nada neste turno.' }
   }
 
   if (toolName === 'remarcar_agendamento') {
-    const appt = await getActiveAppointment(supabaseAdmin, professionalId, leadId)
-    if (!appt) return { ok: false, instrucao: 'O lead não tem agendamento ativo. Ofereça marcar um novo (abrir_agenda).' }
+    const futuros = await getUpcomingAppointments(supabaseAdmin, professionalId, leadId)
+    const { appt, ambiguo } = pickTargetAppointment(futuros, (args.data_atual || '').toString())
+    if (ambiguo) return { ok: false, instrucao: `O lead tem MAIS DE UM horário marcado: ${futuros.map(apptLabel).join(' · ')}. Pergunte em 1 frase QUAL deles ele quer mudar e depois chame remarcar_agendamento com data_atual=<YYYY-MM-DD daquele>.` }
+    if (!appt) return { ok: false, instrucao: 'O lead não tem agendamento FUTURO ativo pra remarcar. Ofereça marcar um novo (abrir_agenda).' }
     const data = (args.nova_data || '').toString().trim()
     const hora = (args.nova_hora || '').toString().trim().padStart(5, '0')
     if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || !/^\d{1,2}:\d{2}$/.test(hora)) return { ok: false, instrucao: 'Data/hora nova inválida — confirme com o lead e tente de novo.' }
@@ -1451,25 +1559,42 @@ async function handleToolCall(
       return { ok: false, instrucao: `${labelFromIso(data)} às ${hora} já passou. Diga isso ao lead em 1 frase e ofereça um horário FUTURO — não chame tool até ele escolher outro.` }
     }
     const services = await getServices(supabaseAdmin, professionalId)
-    const dur = (services.find((s: any) => s.id === appt.service_id)?.duration_minutes) || services[0]?.duration_minutes || DEFAULT_DURATION
+    const dur = apptDuration(appt, services)
     const eMin = toMinutes(hora) + dur
-    // Sem janela de expediente: rescheduleBooking valida overlap com agendamento/bloqueio (exceto o próprio).
+    // Mesma régua do criar_agendamento (almoço, feriado/data fechada, dia da semana sem atendimento,
+    // conflito com folga), ignorando o próprio agendamento. Antes a remarcação só olhava almoço +
+    // conflito e aceitava mover pra feriado ou pra um dia em que o profissional não atende.
+    const livreRemarcar = await isSlotFree(supabaseAdmin, professionalId, data, hora, dur, appt.id)
+    if (!livreRemarcar) {
+      const diasR = await computeFreeSlots(supabaseAdmin, professionalId, data, data, dur)
+      const livresR = (diasR.find((d: any) => d.data === data)?.horarios_livres) || []
+      return { ok: false, horarios_livres: livresR, instrucao: `O horário ${hora} não está livre em ${labelFromIso(data)} (ocupado, bloqueado ou dia sem atendimento). O agendamento ATUAL (${apptLabel(appt)}) continua de pé. Em 1 frase, diga isso e ofereça o horário livre MAIS PRÓXIMO desta lista REAL (use SÓ estes, NUNCA invente): ${livresR.join(', ') || '(nenhum nesse dia)'}. Quando ele escolher, chame remarcar_agendamento(nova_data="${data}", nova_hora="HH:MM"). Se a lista estiver vazia, pergunte que outro dia serve.` }
+    }
     const r = await rescheduleBooking(supabaseAdmin, professionalId, appt.id, data, hora, fromMinutes(eMin))
-    if (!r.ok) return { ok: false, instrucao: (r.mensagem ? r.mensagem + ' ' : '') + 'EXPLIQUE em 1 frase (TEXTO) e pergunte se quer um dos horários livres. NÃO abra a agenda automaticamente.' }
+    if (!r.ok) return { ok: false, instrucao: (r.mensagem ? r.mensagem + ' ' : '') + `O agendamento atual (${apptLabel(appt)}) continua de pé. EXPLIQUE em 1 frase (TEXTO) e pergunte que outro horário serve.` }
     const label = labelFromIso(data)
     await supabaseAdmin.from('leads').update({ booking_state: { appointment_id: appt.id, status: 'confirmed', data, hora, label, service_name: (services.find((s: any) => s.id === appt.service_id)?.name) || null } }).eq('id', leadId)
-    const msg = `Pronto, remarquei! Agora é ${labelFromIso(data)} às ${hora}. 🙌`
+    const msg = `Pronto, remarquei! ✅ Agora é ${longLabelFromIso(data)} às ${hora}.`
     await enviarTextoLead(supabaseAdmin, leadId, instanceName, remoteJid, msg)
     return { handoff: true, instrucao: 'Remarcado e avisado ao lead. NÃO escreva mais nada neste turno.' }
   }
 
   if (toolName === 'cancelar_agendamento') {
-    const appt = await getActiveAppointment(supabaseAdmin, professionalId, leadId)
-    if (!appt) return { ok: false, instrucao: 'O lead não tem agendamento ativo pra cancelar. Responda com gentileza.' }
-    const r = await cancelBooking(supabaseAdmin, professionalId, appt.id, (args.motivo || '').toString())
+    const futuros = await getUpcomingAppointments(supabaseAdmin, professionalId, leadId)
+    const { appt, ambiguo } = pickTargetAppointment(futuros, (args.data_atual || '').toString())
+    if (ambiguo) return { ok: false, instrucao: `O lead tem MAIS DE UM horário marcado: ${futuros.map(apptLabel).join(' · ')}. Pergunte em 1 frase QUAL deles ele quer cancelar e depois chame cancelar_agendamento com data_atual=<YYYY-MM-DD daquele>.` }
+    if (!appt) return { ok: false, instrucao: 'O lead não tem agendamento FUTURO ativo pra cancelar. Responda com gentileza.' }
+    const r = await cancelBooking(supabaseAdmin, professionalId, appt.id, (args.motivo || '').toString(), appt.notes || '')
     if (!r.ok) return { ok: false, instrucao: 'Não consegui cancelar agora; peça desculpa em 1 frase.' }
-    await supabaseAdmin.from('leads').update({ pipeline_stage: 'em_conversa', booking_state: {} }).eq('id', leadId)
-    const msg = 'Pronto, cancelei seu horário. Quando quiser remarcar é só me chamar. 🙂'
+    // Só zera o estado/estágio se não sobrou outro horário futuro (paciente com série de sessões).
+    const restantes = futuros.filter((a: any) => a.id !== appt.id)
+    if (restantes.length === 0) {
+      await supabaseAdmin.from('leads').update({ pipeline_stage: 'em_conversa', booking_state: {} }).eq('id', leadId)
+    } else {
+      const prox = restantes[0]
+      await supabaseAdmin.from('leads').update({ booking_state: { appointment_id: prox.id, status: 'confirmed', data: prox.appointment_date, hora: ('' + prox.start_time).slice(0, 5), label: labelFromIso(prox.appointment_date), service_name: null } }).eq('id', leadId)
+    }
+    const msg = `Pronto, cancelei seu horário de ${longLabelFromIso(appt.appointment_date)} às ${('' + appt.start_time).slice(0, 5)}. Quando quiser remarcar é só me chamar. 🙂`
     await enviarTextoLead(supabaseAdmin, leadId, instanceName, remoteJid, msg)
     return { handoff: true, instrucao: 'Cancelado e avisado ao lead. NÃO escreva mais nada neste turno.' }
   }
@@ -2342,12 +2467,47 @@ serve(async (req) => {
     const { data: history, error: histError } = await supabaseAdmin.from('chat_messages').select('role, content').eq('lead_id', lead_id).order('created_at', { ascending: false }).limit(30)
     if (histError) console.error("[Error] History fetch error:", histError)
 
-    // de volta à ordem cronológica; .slice(0,-1) tira a mensagem ATUAL do lead (o webhook já a inseriu).
-    const chatHistory = (history || []).slice().reverse().slice(0, -1)
+    // de volta à ordem cronológica, SEM as mensagens do lead que já vêm no `message` deste turno (o
+    // webhook já as inseriu). O webhook junta a rajada pendente num texto só — antes o .slice(0,-1)
+    // tirava só a ÚLTIMA e, numa rajada de 3, as 2 primeiras iam DUPLICADAS pro LLM.
+    const chatHistory = (history || []).slice().reverse()
+    {
+      const msgAtual = (message || '').toString()
+      while (chatHistory.length > 0) {
+        const ultima = chatHistory[chatHistory.length - 1]
+        if (ultima.role === 'user' && ultima.content && msgAtual.includes(String(ultima.content))) chatHistory.pop()
+        else break
+      }
+    }
 
-    // Estado do agendamento — pro prompt não contradizer o sistema de agenda
+    // Estado do agendamento — pro prompt não contradizer o sistema de agenda.
+    // Auditoria 2026-10-05: a FONTE DA VERDADE é a tabela appointments, não o booking_state (que só o
+    // agente escreve). Antes: horário marcado pelo profissional no painel não aparecia pro agente, e um
+    // horário cancelado pelo painel/lembrete ou já realizado seguia "JÁ TEM AGENDAMENTO" no prompt.
+    // Só para o prompt deste turno — nada é gravado aqui.
     const { data: leadRow } = await supabaseAdmin.from('leads').select('booking_state, collected_info').eq('id', lead_id).maybeSingle()
-    const bookingState = (leadRow?.booking_state) || {}
+    let bookingState: any = { ...((leadRow?.booking_state as any) || {}) }
+    try {
+      const futurosP = await getUpcomingAppointments(supabaseAdmin, professional_id, lead_id)
+      if (futurosP.length > 0) {
+        const prox = futurosP[0]
+        const mesmo = bookingState.appointment_id === prox.id
+        bookingState = {
+          ...bookingState,
+          appointment_id: prox.id,
+          status: 'confirmed',
+          data: prox.appointment_date,
+          hora: ('' + prox.start_time).slice(0, 5),
+          label: labelFromIso(prox.appointment_date),
+          service_name: mesmo ? (bookingState.service_name || null) : null,
+          outros_agendamentos: futurosP.slice(1).map(apptLabel),
+        }
+      } else if (bookingState.appointment_id) {
+        bookingState = { ...bookingState, appointment_id: null, status: null }
+      }
+    } catch (e: any) {
+      console.error('[agenda] estado do prompt pelo banco falhou (segue com booking_state):', e?.message)
+    }
     const preferredName = (((leadRow?.collected_info) || {}) as any).nome_preferido || ''
 
     // ── REDE DE SEGURANÇA DE CRISE — antes de qualquer LLM/tool ──────────────────

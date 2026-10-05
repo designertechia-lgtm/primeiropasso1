@@ -87,7 +87,7 @@ serve(async (req) => {
     const { data: appt, error: apptErr } = await supabaseAdmin
       .from("appointments")
       .select(`
-        id, appointment_date, start_time, end_time, status,
+        id, appointment_date, start_time, end_time, status, lead_id,
         professionals!inner(id, full_name, evolution_instance_name)
       `)
       .eq("id", appointment_id)
@@ -98,14 +98,29 @@ serve(async (req) => {
     const proName = (pro?.full_name || "o profissional").split(" ")[0];
     const instanceName = pro?.evolution_instance_name;
 
-    // Lead — identidade de contato é o telefone (leads.whatsapp); casado ao
-    // atendimento via booking_state.appointment_id (mesmo padrão do reminder).
-    const { data: lead } = await supabaseAdmin
-      .from("leads")
-      .select("id, name, whatsapp")
-      .eq("professional_id", pro.id)
-      .eq("booking_state->>appointment_id", appointment_id)
-      .maybeSingle();
+    // Lead — mesmo padrão do send-appointment-reminder: 1) appointments.lead_id (agendamentos do
+    // painel E do WhatsApp gravam — fonte confiável); 2) fallback pelo booking_state.appointment_id.
+    // Auditoria 2026-10-05: antes só olhava o booking_state, que só o agente escreve — atendimento
+    // marcado pelo profissional no painel nunca recebia pesquisa (caía em lead_not_found).
+    let lead: { id: string; name: string | null; whatsapp: string | null } | null = null;
+    const apptLeadId = (appt as any).lead_id as string | null;
+    if (apptLeadId) {
+      const { data } = await supabaseAdmin
+        .from("leads")
+        .select("id, name, whatsapp")
+        .eq("id", apptLeadId)
+        .maybeSingle();
+      lead = data as any;
+    }
+    if (!lead) {
+      const { data } = await supabaseAdmin
+        .from("leads")
+        .select("id, name, whatsapp")
+        .eq("professional_id", pro.id)
+        .eq("booking_state->>appointment_id", appointment_id)
+        .maybeSingle();
+      lead = data as any;
+    }
 
     if (!lead || !lead.whatsapp) {
       console.warn(`[satisfaction] Lead não encontrado pra appointment ${appointment_id}`);

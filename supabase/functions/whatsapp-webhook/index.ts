@@ -157,6 +157,14 @@ function formatPhoneNumber(remoteJid: string): string {
   return num
 }
 
+// "2026-10-09" → "quinta-feira, 09/10" (data de parede; Date em UTC só pra achar o dia da semana).
+const DIAS_SEMANA = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado']
+function diaLongoBR(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return iso || ''
+  const dow = new Date(iso + 'T12:00:00Z').getUTCDay()
+  return `${DIAS_SEMANA[dow]}, ${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+}
+
 /**
  * Envia indicador "digitando" para o WhatsApp via Evolution API
  */
@@ -786,10 +794,15 @@ serve(async (req) => {
       }
     }
 
-    // 3.35. RESPOSTA A LEMBRETE 24h — Confirmar/Remarcar/Cancelar atualizam
+    // 3.35. RESPOSTA A LEMBRETE 24h/1h — Confirmar/Remarcar/Cancelar atualizam
     //       appointments.status + appointment_reminders.patient_response, sem invocar agente.
-    //       Identificação: existe appointment_reminders sent_at nas últimas 6h sem patient_response,
-    //       E a mensagem do lead bate com uma das 3 opções.
+    //       Identificação: lembrete 24h/1h SEM resposta de um agendamento FUTURO DESTE lead
+    //       (appointments.lead_id OU booking_state.appointment_id), E a mensagem bate com uma das 3 opções.
+    //       Auditoria 2026-10-05: antes pegava os 5 lembretes mais recentes da PLATAFORMA INTEIRA nas
+    //       últimas 6h (sem filtro de profissional/lead) e só então procurava o do lead pelo booking_state.
+    //       Com >5 lembretes no mesmo horário, resposta 6h+ depois ou agendamento feito no painel (sem
+    //       booking_state), o "Confirmar" caía no LLM e o horário ficava 'pending' pra sempre — e o
+    //       auto-complete só conclui 'confirmed'. Também não filtrava kind (podia casar a pesquisa de satisfação).
     {
       const txtR = messageText.trim()
       const lowerR = txtR.toLowerCase()
@@ -798,24 +811,47 @@ serve(async (req) => {
       const isCancel    = /^cancelar(\s|$)/i.test(txtR) || lowerR === 'cancelar'
 
       if (isConfirm || isReschedule || isCancel) {
-        const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString()
-        const { data: pendingReminders } = await supabaseAdmin
-          .from('appointment_reminders')
-          .select('id, appointment_id, kind, sent_at, appointments!inner(id, professional_id, appointment_date, start_time, status, professionals!inner(id, full_name, evolution_instance_name))')
-          .is('patient_response', null)
-          .gte('sent_at', sixHoursAgo)
-          .order('sent_at', { ascending: false })
-          .limit(5)
-
-        // Filtra: apenas reminders cujo appointment pertence a este lead (via booking_state.appointment_id)
         const { data: leadBs } = await supabaseAdmin
           .from('leads')
-          .select('booking_state, name')
+          .select('booking_state, name, collected_info')
           .eq('id', leadId)
           .single()
-        const myApptId = (leadBs?.booking_state as any)?.appointment_id
+        const bsApptIdRaw = ((leadBs?.booking_state as any)?.appointment_id || '').toString()
+        const bsApptId = /^[0-9a-f-]{36}$/i.test(bsApptIdRaw) ? bsApptIdRaw : null
 
-        const matched = (pendingReminders || []).find((r: any) => r.appointment_id === myApptId)
+        // Agendamentos FUTUROS deste lead (hora de parede BRT, como no resto da agenda).
+        const brtR = new Date(Date.now() - 3 * 3600 * 1000)
+        const hojeR = brtR.toISOString().slice(0, 10)
+        const agoraMinR = brtR.getUTCHours() * 60 + brtR.getUTCMinutes()
+        let qMeus = supabaseAdmin
+          .from('appointments')
+          .select('id, appointment_date, start_time')
+          .eq('professional_id', professional.id)
+          .in('status', ['pending', 'confirmed'])
+          .gte('appointment_date', hojeR)
+        qMeus = bsApptId ? qMeus.or(`lead_id.eq.${leadId},id.eq.${bsApptId}`) : qMeus.eq('lead_id', leadId)
+        const { data: meusAppts } = await qMeus
+        const futurosIds = (meusAppts || [])
+          .filter((a: any) => {
+            if (a.appointment_date > hojeR) return true
+            const [h, m] = ((a.start_time || '') as string).slice(0, 5).split(':').map(Number)
+            return h * 60 + m > agoraMinR
+          })
+          .map((a: any) => a.id)
+
+        let matched: any = null
+        if (futurosIds.length > 0) {
+          const { data: pendingReminders } = await supabaseAdmin
+            .from('appointment_reminders')
+            .select('id, appointment_id, kind, sent_at, appointments!inner(id, professional_id, appointment_date, start_time, status, professionals!inner(id, full_name, evolution_instance_name))')
+            .in('appointment_id', futurosIds)
+            .in('kind', ['24h', '1h'])
+            .is('patient_response', null)
+            .gte('sent_at', new Date(Date.now() - 26 * 3600 * 1000).toISOString())
+            .order('sent_at', { ascending: false })
+            .limit(1)
+          matched = pendingReminders?.[0] || null
+        }
 
         if (matched) {
           console.log(`[reminder-response] Match: lead ${leadId} respondeu "${txtR}" ao reminder ${matched.id} (kind=${matched.kind})`)
@@ -830,15 +866,19 @@ serve(async (req) => {
           let newStatus: string | null = null
           let responseValue = ''
           let replyText = ''
+          // Data legível ("quinta-feira, 09/10") — antes ia o ISO cru ("2026-10-09") pro paciente.
+          const quandoR = `${diaLongoBR(dateStr)} às ${hora}`
+          const nomeR = (((leadBs?.collected_info as any)?.nome_preferido || leadBs?.name || '') as string).trim().split(' ')[0]
+          const vocativoR = nomeR && nomeR !== 'Visitante' ? `, ${nomeR}` : ''
 
           if (isConfirm) {
             newStatus = 'confirmed'
             responseValue = 'confirmed'
-            replyText = `Combinado, ${(leadBs?.name || 'amigo(a)').split(' ')[0]}! Te espero ${dateStr} às ${hora} 🙌`
+            replyText = `Combinado${vocativoR}! Presença confirmada: ${quandoR} com ${proName} ✅`
           } else if (isCancel) {
             newStatus = 'cancelled'
             responseValue = 'cancelled'
-            replyText = `Tudo bem, agendamento cancelado. Quando quiser remarcar, é só chamar. Um abraço!`
+            replyText = `Tudo bem, cancelei seu horário de ${quandoR}. Quando quiser remarcar, é só chamar. 🙂`
           } else if (isReschedule) {
             // Não muda status do appointment — deixa o agente conduzir o fluxo de remarcação
             responseValue = 'reschedule_requested'
@@ -859,12 +899,15 @@ serve(async (req) => {
               .eq('id', matched.appointment_id)
             console.log(`[reminder-response] appointments.status → ${newStatus}`)
 
-            // Se cancelado, atualiza booking_state também
+            // Se cancelado, atualiza booking_state também. status:'cancelled' é o que o prompt do agente
+            // lê — antes só mudava o stage e o agente seguia dizendo "você JÁ está agendado".
             if (newStatus === 'cancelled') {
               const prev = (leadBs?.booking_state as any) || {}
-              await supabaseAdmin.from('leads').update({
-                booking_state: { ...prev, stage: 'cancelled', cancelled_at: new Date().toISOString() },
-              }).eq('id', leadId)
+              if (!prev.appointment_id || prev.appointment_id === matched.appointment_id) {
+                await supabaseAdmin.from('leads').update({
+                  booking_state: { ...prev, status: 'cancelled', stage: 'cancelled', cancelled_at: new Date().toISOString() },
+                }).eq('id', leadId)
+              }
             }
           }
 
@@ -1028,25 +1071,40 @@ serve(async (req) => {
     //         leads.booking_state->>appointment_id).
     let syntheticClickId: string | null = null
     if (!clickId) {
-      const txtSat = messageText.trim().toLowerCase()
-      const notaTexto = /^ótimo|^otimo/.test(txtSat) ? 'otimo'
-        : /^bom\b/.test(txtSat) ? 'bom'
-        : /^(pode melhorar|melhorar)/.test(txtSat) ? 'ruim'
-        : /^agora n[ãa]o|^n[ãa]o,?\s*obrigad/.test(txtSat) ? 'skip'
+      // Auditoria 2026-10-05: só vale a resposta que É a opção (tirando pontuação/emoji do fim).
+      // Antes casava pelo COMEÇO da frase — "Bom dia, queria remarcar" virava nota 'bom', o booking_state
+      // era zerado e o paciente recebia "Que bom que você gostou!" em vez de ser atendido.
+      const txtSat = messageText.trim().toLowerCase().replace(/[^\p{L}]+$/u, '').replace(/\s+/g, ' ')
+      const notaTexto = /^(ótimo|otimo)$/.test(txtSat) ? 'otimo'
+        : /^bom$/.test(txtSat) ? 'bom'
+        : /^(pode melhorar|melhorar)$/.test(txtSat) ? 'ruim'
+        : /^(agora n[ãa]o|n[ãa]o,? obrigad[oa])$/.test(txtSat) ? 'skip'
         : null
       if (notaTexto) {
+        // Pesquisa pendente de um atendimento DESTE lead: por appointments.lead_id (agendamento do
+        // painel também) ou pelo booking_state.appointment_id (legado).
         const { data: leadBsSat } = await supabaseAdmin
           .from('leads').select('booking_state').eq('id', leadId).maybeSingle()
-        const apptIdSat = (leadBsSat?.booking_state as any)?.appointment_id
-        if (apptIdSat) {
+        const bsSatRaw = ((leadBsSat?.booking_state as any)?.appointment_id || '').toString()
+        const bsSat = /^[0-9a-f-]{36}$/i.test(bsSatRaw) ? bsSatRaw : null
+        const desde = new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10)
+        let qSat = supabaseAdmin.from('appointments').select('id')
+          .eq('professional_id', professional.id)
+          .gte('appointment_date', desde)
+        qSat = bsSat ? qSat.or(`lead_id.eq.${leadId},id.eq.${bsSat}`) : qSat.eq('lead_id', leadId)
+        const { data: apptsSat } = await qSat
+        const idsSat = (apptsSat || []).map((a: any) => a.id)
+        if (idsSat.length > 0) {
           const { data: pendingSurvey } = await supabaseAdmin
             .from('appointment_reminders')
-            .select('id')
-            .eq('appointment_id', apptIdSat)
+            .select('appointment_id')
+            .in('appointment_id', idsSat)
             .eq('kind', 'satisfaction')
             .is('patient_response', null)
-            .maybeSingle()
-          if (pendingSurvey) syntheticClickId = `sat:${notaTexto}:${apptIdSat}`
+            .order('sent_at', { ascending: false })
+            .limit(1)
+          const apptIdSat = pendingSurvey?.[0]?.appointment_id
+          if (apptIdSat) syntheticClickId = `sat:${notaTexto}:${apptIdSat}`
         }
       }
     }

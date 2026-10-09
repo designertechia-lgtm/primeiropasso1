@@ -23,11 +23,12 @@ const tools = [
   },
   {
     name: "abrir_agenda",
-    description: "Mostra ao lead os horários livres do profissional, em botões/lista clicáveis. Chame quando o lead quiser ver/escolher quando marcar. SEM 'data': mostra os DIAS disponíveis. COM 'data' (YYYY-MM-DD): mostra os HORÁRIOS daquele dia. A tool envia os botões — depois de chamar, NÃO escreva texto neste turno.",
+    description: "Mostra ao lead os horários livres do profissional, em botões/lista clicáveis. Chame quando o lead quiser ver/escolher quando marcar. SEM 'data' nem 'mes': mostra os PRÓXIMOS dias disponíveis. COM 'mes' (YYYY-MM): mostra os DIAS livres daquele mês. COM 'data' (YYYY-MM-DD): mostra os HORÁRIOS daquele dia. A agenda é aberta para os próximos meses, não só o mês atual. A tool envia os botões — depois de chamar, NÃO escreva texto neste turno.",
     input_schema: {
       type: "object",
       properties: {
-        data: { type: "string", description: "Opcional. Dia em YYYY-MM-DD para listar os horários dele. Omita para listar os dias disponíveis. Use a data de HOJE (no topo do prompt) para converter 'amanhã', 'Qua 18/06' etc." }
+        data: { type: "string", description: "Opcional. Dia em YYYY-MM-DD para listar os horários dele. Omita para listar os dias disponíveis. Use a data de HOJE (no topo do prompt) para converter 'amanhã', 'Qua 18/06' etc." },
+        mes: { type: "string", description: "Opcional. Mês em YYYY-MM para listar os dias livres DAQUELE mês. Use quando o lead pedir outro mês ou uma data mais à frente ('mês que vem', 'novembro', 'dezembro', 'fim do ano'). Converta a partir da data de HOJE (no topo do prompt), com o ano certo." }
       },
       required: []
     }
@@ -165,6 +166,42 @@ const toMinutes = (hhmm: string): number => {
   return h * 60 + m
 }
 const fromMinutes = (mins: number): string => `${pad2(Math.floor(mins / 60))}:${pad2(mins % 60)}`
+
+// Até onde a agenda olha à frente. Antes, abrir_agenda só via os próximos 7 dias e não havia
+// como pedir outro mês: quem queria marcar pro mês seguinte só recebia datas do mês corrente.
+const AGENDA_PROXIMOS_DIAS = 30   // sem data/mês: procura os próximos dias livres nessa janela
+const AGENDA_DIAS_MOSTRADOS = 6   // quantos desses dias vão pro lead
+const AGENDA_MESES_A_FRENTE = 12  // teto do 'mes' — pega ano trocado na conversão ("dezembro" → ano errado)
+const mesNomes = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
+
+// "YYYY-MM" → janela de busca do mês (o mês corrente começa hoje).
+function monthWindow(
+  mes: string, todayIso: string,
+): { inicio: string; fim: string; nome: string } | 'invalido' | 'passado' | 'longe' {
+  const m = /^(\d{4})-(\d{2})$/.exec(mes)
+  const ano = Number(m?.[1]), mesN = Number(m?.[2])
+  if (!m || mesN < 1 || mesN > 12) return 'invalido'
+  const fim = `${m[1]}-${m[2]}-${pad2(new Date(Date.UTC(ano, mesN, 0)).getUTCDate())}`
+  if (fim < todayIso) return 'passado'
+  const [anoHoje, mesHoje] = todayIso.split('-').map(Number)
+  if ((ano - anoHoje) * 12 + (mesN - mesHoje) > AGENDA_MESES_A_FRENTE) return 'longe'
+  const primeiro = `${m[1]}-${m[2]}-01`
+  return { inicio: primeiro < todayIso ? todayIso : primeiro, fim, nome: `${mesNomes[mesN - 1]} de ${ano}` }
+}
+
+// Dias agrupados por semana (seg→dom), uma linha cada: "Seg 02/11 · Ter 03/11 · Qua 04/11".
+// Um mês inteiro vira 4-5 linhas no WhatsApp em vez de 20+.
+function linhasPorSemana(datas: string[]): string[] {
+  const linhas: string[] = []
+  let segundaAtual = ''
+  for (const iso of datas) {
+    const d = new Date(iso + 'T00:00:00Z')
+    const segunda = addDays(d, -((d.getUTCDay() + 6) % 7)).toISOString().slice(0, 10)
+    if (segunda !== segundaAtual) { linhas.push(labelFromIso(iso)); segundaAtual = segunda }
+    else linhas[linhas.length - 1] += ` · ${labelFromIso(iso)}`
+  }
+  return linhas
+}
 
 type Selector =
   | { kind: 'buttons'; title: string; description: string; buttons: Array<{ displayText: string; id: string }>; labels: string[]; ids: string[] }
@@ -965,6 +1002,7 @@ Seu objetivo é conduzir a um próximo passo humano (agendar), não bater papo s
 ━━━ AGENDAMENTO É SEU — mas SEMPRE pelas FERRAMENTAS (nunca confirme de boca) ━━━
 Você conduz o agendamento, porém SÓ através das ferramentas — nunca invente dias/horários nem diga "agendado" de cabeça:
 • Lead quer VER opções ou marcar SEM dizer a hora ("quero agendar", "tem horário?", "pode amanhã?") → \`abrir_agenda\` (SEM data = dias; COM data = horários daquele dia). Se indicou só o dia ("quinta 25/06", "quero terça") → \`abrir_agenda(data="<YYYY-MM-DD>")\`. A ferramenta te DEVOLVE a lista de dias/horários livres REAIS — você os APRESENTA em TEXTO bonito (siga a formatação que vem na resposta da ferramenta; não há mais botão).
+• Lead quer OUTRO MÊS ou uma data mais à frente ("mês que vem", "novembro", "pro fim do ano") → \`abrir_agenda(mes="<YYYY-MM>")\`, convertendo pela data de HOJE com o ano certo. A agenda é aberta para os próximos meses — NUNCA diga que só há horários neste mês.
 • Lead JÁ disse DIA + HORA ("hoje 15:50", "quinta às 14h", "amanhã 9h") → NÃO abra a agenda: chame \`criar_agendamento(data, hora)\` DIRETO com o horário que ele PEDIU. A ferramenta aceita horário quebrado (ex.: 15:50) se estiver livre e marca na hora — não empurre o lead pra grade por uma diferença de minutos. Só ofereça alternativa se a ferramenta recusar (aí ela te devolve os horários livres do dia).
 • Você PODE apresentar horários em TEXTO — mas SOMENTE os que a ferramenta \`abrir_agenda\` retornou (ela calcula os livres REAIS do dia). NUNCA invente nem liste horários de cabeça: horário inventado pode estar OCUPADO, e aí você oferece e depois nega na hora de marcar (péssimo, já aconteceu). Se ainda não tem a lista da ferramenta para o dia pedido, chame \`abrir_agenda(data="<dia>")\` ANTES de falar qualquer horário. Quando o lead escolher um da lista, chame \`criar_agendamento\`.
 • Lead escolheu dia E horário → \`criar_agendamento(data, hora)\`. Ela valida, marca e JÁ AVISA o lead — você NÃO escreve a confirmação.
@@ -1239,7 +1277,7 @@ ${leadName} JÁ está agendado${(bs.label && bs.hora) ? ` para **${quando}**` : 
 ━━━ ⏳ AGENDAMENTO EM CURSO — ${leadName.toUpperCase()} ESTÁ ESCOLHENDO O HORÁRIO ━━━
 Você acabou de mostrar os horários de **${lbl}** (${bs.pending_date}) e espera a HORA desse dia.
 • Se a mensagem for um HORÁRIO, chame \`criar_agendamento(data="${bs.pending_date}", hora="HH:MM")\` IMEDIATAMENTE — NÃO reapresente o trabalho, NÃO repita valores, NÃO pergunte o dia (já é ${lbl}). ATENÇÃO: "às 9", "9h", "9h30", "pode 9h?", "duas da tarde" são HORA, não o "dia 9" — marque normalmente.
-• Só reabra a agenda se o lead nomear EXPLICITAMENTE um dia DIFERENTE de ${lbl} — um dia da semana ("quarta", "sexta"), "amanhã"/"depois de amanhã", ou "dia DD". Se vier junto de uma hora (ex.: "quarta 15h"), chame \`abrir_agenda(data="<o novo dia em YYYY-MM-DD>")\` ANTES de marcar; NUNCA marque em ${bs.pending_date} um horário pedido para OUTRO dia.
+• Só reabra a agenda se o lead nomear EXPLICITAMENTE um dia DIFERENTE de ${lbl} — um dia da semana ("quarta", "sexta"), "amanhã"/"depois de amanhã", ou "dia DD". Se vier junto de uma hora (ex.: "quarta 15h"), chame \`abrir_agenda(data="<o novo dia em YYYY-MM-DD>")\` ANTES de marcar; NUNCA marque em ${bs.pending_date} um horário pedido para OUTRO dia. Se pedir OUTRO MÊS ("mês que vem", "dezembro"), chame \`abrir_agenda(mes="<YYYY-MM>")\`.
 • Se desistir/mudar de assunto, responda normalmente.`
   }
 
@@ -1370,10 +1408,12 @@ async function handleToolCall(
     const svc = services[0] || null
     const dur = svc?.duration_minutes || DEFAULT_DURATION
     const dataArg = (args.data || '').toString().trim()
-    if (dataArg) {
+    // 'data' só com o mês ("2026-11") é pedido de mês.
+    const mesArg = /^\d{4}-\d{2}$/.test(dataArg) ? dataArg : (args.mes || '').toString().trim()
+    if (dataArg && dataArg !== mesArg) {
       const dias = await computeFreeSlots(supabaseAdmin, professionalId, dataArg, dataArg, dur)
       const horarios = (dias.find((d: any) => d.data === dataArg)?.horarios_livres) || []
-      if (horarios.length === 0) return { vazio: true, instrucao: `Sem horários livres em ${dataArg}. Diga isso em 1 frase e ofereça ver outros dias (chame abrir_agenda sem data).` }
+      if (horarios.length === 0) return { vazio: true, instrucao: `Sem horários livres em ${dataArg}. Diga isso em 1 frase e ofereça outros dias desse mês (chame abrir_agenda(mes="${dataArg.slice(0, 7)}")).` }
       // Externaliza o "estou marcando pro dia X" no booking_state (preserva o resto).
       // Sem isso, quando o lead responde só "14:00" o LLM perde o dia e re-pergunta (bug de loop).
       {
@@ -1392,15 +1432,32 @@ async function handleToolCall(
         instrucao: `Horários livres REAIS de ${labelFromIso(dataArg)}: ${horarios.join(', ')}. Apresente em TEXTO BONITO e organizado — um cabeçalho "📅 *${labelFromIso(dataArg)}*" e CADA horário numa linha própria, em *negrito* com 🕐 (um por linha, NÃO tudo na mesma frase). Feche perguntando qual prefere. Use SOMENTE estes horários — NUNCA invente outro. Quando o lead escolher, chame criar_agendamento(data="${dataArg}", hora="HH:MM").`,
       }
     }
-    const hoje = isoFromBRT(brtNow()); const fim = isoFromBRT(addDays(brtNow(), 7))
+    const hoje = isoFromBRT(brtNow())
+    if (mesArg) {
+      const janela = monthWindow(mesArg, hoje)
+      if (janela === 'invalido') return { ok: false, instrucao: 'Mês em formato inválido — chame de novo com mes="YYYY-MM" (ex.: "2026-11").' }
+      if (janela === 'passado') return { ok: false, instrucao: `${mesArg} já passou. Confira o mês e o ano com a data de HOJE (topo do prompt) e chame abrir_agenda(mes="YYYY-MM") com o mês certo.` }
+      if (janela === 'longe') return { ok: false, instrucao: `A agenda abre até ${AGENDA_MESES_A_FRENTE} meses à frente. Confira o ano com a data de HOJE (topo do prompt); se o lead quer mesmo tão longe, diga em 1 frase que ainda não há datas abertas pra lá e ofereça um mês mais próximo.` }
+      const dias = await computeFreeSlots(supabaseAdmin, professionalId, janela.inicio, janela.fim, dur)
+      if (dias.length === 0) return { vazio: true, instrucao: `Sem horários livres em ${janela.nome}. Diga isso em 1 frase e ofereça outro mês (abrir_agenda(mes="YYYY-MM")) ou os próximos dias livres (abrir_agenda sem data).` }
+      const semanas = linhasPorSemana(dias.map((d: any) => d.data))
+      const nomeMes = mesNomes[Number(mesArg.slice(5)) - 1]
+      const titulo = nomeMes[0].toUpperCase() + nomeMes.slice(1)
+      return {
+        mes: janela.nome,
+        semanas,
+        instrucao: `Dias com horário livre em ${janela.nome} (use SOMENTE estes — NUNCA invente): ${semanas.join(' | ')}. Apresente em TEXTO BONITO — um cabeçalho "📅 *${titulo}*" e UMA linha por semana, com os dias agrupados exatamente assim. Feche perguntando qual dia prefere. Quando o lead escolher, chame abrir_agenda(data="${mesArg}-DD") com o dia escolhido pra ver os horários.`,
+      }
+    }
+    const fim = isoFromBRT(addDays(brtNow(), AGENDA_PROXIMOS_DIAS))
     const dias = await computeFreeSlots(supabaseAdmin, professionalId, hoje, fim, dur)
-    if (dias.length === 0) return { vazio: true, instrucao: 'Sem horários livres nos próximos dias. Avise o lead com gentileza que o profissional retorna com novas datas.' }
+    if (dias.length === 0) return { vazio: true, instrucao: `Sem horários livres nos próximos ${AGENDA_PROXIMOS_DIAS} dias. Diga isso com gentileza e ofereça ver um mês mais à frente (abrir_agenda(mes="YYYY-MM")).` }
     // Devolve os dias livres REAIS pro LLM apresentar em TEXTO (botão via Evolution não chega
     // selecionável). O LLM usa SOMENTE estes; nunca inventa dia.
-    const diasInfo = dias.slice(0, 6).map((d: any) => `${d.dia_semana} ${labelFromIso(d.data)} [${d.data}]`)
+    const diasInfo = dias.slice(0, AGENDA_DIAS_MOSTRADOS).map((d: any) => `${d.dia_semana} ${labelFromIso(d.data)} [${d.data}]`)
     return {
       dias_livres: diasInfo,
-      instrucao: `Dias com horário livre (use SOMENTE estes — NUNCA invente; o [YYYY-MM-DD] é só pra você, NÃO mostre ao lead): ${diasInfo.join(' · ')}. Apresente em TEXTO BONITO — CADA dia numa linha, em *negrito* com 📅 e no formato amigável (ex.: "📅 *Quarta (hoje)*", "📅 *Sexta, 26/06*"). Feche perguntando qual prefere. Quando o lead escolher, chame abrir_agenda(data="<o YYYY-MM-DD daquele dia>") pra ver os horários.`,
+      instrucao: `Dias com horário livre (use SOMENTE estes — NUNCA invente; o [YYYY-MM-DD] é só pra você, NÃO mostre ao lead): ${diasInfo.join(' · ')}. Apresente em TEXTO BONITO — CADA dia numa linha, em *negrito* com 📅 e no formato amigável (ex.: "📅 *Quarta (hoje)*", "📅 *Sexta, 26/06*"). Feche perguntando qual prefere. Quando o lead escolher, chame abrir_agenda(data="<o YYYY-MM-DD daquele dia>") pra ver os horários. A agenda está aberta para os próximos meses: se o lead quiser outro mês ou uma data mais à frente, chame abrir_agenda(mes="YYYY-MM") — NUNCA diga que só há horários neste mês.`,
     }
   }
 
